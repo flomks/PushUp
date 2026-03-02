@@ -1,0 +1,217 @@
+-- =============================================================================
+-- PushUp App Database Schema
+-- Local-first storage for workout tracking and time credit management
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- User (local profile)
+-- -----------------------------------------------------------------------------
+CREATE TABLE User (
+    id          TEXT NOT NULL PRIMARY KEY,
+    email       TEXT NOT NULL,
+    displayName TEXT NOT NULL,
+    createdAt   INTEGER NOT NULL,
+    syncedAt    INTEGER
+);
+
+-- -----------------------------------------------------------------------------
+-- WorkoutSession
+-- -----------------------------------------------------------------------------
+CREATE TABLE WorkoutSession (
+    id                TEXT NOT NULL PRIMARY KEY,
+    userId            TEXT NOT NULL,
+    startedAt         INTEGER NOT NULL,
+    endedAt           INTEGER,
+    pushUpCount       INTEGER NOT NULL DEFAULT 0,
+    earnedTimeCredits INTEGER NOT NULL DEFAULT 0,
+    quality           REAL NOT NULL DEFAULT 0.0,
+    syncStatus        TEXT NOT NULL DEFAULT 'pending',
+    updatedAt         INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id)
+);
+
+-- -----------------------------------------------------------------------------
+-- PushUpRecord
+-- -----------------------------------------------------------------------------
+CREATE TABLE PushUpRecord (
+    id         TEXT NOT NULL PRIMARY KEY,
+    sessionId  TEXT NOT NULL,
+    timestamp  INTEGER NOT NULL,
+    durationMs INTEGER NOT NULL,
+    depthScore REAL NOT NULL DEFAULT 0.0,
+    formScore  REAL NOT NULL DEFAULT 0.0,
+    FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id)
+);
+
+-- -----------------------------------------------------------------------------
+-- TimeCredit
+-- -----------------------------------------------------------------------------
+CREATE TABLE TimeCredit (
+    id                TEXT NOT NULL PRIMARY KEY,
+    userId            TEXT NOT NULL,
+    totalEarnedSeconds INTEGER NOT NULL DEFAULT 0,
+    totalSpentSeconds  INTEGER NOT NULL DEFAULT 0,
+    lastUpdatedAt     INTEGER NOT NULL,
+    syncStatus        TEXT NOT NULL DEFAULT 'pending',
+    FOREIGN KEY (userId) REFERENCES User(id)
+);
+
+-- -----------------------------------------------------------------------------
+-- UserSettings
+-- -----------------------------------------------------------------------------
+CREATE TABLE UserSettings (
+    id                        TEXT NOT NULL PRIMARY KEY,
+    userId                    TEXT NOT NULL,
+    pushUpsPerMinuteCredit    INTEGER NOT NULL DEFAULT 10,
+    qualityMultiplierEnabled  INTEGER NOT NULL DEFAULT 0,
+    dailyCreditCapSeconds     INTEGER,
+    FOREIGN KEY (userId) REFERENCES User(id)
+);
+
+-- =============================================================================
+-- User Queries
+-- =============================================================================
+
+insertUser:
+INSERT INTO User (id, email, displayName, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?);
+
+selectUserById:
+SELECT * FROM User
+WHERE id = ?;
+
+selectAllUsers:
+SELECT * FROM User;
+
+updateUser:
+UPDATE User
+SET email = ?, displayName = ?, syncedAt = ?
+WHERE id = ?;
+
+deleteUser:
+DELETE FROM User
+WHERE id = ?;
+
+-- =============================================================================
+-- WorkoutSession Queries
+-- =============================================================================
+
+insertWorkoutSession:
+INSERT INTO WorkoutSession (id, userId, startedAt, endedAt, pushUpCount, earnedTimeCredits, quality, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectWorkoutSessionById:
+SELECT * FROM WorkoutSession
+WHERE id = ?;
+
+selectAllWorkoutSessions:
+SELECT * FROM WorkoutSession;
+
+updateWorkoutSession:
+UPDATE WorkoutSession
+SET startedAt = ?, endedAt = ?, pushUpCount = ?, earnedTimeCredits = ?, quality = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteWorkoutSession:
+DELETE FROM WorkoutSession
+WHERE id = ?;
+
+selectWorkoutSessionsByUserId:
+SELECT * FROM WorkoutSession
+WHERE userId = ?
+ORDER BY startedAt DESC;
+
+selectWorkoutSessionsByDateRange:
+SELECT * FROM WorkoutSession
+WHERE userId = ? AND startedAt >= ? AND startedAt <= ?
+ORDER BY startedAt DESC;
+
+selectUnsyncedSessions:
+SELECT * FROM WorkoutSession
+WHERE syncStatus != 'synced'
+ORDER BY updatedAt ASC;
+
+-- =============================================================================
+-- PushUpRecord Queries
+-- =============================================================================
+
+insertPushUpRecord:
+INSERT INTO PushUpRecord (id, sessionId, timestamp, durationMs, depthScore, formScore)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectPushUpRecordById:
+SELECT * FROM PushUpRecord
+WHERE id = ?;
+
+selectAllPushUpRecords:
+SELECT * FROM PushUpRecord;
+
+updatePushUpRecord:
+UPDATE PushUpRecord
+SET sessionId = ?, timestamp = ?, durationMs = ?, depthScore = ?, formScore = ?
+WHERE id = ?;
+
+deletePushUpRecord:
+DELETE FROM PushUpRecord
+WHERE id = ?;
+
+selectPushUpRecordsBySessionId:
+SELECT * FROM PushUpRecord
+WHERE sessionId = ?
+ORDER BY timestamp ASC;
+
+-- =============================================================================
+-- TimeCredit Queries
+-- =============================================================================
+
+insertTimeCredit:
+INSERT INTO TimeCredit (id, userId, totalEarnedSeconds, totalSpentSeconds, lastUpdatedAt, syncStatus)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectTimeCreditById:
+SELECT * FROM TimeCredit
+WHERE id = ?;
+
+selectAllTimeCredits:
+SELECT * FROM TimeCredit;
+
+updateTimeCredit:
+UPDATE TimeCredit
+SET totalEarnedSeconds = ?, totalSpentSeconds = ?, lastUpdatedAt = ?, syncStatus = ?
+WHERE id = ?;
+
+deleteTimeCredit:
+DELETE FROM TimeCredit
+WHERE id = ?;
+
+selectTimeCreditByUserId:
+SELECT * FROM TimeCredit
+WHERE userId = ?;
+
+-- =============================================================================
+-- UserSettings Queries
+-- =============================================================================
+
+insertUserSettings:
+INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
+VALUES (?, ?, ?, ?, ?);
+
+selectUserSettingsById:
+SELECT * FROM UserSettings
+WHERE id = ?;
+
+selectAllUserSettings:
+SELECT * FROM UserSettings;
+
+updateUserSettings:
+UPDATE UserSettings
+SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?
+WHERE id = ?;
+
+deleteUserSettings:
+DELETE FROM UserSettings
+WHERE id = ?;
+
+selectUserSettingsByUserId:
+SELECT * FROM UserSettings
+WHERE userId = ?;
