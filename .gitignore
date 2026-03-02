@@ -1,19 +1,40 @@
-*.iml
-.kotlin
-.gradle
+# Build outputs
 **/build/
-xcuserdata
 !src/**/build/
-local.properties
-.idea
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.kotlin/
+
+# macOS
 .DS_Store
-captures
-.externalNativeBuild
-.cxx
+
+# Android
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Xcode
+xcuserdata/
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj
 !*.xcodeproj/xcshareddata/
 !*.xcodeproj/project.xcworkspace/
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
+
+# Node
 node_modules/
+
+# Environment
+.env
+.env.local
