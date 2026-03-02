@@ -9,6 +9,7 @@ import com.pushup.domain.model.WorkoutSession
 import kotlinx.datetime.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -186,6 +187,25 @@ class MapperTest {
         val db = session.toDbEntity(updatedAt = Instant.fromEpochMilliseconds(1L))
 
         assertNull(db.endedAt)
+    }
+
+    @Test
+    fun workoutSession_toDbEntity_requiresExplicitUpdatedAt() {
+        val session = WorkoutSession(
+            id = "session-explicit",
+            userId = "user-1",
+            startedAt = Instant.fromEpochMilliseconds(1_700_000_000_000L),
+            endedAt = null,
+            pushUpCount = 5,
+            earnedTimeCreditSeconds = 30L,
+            quality = 0.5f,
+            syncStatus = SyncStatus.PENDING,
+        )
+
+        val explicitTimestamp = Instant.fromEpochMilliseconds(1_700_099_000_000L)
+        val db = session.toDbEntity(updatedAt = explicitTimestamp)
+
+        assertEquals(1_700_099_000_000L, db.updatedAt)
     }
 
     @Test
@@ -464,8 +484,14 @@ class MapperTest {
     }
 
     @Test
-    fun syncStatusFromString_unknownValue_defaultsToPending() {
+    fun syncStatusFromString_syncingMapsToSynced_designChoice() {
+        // The DB schema defines "syncing" as a transient state. The domain
+        // layer deliberately re-queues these as PENDING on restart.
         assertEquals(SyncStatus.PENDING, syncStatusFromString("syncing"))
+    }
+
+    @Test
+    fun syncStatusFromString_unknownValue_defaultsToPending() {
         assertEquals(SyncStatus.PENDING, syncStatusFromString("unknown"))
         assertEquals(SyncStatus.PENDING, syncStatusFromString(""))
     }
@@ -482,6 +508,33 @@ class MapperTest {
         SyncStatus.entries.forEach { status ->
             val roundTripped = syncStatusFromString(syncStatusToString(status))
             assertEquals(status, roundTripped)
+        }
+    }
+
+    // =========================================================================
+    // Numeric overflow guard tests
+    // =========================================================================
+
+    @Test
+    fun toIntChecked_validRange_converts() {
+        assertEquals(0, 0L.toIntChecked("test"))
+        assertEquals(Int.MAX_VALUE, Int.MAX_VALUE.toLong().toIntChecked("test"))
+        assertEquals(Int.MIN_VALUE, Int.MIN_VALUE.toLong().toIntChecked("test"))
+        assertEquals(42, 42L.toIntChecked("test"))
+        assertEquals(-1, (-1L).toIntChecked("test"))
+    }
+
+    @Test
+    fun toIntChecked_overflow_throws() {
+        assertFailsWith<IllegalStateException> {
+            (Int.MAX_VALUE.toLong() + 1).toIntChecked("pushUpCount")
+        }
+    }
+
+    @Test
+    fun toIntChecked_underflow_throws() {
+        assertFailsWith<IllegalStateException> {
+            (Int.MIN_VALUE.toLong() - 1).toIntChecked("pushUpCount")
         }
     }
 
@@ -521,5 +574,77 @@ class MapperTest {
 
         assertEquals(Instant.fromEpochMilliseconds(farFuture), domain.createdAt)
         assertEquals(farFuture, domain.toDbEntity().createdAt)
+    }
+
+    // =========================================================================
+    // Boolean mapping edge cases
+    // =========================================================================
+
+    @Test
+    fun booleanMapping_nonStandardTruthyValues_treatedAsTrue() {
+        // SQLite convention: any non-zero integer is truthy
+        val dbSettings = DbUserSettings(
+            id = "settings-truthy",
+            userId = "user-truthy",
+            pushUpsPerMinuteCredit = 10L,
+            qualityMultiplierEnabled = 42L,
+            dailyCreditCapSeconds = null,
+        )
+
+        val domain = dbSettings.toDomain()
+
+        assertTrue(domain.qualityMultiplierEnabled)
+    }
+
+    @Test
+    fun booleanMapping_negativeValue_treatedAsTrue() {
+        val dbSettings = DbUserSettings(
+            id = "settings-neg",
+            userId = "user-neg",
+            pushUpsPerMinuteCredit = 10L,
+            qualityMultiplierEnabled = -1L,
+            dailyCreditCapSeconds = null,
+        )
+
+        val domain = dbSettings.toDomain()
+
+        assertTrue(domain.qualityMultiplierEnabled)
+    }
+
+    // =========================================================================
+    // List mapper convenience tests
+    // =========================================================================
+
+    @Test
+    fun list_dbUsers_toDomain_mapsAll() {
+        val dbUsers = listOf(
+            DbUser("u1", "a@b.com", "A", 1_000L, 2_000L),
+            DbUser("u2", "c@d.com", "B", 3_000L, null),
+        )
+
+        val domainUsers = dbUsers.map { it.toDomain() }
+
+        assertEquals(2, domainUsers.size)
+        assertEquals("u1", domainUsers[0].id)
+        assertEquals("u2", domainUsers[1].id)
+        // Second user: syncedAt null -> falls back to createdAt
+        assertEquals(domainUsers[1].createdAt, domainUsers[1].lastSyncedAt)
+    }
+
+    @Test
+    fun list_dbPushUpRecords_toDomain_mapsAll() {
+        val dbRecords = listOf(
+            DbPushUpRecord("r1", "s1", 1_000L, 500L, 0.8, 0.7),
+            DbPushUpRecord("r2", "s1", 2_000L, 600L, 0.9, 0.85),
+            DbPushUpRecord("r3", "s1", 3_000L, 700L, 1.0, 1.0),
+        )
+
+        val domainRecords = dbRecords.map { it.toDomain() }
+
+        assertEquals(3, domainRecords.size)
+        assertEquals("r1", domainRecords[0].id)
+        assertEquals("r3", domainRecords[2].id)
+        assertEquals(0.8f, domainRecords[0].depthScore, 0.001f)
+        assertEquals(1.0f, domainRecords[2].formScore, 0.001f)
     }
 }

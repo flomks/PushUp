@@ -6,8 +6,9 @@ import com.pushup.db.UserSettings as DbUserSettings
 /**
  * Converts a SQLDelight [DbUserSettings] entity to a domain [UserSettings] model.
  *
- * - `pushUpsPerMinuteCredit`: [Long] -> [Int]
+ * - `pushUpsPerMinuteCredit`: [Long] -> [Int] (with overflow guard)
  * - `qualityMultiplierEnabled`: [Long] (0/1) -> [Boolean]
+ *   Any non-zero value is treated as `true` (standard SQLite convention).
  * - `dailyCreditCapSeconds`: nullable [Long] (pass-through)
  *
  * Note: the DB entity carries an `id` column that is not present in the
@@ -15,7 +16,9 @@ import com.pushup.db.UserSettings as DbUserSettings
  */
 fun DbUserSettings.toDomain(): UserSettings = UserSettings(
     userId = userId,
-    pushUpsPerMinuteCredit = pushUpsPerMinuteCredit.toInt(),
+    pushUpsPerMinuteCredit = pushUpsPerMinuteCredit.toIntChecked(
+        "UserSettings.pushUpsPerMinuteCredit",
+    ),
     qualityMultiplierEnabled = qualityMultiplierEnabled != 0L,
     dailyCreditCapSeconds = dailyCreditCapSeconds,
 )

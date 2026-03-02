@@ -3,7 +3,6 @@ package com.pushup.data.mapper
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.WorkoutSession
-import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import com.pushup.db.PushUpRecord as DbPushUpRecord
 import com.pushup.db.WorkoutSession as DbWorkoutSession
@@ -16,7 +15,7 @@ import com.pushup.db.WorkoutSession as DbWorkoutSession
  * Converts a SQLDelight [DbWorkoutSession] entity to a domain [WorkoutSession] model.
  *
  * - `startedAt` / `endedAt`: epoch milliseconds [Long] -> [Instant]
- * - `pushUpCount`: [Long] -> [Int]
+ * - `pushUpCount`: [Long] -> [Int] (with overflow guard)
  * - `quality`: [Double] -> [Float]
  * - `syncStatus`: [String] -> [SyncStatus] enum
  */
@@ -25,7 +24,7 @@ fun DbWorkoutSession.toDomain(): WorkoutSession = WorkoutSession(
     userId = userId,
     startedAt = Instant.fromEpochMilliseconds(startedAt),
     endedAt = endedAt?.let { Instant.fromEpochMilliseconds(it) },
-    pushUpCount = pushUpCount.toInt(),
+    pushUpCount = pushUpCount.toIntChecked("WorkoutSession.pushUpCount"),
     earnedTimeCreditSeconds = earnedTimeCredits,
     quality = quality.toFloat(),
     syncStatus = syncStatusFromString(syncStatus),
@@ -34,11 +33,10 @@ fun DbWorkoutSession.toDomain(): WorkoutSession = WorkoutSession(
 /**
  * Converts a domain [WorkoutSession] model to a SQLDelight [DbWorkoutSession] entity.
  *
- * @param updatedAt Timestamp for the `updatedAt` column. Defaults to [Clock.System.now].
+ * @param updatedAt Timestamp for the `updatedAt` column. Callers must supply
+ *   this explicitly to keep the mapper pure and deterministic.
  */
-fun WorkoutSession.toDbEntity(
-    updatedAt: Instant = Clock.System.now(),
-): DbWorkoutSession = DbWorkoutSession(
+fun WorkoutSession.toDbEntity(updatedAt: Instant): DbWorkoutSession = DbWorkoutSession(
     id = id,
     userId = userId,
     startedAt = startedAt.toEpochMilliseconds(),
@@ -89,23 +87,60 @@ fun PushUpRecord.toDbEntity(): DbPushUpRecord = DbPushUpRecord(
 // =============================================================================
 
 /**
+ * Canonical DB string values for each [SyncStatus] entry.
+ *
+ * These MUST match the `@SerialName` annotations on [SyncStatus] and the
+ * CHECK constraints / default values in the SQLDelight schema (`Database.sq`).
+ * If a `@SerialName` value is ever changed, update this map accordingly.
+ */
+private val syncStatusByDbValue: Map<String, SyncStatus> = mapOf(
+    "synced" to SyncStatus.SYNCED,
+    "pending" to SyncStatus.PENDING,
+    "failed" to SyncStatus.FAILED,
+)
+
+private val dbValueBySyncStatus: Map<SyncStatus, String> =
+    syncStatusByDbValue.entries.associate { (k, v) -> v to k }
+
+/**
  * Maps a database sync-status string to the [SyncStatus] enum.
  *
- * Falls back to [SyncStatus.PENDING] for unrecognised values so that
- * forward-compatible DB rows (e.g. `'syncing'`) don't crash the app.
+ * Known DB values (`"synced"`, `"pending"`, `"failed"`) map to their
+ * corresponding enum entries.
+ *
+ * The DB schema also defines `"syncing"` as a transient state for rows
+ * whose upload is in flight. Because the domain layer intentionally has
+ * no `SYNCING` variant, in-flight rows are re-queued as [SyncStatus.PENDING]
+ * on the next read. This is a deliberate design choice: if the app was
+ * killed mid-sync, re-queuing avoids permanently stuck records.
+ *
+ * Any other unrecognised value also falls back to [SyncStatus.PENDING]
+ * for forward-compatibility with future schema additions.
  */
-internal fun syncStatusFromString(value: String): SyncStatus = when (value) {
-    "synced" -> SyncStatus.SYNCED
-    "pending" -> SyncStatus.PENDING
-    "failed" -> SyncStatus.FAILED
-    else -> SyncStatus.PENDING
-}
+internal fun syncStatusFromString(value: String): SyncStatus =
+    syncStatusByDbValue[value] ?: SyncStatus.PENDING
 
 /**
  * Maps a [SyncStatus] enum to its canonical database string representation.
+ *
+ * The returned string matches the `@SerialName` annotation on the enum entry.
  */
-internal fun syncStatusToString(status: SyncStatus): String = when (status) {
-    SyncStatus.SYNCED -> "synced"
-    SyncStatus.PENDING -> "pending"
-    SyncStatus.FAILED -> "failed"
+internal fun syncStatusToString(status: SyncStatus): String =
+    dbValueBySyncStatus.getValue(status)
+
+// =============================================================================
+// Numeric conversion helpers
+// =============================================================================
+
+/**
+ * Safely narrows a [Long] to [Int] with an explicit overflow check.
+ *
+ * @param fieldName Human-readable field name for the error message.
+ * @throws IllegalStateException if the value exceeds [Int] range.
+ */
+internal fun Long.toIntChecked(fieldName: String): Int {
+    check(this in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+        "$fieldName value $this overflows Int range"
+    }
+    return toInt()
 }
