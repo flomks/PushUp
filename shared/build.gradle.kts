@@ -66,6 +66,8 @@ sqldelight {
     databases {
         create("PushUpDatabase") {
             packageName.set("com.pushup.db")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/migrations"))
+            verifyMigrations.set(true)
         }
     }
 }
