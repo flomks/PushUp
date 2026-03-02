@@ -2,6 +2,7 @@ package com.pushup.domain.model
 
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 /**
  * Aggregated statistics for a single day.
@@ -19,7 +20,22 @@ data class DailyStats(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val averageQuality: Float,
-)
+) {
+    init {
+        require(totalPushUps >= 0) { "DailyStats.totalPushUps must be >= 0, was $totalPushUps" }
+        require(totalSessions >= 0) { "DailyStats.totalSessions must be >= 0, was $totalSessions" }
+        require(totalEarnedSeconds >= 0) {
+            "DailyStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
+        }
+        require(averageQuality in 0f..1f) {
+            "DailyStats.averageQuality must be in [0, 1], was $averageQuality"
+        }
+    }
+
+    /** `true` when at least one session was completed on this day. */
+    @Transient
+    val hasActivity: Boolean = totalSessions > 0
+}
 
 /**
  * Aggregated statistics for a calendar week, with a per-day breakdown.
@@ -37,7 +53,28 @@ data class WeeklyStats(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val dailyBreakdown: List<DailyStats>,
-)
+) {
+    init {
+        require(totalPushUps >= 0) { "WeeklyStats.totalPushUps must be >= 0, was $totalPushUps" }
+        require(totalSessions >= 0) { "WeeklyStats.totalSessions must be >= 0, was $totalSessions" }
+        require(totalEarnedSeconds >= 0) {
+            "WeeklyStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
+        }
+    }
+
+    /** Number of days in the week that had at least one session. */
+    @Transient
+    val activeDays: Int = dailyBreakdown.count { it.hasActivity }
+
+    /** Average quality across all days that had activity, or `0f` if none. */
+    @Transient
+    val averageQuality: Float = dailyBreakdown
+        .filter { it.hasActivity }
+        .map { it.averageQuality }
+        .average()
+        .toFloat()
+        .takeIf { !it.isNaN() } ?: 0f
+}
 
 /**
  * Aggregated statistics for a calendar month, with a per-week breakdown.
@@ -57,4 +94,27 @@ data class MonthlyStats(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val weeklyBreakdown: List<WeeklyStats>,
-)
+) {
+    init {
+        require(month in 1..12) { "MonthlyStats.month must be in [1, 12], was $month" }
+        require(year > 0) { "MonthlyStats.year must be > 0, was $year" }
+        require(totalPushUps >= 0) { "MonthlyStats.totalPushUps must be >= 0, was $totalPushUps" }
+        require(totalSessions >= 0) { "MonthlyStats.totalSessions must be >= 0, was $totalSessions" }
+        require(totalEarnedSeconds >= 0) {
+            "MonthlyStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
+        }
+    }
+
+    /** Number of active weeks (weeks with at least one session). */
+    @Transient
+    val activeWeeks: Int = weeklyBreakdown.count { it.totalSessions > 0 }
+
+    /** Average quality across all active weeks, or `0f` if none. */
+    @Transient
+    val averageQuality: Float = weeklyBreakdown
+        .filter { it.totalSessions > 0 }
+        .map { it.averageQuality }
+        .average()
+        .toFloat()
+        .takeIf { !it.isNaN() } ?: 0f
+}
