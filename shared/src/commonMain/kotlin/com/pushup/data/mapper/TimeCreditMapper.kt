@@ -1,0 +1,38 @@
+package com.pushup.data.mapper
+
+import com.pushup.domain.model.SyncStatus
+import com.pushup.domain.model.TimeCredit
+import kotlinx.datetime.Instant
+import com.pushup.db.TimeCredit as DbTimeCredit
+
+/**
+ * Converts a SQLDelight [DbTimeCredit] entity to a domain [TimeCredit] model.
+ *
+ * - `lastUpdatedAt`: epoch milliseconds [Long] -> [Instant]
+ * - `syncStatus`: [String] -> [SyncStatus] enum
+ *
+ * Note: the DB entity carries an `id` column that is not present in the
+ * domain model (the domain model uses `userId` as the natural key).
+ */
+fun DbTimeCredit.toDomain(): TimeCredit = TimeCredit(
+    userId = userId,
+    totalEarnedSeconds = totalEarnedSeconds,
+    totalSpentSeconds = totalSpentSeconds,
+    lastUpdatedAt = Instant.fromEpochMilliseconds(lastUpdatedAt),
+    syncStatus = syncStatusFromString(syncStatus),
+)
+
+/**
+ * Converts a domain [TimeCredit] model to a SQLDelight [DbTimeCredit] entity.
+ *
+ * @param id The primary-key value for the DB row. The domain model does not
+ *   carry a separate `id`, so callers must supply one (typically a UUID string).
+ */
+fun TimeCredit.toDbEntity(id: String): DbTimeCredit = DbTimeCredit(
+    id = id,
+    userId = userId,
+    totalEarnedSeconds = totalEarnedSeconds,
+    totalSpentSeconds = totalSpentSeconds,
+    lastUpdatedAt = lastUpdatedAt.toEpochMilliseconds(),
+    syncStatus = syncStatusToString(syncStatus),
+)
