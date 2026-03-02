@@ -1,14 +1,15 @@
 package com.flomks.pushup
 
 import kotlinx.datetime.Clock
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Entry point demonstrating the KMP shared module with
- * kotlinx-serialization and kotlinx-datetime integration.
+ * Greeting response model for demonstrating kotlinx-serialization
+ * and kotlinx-datetime integration in the KMP shared module.
  */
 @Serializable
 data class HelloResponse(
@@ -16,16 +17,22 @@ data class HelloResponse(
     val timestamp: String,
 )
 
+/**
+ * Entry point demonstrating the KMP shared module capabilities
+ * with kotlinx-serialization and kotlinx-datetime.
+ */
 object Hello {
 
-    private val json = Json { prettyPrint = true }
+    val json: Json = Json {
+        prettyPrint = true
+        ignoreUnknownKeys = true
+    }
 
     /**
      * Returns a greeting string including the current local date-time.
      */
     fun greet(name: String = "World"): String {
-        val now = Clock.System.now()
-            .toLocalDateTime(TimeZone.currentSystemDefault())
+        val now = currentLocalDateTime()
         return "Hello, $name! Current time: $now"
     }
 
@@ -33,18 +40,20 @@ object Hello {
      * Returns a [HelloResponse] serialized as JSON string.
      */
     fun greetAsJson(name: String = "World"): String {
-        val now = Clock.System.now()
-            .toLocalDateTime(TimeZone.currentSystemDefault())
+        val now = currentLocalDateTime()
         val response = HelloResponse(
             message = "Hello, $name!",
             timestamp = now.toString(),
         )
-        return json.encodeToString(HelloResponse.serializer(), response)
+        return json.encodeToString(response)
     }
 
     /**
      * Deserializes a JSON string back into a [HelloResponse].
      */
     fun parseResponse(jsonString: String): HelloResponse =
-        json.decodeFromString(HelloResponse.serializer(), jsonString)
+        json.decodeFromString<HelloResponse>(jsonString)
+
+    private fun currentLocalDateTime(): LocalDateTime =
+        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
 }

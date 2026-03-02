@@ -1,6 +1,5 @@
 package com.flomks.pushup
 
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -22,10 +21,13 @@ class HelloTest {
     }
 
     @Test
-    fun greetIncludesTimestamp() {
+    fun greetIncludesIso8601Timestamp() {
         val result = Hello.greet()
-        // Timestamp format contains a 'T' separator between date and time
-        assertContains(result, "T")
+        // Verify ISO-8601 date-time pattern: YYYY-MM-DDTHH:MM
+        assertTrue(
+            result.matches(Regex(""".*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*""")),
+            "Expected ISO-8601 timestamp in: $result",
+        )
     }
 
     @Test
@@ -47,20 +49,14 @@ class HelloTest {
     }
 
     @Test
-    fun serializationRoundtripPreservesData() = runTest {
+    fun serializationRoundtripPreservesData() {
         val original = HelloResponse(
-            message = "Hello, Coroutines!",
+            message = "Hello, Serialization!",
             timestamp = "2026-03-02T12:00:00",
         )
 
-        val json = kotlinx.serialization.json.Json.encodeToString(
-            HelloResponse.serializer(),
-            original,
-        )
-        val restored = kotlinx.serialization.json.Json.decodeFromString(
-            HelloResponse.serializer(),
-            json,
-        )
+        val jsonString = Hello.json.encodeToString(original)
+        val restored = Hello.json.decodeFromString<HelloResponse>(jsonString)
 
         assertEquals(original, restored)
     }
