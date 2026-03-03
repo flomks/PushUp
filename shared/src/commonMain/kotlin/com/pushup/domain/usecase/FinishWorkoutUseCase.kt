@@ -72,7 +72,7 @@ class FinishWorkoutUseCase(
         }
 
         val settings = settingsRepository.get(session.userId)
-            ?: UserSettings.default(session.userId)
+            ?: UserSettings.default(session.userId).also { settingsRepository.update(it) }
 
         // Floor division is intentional: partial minutes do not earn credits.
         val rawCredits = (session.pushUpCount.toLong() * 60L) / settings.pushUpsPerMinuteCredit.toLong()
