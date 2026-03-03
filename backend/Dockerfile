@@ -10,11 +10,11 @@ COPY build.gradle.kts .
 COPY settings.gradle.kts .
 COPY gradle.properties .
 
-# Copy backend module
+# Copy backend module build file for dependency caching
 COPY backend/build.gradle.kts backend/
 
 # Download dependencies (cached layer)
-RUN gradle :backend:dependencies --no-daemon || true
+RUN gradle :backend:dependencies --no-daemon 2>/dev/null; exit 0
 
 # Copy backend source code
 COPY backend/src/ backend/src/
@@ -25,7 +25,8 @@ RUN gradle :backend:buildFatJar --no-daemon
 # --- Runtime stage ---
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    apk add --no-cache wget
 
 WORKDIR /app
 
@@ -39,5 +40,13 @@ EXPOSE 8080
 
 ENV PORT=8080
 ENV HOST=0.0.0.0
+ENV KTOR_ENV=production
 
-ENTRYPOINT ["java", "-jar", "pushup-backend.jar"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["java", \
+    "-XX:+UseContainerSupport", \
+    "-XX:MaxRAMPercentage=75.0", \
+    "-XX:+UseG1GC", \
+    "-jar", "pushup-backend.jar"]
