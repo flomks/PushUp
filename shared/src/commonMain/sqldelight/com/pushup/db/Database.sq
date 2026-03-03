@@ -100,6 +100,12 @@ SELECT *
 FROM User
 ORDER BY createdAt DESC;
 
+selectCurrentUser:
+SELECT *
+FROM User
+ORDER BY createdAt DESC
+LIMIT 1;
+
 updateUser:
 UPDATE User
 SET email = ?, displayName = ?, syncedAt = ?
@@ -132,6 +138,10 @@ UPDATE WorkoutSession
 SET startedAt = ?, endedAt = ?, pushUpCount = ?, earnedTimeCredits = ?, quality = ?, syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
+upsertWorkoutSession:
+INSERT OR REPLACE INTO WorkoutSession (id, userId, startedAt, endedAt, pushUpCount, earnedTimeCredits, quality, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 deleteWorkoutSession:
 DELETE FROM WorkoutSession
 WHERE id = ?;
@@ -148,10 +158,22 @@ FROM WorkoutSession
 WHERE userId = ? AND startedAt >= ? AND startedAt <= ?
 ORDER BY startedAt DESC;
 
+selectWorkoutSessionsByDateRangeExclusive:
+SELECT *
+FROM WorkoutSession
+WHERE userId = ? AND startedAt >= ? AND startedAt < ?
+ORDER BY startedAt DESC;
+
 selectUnsyncedSessions:
 SELECT *
 FROM WorkoutSession
 WHERE syncStatus != 'synced'
+ORDER BY updatedAt ASC;
+
+selectUnsyncedSessionsByUserId:
+SELECT *
+FROM WorkoutSession
+WHERE userId = ? AND syncStatus != 'synced'
 ORDER BY updatedAt ASC;
 
 updateWorkoutSessionSyncStatus:

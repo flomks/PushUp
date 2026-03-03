@@ -962,6 +962,73 @@ class RepositoryTests {
         assertTrue(fetchedRecords.all { it.sessionId == session.id })
     }
 
+    // =========================================================================
+    // Edge-Case Tests
+    // =========================================================================
+
+    @Test
+    fun userRepo_saveDuplicateId_throwsRepositoryException() = runTest {
+        val repo = UserRepositoryImpl(database, testDispatcher)
+        repo.saveUser(testUser())
+
+        assertFailsWith<RepositoryException> {
+            repo.saveUser(testUser()) // same ID again
+        }
+    }
+
+    @Test
+    fun recordRepo_saveDuplicateId_throwsRepositoryException() = runTest {
+        setupSessionForRecords()
+        val repo = PushUpRecordRepositoryImpl(database, testDispatcher)
+        repo.save(testRecord(id = "r1"))
+
+        assertFailsWith<RepositoryException> {
+            repo.save(testRecord(id = "r1")) // same ID again
+        }
+    }
+
+    @Test
+    fun sessionRepo_saveWithInvalidUserId_throwsRepositoryException() = runTest {
+        val repo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
+
+        assertFailsWith<RepositoryException> {
+            repo.save(testSession(userId = "nonexistent-user"))
+        }
+    }
+
+    @Test
+    fun recordRepo_saveAll_emptyList_succeeds() = runTest {
+        val repo = PushUpRecordRepositoryImpl(database, testDispatcher)
+
+        // Should not throw for an empty list
+        repo.saveAll(emptyList())
+    }
+
+    @Test
+    fun statsRepo_getMonthlyStats_december_crossesYearBoundary() = runTest {
+        setupUserForWorkouts()
+        val repo = createStatsRepo()
+        val sessionRepo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
+
+        // Dec 15, 2023 = 1702598400000 (UTC)
+        val dec15 = 1_702_598_400_000L
+        sessionRepo.save(testSession(
+            id = "s1",
+            startedAt = Instant.fromEpochMilliseconds(dec15 + 3600_000),
+            endedAt = Instant.fromEpochMilliseconds(dec15 + 3900_000),
+            pushUpCount = 20,
+            earnedTimeCreditSeconds = 120L,
+            quality = 0.8f,
+        ))
+
+        val result = repo.getMonthlyStats("user-1", 12, 2023)
+
+        assertNotNull(result)
+        assertEquals(12, result.month)
+        assertEquals(2023, result.year)
+        assertEquals(20, result.totalPushUps)
+    }
+
     @Test
     fun crossRepo_deletingSessionCascadesRecords() = runTest {
         setupSessionForRecords()

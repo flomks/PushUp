@@ -10,10 +10,8 @@ import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
-import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -29,12 +27,14 @@ import kotlinx.datetime.toLocalDateTime
  * moderate data volumes typical in a personal fitness app; if the data set
  * grows significantly, the aggregation can be pushed down to SQL.
  *
- * All suspend functions switch to [dispatcher] to keep callers main-safe.
+ * All suspend functions are main-safe -- dispatcher switching is handled
+ * by [safeDbCall].
  *
  * @param database The SQLDelight-generated [PushUpDatabase] instance.
  * @param timeCreditRepository Repository for reading the user's time credit balance.
  * @param dispatcher The [CoroutineDispatcher] used for database I/O.
- * @param timeZone The timezone for date-based aggregation. Defaults to [TimeZone.currentSystemDefault].
+ * @param timeZone The timezone for date-based aggregation. Must be provided
+ *   explicitly to ensure deterministic behaviour across devices.
  */
 class StatsRepositoryImpl(
     private val database: PushUpDatabase,
@@ -46,124 +46,107 @@ class StatsRepositoryImpl(
     private val queries get() = database.databaseQueries
 
     override suspend fun getDailyStats(userId: String, date: LocalDate): DailyStats? =
-        withContext(dispatcher) {
-            try {
-                val sessions = querySessionsForDateRange(
-                    userId = userId,
-                    from = date,
-                    toExclusive = date.plus(1, DateTimeUnit.DAY),
-                )
-                if (sessions.isEmpty()) return@withContext null
-                buildDailyStats(date, sessions)
-            } catch (e: Exception) {
-                throw RepositoryException(
-                    "Failed to get daily stats for user '$userId' on $date",
-                    e,
-                )
-            }
+        safeDbCall(dispatcher, "Failed to get daily stats for user '$userId' on $date") {
+            val sessions = querySessionsForDateRange(
+                userId = userId,
+                from = date,
+                toExclusive = date.plus(1, DateTimeUnit.DAY),
+            )
+            if (sessions.isEmpty()) return@safeDbCall null
+            buildDailyStats(date, sessions)
         }
 
     override suspend fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStats? =
-        withContext(dispatcher) {
-            try {
-                val weekEnd = weekStart.plus(7, DateTimeUnit.DAY)
-                val sessions = querySessionsForDateRange(
-                    userId = userId,
-                    from = weekStart,
-                    toExclusive = weekEnd,
-                )
-                if (sessions.isEmpty()) return@withContext null
+        safeDbCall(
+            dispatcher,
+            "Failed to get weekly stats for user '$userId' starting $weekStart",
+        ) {
+            val weekEnd = weekStart.plus(7, DateTimeUnit.DAY)
+            val sessions = querySessionsForDateRange(
+                userId = userId,
+                from = weekStart,
+                toExclusive = weekEnd,
+            )
+            if (sessions.isEmpty()) return@safeDbCall null
 
-                val dailyBreakdown = (0 until 7).map { offset ->
-                    val day = weekStart.plus(offset, DateTimeUnit.DAY)
-                    val daySessions = sessions.filter { sessionDate(it) == day }
-                    buildDailyStats(day, daySessions)
-                }
-
-                WeeklyStats(
-                    weekStartDate = weekStart,
-                    totalPushUps = sessions.sumOf { it.pushUpCount },
-                    totalSessions = sessions.size,
-                    totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-                    dailyBreakdown = dailyBreakdown,
-                )
-            } catch (e: Exception) {
-                throw RepositoryException(
-                    "Failed to get weekly stats for user '$userId' starting $weekStart",
-                    e,
-                )
+            val dailyBreakdown = (0 until 7).map { offset ->
+                val day = weekStart.plus(offset, DateTimeUnit.DAY)
+                val daySessions = sessions.filter { sessionDate(it) == day }
+                buildDailyStats(day, daySessions)
             }
+
+            WeeklyStats(
+                weekStartDate = weekStart,
+                totalPushUps = sessions.sumOf { it.pushUpCount },
+                totalSessions = sessions.size,
+                totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
+                dailyBreakdown = dailyBreakdown,
+            )
         }
 
     override suspend fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStats? =
-        withContext(dispatcher) {
-            try {
-                val monthStart = LocalDate(year, month, 1)
-                val monthEnd = if (month == 12) {
-                    LocalDate(year + 1, 1, 1)
-                } else {
-                    LocalDate(year, month + 1, 1)
-                }
-
-                val sessions = querySessionsForDateRange(
-                    userId = userId,
-                    from = monthStart,
-                    toExclusive = monthEnd,
-                )
-                if (sessions.isEmpty()) return@withContext null
-
-                // Group sessions into ISO weeks
-                val weeklyBreakdown = buildWeeklyBreakdown(sessions, monthStart, monthEnd)
-
-                MonthlyStats(
-                    month = month,
-                    year = year,
-                    totalPushUps = sessions.sumOf { it.pushUpCount },
-                    totalSessions = sessions.size,
-                    totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-                    weeklyBreakdown = weeklyBreakdown,
-                )
-            } catch (e: Exception) {
-                throw RepositoryException(
-                    "Failed to get monthly stats for user '$userId' ($month/$year)",
-                    e,
-                )
+        safeDbCall(
+            dispatcher,
+            "Failed to get monthly stats for user '$userId' ($month/$year)",
+        ) {
+            val monthStart = LocalDate(year, month, 1)
+            val monthEnd = if (month == 12) {
+                LocalDate(year + 1, 1, 1)
+            } else {
+                LocalDate(year, month + 1, 1)
             }
-        }
 
-    override suspend fun getTotalStats(userId: String): TotalStats? = withContext(dispatcher) {
-        try {
-            val sessions = queries.selectWorkoutSessionsByUserId(userId)
-                .executeAsList()
-                .map { it.toDomain() }
-
-            if (sessions.isEmpty()) return@withContext null
-
-            val timeCredit = timeCreditRepository.get(userId)
-
-            val sessionDates = sessions
-                .map { sessionDate(it) }
-                .distinct()
-                .sorted()
-
-            val (currentStreak, longestStreak) = calculateStreaks(sessionDates)
-
-            val avgQuality = sessions.map { it.quality }.average().toFloat()
-
-            TotalStats(
+            val sessions = querySessionsForDateRange(
                 userId = userId,
+                from = monthStart,
+                toExclusive = monthEnd,
+            )
+            if (sessions.isEmpty()) return@safeDbCall null
+
+            val weeklyBreakdown = buildWeeklyBreakdown(sessions, monthStart, monthEnd)
+
+            MonthlyStats(
+                month = month,
+                year = year,
                 totalPushUps = sessions.sumOf { it.pushUpCount },
                 totalSessions = sessions.size,
-                totalEarnedSeconds = timeCredit?.totalEarnedSeconds
-                    ?: sessions.sumOf { it.earnedTimeCreditSeconds },
-                totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
-                averageQuality = avgQuality,
-                currentStreakDays = currentStreak,
-                longestStreakDays = longestStreak,
+                totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
+                weeklyBreakdown = weeklyBreakdown,
             )
-        } catch (e: Exception) {
-            throw RepositoryException("Failed to get total stats for user '$userId'", e)
         }
+
+    override suspend fun getTotalStats(userId: String): TotalStats? = safeDbCall(
+        dispatcher,
+        "Failed to get total stats for user '$userId'",
+    ) {
+        val sessions = queries.selectWorkoutSessionsByUserId(userId)
+            .executeAsList()
+            .map { it.toDomain() }
+
+        if (sessions.isEmpty()) return@safeDbCall null
+
+        val timeCredit = timeCreditRepository.get(userId)
+
+        val sessionDates = sessions
+            .map { sessionDate(it) }
+            .distinct()
+            .sorted()
+
+        val (currentStreak, longestStreak) = calculateStreaks(sessionDates)
+
+        val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
+
+        TotalStats(
+            userId = userId,
+            totalPushUps = sessions.sumOf { it.pushUpCount },
+            totalSessions = sessions.size,
+            totalEarnedSeconds = timeCredit?.totalEarnedSeconds
+                ?: sessions.sumOf { it.earnedTimeCreditSeconds },
+            totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
+            averageQuality = avgQuality,
+            currentStreakDays = currentStreak,
+            longestStreakDays = longestStreak,
+        )
     }
 
     // =========================================================================
@@ -172,6 +155,9 @@ class StatsRepositoryImpl(
 
     /**
      * Queries sessions whose `startedAt` falls within `[from, toExclusive)`.
+     *
+     * Uses the exclusive upper-bound query (`startedAt < ?`) to avoid
+     * off-by-one issues at date boundaries.
      */
     private fun querySessionsForDateRange(
         userId: String,
@@ -179,8 +165,8 @@ class StatsRepositoryImpl(
         toExclusive: LocalDate,
     ): List<WorkoutSession> {
         val fromMs = from.atStartOfDayIn(timeZone).toEpochMilliseconds()
-        val toMs = toExclusive.atStartOfDayIn(timeZone).toEpochMilliseconds() - 1
-        return queries.selectWorkoutSessionsByDateRange(
+        val toMs = toExclusive.atStartOfDayIn(timeZone).toEpochMilliseconds()
+        return queries.selectWorkoutSessionsByDateRangeExclusive(
             userId = userId,
             startedAt = fromMs,
             startedAt_ = toMs,
@@ -212,7 +198,7 @@ class StatsRepositoryImpl(
             totalPushUps = sessions.sumOf { it.pushUpCount },
             totalSessions = sessions.size,
             totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-            averageQuality = sessions.map { it.quality }.average().toFloat(),
+            averageQuality = sessions.map { it.quality.toDouble() }.average().toFloat(),
         )
     }
 
@@ -225,7 +211,6 @@ class StatsRepositoryImpl(
         monthStart: LocalDate,
         monthEnd: LocalDate,
     ): List<WeeklyStats> {
-        // Find all distinct week-start dates (Mondays) that cover the month
         val weekStarts = mutableSetOf<LocalDate>()
         var current = mondayOf(monthStart)
         while (current < monthEnd) {
