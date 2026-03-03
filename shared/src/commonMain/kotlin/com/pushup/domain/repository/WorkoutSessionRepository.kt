@@ -80,7 +80,7 @@ interface WorkoutSessionRepository {
      * @param endedAt The timestamp when the session ended.
      * @param earnedTimeCreditSeconds The number of screen-time credit seconds earned.
      */
-    suspend fun finishSession(id: String, endedAt: kotlinx.datetime.Instant, earnedTimeCreditSeconds: Long)
+    suspend fun finishSession(id: String, endedAt: Instant, earnedTimeCreditSeconds: Long)
 
     /**
      * Marks the session with the given [id] as successfully synced with the backend.

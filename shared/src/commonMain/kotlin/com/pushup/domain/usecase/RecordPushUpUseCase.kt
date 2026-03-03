@@ -10,10 +10,15 @@ import kotlinx.datetime.Clock
  * Use-case: Record a single push-up repetition within an active workout session.
  *
  * When called, this use-case:
- * 1. Verifies the session exists and is still active ([WorkoutSession.endedAt] == `null`).
- * 2. Creates and persists a new [PushUpRecord] with the provided quality metrics.
- * 3. Updates the parent [WorkoutSession]: increments [WorkoutSession.pushUpCount] by 1
+ * 1. Validates all input parameters.
+ * 2. Verifies the session exists and is still active ([WorkoutSession.endedAt] == `null`).
+ * 3. Creates and persists a new [PushUpRecord] with the provided quality metrics.
+ * 4. Updates the parent [WorkoutSession]: increments [WorkoutSession.pushUpCount] by 1
  *    and recalculates [WorkoutSession.quality] as a running average of all `formScore` values.
+ *
+ * **Quality calculation:** The running average is computed incrementally using
+ * `newAvg = (oldAvg * oldCount + newFormScore) / (oldCount + 1)` entirely in `Double`
+ * precision to avoid floating-point drift that would accumulate over many reps.
  *
  * @property sessionRepository Repository for reading and updating workout sessions.
  * @property recordRepository Repository for persisting push-up records.
@@ -35,6 +40,7 @@ class RecordPushUpUseCase(
      * @param depthScore How deep the push-up went (0.0 = shallow, 1.0 = full depth).
      * @param formScore Overall form quality (0.0 = poor, 1.0 = perfect).
      * @return The newly created [PushUpRecord].
+     * @throws IllegalArgumentException if any parameter is out of range.
      * @throws SessionNotFoundException if no session with [sessionId] exists.
      * @throws SessionAlreadyEndedException if the session has already been finished.
      */
@@ -45,6 +51,9 @@ class RecordPushUpUseCase(
         formScore: Float,
     ): PushUpRecord {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }
+        require(durationMs > 0) { "durationMs must be > 0, was $durationMs" }
+        require(depthScore in 0f..1f) { "depthScore must be in [0, 1], was $depthScore" }
+        require(formScore in 0f..1f) { "formScore must be in [0, 1], was $formScore" }
 
         val session = sessionRepository.getById(sessionId)
             ?: throw SessionNotFoundException("Session '$sessionId' not found")
@@ -65,14 +74,15 @@ class RecordPushUpUseCase(
         )
         recordRepository.save(record)
 
-        // Recalculate running average quality incrementally.
+        // Recalculate running average quality incrementally using Double precision
+        // to avoid floating-point drift that accumulates over many reps.
         // Formula: newAvg = (oldAvg * oldCount + newFormScore) / (oldCount + 1)
         // Uses updateStats() (a targeted UPDATE) instead of save() (INSERT OR REPLACE)
         // to avoid triggering ON DELETE CASCADE on PushUpRecord child rows.
         val newCount = session.pushUpCount + 1
-        val newQuality = ((session.quality * session.pushUpCount) + formScore) / newCount
+        val newQuality = ((session.quality.toDouble() * session.pushUpCount) + formScore.toDouble()) / newCount
 
-        sessionRepository.updateStats(sessionId, newCount, newQuality)
+        sessionRepository.updateStats(sessionId, newCount, newQuality.toFloat())
 
         return record
     }

@@ -1,6 +1,7 @@
 package com.pushup.domain.usecase
 
 import com.pushup.domain.model.SyncStatus
+import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.model.WorkoutSummary
 import com.pushup.domain.repository.PushUpRecordRepository
@@ -8,29 +9,37 @@ import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.toLocalDateTime
 
 /**
  * Use-case: Finish an active workout session and calculate earned time credits.
  *
  * When invoked, this use-case:
  * 1. Verifies the session exists and is still active.
- * 2. Sets [WorkoutSession.endedAt] to the current timestamp.
- * 3. Loads the user's [com.pushup.domain.model.UserSettings] to determine the credit formula.
- * 4. Calculates earned credits: `(pushUpCount / pushUpsPerMinuteCredit) * 60` seconds.
- * 5. Optionally applies a quality multiplier based on the session's average quality score:
+ * 2. Loads the user's [UserSettings] to determine the credit formula.
+ * 3. Calculates earned credits using floor division:
+ *    `(pushUpCount / pushUpsPerMinuteCredit) * 60` seconds.
+ *    Floor division is intentional — partial minutes do not earn credits.
+ * 4. Optionally applies a quality multiplier based on the session's average quality score:
  *    - quality > 0.8 → 1.5x multiplier
  *    - quality 0.5..0.8 → 1.0x (no change)
  *    - quality < 0.5 → 0.7x multiplier
- * 6. Optionally caps the earned credits against the user's daily credit cap.
- * 7. Persists the updated session and adds the earned seconds to [TimeCreditRepository].
- * 8. Returns a [WorkoutSummary] containing the finished session, all push-up records,
- *    and the total credits earned.
+ * 5. Optionally caps the earned credits against the user's daily credit cap.
+ *    "Today" is defined as the current calendar day in [timeZone], not a rolling 24-hour window.
+ * 6. Persists the finished session and adds the earned seconds to [TimeCreditRepository].
+ * 7. Returns a [WorkoutSummary] containing the finished session (re-read from DB),
+ *    all push-up records, and the total credits earned.
  *
  * @property sessionRepository Repository for reading and updating workout sessions.
  * @property recordRepository Repository for reading push-up records.
  * @property timeCreditRepository Repository for updating the user's credit balance.
  * @property settingsRepository Repository for reading user settings.
  * @property clock Clock used to set the session end timestamp.
+ * @property timeZone Timezone used to determine the current calendar day for the daily cap.
+ *   Defaults to the system default timezone.
  */
 class FinishWorkoutUseCase(
     private val sessionRepository: WorkoutSessionRepository,
@@ -38,6 +47,7 @@ class FinishWorkoutUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val settingsRepository: UserSettingsRepository,
     private val clock: Clock = Clock.System,
+    private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
 
     /**
@@ -45,6 +55,7 @@ class FinishWorkoutUseCase(
      *
      * @param sessionId The ID of the active session to finish.
      * @return A [WorkoutSummary] with the completed session, all records, and earned credits.
+     * @throws IllegalArgumentException if [sessionId] is blank.
      * @throws SessionNotFoundException if no session with [sessionId] exists.
      * @throws SessionAlreadyEndedException if the session has already been finished.
      */
@@ -61,13 +72,13 @@ class FinishWorkoutUseCase(
         }
 
         val settings = settingsRepository.get(session.userId)
-            ?: com.pushup.domain.model.UserSettings.default(session.userId)
+            ?: UserSettings.default(session.userId)
 
-        val pushUpsPerMinuteCredit = settings.pushUpsPerMinuteCredit
-        val rawCredits = (session.pushUpCount.toLong() * 60L) / pushUpsPerMinuteCredit.toLong()
+        // Floor division is intentional: partial minutes do not earn credits.
+        val rawCredits = (session.pushUpCount.toLong() * 60L) / settings.pushUpsPerMinuteCredit.toLong()
 
-        val creditsAfterMultiplier = if (settings.qualityMultiplierEnabled) {
-            val multiplier = when {
+        val creditsAfterMultiplier: Long = if (settings.qualityMultiplierEnabled) {
+            val multiplier: Double = when {
                 session.quality > 0.8f -> 1.5
                 session.quality >= 0.5f -> 1.0
                 else -> 0.7
@@ -77,9 +88,10 @@ class FinishWorkoutUseCase(
             rawCredits
         }
 
-        // Apply daily credit cap if configured
-        val earnedCredits = if (settings.dailyCreditCapSeconds != null) {
-            val cap = settings.dailyCreditCapSeconds
+        // Apply daily credit cap if configured.
+        // "Today" is the current calendar day in the configured timezone -- not a rolling 24h window.
+        val earnedCredits: Long = if (settings.dailyCreditCapSeconds != null) {
+            val cap: Long = settings.dailyCreditCapSeconds
             val alreadyEarnedToday = getAlreadyEarnedTodaySeconds(session.userId, sessionId)
             val remaining = (cap - alreadyEarnedToday).coerceAtLeast(0L)
             creditsAfterMultiplier.coerceAtMost(remaining)
@@ -101,11 +113,10 @@ class FinishWorkoutUseCase(
         }
 
         val records = recordRepository.getBySessionId(sessionId)
-        val finishedSession = session.copy(
-            endedAt = now,
-            earnedTimeCreditSeconds = earnedCredits,
-            syncStatus = SyncStatus.PENDING,
-        )
+        // Re-read the session from the DB to ensure the returned summary reflects
+        // exactly what was persisted (avoids stale-snapshot inconsistencies).
+        val finishedSession = sessionRepository.getById(sessionId)
+            ?: error("Session '$sessionId' disappeared after finishSession() -- this should never happen")
 
         return WorkoutSummary(
             session = finishedSession,
@@ -117,18 +128,16 @@ class FinishWorkoutUseCase(
     /**
      * Calculates the total credits already earned today by the user (excluding the current session).
      *
-     * Used to enforce the daily credit cap.
+     * "Today" is defined as the current calendar day in [timeZone], starting at midnight.
+     * Uses [WorkoutSessionRepository.getByDateRange] to avoid loading the full session history.
      */
     private suspend fun getAlreadyEarnedTodaySeconds(userId: String, currentSessionId: String): Long {
-        val allSessions = sessionRepository.getAllByUserId(userId)
         val now = clock.now()
-        // Approximate "today" as the last 24 hours to avoid timezone complexity in the use-case layer
-        val dayStartMs = now.toEpochMilliseconds() - 86_400_000L
-        val dayStart = kotlinx.datetime.Instant.fromEpochMilliseconds(dayStartMs)
+        val todayStart: Instant = now.toLocalDateTime(timeZone).date.atStartOfDayIn(timeZone)
 
-        return allSessions
+        return sessionRepository
+            .getByDateRange(userId, from = todayStart, to = now)
             .filter { it.id != currentSessionId }
-            .filter { it.startedAt >= dayStart }
             .sumOf { it.earnedTimeCreditSeconds }
     }
 }

@@ -1,5 +1,6 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.repository.TimeCreditRepository
 import kotlinx.datetime.Clock
@@ -30,21 +31,21 @@ class SpendTimeCreditUseCase(
      * @param secondsToSpend The number of seconds to spend (must be > 0).
      * @return [SpendResult.Success] with the updated balance, or
      *   [SpendResult.InsufficientCredits] if the balance is too low.
-     * @throws IllegalArgumentException if [secondsToSpend] is not positive.
+     * @throws IllegalArgumentException if [userId] is blank or [secondsToSpend] is not positive.
      */
     suspend operator fun invoke(userId: String, secondsToSpend: Long): SpendResult {
         require(userId.isNotBlank()) { "userId must not be blank" }
         require(secondsToSpend > 0) { "secondsToSpend must be > 0, was $secondsToSpend" }
 
-        // Ensure a credit record exists (create empty one if not)
+        // Ensure a credit record exists; create an empty one if not.
         val current = timeCreditRepository.get(userId)
             ?: run {
-                val empty = com.pushup.domain.model.TimeCredit(
+                val empty = TimeCredit(
                     userId = userId,
                     totalEarnedSeconds = 0L,
                     totalSpentSeconds = 0L,
                     lastUpdatedAt = clock.now(),
-                    syncStatus = com.pushup.domain.model.SyncStatus.PENDING,
+                    syncStatus = SyncStatus.PENDING,
                 )
                 timeCreditRepository.update(empty)
                 empty
@@ -56,9 +57,12 @@ class SpendTimeCreditUseCase(
 
         timeCreditRepository.addSpentSeconds(userId, secondsToSpend)
 
-        val updated = timeCreditRepository.get(userId)
-            ?: error("TimeCredit record disappeared after update for user '$userId'")
-
+        // Build the updated credit locally to avoid an extra DB round-trip.
+        // The new balance is deterministic: addSpentSeconds is an atomic increment.
+        val updated = current.copy(
+            totalSpentSeconds = current.totalSpentSeconds + secondsToSpend,
+            lastUpdatedAt = clock.now(),
+        )
         return SpendResult.Success(updated)
     }
 }

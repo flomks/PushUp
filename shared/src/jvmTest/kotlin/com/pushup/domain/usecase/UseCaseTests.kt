@@ -13,6 +13,12 @@ import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.PushUpRecordRepository
+import com.pushup.domain.repository.StatsRepository
+import com.pushup.domain.repository.TimeCreditRepository
+import com.pushup.domain.repository.UserRepository
+import com.pushup.domain.repository.UserSettingsRepository
+import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -38,6 +44,7 @@ import kotlin.test.assertTrue
  *
  * Each test uses a fresh in-memory SQLite database so tests are fully isolated.
  * A fixed [Clock] and sequential [IdGenerator] are injected for determinism.
+ * Repository fields are typed as interfaces to decouple tests from implementations.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class UseCaseTests {
@@ -45,9 +52,9 @@ class UseCaseTests {
     private lateinit var database: PushUpDatabase
     private val testDispatcher = StandardTestDispatcher()
 
-    /** Fixed clock that can be advanced between operations. */
+    /** Fixed clock that can be advanced between operations. Volatile for safe publication. */
     private val fixedClock = object : Clock {
-        var nowMs: Long = 1_700_000_000_000L
+        @Volatile var nowMs: Long = 1_700_000_000_000L
         override fun now(): Instant = Instant.fromEpochMilliseconds(nowMs)
     }
 
@@ -55,13 +62,13 @@ class UseCaseTests {
     private var idCounter = 0
     private val sequentialIdGenerator = IdGenerator { "id-${++idCounter}" }
 
-    // Repositories
-    private lateinit var userRepo: UserRepositoryImpl
-    private lateinit var sessionRepo: WorkoutSessionRepositoryImpl
-    private lateinit var recordRepo: PushUpRecordRepositoryImpl
-    private lateinit var timeCreditRepo: TimeCreditRepositoryImpl
-    private lateinit var settingsRepo: UserSettingsRepositoryImpl
-    private lateinit var statsRepo: StatsRepositoryImpl
+    // Repositories typed as interfaces to decouple tests from implementations
+    private lateinit var userRepo: UserRepository
+    private lateinit var sessionRepo: WorkoutSessionRepository
+    private lateinit var recordRepo: PushUpRecordRepository
+    private lateinit var timeCreditRepo: TimeCreditRepository
+    private lateinit var settingsRepo: UserSettingsRepository
+    private lateinit var statsRepo: StatsRepository
 
     @BeforeTest
     fun setUp() {
@@ -79,7 +86,12 @@ class UseCaseTests {
         recordRepo = PushUpRecordRepositoryImpl(database, testDispatcher)
         timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
         settingsRepo = UserSettingsRepositoryImpl(database, testDispatcher)
-        statsRepo = StatsRepositoryImpl(database, timeCreditRepo, testDispatcher, TimeZone.UTC)
+        statsRepo = StatsRepositoryImpl(
+            database,
+            timeCreditRepo as TimeCreditRepositoryImpl,
+            testDispatcher,
+            TimeZone.UTC,
+        )
     }
 
     @AfterTest
@@ -127,6 +139,10 @@ class UseCaseTests {
         sessionRepo.save(session)
         return session
     }
+
+    private fun makeFinishUseCase(tz: TimeZone = TimeZone.UTC) = FinishWorkoutUseCase(
+        sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock, tz,
+    )
 
     // =========================================================================
     // Task 1A.7: GetOrCreateLocalUserUseCase
@@ -344,6 +360,56 @@ class UseCaseTests {
         assertEquals(record.id, stored.first().id)
     }
 
+    @Test
+    fun recordPushUp_throwsForZeroDurationMs() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1")
+        val useCase = RecordPushUpUseCase(sessionRepo, recordRepo, fixedClock, sequentialIdGenerator)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", 0L, 0.8f, 0.8f)
+        }
+    }
+
+    @Test
+    fun recordPushUp_throwsForNegativeDurationMs() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1")
+        val useCase = RecordPushUpUseCase(sessionRepo, recordRepo, fixedClock, sequentialIdGenerator)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", -1L, 0.8f, 0.8f)
+        }
+    }
+
+    @Test
+    fun recordPushUp_throwsForDepthScoreOutOfRange() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1")
+        val useCase = RecordPushUpUseCase(sessionRepo, recordRepo, fixedClock, sequentialIdGenerator)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", 1000L, -0.1f, 0.8f)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", 1000L, 1.1f, 0.8f)
+        }
+    }
+
+    @Test
+    fun recordPushUp_throwsForFormScoreOutOfRange() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1")
+        val useCase = RecordPushUpUseCase(sessionRepo, recordRepo, fixedClock, sequentialIdGenerator)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", 1000L, 0.8f, -0.1f)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            useCase("session-1", 1000L, 0.8f, 1.1f)
+        }
+    }
+
     // =========================================================================
     // Task 1A.10: FinishWorkoutUseCase
     // =========================================================================
@@ -353,11 +419,8 @@ class UseCaseTests {
         insertUser()
         insertSession(id = "session-1", userId = "user-1", pushUpCount = 10)
         settingsRepo.update(UserSettings.default("user-1"))
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         assertNotNull(summary.session.endedAt)
         assertEquals(fixedClock.now(), summary.session.endedAt)
@@ -377,14 +440,22 @@ class UseCaseTests {
                 dailyCreditCapSeconds = null,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         // 10 / 10 * 60 = 60 seconds
         assertEquals(60L, summary.earnedCredits)
+    }
+
+    @Test
+    fun finishWorkout_zeroPushUpsEarnsZeroCredits() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1", pushUpCount = 0)
+        settingsRepo.update(UserSettings.default("user-1"))
+
+        val summary = makeFinishUseCase().invoke("session-1")
+
+        assertEquals(0L, summary.earnedCredits)
     }
 
     @Test
@@ -400,11 +471,8 @@ class UseCaseTests {
                 dailyCreditCapSeconds = null,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         // 10 / 10 * 60 * 1.5 = 90 seconds
         assertEquals(90L, summary.earnedCredits)
@@ -423,11 +491,8 @@ class UseCaseTests {
                 dailyCreditCapSeconds = null,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         // 10 / 10 * 60 * 0.7 = 42 seconds
         assertEquals(42L, summary.earnedCredits)
@@ -445,11 +510,8 @@ class UseCaseTests {
                 dailyCreditCapSeconds = null,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         // No multiplier: 10 / 10 * 60 = 60 seconds
         assertEquals(60L, summary.earnedCredits)
@@ -468,13 +530,45 @@ class UseCaseTests {
                 dailyCreditCapSeconds = 300L,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         assertEquals(300L, summary.earnedCredits)
+    }
+
+    @Test
+    fun finishWorkout_dailyCapAlreadyFullyConsumed_earnsZero() = runTest {
+        insertUser()
+        // A previous session already earned the full cap today
+        val dayStart = 1_700_006_400_000L // 2023-11-15T00:00:00Z
+        insertSession(
+            id = "earlier-session",
+            userId = "user-1",
+            pushUpCount = 50,
+            earnedTimeCreditSeconds = 300L,
+            startedAt = Instant.fromEpochMilliseconds(dayStart + 3600_000L),
+            endedAt = Instant.fromEpochMilliseconds(dayStart + 3900_000L),
+        )
+        // Current session starts later the same day
+        fixedClock.nowMs = dayStart + 7200_000L
+        insertSession(
+            id = "current-session",
+            userId = "user-1",
+            pushUpCount = 50,
+            startedAt = Instant.fromEpochMilliseconds(dayStart + 7200_000L),
+        )
+        settingsRepo.update(
+            UserSettings(
+                userId = "user-1",
+                pushUpsPerMinuteCredit = 10,
+                qualityMultiplierEnabled = false,
+                dailyCreditCapSeconds = 300L,
+            ),
+        )
+
+        val summary = makeFinishUseCase().invoke("current-session")
+
+        assertEquals(0L, summary.earnedCredits)
     }
 
     @Test
@@ -489,11 +583,8 @@ class UseCaseTests {
                 dailyCreditCapSeconds = null,
             ),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        useCase("session-1")
+        makeFinishUseCase().invoke("session-1")
 
         val credit = timeCreditRepo.get("user-1")
         assertNotNull(credit)
@@ -502,12 +593,8 @@ class UseCaseTests {
 
     @Test
     fun finishWorkout_throwsWhenSessionNotFound() = runTest {
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
-
         assertFailsWith<SessionNotFoundException> {
-            useCase("nonexistent-session")
+            makeFinishUseCase().invoke("nonexistent-session")
         }
     }
 
@@ -519,37 +606,35 @@ class UseCaseTests {
             userId = "user-1",
             endedAt = Instant.fromEpochMilliseconds(1_700_000_300_000L),
         )
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
         assertFailsWith<SessionAlreadyEndedException> {
-            useCase("ended-session")
+            makeFinishUseCase().invoke("ended-session")
+        }
+    }
+
+    @Test
+    fun finishWorkout_throwsForBlankSessionId() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            makeFinishUseCase().invoke("  ")
         }
     }
 
     @Test
     fun finishWorkout_includesAllRecordsInSummary() = runTest {
         insertUser()
-        insertSession(id = "session-1", userId = "user-1", pushUpCount = 3)
+        insertSession(id = "session-1", userId = "user-1")
         settingsRepo.update(UserSettings.default("user-1"))
-        // Insert 3 records directly
         val recordUseCase = RecordPushUpUseCase(
             sessionRepo, recordRepo, fixedClock, sequentialIdGenerator,
         )
-        // Re-insert session with 0 count so RecordPushUpUseCase can increment
-        insertSession(id = "session-2", userId = "user-1")
-        recordUseCase("session-2", 1000L, 0.8f, 0.8f)
-        recordUseCase("session-2", 1100L, 0.9f, 0.9f)
-        recordUseCase("session-2", 1200L, 0.7f, 0.7f)
+        recordUseCase("session-1", 1000L, 0.8f, 0.8f)
+        recordUseCase("session-1", 1100L, 0.9f, 0.9f)
+        recordUseCase("session-1", 1200L, 0.7f, 0.7f)
 
-        val finishUseCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
-        val summary = finishUseCase("session-2")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         assertEquals(3, summary.records.size)
-        assertTrue(summary.records.all { it.sessionId == "session-2" })
+        assertTrue(summary.records.all { it.sessionId == "session-1" })
     }
 
     @Test
@@ -558,14 +643,27 @@ class UseCaseTests {
         // Session with quality = 0.6f (in 0.5-0.8 range -> 1.0x multiplier with default settings)
         insertSession(id = "session-1", userId = "user-1", pushUpCount = 10, quality = 0.6f)
         // No settings saved -- should use defaults (pushUpsPerMinuteCredit=10, qualityMultiplierEnabled=true)
-        val useCase = FinishWorkoutUseCase(
-            sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock,
-        )
 
-        val summary = useCase("session-1")
+        val summary = makeFinishUseCase().invoke("session-1")
 
         // Default: 10 push-ups / 10 per min * 60 = 60 seconds, quality 0.6 -> 1.0x multiplier
         assertEquals(60L, summary.earnedCredits)
+    }
+
+    @Test
+    fun finishWorkout_returnedSessionMatchesDatabase() = runTest {
+        insertUser()
+        insertSession(id = "session-1", userId = "user-1", pushUpCount = 10)
+        settingsRepo.update(UserSettings.default("user-1"))
+
+        val summary = makeFinishUseCase().invoke("session-1")
+
+        // The returned session must match what is actually stored in the DB
+        val stored = sessionRepo.getById("session-1")
+        assertNotNull(stored)
+        assertEquals(stored.endedAt, summary.session.endedAt)
+        assertEquals(stored.earnedTimeCreditSeconds, summary.session.earnedTimeCreditSeconds)
+        assertEquals(stored.syncStatus, summary.session.syncStatus)
     }
 
     // =========================================================================
@@ -633,7 +731,6 @@ class UseCaseTests {
     @Test
     fun getTimeCredit_availableSecondsNeverNegative() = runTest {
         insertUser()
-        // Manually create a credit where spent > earned (edge case)
         val credit = TimeCredit(
             userId = "user-1",
             totalEarnedSeconds = 100L,
@@ -716,6 +813,15 @@ class UseCaseTests {
 
         assertFailsWith<IllegalArgumentException> {
             useCase("user-1", -10L)
+        }
+    }
+
+    @Test
+    fun spendTimeCredit_throwsForBlankUserId() = runTest {
+        val useCase = SpendTimeCreditUseCase(timeCreditRepo, fixedClock)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("", 60L)
         }
     }
 
@@ -872,12 +978,16 @@ class UseCaseTests {
     fun getMonthlyStats_throwsForInvalidMonth() = runTest {
         val useCase = GetMonthlyStatsUseCase(statsRepo)
 
-        assertFailsWith<IllegalArgumentException> {
-            useCase("user-1", 0, 2023)
-        }
-        assertFailsWith<IllegalArgumentException> {
-            useCase("user-1", 13, 2023)
-        }
+        assertFailsWith<IllegalArgumentException> { useCase("user-1", 0, 2023) }
+        assertFailsWith<IllegalArgumentException> { useCase("user-1", 13, 2023) }
+    }
+
+    @Test
+    fun getMonthlyStats_throwsForInvalidYear() = runTest {
+        val useCase = GetMonthlyStatsUseCase(statsRepo)
+
+        assertFailsWith<IllegalArgumentException> { useCase("user-1", 6, 0) }
+        assertFailsWith<IllegalArgumentException> { useCase("user-1", 6, -1) }
     }
 
     @Test
@@ -982,7 +1092,7 @@ class UseCaseTests {
     @Test
     fun defaultIdGenerator_producesValidUuidFormat() {
         val id = DefaultIdGenerator.generate()
-        // UUID format: 8-4-4-4-12 hex chars separated by dashes
+        // UUID v4 format: 8-4-4-4-12 hex chars separated by dashes
         val uuidRegex = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         assertTrue(uuidRegex.matches(id), "Expected UUID v4 format but got: $id")
     }
@@ -993,6 +1103,19 @@ class UseCaseTests {
             val id = DefaultIdGenerator.generate()
             // The version nibble is at position 14 (after "xxxxxxxx-xxxx-")
             assertEquals('4', id[14], "Version nibble should be '4' in: $id")
+        }
+    }
+
+    @Test
+    fun defaultIdGenerator_variantNibbleIsAlwaysRfc4122() {
+        repeat(50) {
+            val id = DefaultIdGenerator.generate()
+            // The variant nibble is at position 19 (after "xxxxxxxx-xxxx-4xxx-")
+            val variantChar = id[19]
+            assertTrue(
+                variantChar in setOf('8', '9', 'a', 'b'),
+                "Variant nibble should be 8, 9, a, or b but got '$variantChar' in: $id",
+            )
         }
     }
 }
