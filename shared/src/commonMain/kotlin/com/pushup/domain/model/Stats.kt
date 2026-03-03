@@ -118,3 +118,55 @@ data class MonthlyStats(
         .toFloat()
         .takeIf { !it.isNaN() } ?: 0f
 }
+
+/**
+ * Aggregated lifetime statistics for a user (since app installation).
+ *
+ * @property userId Identifier of the user these stats belong to.
+ * @property totalPushUps Total push-ups completed across all time.
+ * @property totalSessions Total number of workout sessions completed.
+ * @property totalEarnedSeconds Total screen-time credits earned across all time (in seconds).
+ * @property totalSpentSeconds Total screen-time credits spent across all time (in seconds).
+ * @property averageQuality Average quality score across all sessions (0.0 - 1.0).
+ * @property currentStreakDays Number of consecutive days with at least one session (up to today).
+ * @property longestStreakDays Longest-ever consecutive-day streak.
+ */
+@Serializable
+data class TotalStats(
+    val userId: String,
+    val totalPushUps: Int,
+    val totalSessions: Int,
+    val totalEarnedSeconds: Long,
+    val totalSpentSeconds: Long,
+    val averageQuality: Float,
+    val currentStreakDays: Int,
+    val longestStreakDays: Int,
+) {
+    init {
+        require(userId.isNotBlank()) { "TotalStats.userId must not be blank" }
+        require(totalPushUps >= 0) { "TotalStats.totalPushUps must be >= 0, was $totalPushUps" }
+        require(totalSessions >= 0) { "TotalStats.totalSessions must be >= 0, was $totalSessions" }
+        require(totalEarnedSeconds >= 0) {
+            "TotalStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
+        }
+        require(totalSpentSeconds >= 0) {
+            "TotalStats.totalSpentSeconds must be >= 0, was $totalSpentSeconds"
+        }
+        require(averageQuality in 0f..1f) {
+            "TotalStats.averageQuality must be in [0, 1], was $averageQuality"
+        }
+        require(currentStreakDays >= 0) {
+            "TotalStats.currentStreakDays must be >= 0, was $currentStreakDays"
+        }
+        require(longestStreakDays >= 0) {
+            "TotalStats.longestStreakDays must be >= 0, was $longestStreakDays"
+        }
+        require(longestStreakDays >= currentStreakDays) {
+            "TotalStats.longestStreakDays ($longestStreakDays) must be >= currentStreakDays ($currentStreakDays)"
+        }
+    }
+
+    /** Remaining credit balance (earned minus spent). */
+    @Transient
+    val availableSeconds: Long = totalEarnedSeconds - totalSpentSeconds
+}
