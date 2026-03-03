@@ -1113,6 +1113,250 @@ class UseCaseTests {
     }
 
     // =========================================================================
+    // Task 1A.14: GetUserSettingsUseCase
+    // =========================================================================
+
+    @Test
+    fun getUserSettings_returnsExistingSettings() = runTest {
+        insertUser()
+        val stored = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 20,
+            qualityMultiplierEnabled = true,
+            dailyCreditCapSeconds = 3600L,
+        )
+        settingsRepo.update(stored)
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        val result = useCase("user-1")
+
+        assertEquals(20, result.pushUpsPerMinuteCredit)
+        assertEquals(true, result.qualityMultiplierEnabled)
+        assertEquals(3600L, result.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun getUserSettings_createsDefaultsWhenNoneExist() = runTest {
+        insertUser()
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        val result = useCase("user-1")
+
+        assertEquals("user-1", result.userId)
+        assertEquals(10, result.pushUpsPerMinuteCredit)
+        assertEquals(false, result.qualityMultiplierEnabled)
+        assertNull(result.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun getUserSettings_persistsDefaultsToDatabase() = runTest {
+        insertUser()
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        useCase("user-1")
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(10, stored.pushUpsPerMinuteCredit)
+        assertEquals(false, stored.qualityMultiplierEnabled)
+        assertNull(stored.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun getUserSettings_calledTwice_returnsSameData() = runTest {
+        insertUser()
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        val first = useCase("user-1")
+        val second = useCase("user-1")
+
+        assertEquals(first.pushUpsPerMinuteCredit, second.pushUpsPerMinuteCredit)
+        assertEquals(first.qualityMultiplierEnabled, second.qualityMultiplierEnabled)
+        assertEquals(first.dailyCreditCapSeconds, second.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun getUserSettings_requiresNonBlankUserId() = runTest {
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("  ")
+        }
+    }
+
+    @Test
+    fun getUserSettings_requiresNonEmptyUserId() = runTest {
+        val useCase = GetUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("")
+        }
+    }
+
+    // =========================================================================
+    // Task 1A.14: UpdateUserSettingsUseCase
+    // =========================================================================
+
+    @Test
+    fun updateUserSettings_persistsSettingsToDatabase() = runTest {
+        insertUser()
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+        val settings = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 15,
+            qualityMultiplierEnabled = true,
+            dailyCreditCapSeconds = 7200L,
+        )
+
+        useCase(settings)
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(15, stored.pushUpsPerMinuteCredit)
+        assertEquals(true, stored.qualityMultiplierEnabled)
+        assertEquals(7200L, stored.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun updateUserSettings_updatesExistingSettings() = runTest {
+        insertUser()
+        settingsRepo.update(UserSettings.default("user-1"))
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+
+        val updated = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 25,
+            qualityMultiplierEnabled = false,
+            dailyCreditCapSeconds = null,
+        )
+        useCase(updated)
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(25, stored.pushUpsPerMinuteCredit)
+        assertEquals(false, stored.qualityMultiplierEnabled)
+        assertNull(stored.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun updateUserSettings_acceptsNullDailyCap() = runTest {
+        insertUser()
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+        val settings = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 10,
+            qualityMultiplierEnabled = false,
+            dailyCreditCapSeconds = null,
+        )
+
+        useCase(settings)
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertNull(stored.dailyCreditCapSeconds)
+    }
+
+    @Test
+    fun updateUserSettings_rejectsZeroPushUpsPerMinuteCredit() = runTest {
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase(
+                UserSettings(
+                    userId = "user-1",
+                    pushUpsPerMinuteCredit = 0,
+                    qualityMultiplierEnabled = false,
+                    dailyCreditCapSeconds = null,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun updateUserSettings_rejectsNegativePushUpsPerMinuteCredit() = runTest {
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase(
+                UserSettings(
+                    userId = "user-1",
+                    pushUpsPerMinuteCredit = -5,
+                    qualityMultiplierEnabled = false,
+                    dailyCreditCapSeconds = null,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun updateUserSettings_rejectsZeroDailyCreditCap() = runTest {
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase(
+                UserSettings(
+                    userId = "user-1",
+                    pushUpsPerMinuteCredit = 10,
+                    qualityMultiplierEnabled = false,
+                    dailyCreditCapSeconds = 0L,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun updateUserSettings_rejectsNegativeDailyCreditCap() = runTest {
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase(
+                UserSettings(
+                    userId = "user-1",
+                    pushUpsPerMinuteCredit = 10,
+                    qualityMultiplierEnabled = false,
+                    dailyCreditCapSeconds = -100L,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun updateUserSettings_acceptsMinimumValidPushUpsPerMinuteCredit() = runTest {
+        insertUser()
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+        val settings = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 1,
+            qualityMultiplierEnabled = false,
+            dailyCreditCapSeconds = null,
+        )
+
+        useCase(settings)
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(1, stored.pushUpsPerMinuteCredit)
+    }
+
+    @Test
+    fun updateUserSettings_acceptsMinimumValidDailyCreditCap() = runTest {
+        insertUser()
+        val useCase = UpdateUserSettingsUseCase(settingsRepo)
+        val settings = UserSettings(
+            userId = "user-1",
+            pushUpsPerMinuteCredit = 10,
+            qualityMultiplierEnabled = false,
+            dailyCreditCapSeconds = 1L,
+        )
+
+        useCase(settings)
+
+        val stored = settingsRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(1L, stored.dailyCreditCapSeconds)
+    }
+
+    // =========================================================================
     // IdGenerator tests
     // =========================================================================
 
