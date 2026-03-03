@@ -89,6 +89,36 @@ class WorkoutSessionRepositoryImpl(
         queries.selectUnsyncedSessionsByUserId(userId).executeAsList().map { it.toDomain() }
     }
 
+    override suspend fun updateStats(id: String, pushUpCount: Int, quality: Float): Unit = safeDbCall(
+        dispatcher,
+        "Failed to update stats for session '$id'",
+    ) {
+        queries.updateWorkoutSessionStats(
+            pushUpCount = pushUpCount.toLong(),
+            quality = quality.toDouble(),
+            syncStatus = syncStatusToString(SyncStatus.PENDING),
+            updatedAt = clock.now().toEpochMilliseconds(),
+            id = id,
+        )
+    }
+
+    override suspend fun finishSession(
+        id: String,
+        endedAt: Instant,
+        earnedTimeCreditSeconds: Long,
+    ): Unit = safeDbCall(
+        dispatcher,
+        "Failed to finish session '$id'",
+    ) {
+        queries.updateWorkoutSessionEnd(
+            endedAt = endedAt.toEpochMilliseconds(),
+            earnedTimeCredits = earnedTimeCreditSeconds,
+            syncStatus = syncStatusToString(SyncStatus.PENDING),
+            updatedAt = clock.now().toEpochMilliseconds(),
+            id = id,
+        )
+    }
+
     override suspend fun markAsSynced(id: String): Unit = safeDbCall(
         dispatcher,
         "Failed to mark session '$id' as synced",
