@@ -33,9 +33,23 @@ dependencies {
     implementation(libs.ktor.server.callLogging)
     implementation(libs.ktor.server.defaultHeaders)
 
+    // Exposed ORM
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.dao)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.kotlin.datetime)
+
+    // Database
+    implementation(libs.hikari.cp)
+    implementation(libs.postgresql.driver)
+
+    // Coroutines (explicit -- used by newSuspendedTransaction)
+    implementation(libs.kotlinx.coroutines.core)
+
     // Serialization
     implementation(libs.ktor.serialization.json)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.datetime)
 
     // Logging
     implementation(libs.logback.classic)

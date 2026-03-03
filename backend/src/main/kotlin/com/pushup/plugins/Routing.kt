@@ -1,5 +1,6 @@
 package com.pushup.plugins
 
+import com.pushup.routes.userRoutes
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.response.respond
@@ -15,5 +16,7 @@ fun Application.configureRouting() {
         get("/health") {
             call.respond(HttpStatusCode.OK, HealthResponse(status = "ok"))
         }
+
+        userRoutes()
     }
 }
