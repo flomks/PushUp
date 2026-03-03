@@ -30,11 +30,17 @@ data class UserSettings(
     }
 
     companion object {
-        /** Sensible defaults for a new user. */
+        /**
+         * Sensible defaults for a new user.
+         *
+         * - [pushUpsPerMinuteCredit] = 10 (earn 1 minute of screen time per 10 push-ups)
+         * - [qualityMultiplierEnabled] = false (quality bonus disabled by default)
+         * - [dailyCreditCapSeconds] = null (no daily cap)
+         */
         fun default(userId: String): UserSettings = UserSettings(
             userId = userId,
             pushUpsPerMinuteCredit = 10,
-            qualityMultiplierEnabled = true,
+            qualityMultiplierEnabled = false,
             dailyCreditCapSeconds = null,
         )
     }
