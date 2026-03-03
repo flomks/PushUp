@@ -2,6 +2,7 @@ package com.pushup
 
 import com.pushup.plugins.configureAuth
 import com.pushup.plugins.configureCORS
+import com.pushup.plugins.configureDatabase
 import com.pushup.plugins.configureMonitoring
 import com.pushup.plugins.configureRouting
 import com.pushup.plugins.configureSerialization
@@ -32,6 +33,7 @@ fun Application.module() {
     configureMonitoring()
     configureStatusPages()
     configureCORS()
+    configureDatabase()
     configureAuth()
     configureRouting()
 }

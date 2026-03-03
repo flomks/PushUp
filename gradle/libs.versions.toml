@@ -11,6 +11,8 @@ androidx-lifecycle = "2.9.6"
 androidx-testExt = "1.3.0"
 composeHotReload = "1.0.0"
 composeMultiplatform = "1.10.0"
+exposed = "0.61.0"
+hikari = "6.3.0"
 junit = "4.13.2"
 koin = "4.1.0"
 kotlin = "2.3.0"
@@ -20,6 +22,7 @@ kotlinx-serialization = "1.8.1"
 ktor = "3.4.0"
 logback = "1.5.18"
 material3 = "1.10.0-alpha05"
+postgresql = "42.7.5"
 sqldelight = "2.2.1"
 
 [libraries]
@@ -64,6 +67,14 @@ ktor-server-callLogging = { module = "io.ktor:ktor-server-call-logging", version
 ktor-server-defaultHeaders = { module = "io.ktor:ktor-server-default-headers", version.ref = "ktor" }
 ktor-server-tests = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+# Exposed ORM (DSL mode only -- DAO module intentionally excluded)
+exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
+exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
+exposed-kotlin-datetime = { module = "org.jetbrains.exposed:exposed-kotlin-datetime", version.ref = "exposed" }
+# Database drivers & pooling
+hikari-cp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+# Logging
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 [plugins]

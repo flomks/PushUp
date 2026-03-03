@@ -11,5 +11,7 @@
 
     <logger name="io.ktor" level="INFO"/>
     <logger name="io.netty" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="Exposed" level="WARN"/>
     <logger name="com.pushup" level="${APP_LOG_LEVEL:-INFO}"/>
 </configuration>
