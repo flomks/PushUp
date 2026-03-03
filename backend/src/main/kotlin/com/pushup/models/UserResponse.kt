@@ -14,3 +14,20 @@ data class UserResponse(
     val createdAt: String,
     val updatedAt: String,
 )
+
+/**
+ * Generic error response body used across all endpoints.
+ */
+@Serializable
+data class ErrorResponse(
+    val error: String,
+    val message: String? = null,
+)
+
+/**
+ * Response body returned by GET /health.
+ */
+@Serializable
+data class HealthResponse(
+    val status: String,
+)

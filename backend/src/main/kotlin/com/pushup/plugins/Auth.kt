@@ -2,6 +2,7 @@ package com.pushup.plugins
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import com.pushup.models.ErrorResponse
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -12,18 +13,7 @@ import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
 import io.ktor.server.auth.principal
 import io.ktor.server.response.respond
-import kotlinx.serialization.Serializable
 import java.util.UUID
-
-// ---------------------------------------------------------------------------
-// Shared error DTO (used across all plugins and routes)
-// ---------------------------------------------------------------------------
-
-@Serializable
-data class ErrorResponse(
-    val error: String,
-    val message: String? = null,
-)
 
 // ---------------------------------------------------------------------------
 // JWT auth provider name
@@ -83,6 +73,9 @@ fun Application.configureAuth() {
             if (!jwtIssuer.isNullOrBlank()) {
                 verifierBuilder.withIssuer(jwtIssuer)
             }
+            // Supabase sets aud = "authenticated" for logged-in user tokens.
+            // This rejects service_role and anon tokens.
+            verifierBuilder.withAudience("authenticated")
             verifier(verifierBuilder.build())
 
             validate { credential ->
@@ -114,21 +107,15 @@ fun Application.configureAuth() {
 /**
  * Extracts the authenticated Supabase user ID (UUID) from the JWT principal.
  *
- * Throws [IllegalStateException] if the principal or subject claim is absent --
- * this should never happen inside a route protected by [JWT_AUTH].
+ * Returns null if the principal is absent or the subject claim is not a valid
+ * UUID -- callers should respond with 401 in that case.
  */
-fun ApplicationCall.authenticatedUserId(): UUID {
-    val principal = principal<JWTPrincipal>()
-        ?: error("No JWT principal found -- route must be protected by '$JWT_AUTH'")
-
-    val subject = principal.payload.subject
-        ?: error("JWT payload is missing the 'sub' claim")
-
-    return UUID.fromString(subject)
+fun ApplicationCall.authenticatedUserId(): UUID? {
+    val principal = principal<JWTPrincipal>() ?: return null
+    val subject = principal.payload.subject ?: return null
+    return try {
+        UUID.fromString(subject)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }
-
-/**
- * Returns the raw JWT payload claim value for [claimName], or null if absent.
- */
-fun ApplicationCall.jwtClaim(claimName: String): String? =
-    principal<JWTPrincipal>()?.payload?.getClaim(claimName)?.asString()

@@ -33,9 +33,8 @@ dependencies {
     implementation(libs.ktor.server.callLogging)
     implementation(libs.ktor.server.defaultHeaders)
 
-    // Exposed ORM
+    // Exposed ORM (DSL mode -- no DAO module needed)
     implementation(libs.exposed.core)
-    implementation(libs.exposed.dao)
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.kotlin.datetime)
 
@@ -49,7 +48,6 @@ dependencies {
     // Serialization
     implementation(libs.ktor.serialization.json)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.kotlinx.datetime)
 
     // Logging
     implementation(libs.logback.classic)
