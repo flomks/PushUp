@@ -292,6 +292,7 @@ class StatsRepositoryImpl(
             DayOfWeek.FRIDAY -> 4
             DayOfWeek.SATURDAY -> 5
             DayOfWeek.SUNDAY -> 6
+            else -> error("Unexpected DayOfWeek: ${date.dayOfWeek}")
         }
         return date.minus(daysFromMonday, DateTimeUnit.DAY)
     }
