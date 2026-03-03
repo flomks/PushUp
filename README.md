@@ -1,5 +1,7 @@
 # PushUp
 
+[![CI](https://github.com/flomks/PushUp/actions/workflows/ci.yml/badge.svg)](https://github.com/flomks/PushUp/actions/workflows/ci.yml)
+
 Tracke deine Liegestuetze per Kamera und verdiene dir Screen-Time.
 
 **Kernprinzip:** Erst bewegen, dann konsumieren.
@@ -27,7 +29,7 @@ PushUp/
 
 ## Voraussetzungen
 
-- **JDK 17+** (empfohlen: JDK 21)
+- **JDK 21+** (LTS, verwendet in CI)
 - **Android SDK** (compileSdk 36, minSdk 24)
 - **Xcode 15+** (fuer iOS-Builds)
 - **Kotlin 2.3.0** (wird ueber Gradle Wrapper verwaltet)
