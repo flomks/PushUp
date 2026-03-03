@@ -640,13 +640,12 @@ class UseCaseTests {
     @Test
     fun finishWorkout_usesDefaultSettingsWhenNoneExist() = runTest {
         insertUser()
-        // Session with quality = 0.6f (in 0.5-0.8 range -> 1.0x multiplier with default settings)
-        insertSession(id = "session-1", userId = "user-1", pushUpCount = 10, quality = 0.6f)
-        // No settings saved -- should use defaults (pushUpsPerMinuteCredit=10, qualityMultiplierEnabled=true)
+        // No settings saved -- should use defaults (pushUpsPerMinuteCredit=10, qualityMultiplierEnabled=false)
+        insertSession(id = "session-1", userId = "user-1", pushUpCount = 10, quality = 0.9f)
 
         val summary = makeFinishUseCase().invoke("session-1")
 
-        // Default: 10 push-ups / 10 per min * 60 = 60 seconds, quality 0.6 -> 1.0x multiplier
+        // Default: 10 push-ups / 10 per min * 60 = 60 seconds, multiplier disabled -> no bonus
         assertEquals(60L, summary.earnedCredits)
     }
 
@@ -1179,18 +1178,8 @@ class UseCaseTests {
     fun getUserSettings_requiresNonBlankUserId() = runTest {
         val useCase = GetUserSettingsUseCase(settingsRepo)
 
-        assertFailsWith<IllegalArgumentException> {
-            useCase("  ")
-        }
-    }
-
-    @Test
-    fun getUserSettings_requiresNonEmptyUserId() = runTest {
-        val useCase = GetUserSettingsUseCase(settingsRepo)
-
-        assertFailsWith<IllegalArgumentException> {
-            useCase("")
-        }
+        assertFailsWith<IllegalArgumentException> { useCase("") }
+        assertFailsWith<IllegalArgumentException> { useCase("  ") }
     }
 
     // =========================================================================
