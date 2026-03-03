@@ -33,6 +33,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines)
+            implementation(libs.koin.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -40,6 +41,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.driver.android)
+            implementation(libs.koin.android)
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)
@@ -48,7 +50,8 @@ kotlin {
             implementation(libs.sqldelight.driver.jvm)
         }
         jvmTest.dependencies {
-            implementation(libs.sqldelight.driver.jvm)
+            // koin-test uses kotlin-reflect and is JVM-only; not available on Kotlin/Native
+            implementation(libs.koin.test)
         }
     }
 }
