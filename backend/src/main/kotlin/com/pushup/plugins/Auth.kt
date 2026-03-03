@@ -37,8 +37,11 @@ const val JWT_AUTH = "supabase"
  *   SUPABASE_JWT_SECRET  -- the raw JWT secret string from Supabase Settings
  *   JWT_ISSUER           -- e.g. https://<ref>.supabase.co/auth/v1
  *
- * In non-production mode (KTOR_ENV != "production") the server will log a
- * warning and skip JWT configuration if SUPABASE_JWT_SECRET is not set.
+ * In non-production mode (KTOR_ENV != "production") the server will still
+ * install the Authentication plugin. If SUPABASE_JWT_SECRET is not set, a
+ * no-op provider is registered so that routes using authenticate(JWT_AUTH)
+ * always return 401 -- the server starts and routes are reachable, but all
+ * protected endpoints reject requests until credentials are configured.
  */
 fun Application.configureAuth() {
     val jwtSecret = System.getenv("SUPABASE_JWT_SECRET")
@@ -51,7 +54,27 @@ fun Application.configureAuth() {
                     "Set KTOR_ENV to a value other than 'production' to disable this check."
             )
         }
-        log.warn("SUPABASE_JWT_SECRET not set -- JWT auth is DISABLED (non-production mode)")
+        // Dev mode without a secret: install a provider that always rejects.
+        // This keeps the server startable while making the missing config obvious.
+        log.warn(
+            "SUPABASE_JWT_SECRET not set -- all JWT-protected routes will return 401. " +
+                "Set SUPABASE_JWT_SECRET to enable authentication."
+        )
+        install(Authentication) {
+            jwt(JWT_AUTH) {
+                verifier(JWT.require(Algorithm.HMAC256("dev-placeholder-not-a-real-secret")).build())
+                validate { null } // always reject
+                challenge { _, _ ->
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error   = "unauthorized",
+                            message = "JWT authentication is not configured on this server",
+                        ),
+                    )
+                }
+            }
+        }
         return
     }
 
@@ -63,11 +86,9 @@ fun Application.configureAuth() {
         )
     }
 
-    val jwtRealm = "pushup-backend"
-
     install(Authentication) {
         jwt(JWT_AUTH) {
-            realm = jwtRealm
+            realm = "pushup-backend"
 
             val verifierBuilder = JWT.require(Algorithm.HMAC256(jwtSecret))
             if (!jwtIssuer.isNullOrBlank()) {
@@ -80,11 +101,7 @@ fun Application.configureAuth() {
 
             validate { credential ->
                 val sub = credential.payload.subject
-                if (sub != null) {
-                    JWTPrincipal(credential.payload)
-                } else {
-                    null
-                }
+                if (sub != null) JWTPrincipal(credential.payload) else null
             }
 
             challenge { _, _ ->
