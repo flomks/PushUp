@@ -57,6 +57,32 @@ interface WorkoutSessionRepository {
     suspend fun getUnsyncedSessions(userId: String): List<WorkoutSession>
 
     /**
+     * Updates only the push-up count and quality score of an existing session.
+     *
+     * This is a targeted UPDATE that does not affect other fields and does not
+     * trigger ON DELETE CASCADE on child [com.pushup.domain.model.PushUpRecord] rows
+     * (unlike [save] which uses INSERT OR REPLACE).
+     *
+     * @param id The unique identifier of the session to update.
+     * @param pushUpCount The new push-up count.
+     * @param quality The new quality score.
+     */
+    suspend fun updateStats(id: String, pushUpCount: Int, quality: Float)
+
+    /**
+     * Marks the session as finished by setting [WorkoutSession.endedAt] and
+     * [WorkoutSession.earnedTimeCreditSeconds].
+     *
+     * This is a targeted UPDATE that does not affect other fields and does not
+     * trigger ON DELETE CASCADE on child [com.pushup.domain.model.PushUpRecord] rows.
+     *
+     * @param id The unique identifier of the session to finish.
+     * @param endedAt The timestamp when the session ended.
+     * @param earnedTimeCreditSeconds The number of screen-time credit seconds earned.
+     */
+    suspend fun finishSession(id: String, endedAt: kotlinx.datetime.Instant, earnedTimeCreditSeconds: Long)
+
+    /**
      * Marks the session with the given [id] as successfully synced with the backend.
      *
      * @param id The unique identifier of the session to mark.

@@ -181,6 +181,16 @@ UPDATE WorkoutSession
 SET syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
+updateWorkoutSessionStats:
+UPDATE WorkoutSession
+SET pushUpCount = ?, quality = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+updateWorkoutSessionEnd:
+UPDATE WorkoutSession
+SET endedAt = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
 countWorkoutSessionsByUserId:
 SELECT COUNT(*)
 FROM WorkoutSession
