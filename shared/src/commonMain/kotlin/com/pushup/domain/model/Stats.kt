@@ -161,6 +161,9 @@ data class TotalStats(
         require(longestStreakDays >= 0) {
             "TotalStats.longestStreakDays must be >= 0, was $longestStreakDays"
         }
+        require(longestStreakDays >= currentStreakDays) {
+            "TotalStats.longestStreakDays ($longestStreakDays) must be >= currentStreakDays ($currentStreakDays)"
+        }
     }
 
     /** Remaining credit balance (earned minus spent). */

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
  *
  * Each user has exactly one settings record. If none exists yet,
  * implementations should return sensible defaults (see [UserSettings.default]).
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface UserSettingsRepository {
 

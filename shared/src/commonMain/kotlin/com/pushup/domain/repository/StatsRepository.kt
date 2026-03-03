@@ -9,8 +9,10 @@ import kotlinx.datetime.LocalDate
 /**
  * Repository for retrieving aggregated workout statistics.
  *
- * All methods are read-only; statistics are derived from the underlying
- * [WorkoutSessionRepository] and [PushUpRecordRepository] data.
+ * All methods are read-only. Statistics are computed from persisted workout
+ * and push-up data covering various time granularities (day, week, month, lifetime).
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface StatsRepository {
 

@@ -6,8 +6,10 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Repository for managing [User] entities.
  *
- * Provides access to the currently authenticated user and basic CRUD operations.
- * Implementations may read from local storage, a remote backend, or both.
+ * Provides access to the currently authenticated user, persistence operations,
+ * and a reactive stream for observing user changes.
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface UserRepository {
 

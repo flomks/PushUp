@@ -9,6 +9,8 @@ import kotlinx.datetime.Instant
  *
  * Handles persistence and retrieval of workout sessions, including
  * date-range queries and synchronization-status management.
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface WorkoutSessionRepository {
 

@@ -6,6 +6,8 @@ import com.pushup.domain.model.PushUpRecord
  * Repository for managing [PushUpRecord] entities.
  *
  * Push-up records are always associated with a parent [com.pushup.domain.model.WorkoutSession].
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface PushUpRecordRepository {
 

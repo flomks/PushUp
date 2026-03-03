@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
  *
  * Provides read and write access to a user's accumulated screen-time credits,
  * including incremental earn/spend operations and synchronization tracking.
+ *
+ * Implementations must be **main-safe** -- all dispatcher switching is handled internally.
  */
 interface TimeCreditRepository {
 
