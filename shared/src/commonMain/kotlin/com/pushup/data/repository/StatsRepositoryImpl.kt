@@ -282,8 +282,15 @@ class StatsRepositoryImpl(
 
     /**
      * Returns the Monday of the ISO week containing [date].
+     *
+     * The `else` branch is required because [DayOfWeek] is an expect enum in
+     * kotlinx-datetime and the Kotlin metadata compiler cannot verify
+     * exhaustiveness. The suppress silences the redundancy warning emitted
+     * by platform-specific (Android/JVM) compilations where the enum *is*
+     * fully known.
      */
     private fun mondayOf(date: LocalDate): LocalDate {
+        @Suppress("RedundantElseBranch")
         val daysFromMonday = when (date.dayOfWeek) {
             DayOfWeek.MONDAY -> 0
             DayOfWeek.TUESDAY -> 1

@@ -73,7 +73,9 @@ sqldelight {
         create("PushUpDatabase") {
             packageName.set("com.pushup.db")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/migrations"))
-            verifyMigrations.set(true)
+            // Enable once migrations exist and a schema .db file has been generated
+            // via `./gradlew :shared:generateCommonMainPushUpDatabaseSchema`
+            verifyMigrations.set(false)
         }
     }
 }
