@@ -12,6 +12,8 @@ import kotlinx.serialization.Transient
  * @property totalSessions Number of workout sessions on this day.
  * @property totalEarnedSeconds Total screen-time credits earned on this day (in seconds).
  * @property averageQuality Average quality score across all sessions (0.0 - 1.0).
+ * @property averagePushUpsPerSession Average push-ups per session, or `0f` when no sessions exist.
+ * @property bestSession Push-up count of the best (highest-count) session, or `0` when no sessions exist.
  */
 @Serializable
 data class DailyStats(
@@ -20,6 +22,8 @@ data class DailyStats(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val averageQuality: Float,
+    val averagePushUpsPerSession: Float,
+    val bestSession: Int,
 ) {
     init {
         require(totalPushUps >= 0) { "DailyStats.totalPushUps must be >= 0, was $totalPushUps" }
@@ -30,6 +34,10 @@ data class DailyStats(
         require(averageQuality in 0f..1f) {
             "DailyStats.averageQuality must be in [0, 1], was $averageQuality"
         }
+        require(averagePushUpsPerSession >= 0f) {
+            "DailyStats.averagePushUpsPerSession must be >= 0, was $averagePushUpsPerSession"
+        }
+        require(bestSession >= 0) { "DailyStats.bestSession must be >= 0, was $bestSession" }
     }
 
     /** `true` when at least one session was completed on this day. */
@@ -44,7 +52,9 @@ data class DailyStats(
  * @property totalPushUps Total push-ups completed during the week.
  * @property totalSessions Number of workout sessions during the week.
  * @property totalEarnedSeconds Total screen-time credits earned during the week (in seconds).
- * @property dailyBreakdown Per-day statistics for each day of the week.
+ * @property averagePushUpsPerSession Average push-ups per session across the week, or `0f` when no sessions exist.
+ * @property bestSession Push-up count of the best session in the week, or `0` when no sessions exist.
+ * @property dailyBreakdown Per-day statistics for each day of the week (always 7 entries).
  */
 @Serializable
 data class WeeklyStats(
@@ -52,6 +62,8 @@ data class WeeklyStats(
     val totalPushUps: Int,
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
+    val averagePushUpsPerSession: Float,
+    val bestSession: Int,
     val dailyBreakdown: List<DailyStats>,
 ) {
     init {
@@ -60,6 +72,10 @@ data class WeeklyStats(
         require(totalEarnedSeconds >= 0) {
             "WeeklyStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
         }
+        require(averagePushUpsPerSession >= 0f) {
+            "WeeklyStats.averagePushUpsPerSession must be >= 0, was $averagePushUpsPerSession"
+        }
+        require(bestSession >= 0) { "WeeklyStats.bestSession must be >= 0, was $bestSession" }
     }
 
     /** Number of days in the week that had at least one session. */
@@ -84,6 +100,8 @@ data class WeeklyStats(
  * @property totalPushUps Total push-ups completed during the month.
  * @property totalSessions Number of workout sessions during the month.
  * @property totalEarnedSeconds Total screen-time credits earned during the month (in seconds).
+ * @property averagePushUpsPerSession Average push-ups per session across the month, or `0f` when no sessions exist.
+ * @property bestSession Push-up count of the best session in the month, or `0` when no sessions exist.
  * @property weeklyBreakdown Per-week statistics for each week of the month.
  */
 @Serializable
@@ -93,6 +111,8 @@ data class MonthlyStats(
     val totalPushUps: Int,
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
+    val averagePushUpsPerSession: Float,
+    val bestSession: Int,
     val weeklyBreakdown: List<WeeklyStats>,
 ) {
     init {
@@ -103,6 +123,10 @@ data class MonthlyStats(
         require(totalEarnedSeconds >= 0) {
             "MonthlyStats.totalEarnedSeconds must be >= 0, was $totalEarnedSeconds"
         }
+        require(averagePushUpsPerSession >= 0f) {
+            "MonthlyStats.averagePushUpsPerSession must be >= 0, was $averagePushUpsPerSession"
+        }
+        require(bestSession >= 0) { "MonthlyStats.bestSession must be >= 0, was $bestSession" }
     }
 
     /** Number of active weeks (weeks with at least one session). */
@@ -128,7 +152,10 @@ data class MonthlyStats(
  * @property totalEarnedSeconds Total screen-time credits earned across all time (in seconds).
  * @property totalSpentSeconds Total screen-time credits spent across all time (in seconds).
  * @property averageQuality Average quality score across all sessions (0.0 - 1.0).
- * @property currentStreakDays Number of consecutive days with at least one session (up to today).
+ * @property averagePushUpsPerSession Average push-ups per session across all time, or `0f` when no sessions exist.
+ * @property bestSession Push-up count of the best (highest-count) session ever, or `0` when no sessions exist.
+ * @property currentStreakDays Number of consecutive days ending on today (or yesterday) with at least one session.
+ *   Resets to `0` if the last workout day is older than yesterday.
  * @property longestStreakDays Longest-ever consecutive-day streak.
  */
 @Serializable
@@ -139,6 +166,8 @@ data class TotalStats(
     val totalEarnedSeconds: Long,
     val totalSpentSeconds: Long,
     val averageQuality: Float,
+    val averagePushUpsPerSession: Float,
+    val bestSession: Int,
     val currentStreakDays: Int,
     val longestStreakDays: Int,
 ) {
@@ -155,6 +184,10 @@ data class TotalStats(
         require(averageQuality in 0f..1f) {
             "TotalStats.averageQuality must be in [0, 1], was $averageQuality"
         }
+        require(averagePushUpsPerSession >= 0f) {
+            "TotalStats.averagePushUpsPerSession must be >= 0, was $averagePushUpsPerSession"
+        }
+        require(bestSession >= 0) { "TotalStats.bestSession must be >= 0, was $bestSession" }
         require(currentStreakDays >= 0) {
             "TotalStats.currentStreakDays must be >= 0, was $currentStreakDays"
         }

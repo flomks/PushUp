@@ -10,6 +10,7 @@ import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
@@ -35,12 +36,14 @@ import kotlinx.datetime.toLocalDateTime
  * @param dispatcher The [CoroutineDispatcher] used for database I/O.
  * @param timeZone The timezone for date-based aggregation. Must be provided
  *   explicitly to ensure deterministic behaviour across devices.
+ * @param clock Clock used to determine "today" for streak calculation.
  */
 class StatsRepositoryImpl(
     private val database: PushUpDatabase,
     private val timeCreditRepository: TimeCreditRepository,
     private val dispatcher: CoroutineDispatcher,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    private val clock: Clock = Clock.System,
 ) : StatsRepository {
 
     private val queries get() = database.databaseQueries
@@ -69,10 +72,12 @@ class StatsRepositoryImpl(
             )
             if (sessions.isEmpty()) return@safeDbCall null
 
+            // Group sessions by day once -- O(n) instead of O(n*days)
+            val sessionsByDay = sessions.groupBy { sessionDate(it) }
+
             val dailyBreakdown = (0 until 7).map { offset ->
                 val day = weekStart.plus(offset, DateTimeUnit.DAY)
-                val daySessions = sessions.filter { sessionDate(it) == day }
-                buildDailyStats(day, daySessions)
+                buildDailyStats(day, sessionsByDay[day].orEmpty())
             }
 
             WeeklyStats(
@@ -80,6 +85,8 @@ class StatsRepositoryImpl(
                 totalPushUps = sessions.sumOf { it.pushUpCount },
                 totalSessions = sessions.size,
                 totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
+                averagePushUpsPerSession = averagePushUps(sessions),
+                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
                 dailyBreakdown = dailyBreakdown,
             )
         }
@@ -111,6 +118,8 @@ class StatsRepositoryImpl(
                 totalPushUps = sessions.sumOf { it.pushUpCount },
                 totalSessions = sessions.size,
                 totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
+                averagePushUpsPerSession = averagePushUps(sessions),
+                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
                 weeklyBreakdown = weeklyBreakdown,
             )
         }
@@ -127,12 +136,13 @@ class StatsRepositoryImpl(
 
         val timeCredit = timeCreditRepository.get(userId)
 
+        val today = clock.now().toLocalDateTime(timeZone).date
         val sessionDates = sessions
             .map { sessionDate(it) }
             .distinct()
             .sorted()
 
-        val (currentStreak, longestStreak) = calculateStreaks(sessionDates)
+        val (currentStreak, longestStreak) = calculateStreaks(sessionDates, today)
 
         val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
 
@@ -144,6 +154,8 @@ class StatsRepositoryImpl(
                 ?: sessions.sumOf { it.earnedTimeCreditSeconds },
             totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
             averageQuality = avgQuality,
+            averagePushUpsPerSession = averagePushUps(sessions),
+            bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
             currentStreakDays = currentStreak,
             longestStreakDays = longestStreak,
         )
@@ -180,7 +192,7 @@ class StatsRepositoryImpl(
         session.startedAt.toLocalDateTime(timeZone).date
 
     /**
-     * Builds a [DailyStats] from a date and its associated sessions.
+     * Builds a [DailyStats] from a date and its associated sessions in a single pass.
      * Returns a zero-activity entry when [sessions] is empty.
      */
     private fun buildDailyStats(date: LocalDate, sessions: List<WorkoutSession>): DailyStats {
@@ -191,26 +203,52 @@ class StatsRepositoryImpl(
                 totalSessions = 0,
                 totalEarnedSeconds = 0L,
                 averageQuality = 0f,
+                averagePushUpsPerSession = 0f,
+                bestSession = 0,
             )
         }
+
+        // Single pass over sessions to collect all aggregates
+        var totalPushUps = 0
+        var totalEarnedSeconds = 0L
+        var qualitySum = 0.0
+        var bestSession = 0
+
+        for (session in sessions) {
+            totalPushUps += session.pushUpCount
+            totalEarnedSeconds += session.earnedTimeCreditSeconds
+            qualitySum += session.quality
+            if (session.pushUpCount > bestSession) bestSession = session.pushUpCount
+        }
+
+        val count = sessions.size
         return DailyStats(
             date = date,
-            totalPushUps = sessions.sumOf { it.pushUpCount },
-            totalSessions = sessions.size,
-            totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-            averageQuality = sessions.map { it.quality.toDouble() }.average().toFloat(),
+            totalPushUps = totalPushUps,
+            totalSessions = count,
+            totalEarnedSeconds = totalEarnedSeconds,
+            averageQuality = (qualitySum / count).toFloat(),
+            averagePushUpsPerSession = totalPushUps.toFloat() / count,
+            bestSession = bestSession,
         )
     }
 
     /**
      * Builds weekly breakdown for a month, grouping sessions by the Monday
      * of their respective ISO week.
+     *
+     * Sessions are grouped by date once (O(n)) and then distributed into
+     * weeks and days without repeated filtering.
      */
     private fun buildWeeklyBreakdown(
         sessions: List<WorkoutSession>,
         monthStart: LocalDate,
         monthEnd: LocalDate,
     ): List<WeeklyStats> {
+        // Group all sessions by their calendar date once -- O(n)
+        val sessionsByDay: Map<LocalDate, List<WorkoutSession>> = sessions.groupBy { sessionDate(it) }
+
+        // Collect the Monday of every ISO week that overlaps with the month
         val weekStarts = mutableSetOf<LocalDate>()
         var current = mondayOf(monthStart)
         while (current < monthEnd) {
@@ -219,21 +257,24 @@ class StatsRepositoryImpl(
         }
 
         return weekStarts.sorted().map { weekStart ->
-            val weekEnd = weekStart.plus(7, DateTimeUnit.DAY)
-            val weekSessions = sessions.filter { s ->
-                val d = sessionDate(s)
-                d >= weekStart && d < weekEnd
-            }
-            val dailyBreakdown = (0 until 7).map { offset ->
+            // Single pass: build daily breakdown and accumulate week-level aggregates together
+            val dailyBreakdown = ArrayList<DailyStats>(7)
+            val weekSessions = ArrayList<WorkoutSession>()
+
+            for (offset in 0 until 7) {
                 val day = weekStart.plus(offset, DateTimeUnit.DAY)
-                val daySessions = weekSessions.filter { sessionDate(it) == day }
-                buildDailyStats(day, daySessions)
+                val daySessions = sessionsByDay[day].orEmpty()
+                weekSessions.addAll(daySessions)
+                dailyBreakdown.add(buildDailyStats(day, daySessions))
             }
+
             WeeklyStats(
                 weekStartDate = weekStart,
                 totalPushUps = weekSessions.sumOf { it.pushUpCount },
                 totalSessions = weekSessions.size,
                 totalEarnedSeconds = weekSessions.sumOf { it.earnedTimeCreditSeconds },
+                averagePushUpsPerSession = averagePushUps(weekSessions),
+                bestSession = weekSessions.maxOfOrNull { it.pushUpCount } ?: 0,
                 dailyBreakdown = dailyBreakdown,
             )
         }
@@ -259,25 +300,58 @@ class StatsRepositoryImpl(
      * Calculates the current and longest streak from a sorted list of distinct
      * dates that had at least one session.
      *
-     * @return Pair of (currentStreak, longestStreak)
+     * **Current streak** is only non-zero when the most recent workout date is
+     * either today or yesterday (relative to [today]). If the last workout was
+     * two or more days ago the streak has been broken and `currentStreak` is `0`.
+     *
+     * @param sortedDates Distinct workout dates in ascending order.
+     * @param today The reference date for "current" streak evaluation.
+     * @return Pair of (currentStreak, longestStreak).
      */
-    private fun calculateStreaks(sortedDates: List<LocalDate>): Pair<Int, Int> {
+    internal fun calculateStreaks(sortedDates: List<LocalDate>, today: LocalDate): Pair<Int, Int> {
         if (sortedDates.isEmpty()) return 0 to 0
 
+        // Calculate longest streak by scanning consecutive runs
         var longestStreak = 1
-        var currentStreak = 1
+        var runLength = 1
 
         for (i in 1 until sortedDates.size) {
             val expectedNext = sortedDates[i - 1].plus(1, DateTimeUnit.DAY)
             if (sortedDates[i] == expectedNext) {
-                currentStreak++
+                runLength++
+                if (runLength > longestStreak) longestStreak = runLength
             } else {
-                if (currentStreak > longestStreak) longestStreak = currentStreak
-                currentStreak = 1
+                runLength = 1
             }
         }
-        if (currentStreak > longestStreak) longestStreak = currentStreak
+
+        // Current streak: count backwards from the last date only if it is
+        // today or yesterday. Otherwise the streak is already broken.
+        val lastDate = sortedDates.last()
+        val yesterday = today.minus(1, DateTimeUnit.DAY)
+        val currentStreak = if (lastDate == today || lastDate == yesterday) {
+            // Walk backwards from the end to find the length of the trailing run
+            var streak = 1
+            for (i in sortedDates.size - 1 downTo 1) {
+                val expectedPrev = sortedDates[i].minus(1, DateTimeUnit.DAY)
+                if (sortedDates[i - 1] == expectedPrev) {
+                    streak++
+                } else {
+                    break
+                }
+            }
+            streak
+        } else {
+            0
+        }
 
         return currentStreak to longestStreak
     }
+
+    /**
+     * Returns the average push-ups per session, or `0f` when [sessions] is empty.
+     */
+    private fun averagePushUps(sessions: List<WorkoutSession>): Float =
+        if (sessions.isEmpty()) 0f
+        else sessions.sumOf { it.pushUpCount }.toFloat() / sessions.size
 }
