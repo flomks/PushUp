@@ -5,7 +5,7 @@ import com.pushup.dto.MonthlyStatsDTO
 import com.pushup.dto.StreakDTO
 import com.pushup.dto.TotalStatsDTO
 import com.pushup.dto.WeeklyStatsDTO
-import org.jetbrains.exposed.sql.Column
+import org.jetbrains.exposed.sql.CustomFunction
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -16,33 +16,66 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.avg
 import org.jetbrains.exposed.sql.count
+import org.jetbrains.exposed.sql.javatime.JavaInstantColumnType
 import org.jetbrains.exposed.sql.javatime.timestamp
 import org.jetbrains.exposed.sql.max
 import org.jetbrains.exposed.sql.min
+import org.jetbrains.exposed.sql.stringParam
 import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.transactions.transaction
+import java.math.BigDecimal
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import java.util.UUID
 
 // ---------------------------------------------------------------------------
 // Exposed table definition (mirrors public.workout_sessions in Supabase)
 // ---------------------------------------------------------------------------
 
 object WorkoutSessions : Table("workout_sessions") {
-    val id: Column<String> = varchar("id", 36)
-    val userId: Column<String> = varchar("user_id", 36)
-    val startedAt: Column<Instant> = timestamp("started_at")
-    val endedAt: Column<Instant?> = timestamp("ended_at").nullable()
-    val pushUpCount: Column<Int> = integer("push_up_count")
-    val earnedTimeCredits: Column<Int> = integer("earned_time_credits")
-    val quality: Column<Float> = float("quality")
+    val id = uuid("id")
+    val userId = uuid("user_id")
+    val startedAt = timestamp("started_at")
+    val endedAt = timestamp("ended_at").nullable()
+    val pushUpCount = integer("push_up_count")
+    val earnedTimeCredits = integer("earned_time_credits")
+    val quality = float("quality")
 
     override val primaryKey = PrimaryKey(id)
+
+    /**
+     * PostgreSQL DATE_TRUNC('day', started_at) expression.
+     * Truncates the timestamp to midnight UTC of the same calendar day.
+     * Used as GROUP BY key for per-day aggregation.
+     */
+    val startedAtDay = CustomFunction<Instant>(
+        functionName = "DATE_TRUNC",
+        columnType = JavaInstantColumnType(),
+        stringParam("day"),
+        startedAt,
+    )
 }
+
+// ---------------------------------------------------------------------------
+// Reusable aggregate expression instances
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregate expressions are created once and reused across all queries and
+ * result-row lookups. Exposed resolves ResultRow[expr] by structural equality,
+ * but sharing the same instances eliminates any ambiguity and is the
+ * documented best practice.
+ */
+private val pushUpSum = WorkoutSessions.pushUpCount.sum()
+private val creditsSum = WorkoutSessions.earnedTimeCredits.sum()
+private val qualityAvg = WorkoutSessions.quality.avg()
+private val sessionCount = WorkoutSessions.id.count()
+private val bestSessionExpr = WorkoutSessions.pushUpCount.max()
+private val firstWorkoutExpr = WorkoutSessions.startedAt.min()
 
 // ---------------------------------------------------------------------------
 // StatsService
@@ -51,11 +84,13 @@ object WorkoutSessions : Table("workout_sessions") {
 /**
  * Executes aggregated statistics queries against PostgreSQL via Exposed 0.61.0 DSL.
  *
- * Design principles:
- * - Each public method opens exactly ONE transaction.
- * - Weekly and monthly breakdowns are built from a single GROUP BY query
- *   (no N+1 problem): one query fetches all per-day rows, then Kotlin fills
- *   in zero-rows for days without workouts.
+ * Design:
+ * - Each public method opens exactly ONE transaction with ONE SQL query
+ *   (weekly/monthly build their breakdowns from a single GROUP BY result).
+ * - Aggregation uses DATE_TRUNC('day', started_at) so multiple sessions on
+ *   the same calendar day are correctly summed.
+ * - Monthly totals are computed from the month's own date range, not from
+ *   the weekly breakdowns (which may include days outside the month).
  * - Streak calculation is pure (no DB) and fully unit-testable.
  */
 class StatsService {
@@ -64,118 +99,80 @@ class StatsService {
     // Public API
     // -----------------------------------------------------------------------
 
-    fun getDailyStats(userId: String, date: LocalDate): DailyStatsDTO = transaction {
+    fun getDailyStats(userId: UUID, date: LocalDate): DailyStatsDTO = transaction {
         val dayStart = date.atStartOfDay().toInstant(ZoneOffset.UTC)
         val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
-        val rows = fetchDailyRows(userId, dayStart, dayEnd)
-        rows.firstOrNull()?.toDailyStatsDTO(date) ?: emptyDailyStats(date)
+        val byDay = fetchDailyAggregates(userId, dayStart, dayEnd)
+        byDay[date] ?: emptyDailyStats(date)
     }
 
-    fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStatsDTO = transaction {
+    fun getWeeklyStats(userId: UUID, weekStart: LocalDate): WeeklyStatsDTO = transaction {
         val monday = weekStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val sunday = monday.plusDays(6)
         val from = monday.atStartOfDay().toInstant(ZoneOffset.UTC)
         val to = sunday.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
 
-        // Single query: all sessions in the week grouped by UTC date
-        val byDay = fetchDailyRows(userId, from, to)
-            .associate { row ->
-                val date = row[WorkoutSessions.startedAt].atZone(ZoneOffset.UTC).toLocalDate()
-                date to row
-            }
-
-        val dailyBreakdown = (0L..6L).map { offset ->
-            val day = monday.plusDays(offset)
-            byDay[day]?.toDailyStatsDTO(day) ?: emptyDailyStats(day)
-        }
-
-        WeeklyStatsDTO(
-            weekStart = monday.format(ISO_DATE),
-            weekEnd = sunday.format(ISO_DATE),
-            totalPushUps = dailyBreakdown.sumOf { it.totalPushUps },
-            totalSessions = dailyBreakdown.sumOf { it.totalSessions },
-            totalEarnedSeconds = dailyBreakdown.sumOf { it.totalEarnedSeconds },
-            averageQuality = dailyBreakdown.mapNotNull { it.averageQuality }
-                .takeIf { it.isNotEmpty() }?.average(),
-            dailyBreakdown = dailyBreakdown,
-        )
+        val byDay = fetchDailyAggregates(userId, from, to)
+        buildWeeklyDTO(monday, byDay)
     }
 
-    fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStatsDTO = transaction {
+    fun getMonthlyStats(userId: UUID, month: Int, year: Int): MonthlyStatsDTO = transaction {
         val firstDay = LocalDate.of(year, month, 1)
         val lastDay = firstDay.with(TemporalAdjusters.lastDayOfMonth())
-        val from = firstDay.atStartOfDay().toInstant(ZoneOffset.UTC)
-        val to = lastDay.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
 
-        // Single query for the whole month
-        val byDay = fetchDailyRows(userId, from, to)
-            .associate { row ->
-                val date = row[WorkoutSessions.startedAt].atZone(ZoneOffset.UTC).toLocalDate()
-                date to row
-            }
+        // Fetch the full range covering all overlapping ISO weeks
+        val firstMonday = firstDay.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        val lastSunday = lastDay.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+        val from = firstMonday.atStartOfDay().toInstant(ZoneOffset.UTC)
+        val to = lastSunday.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
 
-        // Build ISO-week Mondays that overlap with this month
+        val byDay = fetchDailyAggregates(userId, from, to)
+
+        // Build weekly breakdown
         val weekMondays = mutableListOf<LocalDate>()
-        var cursor = firstDay.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        var cursor = firstMonday
         while (!cursor.isAfter(lastDay)) { weekMondays.add(cursor); cursor = cursor.plusWeeks(1) }
 
-        val weeklyBreakdown = weekMondays.map { monday ->
-            val sunday = monday.plusDays(6)
-            val dailyBreakdown = (0L..6L).map { offset ->
-                val day = monday.plusDays(offset)
-                byDay[day]?.toDailyStatsDTO(day) ?: emptyDailyStats(day)
-            }
-            WeeklyStatsDTO(
-                weekStart = monday.format(ISO_DATE),
-                weekEnd = sunday.format(ISO_DATE),
-                totalPushUps = dailyBreakdown.sumOf { it.totalPushUps },
-                totalSessions = dailyBreakdown.sumOf { it.totalSessions },
-                totalEarnedSeconds = dailyBreakdown.sumOf { it.totalEarnedSeconds },
-                averageQuality = dailyBreakdown.mapNotNull { it.averageQuality }
-                    .takeIf { it.isNotEmpty() }?.average(),
-                dailyBreakdown = dailyBreakdown,
-            )
-        }
+        val weeklyBreakdown = weekMondays.map { monday -> buildWeeklyDTO(monday, byDay) }
+
+        // Monthly totals are computed ONLY from days within the month (not from
+        // the weekly breakdowns which include days outside the month boundary).
+        val monthDays = byDay.filterKeys { it in firstDay..lastDay }
 
         MonthlyStatsDTO(
             month = month,
             year = year,
-            totalPushUps = weeklyBreakdown.sumOf { it.totalPushUps },
-            totalSessions = weeklyBreakdown.sumOf { it.totalSessions },
-            totalEarnedSeconds = weeklyBreakdown.sumOf { it.totalEarnedSeconds },
-            averageQuality = weeklyBreakdown.mapNotNull { it.averageQuality }
+            totalPushUps = monthDays.values.sumOf { it.totalPushUps },
+            totalSessions = monthDays.values.sumOf { it.totalSessions },
+            totalEarnedSeconds = monthDays.values.sumOf { it.totalEarnedSeconds },
+            averageQuality = monthDays.values.mapNotNull { it.averageQuality }
                 .takeIf { it.isNotEmpty() }?.average(),
             weeklyBreakdown = weeklyBreakdown,
         )
     }
 
-    fun getTotalStats(userId: String): TotalStatsDTO = transaction {
-        val pushUpSum = WorkoutSessions.pushUpCount.sum()
-        val creditsSum = WorkoutSessions.earnedTimeCredits.sum()
-        val qualityAvg = WorkoutSessions.quality.avg()
-        val sessionCount = WorkoutSessions.id.count()
-        val bestSession = WorkoutSessions.pushUpCount.max()
-        val firstWorkout = WorkoutSessions.startedAt.min()
-
+    fun getTotalStats(userId: UUID): TotalStatsDTO = transaction {
         val row = WorkoutSessions
-            .select(pushUpSum, creditsSum, qualityAvg, sessionCount, bestSession, firstWorkout)
+            .select(pushUpSum, creditsSum, qualityAvg, sessionCount, bestSessionExpr, firstWorkoutExpr)
             .where {
                 (WorkoutSessions.userId eq userId) and
                     WorkoutSessions.endedAt.isNotNull()
             }
-            .first()
+            .firstOrNull()
 
-        val totalSessions = row[sessionCount].toInt()
-        val totalPushUps = row[pushUpSum] ?: 0
-        val firstInstant: Instant? = row[firstWorkout]
+        if (row == null) return@transaction emptyTotalStats()
+
+        val sessions = row[sessionCount].toInt()
+        val pushUps = row[pushUpSum] ?: 0
+        val firstInstant: Instant? = row[firstWorkoutExpr]
 
         TotalStatsDTO(
-            totalPushUps = totalPushUps,
-            totalSessions = totalSessions,
+            totalPushUps = pushUps,
+            totalSessions = sessions,
             totalEarnedSeconds = (row[creditsSum] ?: 0).toLong(),
             averageQuality = row[qualityAvg]?.toDouble(),
-            averagePushUpsPerSession = if (totalSessions > 0) totalPushUps.toDouble() / totalSessions else null,
-            bestSessionPushUps = row[bestSession],
+            averagePushUpsPerSession = if (sessions > 0) pushUps.toDouble() / sessions else null,
+            bestSessionPushUps = row[bestSessionExpr],
             firstWorkoutDate = firstInstant?.atZone(ZoneOffset.UTC)?.toLocalDate()?.format(ISO_DATE),
         )
     }
@@ -187,28 +184,35 @@ class StatsService {
      * The current streak counts backwards from [today]; it is alive when the
      * most recent workout was today or yesterday.
      *
+     * Uses DISTINCT DATE_TRUNC in SQL so deduplication happens in the database,
+     * not in JVM memory.
+     *
      * @param today Injectable for deterministic unit tests (defaults to UTC today).
      */
-    fun getStreak(userId: String, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): StreakDTO = transaction {
+    fun getStreak(userId: UUID, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): StreakDTO = transaction {
+        // SELECT DISTINCT DATE_TRUNC('day', started_at) ... ORDER BY 1 ASC
         val workoutDays: List<LocalDate> = WorkoutSessions
-            .select(WorkoutSessions.startedAt)
+            .select(WorkoutSessions.startedAtDay)
             .where {
                 (WorkoutSessions.userId eq userId) and
                     WorkoutSessions.endedAt.isNotNull()
             }
-            .orderBy(WorkoutSessions.startedAt to SortOrder.ASC)
-            .map { row: ResultRow -> row[WorkoutSessions.startedAt].atZone(ZoneOffset.UTC).toLocalDate() }
-            .distinct()
-            .sortedDescending()
+            .withDistinct()
+            .orderBy(WorkoutSessions.startedAtDay to SortOrder.ASC)
+            .map { row: ResultRow ->
+                row[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
+            }
 
         if (workoutDays.isEmpty()) {
             return@transaction StreakDTO(currentStreak = 0, longestStreak = 0, lastWorkoutDate = null)
         }
 
+        val descending = workoutDays.asReversed() // already ASC, reverse is O(1)
+
         StreakDTO(
-            currentStreak = calculateCurrentStreak(workoutDays, today),
-            longestStreak = calculateLongestStreak(workoutDays.sortedBy { it }),
-            lastWorkoutDate = workoutDays.first().format(ISO_DATE),
+            currentStreak = calculateCurrentStreak(descending, today),
+            longestStreak = calculateLongestStreak(workoutDays),
+            lastWorkoutDate = descending.first().format(ISO_DATE),
         )
     }
 
@@ -217,33 +221,56 @@ class StatsService {
     // -----------------------------------------------------------------------
 
     /**
-     * Fetches per-day aggregate rows for [userId] in the range [from, to).
+     * Fetches per-day aggregated stats for [userId] in the half-open range [from, to).
      *
-     * Returns one [ResultRow] per UTC calendar day that has at least one
-     * completed session. Days with no sessions are absent from the result --
-     * callers fill in zero-rows themselves.
+     * Returns a map of LocalDate to DailyStatsDTO. Days with no completed
+     * sessions are absent from the map -- callers fill in zeros themselves.
      *
-     * Uses a single SQL query with GROUP BY DATE_TRUNC('day', started_at).
-     * The `startedAt` column in each row holds the truncated day timestamp
-     * (midnight UTC) which callers convert to [LocalDate].
+     * Uses DATE_TRUNC('day', started_at) as the GROUP BY key so multiple
+     * sessions on the same calendar day are correctly aggregated.
      */
-    private fun fetchDailyRows(userId: String, from: Instant, to: Instant): List<ResultRow> {
-        val pushUpSum = WorkoutSessions.pushUpCount.sum()
-        val creditsSum = WorkoutSessions.earnedTimeCredits.sum()
-        val qualityAvg = WorkoutSessions.quality.avg()
-        val sessionCount = WorkoutSessions.id.count()
-
+    private fun fetchDailyAggregates(userId: UUID, from: Instant, to: Instant): Map<LocalDate, DailyStatsDTO> {
         return WorkoutSessions
-            .select(WorkoutSessions.startedAt, pushUpSum, creditsSum, qualityAvg, sessionCount)
+            .select(WorkoutSessions.startedAtDay, pushUpSum, creditsSum, qualityAvg, sessionCount)
             .where {
                 (WorkoutSessions.userId eq userId) and
                     (WorkoutSessions.startedAt greaterEq from) and
                     (WorkoutSessions.startedAt less to) and
                     WorkoutSessions.endedAt.isNotNull()
             }
-            .groupBy(WorkoutSessions.startedAt)
-            .orderBy(WorkoutSessions.startedAt to SortOrder.ASC)
-            .toList()
+            .groupBy(WorkoutSessions.startedAtDay)
+            .associate { row ->
+                val date = row[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
+                date to DailyStatsDTO(
+                    date = date.format(ISO_DATE),
+                    totalPushUps = row[pushUpSum] ?: 0,
+                    totalSessions = row[sessionCount].toInt(),
+                    totalEarnedSeconds = (row[creditsSum] ?: 0).toLong(),
+                    averageQuality = row[qualityAvg]?.toDouble(),
+                )
+            }
+    }
+
+    // -----------------------------------------------------------------------
+    // Private DTO builders
+    // -----------------------------------------------------------------------
+
+    private fun buildWeeklyDTO(monday: LocalDate, byDay: Map<LocalDate, DailyStatsDTO>): WeeklyStatsDTO {
+        val sunday = monday.plusDays(6)
+        val dailyBreakdown = (0L..6L).map { offset ->
+            val day = monday.plusDays(offset)
+            byDay[day] ?: emptyDailyStats(day)
+        }
+        return WeeklyStatsDTO(
+            weekStart = monday.format(ISO_DATE),
+            weekEnd = sunday.format(ISO_DATE),
+            totalPushUps = dailyBreakdown.sumOf { it.totalPushUps },
+            totalSessions = dailyBreakdown.sumOf { it.totalSessions },
+            totalEarnedSeconds = dailyBreakdown.sumOf { it.totalEarnedSeconds },
+            averageQuality = dailyBreakdown.mapNotNull { it.averageQuality }
+                .takeIf { it.isNotEmpty() }?.average(),
+            dailyBreakdown = dailyBreakdown,
+        )
     }
 
     // -----------------------------------------------------------------------
@@ -300,28 +327,22 @@ class StatsService {
     companion object {
         private val ISO_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
 
-        /** Maps a GROUP BY result row to a [DailyStatsDTO] for the given [date]. */
-        private fun ResultRow.toDailyStatsDTO(date: LocalDate): DailyStatsDTO {
-            val pushUpSum = WorkoutSessions.pushUpCount.sum()
-            val creditsSum = WorkoutSessions.earnedTimeCredits.sum()
-            val qualityAvg = WorkoutSessions.quality.avg()
-            val sessionCount = WorkoutSessions.id.count()
-            return DailyStatsDTO(
-                date = date.format(ISO_DATE),
-                totalPushUps = this[pushUpSum] ?: 0,
-                totalSessions = this[sessionCount].toInt(),
-                totalEarnedSeconds = (this[creditsSum] ?: 0).toLong(),
-                averageQuality = this[qualityAvg]?.toDouble(),
-            )
-        }
-
-        /** Returns a zero-filled [DailyStatsDTO] for days with no workouts. */
         private fun emptyDailyStats(date: LocalDate) = DailyStatsDTO(
             date = date.format(ISO_DATE),
             totalPushUps = 0,
             totalSessions = 0,
             totalEarnedSeconds = 0L,
             averageQuality = null,
+        )
+
+        private fun emptyTotalStats() = TotalStatsDTO(
+            totalPushUps = 0,
+            totalSessions = 0,
+            totalEarnedSeconds = 0L,
+            averageQuality = null,
+            averagePushUpsPerSession = null,
+            bestSessionPushUps = null,
+            firstWorkoutDate = null,
         )
     }
 }
