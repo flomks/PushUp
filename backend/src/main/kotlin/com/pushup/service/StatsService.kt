@@ -23,7 +23,6 @@ import org.jetbrains.exposed.sql.min
 import org.jetbrains.exposed.sql.stringParam
 import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.math.BigDecimal
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -38,7 +37,7 @@ import java.util.UUID
 
 object WorkoutSessions : Table("workout_sessions") {
     val id = uuid("id")
-    val userId = uuid("user_id")
+    val userId = uuid("user_id").references(com.pushup.plugins.Users.id)
     val startedAt = timestamp("started_at")
     val endedAt = timestamp("ended_at").nullable()
     val pushUpCount = integer("push_up_count")

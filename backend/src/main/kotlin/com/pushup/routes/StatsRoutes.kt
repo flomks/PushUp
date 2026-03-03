@@ -5,6 +5,7 @@ import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.StatsService
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
 import io.ktor.server.response.respond
@@ -92,7 +93,7 @@ fun Route.statsRoutes(statsService: StatsService) {
  * Parses a required date query parameter (YYYY-MM-DD).
  * Responds with 400 and returns null on any error.
  */
-private suspend fun io.ktor.server.application.ApplicationCall.parseDate(paramName: String): LocalDate? {
+private suspend fun ApplicationCall.parseDate(paramName: String): LocalDate? {
     val raw = request.queryParameters[paramName]
     if (raw.isNullOrBlank()) {
         respond(
