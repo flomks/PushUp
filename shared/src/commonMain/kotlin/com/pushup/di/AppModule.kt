@@ -14,6 +14,7 @@ import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetMonthlyStatsUseCase
@@ -22,87 +23,106 @@ import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
+import com.pushup.domain.usecase.IdGenerator
 import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.datetime.Clock
 import org.koin.core.module.Module
-import org.koin.core.module.dsl.factoryOf
-import org.koin.core.module.dsl.singleOf
-import org.koin.dsl.bind
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 /**
- * Core Koin DI module for the shared KMP module.
+ * Named Koin qualifier for the coroutine dispatcher used by all database-backed
+ * repositories.
  *
- * Wiring strategy:
- * - [PushUpDatabase] and all [*Repository] implementations are **singletons** --
- *   they hold database connections and should be shared across the app lifetime.
- * - All use-cases are **factories** -- a fresh instance is created per injection
- *   site, keeping them stateless and easy to test in isolation.
+ * Binding the dispatcher under a named qualifier (rather than hardcoding it
+ * inside each repository factory) allows tests to override it with a
+ * [kotlinx.coroutines.test.TestDispatcher] via `KoinTestHelper.startTestKoin`,
+ * giving full control over coroutine execution in unit tests.
  *
- * Platform-specific modules (Android / iOS) must provide a [DatabaseDriverFactory]
- * binding before this module is loaded. The [databaseModule] declared here
- * depends on that platform binding to construct the [PushUpDatabase].
+ * Production value: [Dispatchers.Default] -- the correct KMP-safe choice.
+ * [Dispatchers.IO] does not exist on Kotlin/Native (iOS) and must not be used
+ * in shared code.
  */
+const val DB_DISPATCHER = "db_dispatcher"
+
+/**
+ * Infrastructure module: binds cross-cutting singletons that multiple layers depend on.
+ *
+ * - [Clock]: used by use-cases and repositories for timestamps. Override with a
+ *   fixed clock in tests for deterministic results.
+ * - [IdGenerator]: used by use-cases to generate unique entity IDs.
+ * - DB [CoroutineDispatcher] (named [DB_DISPATCHER]): used by all repositories.
+ *   Override with a [kotlinx.coroutines.test.TestDispatcher] in tests.
+ */
+val infrastructureModule: Module = module {
+    single<Clock> { Clock.System }
+    single<IdGenerator> { DefaultIdGenerator }
+    single<CoroutineDispatcher>(named(DB_DISPATCHER)) { Dispatchers.Default }
+}
 
 /**
  * Database module: constructs the [PushUpDatabase] singleton from the
  * platform-provided [DatabaseDriverFactory].
  *
  * The [DatabaseDriverFactory] must be bound by the platform-specific module
- * (see [androidModule] / [iosModule]) before this module is used.
+ * (see KoinAndroid.kt / KoinIOS.kt / KoinJVM.kt) before this module is used.
  */
 val databaseModule: Module = module {
     single<PushUpDatabase> {
-        val factory = get<DatabaseDriverFactory>()
-        PushUpDatabase(factory.createDriver())
+        PushUpDatabase(get<DatabaseDriverFactory>().createDriver())
     }
 }
 
 /**
- * Repository module: binds all repository implementations as singletons.
+ * Repository module: binds all repository implementations as **singletons**.
  *
  * Each implementation is bound to its corresponding interface so that
  * use-cases and other consumers depend only on the abstraction.
  *
- * [Dispatchers.IO] is injected as the coroutine dispatcher for all
- * database-backed repositories to keep DB work off the main thread.
+ * The DB dispatcher is resolved by name ([DB_DISPATCHER]) so that tests can
+ * substitute a [kotlinx.coroutines.test.TestDispatcher] without touching the
+ * production wiring.
  */
 val repositoryModule: Module = module {
     single<UserRepository> {
         UserRepositoryImpl(
             database = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
         )
     }
 
     single<WorkoutSessionRepository> {
         WorkoutSessionRepositoryImpl(
             database = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
         )
     }
 
     single<PushUpRecordRepository> {
         PushUpRecordRepositoryImpl(
             database = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
         )
     }
 
     single<TimeCreditRepository> {
         TimeCreditRepositoryImpl(
             database = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
         )
     }
 
     single<UserSettingsRepository> {
         UserSettingsRepositoryImpl(
             database = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
         )
     }
 
@@ -110,7 +130,8 @@ val repositoryModule: Module = module {
         StatsRepositoryImpl(
             database = get(),
             timeCreditRepository = get(),
-            dispatcher = Dispatchers.Default,
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
         )
     }
 }
@@ -119,15 +140,20 @@ val repositoryModule: Module = module {
  * Use-case module: binds all use-cases as **factories**.
  *
  * A new instance is created on every injection, which keeps use-cases
- * stateless and makes them trivial to mock in unit tests.
+ * stateless and easy to test in isolation.
+ *
+ * [Clock] and [IdGenerator] are resolved from Koin so that tests can
+ * substitute controlled implementations via `KoinTestHelper.startTestKoin`.
  */
 val useCaseModule: Module = module {
-    factory { GetOrCreateLocalUserUseCase(userRepository = get()) }
-    factory { StartWorkoutUseCase(sessionRepository = get()) }
+    factory { GetOrCreateLocalUserUseCase(userRepository = get(), clock = get(), idGenerator = get()) }
+    factory { StartWorkoutUseCase(sessionRepository = get(), clock = get(), idGenerator = get()) }
     factory {
         RecordPushUpUseCase(
             sessionRepository = get(),
             recordRepository = get(),
+            clock = get(),
+            idGenerator = get(),
         )
     }
     factory {
@@ -136,10 +162,11 @@ val useCaseModule: Module = module {
             recordRepository = get(),
             timeCreditRepository = get(),
             settingsRepository = get(),
+            clock = get(),
         )
     }
-    factory { GetTimeCreditUseCase(timeCreditRepository = get()) }
-    factory { SpendTimeCreditUseCase(timeCreditRepository = get()) }
+    factory { GetTimeCreditUseCase(timeCreditRepository = get(), clock = get()) }
+    factory { SpendTimeCreditUseCase(timeCreditRepository = get(), clock = get()) }
     factory { GetUserSettingsUseCase(settingsRepository = get()) }
     factory { UpdateUserSettingsUseCase(settingsRepository = get()) }
     factory { GetDailyStatsUseCase(statsRepository = get()) }
@@ -151,10 +178,11 @@ val useCaseModule: Module = module {
 /**
  * Aggregated list of all shared modules.
  *
- * Platform entry points ([initKoin] on Android / iOS) should pass this list
- * together with their platform-specific module to [startKoin].
+ * Platform entry points (`initKoin()` on Android / iOS / JVM) should pass this
+ * list together with their platform-specific module to `startKoin`.
  */
 val sharedModules: List<Module> = listOf(
+    infrastructureModule,
     databaseModule,
     repositoryModule,
     useCaseModule,

@@ -2,7 +2,6 @@ package com.pushup.di
 
 import com.flomks.pushup.db.DatabaseDriverFactory
 import com.flomks.pushup.db.IosDatabaseDriverFactory
-import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
@@ -19,17 +18,24 @@ val iosModule = module {
 /**
  * Initialises Koin for the iOS application.
  *
- * Call this function from your Swift `AppDelegate` or `@main` entry point
+ * Call this function from your Swift `@main` entry point or `AppDelegate`
  * **before** any Koin-managed dependency is accessed:
  *
  * ```swift
- * // AppDelegate.swift
- * KoinIOSKt.doInitKoin()
+ * @main
+ * struct PushUpApp: App {
+ *     init() {
+ *         KoinIOSKt.doInitKoin()
+ *     }
+ *     var body: some Scene { ... }
+ * }
  * ```
  *
- * @return The [KoinApplication] instance, which can be used for further
- *   configuration or testing if needed.
+ * Returns `Unit` (mapped to `Void` in Swift) to keep the Swift API surface
+ * clean -- callers have no use for the internal `KoinApplication` object.
  */
-fun initKoin(): KoinApplication = startKoin {
-    modules(iosModule + sharedModules)
+fun initKoin() {
+    startKoin {
+        modules(iosModule + sharedModules)
+    }
 }

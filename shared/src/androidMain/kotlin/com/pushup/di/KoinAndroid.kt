@@ -5,7 +5,6 @@ import com.flomks.pushup.db.AndroidDatabaseDriverFactory
 import com.flomks.pushup.db.DatabaseDriverFactory
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
-import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.koin.dsl.module
@@ -29,7 +28,7 @@ val androidModule = module {
  * Call this function from your [android.app.Application.onCreate]:
  *
  * ```kotlin
- * class MyApplication : Application() {
+ * class PushUpApplication : Application() {
  *     override fun onCreate() {
  *         super.onCreate()
  *         initKoin(this)
@@ -37,12 +36,21 @@ val androidModule = module {
  * }
  * ```
  *
+ * Register the application class in `AndroidManifest.xml`:
+ * ```xml
+ * <application android:name=".PushUpApplication" ...>
+ * ```
+ *
  * @param context The application [Context] used to initialise the Android
  *   Koin extension and to create the SQLite driver.
- * @return The [KoinApplication] instance for optional further configuration.
+ * @param isDebug When `true`, Koin logs at [Level.DEBUG] to surface binding
+ *   warnings during development. Set to `false` (or `BuildConfig.DEBUG`) in
+ *   production to suppress verbose output.
  */
-fun initKoin(context: Context): KoinApplication = startKoin {
-    androidLogger(Level.ERROR)
-    androidContext(context)
-    modules(androidModule + sharedModules)
+fun initKoin(context: Context, isDebug: Boolean = false) {
+    startKoin {
+        androidLogger(if (isDebug) Level.DEBUG else Level.ERROR)
+        androidContext(context)
+        modules(androidModule + sharedModules)
+    }
 }
