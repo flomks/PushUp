@@ -23,58 +23,6 @@ object Users : Table("users") {
     override val primaryKey = PrimaryKey(id)
 }
 
-object WorkoutSessions : Table("workout_sessions") {
-    val id                = uuid("id")
-    val userId            = uuid("user_id").references(Users.id)
-    val startedAt         = timestampWithTimeZone("started_at")
-    val endedAt           = timestampWithTimeZone("ended_at").nullable()
-    val pushUpCount       = integer("push_up_count")
-    val earnedTimeCredits = integer("earned_time_credits")
-    val quality           = float("quality")
-    val createdAt         = timestampWithTimeZone("created_at")
-    val updatedAt         = timestampWithTimeZone("updated_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object PushUpRecords : Table("push_up_records") {
-    val id         = uuid("id")
-    val sessionId  = uuid("session_id").references(WorkoutSessions.id)
-    val timestamp  = timestampWithTimeZone("timestamp")
-    val durationMs = integer("duration_ms").nullable()
-    val depthScore = float("depth_score").nullable()
-    val formScore  = float("form_score").nullable()
-    val createdAt  = timestampWithTimeZone("created_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object TimeCredits : Table("time_credits") {
-    val id                 = uuid("id")
-    val userId             = uuid("user_id").references(Users.id)
-    val totalEarnedSeconds = long("total_earned_seconds")
-    val totalSpentSeconds  = long("total_spent_seconds")
-    val updatedAt          = timestampWithTimeZone("updated_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-object UserSettings : Table("user_settings") {
-    val id                       = uuid("id")
-    val userId                   = uuid("user_id").references(Users.id)
-    val pushUpsPerMinuteCredit   = integer("push_ups_per_minute_credit")
-    val qualityMultiplierEnabled = bool("quality_multiplier_enabled")
-    val dailyCreditCapSeconds    = long("daily_credit_cap_seconds").nullable()
-    val createdAt                = timestampWithTimeZone("created_at")
-    val updatedAt                = timestampWithTimeZone("updated_at")
-
-    override val primaryKey = PrimaryKey(id)
-}
-
-// ---------------------------------------------------------------------------
-// Plugin installer
-// ---------------------------------------------------------------------------
-
 /**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
@@ -113,8 +61,6 @@ fun Application.configureDatabase() {
         connectionTimeout    = 30_000     // 30 seconds
         maxLifetime          = 1_800_000  // 30 minutes
         isAutoCommit         = false
-        // READ_COMMITTED matches PostgreSQL's default isolation level and is
-        // appropriate for the read-heavy workloads in this service.
         transactionIsolation = "TRANSACTION_READ_COMMITTED"
         validate()
     }
