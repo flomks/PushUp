@@ -673,7 +673,13 @@ class RepositoryTests {
 
     private fun createStatsRepo(): StatsRepositoryImpl {
         val timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
-        return StatsRepositoryImpl(database, timeCreditRepo, testDispatcher, utcTimeZone)
+        return StatsRepositoryImpl(
+            database = database,
+            timeCreditRepository = timeCreditRepo,
+            dispatcher = testDispatcher,
+            timeZone = utcTimeZone,
+            clock = fixedClock,
+        )
     }
 
     @Test
@@ -719,6 +725,10 @@ class RepositoryTests {
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -769,6 +779,10 @@ class RepositoryTests {
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(7, result.dailyBreakdown.size)
         assertEquals(2, result.activeDays)
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -818,6 +832,10 @@ class RepositoryTests {
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertTrue(result.weeklyBreakdown.isNotEmpty())
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -833,12 +851,11 @@ class RepositoryTests {
     @Test
     fun statsRepo_getTotalStats_aggregatesAllSessions() = runTest {
         setupUserForWorkouts()
-        val repo = createStatsRepo()
         val sessionRepo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
         val timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
 
-        val day1 = 1_700_006_400_000L // 2023-11-15
-        val day2 = day1 + 86_400_000L  // 2023-11-16
+        val day1 = 1_700_006_400_000L // 2023-11-15T00:00:00Z
+        val day2 = day1 + 86_400_000L  // 2023-11-16T00:00:00Z
 
         sessionRepo.save(testSession(
             id = "s1",
@@ -860,6 +877,10 @@ class RepositoryTests {
         timeCreditRepo.addEarnedSeconds("user-1", 300L)
         timeCreditRepo.addSpentSeconds("user-1", 100L)
 
+        // Set clock to 2023-11-16 so the last training day is "today"
+        fixedClock.nowMs = day2 + 3600_000
+        val repo = createStatsRepo()
+
         val result = repo.getTotalStats("user-1")
 
         assertNotNull(result)
@@ -869,7 +890,11 @@ class RepositoryTests {
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(100L, result.totalSpentSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
-        // Two consecutive days => streak of 2
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
+        // Two consecutive days, last day is today => streak of 2
         assertEquals(2, result.currentStreakDays)
         assertEquals(2, result.longestStreakDays)
     }
@@ -877,11 +902,11 @@ class RepositoryTests {
     @Test
     fun statsRepo_getTotalStats_calculatesStreaksCorrectly() = runTest {
         setupUserForWorkouts()
-        val repo = createStatsRepo()
         val sessionRepo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
 
-        // Create sessions on days: Day 1, Day 2, Day 3, (gap), Day 5, Day 6
-        val baseDay = 1_700_006_400_000L // 2023-11-15
+        // Sessions on days 0-2 (consecutive), gap on day 3, then days 4-5
+        // day 0 = 2023-11-15, day 5 = 2023-11-20
+        val baseDay = 1_700_006_400_000L // 2023-11-15T00:00:00Z
         val oneDay = 86_400_000L
 
         for (i in 0 until 3) {
@@ -894,7 +919,7 @@ class RepositoryTests {
                 quality = 0.8f,
             ))
         }
-        // Gap on Day 4
+        // Gap on day 3
         for (i in 4 until 6) {
             sessionRepo.save(testSession(
                 id = "s${i + 1}",
@@ -906,13 +931,141 @@ class RepositoryTests {
             ))
         }
 
+        // Set clock to day 5 (2023-11-20) so the last training day is "today"
+        fixedClock.nowMs = baseDay + 5 * oneDay + 3600_000
+        val repo = createStatsRepo()
+
         val result = repo.getTotalStats("user-1")
 
         assertNotNull(result)
-        // Current streak: Day 5, Day 6 = 2
+        // Current streak: days 4 and 5 = 2 (last day is today)
         assertEquals(2, result.currentStreakDays)
-        // Longest streak: Day 1, Day 2, Day 3 = 3
+        // Longest streak: days 0, 1, 2 = 3
         assertEquals(3, result.longestStreakDays)
+    }
+
+    // =========================================================================
+    // StatsRepositoryImpl.calculateStreaks Unit Tests
+    // =========================================================================
+
+    @Test
+    fun calculateStreaks_emptyList_returnsZeroZero() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+
+        val (current, longest) = repo.calculateStreaks(emptyList(), today)
+
+        assertEquals(0, current)
+        assertEquals(0, longest)
+    }
+
+    @Test
+    fun calculateStreaks_singleDayIsToday_returnsOneOne() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+
+        val (current, longest) = repo.calculateStreaks(listOf(today), today)
+
+        assertEquals(1, current)
+        assertEquals(1, longest)
+    }
+
+    @Test
+    fun calculateStreaks_singleDayIsYesterday_returnsOneOne() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+        val yesterday = LocalDate(2023, 11, 19)
+
+        val (current, longest) = repo.calculateStreaks(listOf(yesterday), today)
+
+        assertEquals(1, current)
+        assertEquals(1, longest)
+    }
+
+    @Test
+    fun calculateStreaks_singleDayTwoDaysAgo_returnsZeroOne() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+        val twoDaysAgo = LocalDate(2023, 11, 18)
+
+        val (current, longest) = repo.calculateStreaks(listOf(twoDaysAgo), today)
+
+        assertEquals(0, current)
+        assertEquals(1, longest)
+    }
+
+    @Test
+    fun calculateStreaks_consecutiveDaysEndingToday_correctCurrentAndLongest() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+        val dates = listOf(
+            LocalDate(2023, 11, 18),
+            LocalDate(2023, 11, 19),
+            LocalDate(2023, 11, 20),
+        )
+
+        val (current, longest) = repo.calculateStreaks(dates, today)
+
+        assertEquals(3, current)
+        assertEquals(3, longest)
+    }
+
+    @Test
+    fun calculateStreaks_gapBeforeLastRun_currentIsLastRunLength() {
+        val repo = createStatsRepo()
+        // today = 2023-11-20, last run = days 18+19+20 (3 days), earlier run = days 14+15+16 (3 days)
+        val today = LocalDate(2023, 11, 20)
+        val dates = listOf(
+            LocalDate(2023, 11, 14),
+            LocalDate(2023, 11, 15),
+            LocalDate(2023, 11, 16),
+            // gap on 17
+            LocalDate(2023, 11, 18),
+            LocalDate(2023, 11, 19),
+            LocalDate(2023, 11, 20),
+        )
+
+        val (current, longest) = repo.calculateStreaks(dates, today)
+
+        assertEquals(3, current)
+        assertEquals(3, longest)
+    }
+
+    @Test
+    fun calculateStreaks_longerEarlierRun_longestExceedsCurrentCorrectly() {
+        val repo = createStatsRepo()
+        // today = 2023-11-20, last run = days 19+20 (2), earlier run = days 14+15+16+17 (4)
+        val today = LocalDate(2023, 11, 20)
+        val dates = listOf(
+            LocalDate(2023, 11, 14),
+            LocalDate(2023, 11, 15),
+            LocalDate(2023, 11, 16),
+            LocalDate(2023, 11, 17),
+            // gap on 18
+            LocalDate(2023, 11, 19),
+            LocalDate(2023, 11, 20),
+        )
+
+        val (current, longest) = repo.calculateStreaks(dates, today)
+
+        assertEquals(2, current)
+        assertEquals(4, longest)
+    }
+
+    @Test
+    fun calculateStreaks_lastDayNotTodayOrYesterday_currentIsZero() {
+        val repo = createStatsRepo()
+        val today = LocalDate(2023, 11, 20)
+        val dates = listOf(
+            LocalDate(2023, 11, 14),
+            LocalDate(2023, 11, 15),
+            LocalDate(2023, 11, 16),
+        )
+
+        val (current, longest) = repo.calculateStreaks(dates, today)
+
+        assertEquals(0, current)
+        assertEquals(3, longest)
     }
 
     // =========================================================================

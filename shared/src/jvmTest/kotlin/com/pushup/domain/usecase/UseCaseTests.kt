@@ -34,7 +34,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -87,10 +86,11 @@ class UseCaseTests {
         timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
         settingsRepo = UserSettingsRepositoryImpl(database, testDispatcher)
         statsRepo = StatsRepositoryImpl(
-            database,
-            timeCreditRepo as TimeCreditRepositoryImpl,
-            testDispatcher,
-            TimeZone.UTC,
+            database = database,
+            timeCreditRepository = timeCreditRepo,
+            dispatcher = testDispatcher,
+            timeZone = TimeZone.UTC,
+            clock = fixedClock,
         )
     }
 
@@ -891,6 +891,10 @@ class UseCaseTests {
         assertEquals(50, result.totalPushUps)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -932,6 +936,10 @@ class UseCaseTests {
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(7, result.dailyBreakdown.size)
         assertEquals(2, result.activeDays)
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -972,6 +980,10 @@ class UseCaseTests {
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertTrue(result.weeklyBreakdown.isNotEmpty())
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
     }
 
     @Test
@@ -1014,12 +1026,14 @@ class UseCaseTests {
     @Test
     fun getTotalStats_aggregatesAllSessions() = runTest {
         insertUser()
-        val day1 = 1_700_006_400_000L // 2023-11-15
-        val day2 = day1 + 86_400_000L  // 2023-11-16
+        val day1 = 1_700_006_400_000L // 2023-11-15T00:00:00Z
+        val day2 = day1 + 86_400_000L  // 2023-11-16T00:00:00Z
         insertSessionWithData("s1", startedAtMs = day1 + 3600_000L, pushUpCount = 20, earnedSeconds = 120L, quality = 0.8f)
         insertSessionWithData("s2", startedAtMs = day2 + 3600_000L, pushUpCount = 30, earnedSeconds = 180L, quality = 0.9f)
         timeCreditRepo.addEarnedSeconds("user-1", 300L)
         timeCreditRepo.addSpentSeconds("user-1", 100L)
+        // Set clock to 2023-11-16 so the last training day (2023-11-16) is "today"
+        fixedClock.nowMs = day2 + 3600_000L
         val useCase = GetTotalStatsUseCase(statsRepo)
 
         val result = useCase("user-1")
@@ -1031,7 +1045,11 @@ class UseCaseTests {
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(100L, result.totalSpentSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
-        // Two consecutive days -> streak of 2
+        // averagePushUpsPerSession: (20 + 30) / 2 = 25
+        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
+        // bestSession: max(20, 30) = 30
+        assertEquals(30, result.bestSession)
+        // Two consecutive days, last day is today -> streak of 2
         assertEquals(2, result.currentStreakDays)
         assertEquals(2, result.longestStreakDays)
     }
@@ -1039,10 +1057,12 @@ class UseCaseTests {
     @Test
     fun getTotalStats_calculatesStreakCorrectly() = runTest {
         insertUser()
-        val baseDay = 1_700_006_400_000L // 2023-11-15
+        // 2023-11-15T00:00:00Z
+        val baseDay = 1_700_006_400_000L
         val oneDay = 86_400_000L
 
         // Days 0, 1, 2 (consecutive), then gap, then days 4, 5
+        // day 0 = 2023-11-15, day 5 = 2023-11-20
         for (i in 0 until 3) {
             insertSessionWithData(
                 id = "s${i + 1}",
@@ -1059,15 +1079,56 @@ class UseCaseTests {
                 earnedSeconds = 60L,
             )
         }
+        // Set clock to day 5 (2023-11-20) so the last training day is "today"
+        fixedClock.nowMs = baseDay + 5 * oneDay + 3600_000L
         val useCase = GetTotalStatsUseCase(statsRepo)
 
         val result = useCase("user-1")
 
         assertNotNull(result)
-        // Current streak: days 4 and 5 = 2
+        // Current streak: days 4 and 5 = 2 (last day is today)
         assertEquals(2, result.currentStreakDays)
         // Longest streak: days 0, 1, 2 = 3
         assertEquals(3, result.longestStreakDays)
+    }
+
+    @Test
+    fun getTotalStats_currentStreakIsZeroWhenLastWorkoutTooOld() = runTest {
+        insertUser()
+        val baseDay = 1_700_006_400_000L // 2023-11-15
+        val oneDay = 86_400_000L
+        // Session on day 0 (2023-11-15)
+        insertSessionWithData("s1", startedAtMs = baseDay + 3600_000L, pushUpCount = 10, earnedSeconds = 60L)
+        // Clock is set to day 3 (2023-11-18) -- two days after the last workout
+        fixedClock.nowMs = baseDay + 3 * oneDay
+        val useCase = GetTotalStatsUseCase(statsRepo)
+
+        val result = useCase("user-1")
+
+        assertNotNull(result)
+        // Last workout was 2023-11-15, today is 2023-11-18 -> streak broken
+        assertEquals(0, result.currentStreakDays)
+        assertEquals(1, result.longestStreakDays)
+    }
+
+    @Test
+    fun getTotalStats_currentStreakCountsWhenLastWorkoutWasYesterday() = runTest {
+        insertUser()
+        val baseDay = 1_700_006_400_000L // 2023-11-15
+        val oneDay = 86_400_000L
+        // Sessions on days 0 and 1 (2023-11-15, 2023-11-16)
+        insertSessionWithData("s1", startedAtMs = baseDay + 3600_000L, pushUpCount = 10, earnedSeconds = 60L)
+        insertSessionWithData("s2", startedAtMs = baseDay + oneDay + 3600_000L, pushUpCount = 10, earnedSeconds = 60L)
+        // Clock is set to day 2 (2023-11-17) -- yesterday was the last workout
+        fixedClock.nowMs = baseDay + 2 * oneDay
+        val useCase = GetTotalStatsUseCase(statsRepo)
+
+        val result = useCase("user-1")
+
+        assertNotNull(result)
+        // Last workout was yesterday -> streak still active
+        assertEquals(2, result.currentStreakDays)
+        assertEquals(2, result.longestStreakDays)
     }
 
     @Test
