@@ -37,8 +37,9 @@ dependencies {
     implementation(libs.exposed.core)
     implementation(libs.exposed.jdbc)
     implementation(libs.exposed.kotlin.datetime)
+    implementation(libs.exposed.java.time)
 
-    // Database
+    // Database drivers & connection pool
     implementation(libs.hikari.cp)
     implementation(libs.postgresql.driver)
 
@@ -55,4 +56,5 @@ dependencies {
     // Testing
     testImplementation(libs.ktor.server.tests)
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.kotlin.testJunit)
 }
