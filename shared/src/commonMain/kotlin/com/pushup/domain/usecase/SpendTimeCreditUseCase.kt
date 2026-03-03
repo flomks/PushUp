@@ -59,9 +59,12 @@ class SpendTimeCreditUseCase(
 
         // Build the updated credit locally to avoid an extra DB round-trip.
         // The new balance is deterministic: addSpentSeconds is an atomic increment.
+        // syncStatus is explicitly set to PENDING to match the DB state written by
+        // addSpentSeconds -- the previous status may have been SYNCED.
         val updated = current.copy(
             totalSpentSeconds = current.totalSpentSeconds + secondsToSpend,
             lastUpdatedAt = clock.now(),
+            syncStatus = SyncStatus.PENDING,
         )
         return SpendResult.Success(updated)
     }
