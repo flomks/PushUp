@@ -7,13 +7,9 @@ import com.pushup.domain.repository.UserSettingsRepository
  * Use-case: Retrieve the current settings for a user.
  *
  * If no settings record exists yet (e.g. a brand-new user who has never
- * configured the app), a default [UserSettings] record is created, persisted,
- * and returned so that callers always receive a non-null value.
- *
- * Default values applied when no record exists:
- * - [UserSettings.pushUpsPerMinuteCredit] = 10
- * - [UserSettings.qualityMultiplierEnabled] = false
- * - [UserSettings.dailyCreditCapSeconds] = null (unlimited)
+ * configured the app), a default [UserSettings] record is created via
+ * [UserSettings.default], persisted, and returned so that callers always
+ * receive a non-null value.
  *
  * @property settingsRepository Repository for reading and creating settings records.
  */
@@ -35,12 +31,7 @@ class GetUserSettingsUseCase(
         if (existing != null) return existing
 
         // No record yet -- create, persist, and return sensible defaults.
-        val defaults = UserSettings(
-            userId = userId,
-            pushUpsPerMinuteCredit = 10,
-            qualityMultiplierEnabled = false,
-            dailyCreditCapSeconds = null,
-        )
+        val defaults = UserSettings.default(userId)
         settingsRepository.update(defaults)
         return defaults
     }
