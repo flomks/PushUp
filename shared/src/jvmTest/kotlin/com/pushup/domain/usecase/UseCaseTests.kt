@@ -839,6 +839,39 @@ class UseCaseTests {
         assertEquals(300L, stored.availableSeconds)
     }
 
+    @Test
+    fun spendTimeCredit_returnedCreditHasSyncStatusPending() = runTest {
+        insertUser()
+        // Start with a SYNCED credit to verify the status is explicitly overwritten
+        val synced = TimeCredit(
+            userId = "user-1",
+            totalEarnedSeconds = 300L,
+            totalSpentSeconds = 0L,
+            lastUpdatedAt = fixedClock.now(),
+            syncStatus = SyncStatus.SYNCED,
+        )
+        timeCreditRepo.update(synced)
+        val useCase = SpendTimeCreditUseCase(timeCreditRepo, fixedClock)
+
+        val result = useCase("user-1", 100L)
+
+        assertIs<SpendResult.Success>(result)
+        assertEquals(SyncStatus.PENDING, result.credit.syncStatus)
+    }
+
+    @Test
+    fun spendTimeCredit_persistedCreditHasSyncStatusPending() = runTest {
+        insertUser()
+        timeCreditRepo.addEarnedSeconds("user-1", 300L)
+        val useCase = SpendTimeCreditUseCase(timeCreditRepo, fixedClock)
+
+        useCase("user-1", 100L)
+
+        val stored = timeCreditRepo.get("user-1")
+        assertNotNull(stored)
+        assertEquals(SyncStatus.PENDING, stored.syncStatus)
+    }
+
     // =========================================================================
     // Task 1A.13: Stats Use-Cases
     // =========================================================================
