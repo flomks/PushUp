@@ -1,0 +1,17 @@
+# Railway deployment configuration
+# https://docs.railway.app/reference/config-as-code
+#
+# The Dockerfile lives at backend/Dockerfile but must be built with the
+# repository root as the Docker build context, because it copies files from
+# the parent directory (gradle/, gradlew, settings.gradle.kts, etc.).
+# Railway uses the repo root as the build context by default when
+# dockerfilePath is set to a path relative to the root.
+
+[build]
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

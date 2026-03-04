@@ -1,0 +1,39 @@
+name: Deploy to Railway
+
+# Triggers on every push to main -- Railway also has its own GitHub integration
+# that can trigger deploys directly, but this workflow gives you explicit control
+# and a visible deploy status in the GitHub Actions tab.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      # Only redeploy when backend code or infrastructure files change
+      - 'backend/**'
+      - 'railway.toml'
+      - '.github/workflows/deploy.yml'
+
+concurrency:
+  group: deploy-railway
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Backend to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service pushup-backend --detach
