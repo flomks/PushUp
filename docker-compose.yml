@@ -1,0 +1,45 @@
+# docker-compose.yml -- Root-Server Deployment
+#
+# Verwendung:
+#   docker compose up -d          # starten
+#   docker compose down           # stoppen
+#   docker compose logs -f        # logs live verfolgen
+#   docker compose pull && docker compose up -d  # update auf neue Version
+#
+# Umgebungsvariablen werden aus /opt/pushup/.env geladen (nie ins Repo committen).
+
+services:
+  pushup-backend:
+    image: ghcr.io/flomks/pushup-backend:latest
+    container_name: pushup-backend
+    restart: unless-stopped
+
+    # Nur intern erreichbar -- Nginx leitet von aussen weiter
+    expose:
+      - "8080"
+
+    # Umgebungsvariablen aus .env Datei auf dem Server laden
+    env_file:
+      - /opt/pushup/.env
+
+    # Healthcheck -- Docker prueft ob der Container gesund ist
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+    # Logging -- damit docker logs nicht unbegrenzt waechst
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      - pushup-net
+
+networks:
+  pushup-net:
+    driver: bridge
