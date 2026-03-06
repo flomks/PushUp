@@ -43,6 +43,12 @@ import com.pushup.domain.usecase.auth.LoginWithGoogleUseCase
 import com.pushup.domain.usecase.auth.LogoutUseCase
 import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
+import com.pushup.data.api.CloudSyncApi
+import com.pushup.domain.usecase.sync.NetworkMonitor
+import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
+import com.pushup.domain.usecase.sync.SyncManager
+import com.pushup.domain.usecase.sync.SyncTimeCreditUseCase
+import com.pushup.domain.usecase.sync.SyncWorkoutsUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.datetime.Clock
@@ -207,6 +213,40 @@ val useCaseModule: Module = module {
     factory { LogoutUseCase(authRepository = get()) }
     factory { GetCurrentUserUseCase(authRepository = get()) }
     factory { RefreshTokenUseCase(authRepository = get()) }
+
+    // Sync use-cases (Task 1B.9)
+    factory {
+        SyncWorkoutsUseCase(
+            sessionRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
+        SyncTimeCreditUseCase(
+            timeCreditRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
+        SyncFromCloudUseCase(
+            sessionRepository = get(),
+            timeCreditRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+            clock = get(),
+        )
+    }
+    single {
+        SyncManager(
+            syncWorkoutsUseCase = get(),
+            syncTimeCreditUseCase = get(),
+            syncFromCloudUseCase = get(),
+            authRepository = get(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
 }
 
 /**
@@ -263,6 +303,21 @@ const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
 const val IS_DEBUG = "is_debug"
 
 /**
+ * Named Koin qualifier for the [com.pushup.domain.usecase.sync.NetworkMonitor] binding.
+ *
+ * Bind a platform-specific implementation in your platform module:
+ * ```kotlin
+ * // Android
+ * single<NetworkMonitor>(named(NETWORK_MONITOR)) { AndroidNetworkMonitor(get()) }
+ * // iOS
+ * single<NetworkMonitor>(named(NETWORK_MONITOR)) { IosNetworkMonitor() }
+ * ```
+ * In tests, use [com.pushup.domain.usecase.sync.AlwaysConnectedNetworkMonitor] or
+ * [com.pushup.domain.usecase.sync.AlwaysOfflineNetworkMonitor].
+ */
+const val NETWORK_MONITOR = "network_monitor"
+
+/**
  * API module: binds the [io.ktor.client.HttpClient], [SupabaseClient], and
  * [KtorApiClient] as **singletons**.
  *
@@ -288,7 +343,7 @@ val apiModule: Module = module {
         createHttpClient(isDebug = isDebug)
     }
 
-    // Supabase REST API client (PostgREST)
+    // Supabase REST API client (PostgREST) -- also bound as CloudSyncApi for sync use-cases
     single {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
         SupabaseClient(
@@ -299,6 +354,7 @@ val apiModule: Module = module {
             clock = get(),
         )
     }
+    single<CloudSyncApi> { get<SupabaseClient>() }
 
     // Supabase Auth API client (bound as AuthClient interface for testability)
     single<AuthClient> {
