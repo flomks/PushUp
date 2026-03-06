@@ -9,11 +9,17 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFDictionaryCreateMutable
+import platform.CoreFoundation.CFDictionarySetValue
+import platform.CoreFoundation.CFMutableDictionaryRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFAllocatorDefault
+import platform.CoreFoundation.kCFBooleanTrue
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
+import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
@@ -46,13 +52,21 @@ import platform.Security.kSecValueData
  * available after the device is unlocked for the first time -- this is required
  * for background token refresh operations.
  *
- * ## Kotlin/Native 2.x compatibility
- * Keychain Security framework constants (kSecClass, kSecAttrService, etc.) are
- * typed as `COpaquePointer` in the Kotlin/Native cinterop bindings. They cannot
- * be cast to `NSString` directly. Instead, [NSMutableDictionary.setObject] accepts
- * `Any?` on the Kotlin side, and the underlying Objective-C runtime handles the
- * correct CF/NS bridging at runtime. The `@Suppress("UNCHECKED_CAST")` annotations
- * on the [CFDictionaryRef] casts are required for the Security API call sites.
+ * ## Kotlin/Native 2.3 compatibility
+ * Keychain Security constants (kSecClass, kSecAttrService, etc.) are typed as
+ * `CPointer<__CFString>?` in the cinterop bindings. They cannot be used as keys
+ * in `NSMutableDictionary` (which requires `NSCopyingProtocol`), and they cannot
+ * be cast to `NSString` (the compiler correctly rejects such casts as impossible).
+ *
+ * The correct approach is to build the query dictionaries using the CoreFoundation
+ * `CFDictionaryCreateMutable` / `CFDictionarySetValue` API, which operates on
+ * `COpaquePointer` values directly -- no NS bridging required. The resulting
+ * `CFMutableDictionaryRef` is then passed directly to the Security framework
+ * functions, which accept it as `CFDictionaryRef`.
+ *
+ * String values (service name, account name) are bridged from Kotlin `String`
+ * to `CFTypeRef` via `CFBridgingRetain`, and the resulting retained reference
+ * is released after the dictionary is used.
  *
  * ## Error handling
  * [save] throws [IllegalStateException] if the Keychain write fails for any
@@ -76,32 +90,25 @@ actual class TokenStorage {
         val data: NSData = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
-        // Attempt to update an existing item first.
         val updateQuery = buildBaseQuery()
-        val updateAttributes = NSMutableDictionary().apply {
-            setObject(data, forKey = kSecValueData)
+        val updateAttributes = cfDict {
+            set(kSecValueData, data)
         }
 
-        @Suppress("UNCHECKED_CAST")
-        val updateStatus = SecItemUpdate(
-            updateQuery as CFDictionaryRef,
-            updateAttributes as CFDictionaryRef,
-        )
+        val updateStatus = SecItemUpdate(updateQuery, updateAttributes)
+        cfRelease(updateQuery)
+        cfRelease(updateAttributes)
 
         when (updateStatus) {
             errSecSuccess -> return
 
             errSecItemNotFound -> {
-                // Item does not exist yet -- add it.
-                val addQuery = NSMutableDictionary().apply {
-                    setObject(kSecClassGenericPassword, forKey = kSecClass)
-                    setObject(SERVICE, forKey = kSecAttrService)
-                    setObject(ACCOUNT, forKey = kSecAttrAccount)
-                    setObject(kSecAttrAccessibleAfterFirstUnlock, forKey = kSecAttrAccessible)
-                    setObject(data, forKey = kSecValueData)
+                val addQuery = buildBaseQuery().also { dict ->
+                    set(dict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+                    set(dict, kSecValueData, data)
                 }
-                @Suppress("UNCHECKED_CAST")
-                val addStatus = SecItemAdd(addQuery as CFDictionaryRef, null)
+                val addStatus = SecItemAdd(addQuery, null)
+                cfRelease(addQuery)
                 // errSecDuplicateItem can occur in a race where another thread added
                 // the item between our update attempt and this add. Treat it as success.
                 check(addStatus == errSecSuccess || addStatus == errSecDuplicateItem) {
@@ -115,14 +122,14 @@ actual class TokenStorage {
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */
     actual fun load(): AuthToken? = memScoped {
-        val query = buildBaseQuery().apply {
-            setObject(true, forKey = kSecReturnData)
-            setObject(kSecMatchLimitOne, forKey = kSecMatchLimit)
+        val query = buildBaseQuery().also { dict ->
+            set(dict, kSecReturnData, kCFBooleanTrue)
+            set(dict, kSecMatchLimit, kSecMatchLimitOne)
         }
         val result = alloc<CFTypeRefVar>()
+        val status = SecItemCopyMatching(query, result.ptr)
+        cfRelease(query)
 
-        @Suppress("UNCHECKED_CAST")
-        val status = SecItemCopyMatching(query as CFDictionaryRef, result.ptr)
         if (status != errSecSuccess) return null
 
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
@@ -136,8 +143,8 @@ actual class TokenStorage {
     /** Removes the stored token from the Keychain. */
     actual fun clear() {
         val query = buildBaseQuery()
-        @Suppress("UNCHECKED_CAST")
-        SecItemDelete(query as CFDictionaryRef)
+        SecItemDelete(query)
+        cfRelease(query)
         // Ignore the return value: errSecItemNotFound is expected when no token is stored.
     }
 
@@ -146,17 +153,75 @@ actual class TokenStorage {
     // =========================================================================
 
     /**
-     * Builds the base Keychain query dictionary identifying the token item.
+     * Creates a mutable CF dictionary pre-populated with the base Keychain query
+     * attributes that identify the token item (class, service, account).
      *
-     * Keychain constants are `COpaquePointer` values in the Kotlin/Native cinterop
-     * bindings. [NSMutableDictionary.setObject] accepts `Any?`, so passing them
-     * directly is correct -- the Objective-C runtime bridges CF and NS types
-     * transparently at the call site.
+     * The caller is responsible for releasing the returned dictionary via [cfRelease].
      */
-    private fun buildBaseQuery(): NSMutableDictionary = NSMutableDictionary().apply {
-        setObject(kSecClassGenericPassword, forKey = kSecClass)
-        setObject(SERVICE, forKey = kSecAttrService)
-        setObject(ACCOUNT, forKey = kSecAttrAccount)
+    private fun buildBaseQuery(): CFMutableDictionaryRef {
+        val dict = cfDict()
+        set(dict, kSecClass, kSecClassGenericPassword)
+        set(dict, kSecAttrService, SERVICE)
+        set(dict, kSecAttrAccount, ACCOUNT)
+        return dict
+    }
+
+    /**
+     * Creates an empty mutable CF dictionary and optionally populates it via [block].
+     *
+     * The caller is responsible for releasing the returned dictionary via [cfRelease].
+     */
+    private fun cfDict(block: CFMutableDictionaryRef.() -> Unit = {}): CFMutableDictionaryRef =
+        CFDictionaryCreateMutable(
+            kCFAllocatorDefault,
+            0,
+            kCFTypeDictionaryKeyCallBacks.ptr,
+            kCFTypeDictionaryValueCallBacks.ptr,
+        )!! .also { it.block() }
+
+    /**
+     * Sets a CF dictionary entry where both key and value are CF/Security constants
+     * (typed as `COpaquePointer` or `CPointer<*>`).
+     *
+     * This overload handles the common case where both key and value are already
+     * CF-typed pointers -- no bridging needed.
+     */
+    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: Any?) {
+        val cfKey = CFBridgingRetain(key)
+        val cfValue = CFBridgingRetain(value)
+        CFDictionarySetValue(dict, cfKey, cfValue)
+        CFBridgingRelease(cfKey)
+        CFBridgingRelease(cfValue)
+    }
+
+    /**
+     * Sets a CF dictionary entry where the value is a Kotlin [String].
+     *
+     * The string is bridged to a CF-retained `CFStringRef` via [CFBridgingRetain],
+     * set in the dictionary, then released.
+     */
+    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: String) {
+        val cfKey = CFBridgingRetain(key)
+        val cfValue = CFBridgingRetain(value)
+        CFDictionarySetValue(dict, cfKey, cfValue)
+        CFBridgingRelease(cfKey)
+        CFBridgingRelease(cfValue)
+    }
+
+    /**
+     * Sets a CF dictionary entry where the value is an [NSData] object.
+     */
+    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: NSData) {
+        val cfKey = CFBridgingRetain(key)
+        val cfValue = CFBridgingRetain(value)
+        CFDictionarySetValue(dict, cfKey, cfValue)
+        CFBridgingRelease(cfKey)
+        CFBridgingRelease(cfValue)
+    }
+
+    /** Releases a CF object obtained from [cfDict] or [buildBaseQuery]. */
+    private fun cfRelease(ref: CFMutableDictionaryRef) {
+        CFBridgingRelease(ref)
     }
 
     private companion object {
