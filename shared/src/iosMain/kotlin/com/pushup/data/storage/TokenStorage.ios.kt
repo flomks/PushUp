@@ -55,22 +55,16 @@ import platform.Security.kSecValueData
  * ## Kotlin/Native 2.3 compatibility
  * Keychain Security constants (kSecClass, kSecAttrService, etc.) are typed as
  * `CPointer<__CFString>?` in the cinterop bindings. They cannot be used as keys
- * in `NSMutableDictionary` (which requires `NSCopyingProtocol`), and they cannot
- * be cast to `NSString` (the compiler correctly rejects such casts as impossible).
+ * in `NSMutableDictionary` (which requires `NSCopyingProtocol`).
  *
- * The correct approach is to build the query dictionaries using the CoreFoundation
- * `CFDictionaryCreateMutable` / `CFDictionarySetValue` API, which operates on
- * `COpaquePointer` values directly -- no NS bridging required. The resulting
- * `CFMutableDictionaryRef` is then passed directly to the Security framework
- * functions, which accept it as `CFDictionaryRef`.
- *
- * String values (service name, account name) are bridged from Kotlin `String`
- * to `CFTypeRef` via `CFBridgingRetain`, and the resulting retained reference
- * is released after the dictionary is used.
+ * The correct approach is to build query dictionaries using the CoreFoundation
+ * `CFDictionaryCreateMutable` / `CFDictionarySetValue` API, which accepts
+ * `COpaquePointer` values directly. All values (including Kotlin Strings and
+ * NSData) are bridged via `CFBridgingRetain` before being inserted, and the
+ * retained references are released immediately after insertion.
  *
  * ## Error handling
- * [save] throws [IllegalStateException] if the Keychain write fails for any
- * reason (e.g. device locked, Keychain unavailable).
+ * [save] throws [IllegalStateException] if the Keychain write fails.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual class TokenStorage {
@@ -90,25 +84,35 @@ actual class TokenStorage {
         val data: NSData = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
-        val updateQuery = buildBaseQuery()
-        val updateAttributes = cfDict {
-            set(kSecValueData, data)
-        }
+        // Build the base query identifying the existing item.
+        val updateQuery = newCFDict()
+        cfSet(updateQuery, kSecClass, kSecClassGenericPassword)
+        cfSet(updateQuery, kSecAttrService, SERVICE)
+        cfSet(updateQuery, kSecAttrAccount, ACCOUNT)
+
+        // Build the attributes dict with the new value.
+        val updateAttributes = newCFDict()
+        cfSet(updateQuery, kSecValueData, data)
 
         val updateStatus = SecItemUpdate(updateQuery, updateAttributes)
-        cfRelease(updateQuery)
-        cfRelease(updateAttributes)
+        CFBridgingRelease(updateQuery)
+        CFBridgingRelease(updateAttributes)
 
         when (updateStatus) {
             errSecSuccess -> return
 
             errSecItemNotFound -> {
-                val addQuery = buildBaseQuery().also { dict ->
-                    set(dict, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
-                    set(dict, kSecValueData, data)
-                }
+                // Item does not exist yet -- add it.
+                val addQuery = newCFDict()
+                cfSet(addQuery, kSecClass, kSecClassGenericPassword)
+                cfSet(addQuery, kSecAttrService, SERVICE)
+                cfSet(addQuery, kSecAttrAccount, ACCOUNT)
+                cfSet(addQuery, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+                cfSet(addQuery, kSecValueData, data)
+
                 val addStatus = SecItemAdd(addQuery, null)
-                cfRelease(addQuery)
+                CFBridgingRelease(addQuery)
+
                 // errSecDuplicateItem can occur in a race where another thread added
                 // the item between our update attempt and this add. Treat it as success.
                 check(addStatus == errSecSuccess || addStatus == errSecDuplicateItem) {
@@ -122,13 +126,16 @@ actual class TokenStorage {
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */
     actual fun load(): AuthToken? = memScoped {
-        val query = buildBaseQuery().also { dict ->
-            set(dict, kSecReturnData, kCFBooleanTrue)
-            set(dict, kSecMatchLimit, kSecMatchLimitOne)
-        }
+        val query = newCFDict()
+        cfSet(query, kSecClass, kSecClassGenericPassword)
+        cfSet(query, kSecAttrService, SERVICE)
+        cfSet(query, kSecAttrAccount, ACCOUNT)
+        cfSet(query, kSecReturnData, kCFBooleanTrue)
+        cfSet(query, kSecMatchLimit, kSecMatchLimitOne)
+
         val result = alloc<CFTypeRefVar>()
         val status = SecItemCopyMatching(query, result.ptr)
-        cfRelease(query)
+        CFBridgingRelease(query)
 
         if (status != errSecSuccess) return null
 
@@ -142,9 +149,12 @@ actual class TokenStorage {
 
     /** Removes the stored token from the Keychain. */
     actual fun clear() {
-        val query = buildBaseQuery()
+        val query = newCFDict()
+        cfSet(query, kSecClass, kSecClassGenericPassword)
+        cfSet(query, kSecAttrService, SERVICE)
+        cfSet(query, kSecAttrAccount, ACCOUNT)
         SecItemDelete(query)
-        cfRelease(query)
+        CFBridgingRelease(query)
         // Ignore the return value: errSecItemNotFound is expected when no token is stored.
     }
 
@@ -153,75 +163,30 @@ actual class TokenStorage {
     // =========================================================================
 
     /**
-     * Creates a mutable CF dictionary pre-populated with the base Keychain query
-     * attributes that identify the token item (class, service, account).
-     *
-     * The caller is responsible for releasing the returned dictionary via [cfRelease].
+     * Creates an empty mutable CF dictionary with the standard type callbacks.
+     * The caller must release the returned reference via [CFBridgingRelease].
      */
-    private fun buildBaseQuery(): CFMutableDictionaryRef {
-        val dict = cfDict()
-        set(dict, kSecClass, kSecClassGenericPassword)
-        set(dict, kSecAttrService, SERVICE)
-        set(dict, kSecAttrAccount, ACCOUNT)
-        return dict
-    }
+    private fun newCFDict(): CFMutableDictionaryRef = CFDictionaryCreateMutable(
+        kCFAllocatorDefault,
+        0,
+        kCFTypeDictionaryKeyCallBacks.ptr,
+        kCFTypeDictionaryValueCallBacks.ptr,
+    )!!
 
     /**
-     * Creates an empty mutable CF dictionary and optionally populates it via [block].
+     * Inserts [value] into [dict] under [key] using CF bridging.
      *
-     * The caller is responsible for releasing the returned dictionary via [cfRelease].
+     * Both [key] and [value] are bridged to CF-retained references via
+     * [CFBridgingRetain] and released immediately after the insertion.
+     * This is safe because [CFDictionarySetValue] retains both key and value
+     * internally (via the `kCFTypeDictionaryKeyCallBacks` retain callback).
      */
-    private fun cfDict(block: CFMutableDictionaryRef.() -> Unit = {}): CFMutableDictionaryRef =
-        CFDictionaryCreateMutable(
-            kCFAllocatorDefault,
-            0,
-            kCFTypeDictionaryKeyCallBacks.ptr,
-            kCFTypeDictionaryValueCallBacks.ptr,
-        )!! .also { it.block() }
-
-    /**
-     * Sets a CF dictionary entry where both key and value are CF/Security constants
-     * (typed as `COpaquePointer` or `CPointer<*>`).
-     *
-     * This overload handles the common case where both key and value are already
-     * CF-typed pointers -- no bridging needed.
-     */
-    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: Any?) {
+    private fun cfSet(dict: CFMutableDictionaryRef, key: Any?, value: Any?) {
         val cfKey = CFBridgingRetain(key)
         val cfValue = CFBridgingRetain(value)
         CFDictionarySetValue(dict, cfKey, cfValue)
         CFBridgingRelease(cfKey)
         CFBridgingRelease(cfValue)
-    }
-
-    /**
-     * Sets a CF dictionary entry where the value is a Kotlin [String].
-     *
-     * The string is bridged to a CF-retained `CFStringRef` via [CFBridgingRetain],
-     * set in the dictionary, then released.
-     */
-    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: String) {
-        val cfKey = CFBridgingRetain(key)
-        val cfValue = CFBridgingRetain(value)
-        CFDictionarySetValue(dict, cfKey, cfValue)
-        CFBridgingRelease(cfKey)
-        CFBridgingRelease(cfValue)
-    }
-
-    /**
-     * Sets a CF dictionary entry where the value is an [NSData] object.
-     */
-    private fun set(dict: CFMutableDictionaryRef, key: Any?, value: NSData) {
-        val cfKey = CFBridgingRetain(key)
-        val cfValue = CFBridgingRetain(value)
-        CFDictionarySetValue(dict, cfKey, cfValue)
-        CFBridgingRelease(cfKey)
-        CFBridgingRelease(cfValue)
-    }
-
-    /** Releases a CF object obtained from [cfDict] or [buildBaseQuery]. */
-    private fun cfRelease(ref: CFMutableDictionaryRef) {
-        CFBridgingRelease(ref)
     }
 
     private companion object {
