@@ -8,6 +8,7 @@ import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -24,15 +25,15 @@ import kotlinx.coroutines.delay
  *
  * ### WorkoutSessions
  * Comparison field: [WorkoutSession.startedAt]
- * - Remote is strictly newer → overwrite local.
- * - Local is newer or equal → keep local (do not overwrite).
- * - No local copy → insert remote record.
+ * - Remote is strictly newer -> overwrite local.
+ * - Local is newer or equal -> keep local (do not overwrite).
+ * - No local copy -> insert remote record.
  *
  * ### TimeCredit
  * Comparison field: [TimeCredit.lastUpdatedAt]
- * - Remote is strictly newer → overwrite local.
- * - Local is newer or equal → keep local.
- * - No local copy → insert remote record.
+ * - Remote is strictly newer -> overwrite local.
+ * - Local is newer or equal -> keep local.
+ * - No local copy -> insert remote record.
  *
  * ## Retry with exponential back-off
  * Transient network errors are retried up to [maxRetries] times with
@@ -118,10 +119,15 @@ class SyncFromCloudUseCase(
         )
     }
 
+    /**
+     * [CancellationException] is always re-thrown to preserve structured concurrency.
+     */
     private suspend fun fetchRemoteSessionsWithRetry(): List<WorkoutSession>? {
         repeat(maxRetries) { attempt ->
             try {
                 return supabaseClient.getWorkoutSessions()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) return null
                 delay(baseDelayMs * (1L shl attempt))
@@ -136,9 +142,9 @@ class SyncFromCloudUseCase(
      * Merges a single remote [WorkoutSession] into the local database.
      *
      * "Last Write Wins" on [WorkoutSession.startedAt]:
-     * - No local copy → insert remote (marked SYNCED). Returns `true`.
-     * - Remote is strictly newer → overwrite local. Returns `true`.
-     * - Local is newer or equal → keep local unchanged. Returns `false`.
+     * - No local copy -> insert remote (marked SYNCED). Returns `true`.
+     * - Remote is strictly newer -> overwrite local. Returns `true`.
+     * - Local is newer or equal -> keep local unchanged. Returns `false`.
      *
      * @return `true` if the local database was written, `false` if local was kept.
      */
@@ -146,18 +152,14 @@ class SyncFromCloudUseCase(
         val local = sessionRepository.getById(remote.id)
         return when {
             local == null -> {
-                // New record from cloud -- insert it locally as SYNCED.
                 sessionRepository.save(remote.copy(syncStatus = SyncStatus.SYNCED))
                 true
             }
             remote.startedAt > local.startedAt -> {
-                // Remote is newer -- overwrite local.
                 sessionRepository.save(remote.copy(syncStatus = SyncStatus.SYNCED))
                 true
             }
             else -> {
-                // Local is newer or equal -- keep local, do not overwrite.
-                // The upload use-case will push the local version on the next sync.
                 false
             }
         }
@@ -167,6 +169,9 @@ class SyncFromCloudUseCase(
     // TimeCredit pull
     // =========================================================================
 
+    /**
+     * [CancellationException] is always re-thrown to preserve structured concurrency.
+     */
     private suspend fun fetchAndMergeTimeCredit(userId: String): Boolean {
         repeat(maxRetries) { attempt ->
             try {
@@ -175,6 +180,8 @@ class SyncFromCloudUseCase(
                     mergeTimeCredit(userId, remote)
                 }
                 return true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) return false
                 delay(baseDelayMs * (1L shl attempt))
@@ -189,9 +196,9 @@ class SyncFromCloudUseCase(
      * Merges the remote [TimeCredit] into the local database.
      *
      * "Last Write Wins" on [TimeCredit.lastUpdatedAt]:
-     * - No local copy → insert remote (marked SYNCED).
-     * - Remote is strictly newer → overwrite local.
-     * - Local is newer or equal → keep local unchanged.
+     * - No local copy -> insert remote (marked SYNCED).
+     * - Remote is strictly newer -> overwrite local.
+     * - Local is newer or equal -> keep local unchanged.
      */
     private suspend fun mergeTimeCredit(userId: String, remote: TimeCredit) {
         val local = timeCreditRepository.get(userId)

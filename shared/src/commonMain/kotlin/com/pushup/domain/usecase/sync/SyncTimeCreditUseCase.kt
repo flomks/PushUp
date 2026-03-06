@@ -7,6 +7,7 @@ import com.pushup.data.api.isTransient
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.repository.TimeCreditRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -19,16 +20,9 @@ import kotlinx.coroutines.delay
  *
  * ## Conflict resolution -- "Last Write Wins"
  * The [TimeCredit.lastUpdatedAt] timestamp is used as the conflict arbiter:
- * - If the local record is **strictly newer** than the remote record → PATCH remote.
- * - If the remote record is newer or equal → discard local change, update local
+ * - If the local record is **strictly newer** than the remote record -> PATCH remote.
+ * - If the remote record is newer or equal -> discard local change, update local
  *   from remote, and mark as [SyncStatus.SYNCED].
- *
- * This ensures that the most recently modified record always wins, regardless
- * of which device made the change.
- *
- * ## Upsert semantics
- * If no remote record exists yet (HTTP 404), the local record is created via
- * a POST (upsert). This handles the first-sync scenario for new users.
  *
  * ## Retry with exponential back-off
  * Transient errors are retried up to [maxRetries] times with exponential
@@ -52,6 +46,7 @@ class SyncTimeCreditUseCase(
      * Syncs the [TimeCredit] record for [userId] to Supabase.
      *
      * If the local record has [SyncStatus.SYNCED], this is a no-op.
+     * Records with [SyncStatus.PENDING] or [SyncStatus.FAILED] are both eligible.
      *
      * @param userId The ID of the user whose credits to sync.
      * @return A [SyncTimeCreditResult] describing the outcome.
@@ -79,12 +74,17 @@ class SyncTimeCreditUseCase(
     // Private helpers
     // =========================================================================
 
+    /**
+     * [CancellationException] is always re-thrown to preserve structured concurrency.
+     */
     private suspend fun syncWithRetry(local: TimeCredit): SyncTimeCreditResult {
         var lastException: Exception? = null
 
         repeat(maxRetries) { attempt ->
             try {
                 return doSync(local)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) {
                     markFailed(local.userId)
@@ -106,15 +106,9 @@ class SyncTimeCreditUseCase(
         val remote = supabaseClient.getTimeCredit(local.userId)
 
         return if (remote == null) {
-            // No remote record yet -- create it (upsert via PATCH with on-conflict).
-            // Supabase PostgREST does not have a dedicated upsert endpoint for
-            // partial updates, so we use PATCH which will 404 if the row is absent.
-            // We handle that case by catching NotFound and falling through to create.
             createRemoteCredit(local)
         } else {
-            // Remote record exists -- apply "Last Write Wins".
             if (local.lastUpdatedAt > remote.lastUpdatedAt) {
-                // Local is newer: push local values to remote.
                 supabaseClient.updateTimeCredit(
                     userId = local.userId,
                     request = UpdateTimeCreditRequest(
@@ -125,7 +119,6 @@ class SyncTimeCreditUseCase(
                 timeCreditRepository.markAsSynced(local.userId)
                 SyncTimeCreditResult.Synced
             } else {
-                // Remote is newer or equal: pull remote values into local.
                 timeCreditRepository.update(remote)
                 SyncTimeCreditResult.PulledFromRemote(remote)
             }
@@ -133,18 +126,13 @@ class SyncTimeCreditUseCase(
     }
 
     /**
-     * Creates the time credit record remotely by patching with upsert semantics.
+     * Attempts to create/update the time credit record remotely.
      *
-     * Supabase PostgREST supports upsert via `POST` with `Prefer: resolution=merge-duplicates`.
      * Since [CloudSyncApi.updateTimeCredit] uses PATCH (which requires the row to exist),
      * we handle the "no remote row" case by catching [ApiException.NotFound] and
-     * treating it as a successful first-sync (the row will be created by the server
-     * on the next full sync or via a database trigger).
-     *
-     * In practice, the Supabase schema creates a time_credits row automatically
-     * when the user first earns credits (via a database trigger or the backend).
-     * If the row truly does not exist, we mark local as SYNCED optimistically
-     * so the next [SyncFromCloudUseCase] can pull the authoritative state.
+     * marking local as SYNCED optimistically. The row will be created when the
+     * backend processes the workout sessions, and the next [SyncFromCloudUseCase]
+     * will pull the authoritative state.
      */
     private suspend fun createRemoteCredit(local: TimeCredit): SyncTimeCreditResult {
         return try {
@@ -158,8 +146,6 @@ class SyncTimeCreditUseCase(
             timeCreditRepository.markAsSynced(local.userId)
             SyncTimeCreditResult.Synced
         } catch (e: ApiException.NotFound) {
-            // Row does not exist remotely yet. Mark local as synced optimistically;
-            // the row will be created when the backend processes the workout sessions.
             timeCreditRepository.markAsSynced(local.userId)
             SyncTimeCreditResult.Synced
         }

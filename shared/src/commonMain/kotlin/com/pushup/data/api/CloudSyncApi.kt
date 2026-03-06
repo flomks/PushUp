@@ -5,7 +5,6 @@ import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
-import kotlinx.datetime.Instant
 
 /**
  * Abstraction over the remote cloud API operations required by the sync use-cases.
@@ -20,7 +19,7 @@ import kotlinx.datetime.Instant
  * - Updating the time-credit record for a user.
  *
  * Introducing this interface allows the sync use-cases to be tested with a
- * [FakeCloudSyncApi] without requiring a real [SupabaseClient] (which is a
+ * fake implementation without requiring a real [SupabaseClient] (which is a
  * final class backed by a real HTTP client).
  *
  * [SupabaseClient] implements this interface directly.
@@ -38,14 +37,6 @@ interface CloudSyncApi {
      * @throws ApiException.NotFound if no session with [id] exists.
      */
     suspend fun getWorkoutSession(id: String): WorkoutSession
-
-    /**
-     * Returns all workout sessions with [startedAt] in [[from], [to]] (inclusive).
-     */
-    suspend fun getWorkoutSessionsByDateRange(
-        from: Instant,
-        to: Instant,
-    ): List<WorkoutSession>
 
     /**
      * Creates a new workout session and returns the server-assigned row.

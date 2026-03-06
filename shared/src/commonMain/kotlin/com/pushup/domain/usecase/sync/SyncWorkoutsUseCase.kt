@@ -8,6 +8,7 @@ import com.pushup.data.api.isTransient
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.WorkoutSessionRepository
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -27,12 +28,8 @@ import kotlinx.coroutines.delay
  * When a session already exists in Supabase (HTTP 409 Conflict), the use-case
  * compares the local [WorkoutSession.startedAt] timestamp against the remote
  * record's `started_at`. The record with the **later** timestamp wins:
- * - If local is strictly newer → PATCH the remote record.
- * - If remote is newer or equal → discard the local change and mark as SYNCED.
- *
- * In practice, sessions are immutable after they are finished, so conflicts
- * are rare. The "last write wins" rule is a safety net for edge cases such as
- * a session being edited on two devices simultaneously.
+ * - If local is strictly newer -> PATCH the remote record.
+ * - If remote is newer or equal -> discard the local change and mark as SYNCED.
  *
  * ## Retry with exponential back-off
  * Transient errors ([ApiException.NetworkError], [ApiException.Timeout],
@@ -40,10 +37,6 @@ import kotlinx.coroutines.delay
  * with exponential back-off: `baseDelayMs * 2^attempt` (default: 500ms, 1s, 2s).
  * Non-transient errors (401, 403, etc.) are recorded as [SyncStatus.FAILED]
  * immediately without retrying.
- *
- * ## Result
- * Returns a [SyncWorkoutsResult] summarising how many sessions were uploaded,
- * skipped (conflict resolved in favour of the remote), and failed.
  *
  * @property sessionRepository  Local repository for reading and updating sessions.
  * @property supabaseClient     Remote API client for Supabase PostgREST operations.
@@ -106,6 +99,8 @@ class SyncWorkoutsUseCase(
      * Transient errors are retried with exponential back-off.
      * Non-transient errors (401, 403, etc.) abort immediately and mark the
      * session as [SyncStatus.FAILED].
+     *
+     * [CancellationException] is always re-thrown to preserve structured concurrency.
      */
     private suspend fun uploadWithRetry(session: WorkoutSession): UploadOutcome {
         var lastException: Exception? = null
@@ -113,21 +108,21 @@ class SyncWorkoutsUseCase(
         repeat(maxRetries) { attempt ->
             try {
                 return doUpload(session)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) {
-                    // Non-transient error (e.g. 401, 403): mark as FAILED immediately.
                     markFailed(session.id)
                     return UploadOutcome.FAILED
                 }
                 lastException = e
-                delay(baseDelayMs * (1L shl attempt)) // 500ms, 1000ms, 2000ms
+                delay(baseDelayMs * (1L shl attempt))
             } catch (e: Exception) {
                 lastException = e
                 delay(baseDelayMs * (1L shl attempt))
             }
         }
 
-        // All retries exhausted.
         markFailed(session.id)
         return UploadOutcome.FAILED
     }
@@ -145,9 +140,6 @@ class SyncWorkoutsUseCase(
             sessionRepository.markAsSynced(session.id)
             UploadOutcome.SYNCED
         } catch (e: ApiException.Conflict) {
-            // Session already exists remotely -- apply "Last Write Wins".
-            // resolveConflict may throw a transient ApiException; the caller
-            // will catch it and retry the entire upload attempt.
             resolveConflict(session)
         }
     }
@@ -155,12 +147,8 @@ class SyncWorkoutsUseCase(
     /**
      * Resolves a conflict by comparing [WorkoutSession.startedAt] timestamps.
      *
-     * - Local is strictly newer → PATCH the remote record, mark local as SYNCED.
-     * - Remote is newer or equal → discard local change, mark local as SYNCED.
-     *
-     * Transient [ApiException]s (network errors, timeouts) are re-thrown so that
-     * [uploadWithRetry] can retry the entire operation. Non-transient errors
-     * (e.g. 403 Forbidden on the PATCH) mark the session as FAILED.
+     * Transient [ApiException]s are re-thrown so that [uploadWithRetry] can retry.
+     * Non-transient errors mark the session as FAILED.
      *
      * @throws ApiException if a transient error occurs during the remote fetch or patch.
      */
@@ -168,7 +156,6 @@ class SyncWorkoutsUseCase(
         return try {
             val remote = supabaseClient.getWorkoutSession(local.id)
             if (local.startedAt > remote.startedAt) {
-                // Local is newer: overwrite the remote record.
                 supabaseClient.updateWorkoutSession(
                     id = local.id,
                     request = UpdateWorkoutSessionRequest(
@@ -179,11 +166,10 @@ class SyncWorkoutsUseCase(
                     ),
                 )
             }
-            // Whether we patched or not, the local record is now in sync.
             sessionRepository.markAsSynced(local.id)
             UploadOutcome.SKIPPED
         } catch (e: ApiException) {
-            if (e.isTransient) throw e // Let uploadWithRetry handle the retry.
+            if (e.isTransient) throw e
             markFailed(local.id)
             UploadOutcome.FAILED
         }
@@ -209,8 +195,8 @@ class SyncWorkoutsUseCase(
  * Summary of a [SyncWorkoutsUseCase] invocation.
  *
  * @property synced  Number of sessions successfully uploaded to Supabase.
- * @property skipped Number of sessions where a conflict was resolved in favour
- *   of the remote record (local change discarded, session marked SYNCED).
+ * @property skipped Number of sessions where a conflict was resolved
+ *   (local change discarded or patched, session marked SYNCED).
  * @property failed  Number of sessions that could not be synced after all retries.
  */
 data class SyncWorkoutsResult(

@@ -108,7 +108,7 @@ class SupabaseClient(
     /**
      * Returns all workout sessions with [startedAt] in [[from], [to]] (inclusive).
      */
-    override suspend fun getWorkoutSessionsByDateRange(
+    suspend fun getWorkoutSessionsByDateRange(
         from: Instant,
         to: Instant,
     ): List<WorkoutSession> = withRetry {

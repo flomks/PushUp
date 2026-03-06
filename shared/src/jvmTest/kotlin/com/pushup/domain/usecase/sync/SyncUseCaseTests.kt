@@ -10,7 +10,6 @@ import com.pushup.data.repository.TimeCreditRepositoryImpl
 import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
-import com.pushup.domain.model.AuthToken
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
@@ -955,11 +954,6 @@ class FakeCloudSyncApi : CloudSyncApi {
             ?: throw ApiException.NotFound("Session not found: $id", "WorkoutSession", id)
     }
 
-    override suspend fun getWorkoutSessionsByDateRange(
-        from: kotlinx.datetime.Instant,
-        to: kotlinx.datetime.Instant,
-    ): List<WorkoutSession> = getSessionsResult
-
     override suspend fun createWorkoutSession(request: CreateWorkoutSessionRequest): WorkoutSession {
         createSessionCallCount++
         createSessionCallsSoFar++
@@ -1047,8 +1041,8 @@ class FakeAuthRepository : AuthRepository {
 
     override suspend fun getCurrentUser(): User? = currentUser
 
-    override suspend fun getCurrentToken(): AuthToken? = null
+    override suspend fun getCurrentToken(): com.pushup.domain.model.AuthToken? = null
 
-    override suspend fun refreshToken(): AuthToken =
+    override suspend fun refreshToken(): com.pushup.domain.model.AuthToken =
         throw UnsupportedOperationException()
 }
