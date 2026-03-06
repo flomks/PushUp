@@ -1,5 +1,6 @@
 package com.pushup.data.repository
 
+import com.pushup.data.api.KtorApiClient
 import com.pushup.data.mapper.toDomain
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.DailyStats
@@ -9,7 +10,9 @@ import com.pushup.domain.model.WeeklyStats
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
+import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
@@ -21,12 +24,36 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * SQLDelight-backed implementation of [StatsRepository].
+ * SQLDelight-backed implementation of [StatsRepository] with optional
+ * Ktor API fallback for faster aggregation on large datasets.
  *
- * Computes aggregated statistics by querying [WorkoutSession] data from the
- * database and grouping/aggregating in memory. This approach is correct for
- * moderate data volumes typical in a personal fitness app; if the data set
- * grows significantly, the aggregation can be pushed down to SQL.
+ * ## Dual-source strategy
+ * Statistics can be computed from two sources:
+ *
+ * 1. **Local SQLite** (always available, offline-safe): Aggregates [WorkoutSession]
+ *    data in memory. Correct for moderate data volumes typical in a personal
+ *    fitness app.
+ *
+ * 2. **Ktor backend API** (optional, requires network): The custom Ktor backend
+ *    pre-aggregates data in PostgreSQL, which is significantly faster when the
+ *    user has thousands of sessions. This is the preferred source when available.
+ *
+ * ## Source selection
+ * When [ktorApiClient] and [networkMonitor] are provided:
+ * - If the device is **online**, the Ktor API is tried first.
+ * - If the API call succeeds, the result is returned immediately.
+ * - If the API call fails (network error, server error, etc.), the implementation
+ *   falls back to local computation transparently.
+ * - If the device is **offline**, local computation is used directly.
+ *
+ * When [ktorApiClient] or [networkMonitor] is `null`, local computation is
+ * always used (same behaviour as the original implementation).
+ *
+ * ## Cache strategy
+ * Local data is the source of truth. The API result is used as a read-through
+ * cache for performance -- it is never written back to the local DB by this
+ * repository. The sync use-cases ([SyncFromCloudUseCase]) are responsible for
+ * keeping the local DB up-to-date.
  *
  * All suspend functions are main-safe -- dispatcher switching is handled
  * by [safeDbCall].
@@ -37,6 +64,8 @@ import kotlinx.datetime.toLocalDateTime
  * @param timeZone The timezone for date-based aggregation. Must be provided
  *   explicitly to ensure deterministic behaviour across devices.
  * @param clock Clock used to determine "today" for streak calculation.
+ * @param ktorApiClient Optional Ktor backend client for server-side aggregation.
+ * @param networkMonitor Optional network connectivity checker.
  */
 class StatsRepositoryImpl(
     private val database: PushUpDatabase,
@@ -44,12 +73,33 @@ class StatsRepositoryImpl(
     private val dispatcher: CoroutineDispatcher,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
     private val clock: Clock = Clock.System,
+    private val ktorApiClient: KtorApiClient? = null,
+    private val networkMonitor: NetworkMonitor? = null,
 ) : StatsRepository {
 
     private val queries get() = database.databaseQueries
 
-    override suspend fun getDailyStats(userId: String, date: LocalDate): DailyStats? =
-        safeDbCall(dispatcher, "Failed to get daily stats for user '$userId' on $date") {
+    /**
+     * Returns daily stats for [date].
+     *
+     * Tries the Ktor API first when online; falls back to local computation
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
+     */
+    override suspend fun getDailyStats(userId: String, date: LocalDate): DailyStats? {
+        // Try Ktor API first if available and online.
+        if (ktorApiClient != null && networkMonitor != null) {
+            try {
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getDailyStats(date) else null
+                }
+                if (result != null) return result
+            } catch (_: Exception) {
+                // Fall through to local computation.
+            }
+        }
+
+        return safeDbCall(dispatcher, "Failed to get daily stats for user '$userId' on $date") {
             val sessions = querySessionsForDateRange(
                 userId = userId,
                 from = date,
@@ -58,9 +108,29 @@ class StatsRepositoryImpl(
             if (sessions.isEmpty()) return@safeDbCall null
             buildDailyStats(date, sessions)
         }
+    }
 
-    override suspend fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStats? =
-        safeDbCall(
+    /**
+     * Returns weekly stats for the week starting on [weekStart].
+     *
+     * Tries the Ktor API first when online; falls back to local computation
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
+     */
+    override suspend fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStats? {
+        // Try Ktor API first if available and online.
+        if (ktorApiClient != null && networkMonitor != null) {
+            try {
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getWeeklyStats(weekStart) else null
+                }
+                if (result != null) return result
+            } catch (_: Exception) {
+                // Fall through to local computation.
+            }
+        }
+
+        return safeDbCall(
             dispatcher,
             "Failed to get weekly stats for user '$userId' starting $weekStart",
         ) {
@@ -90,9 +160,29 @@ class StatsRepositoryImpl(
                 dailyBreakdown = dailyBreakdown,
             )
         }
+    }
 
-    override suspend fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStats? =
-        safeDbCall(
+    /**
+     * Returns monthly stats for [month]/[year].
+     *
+     * Tries the Ktor API first when online; falls back to local computation
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
+     */
+    override suspend fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStats? {
+        // Try Ktor API first if available and online.
+        if (ktorApiClient != null && networkMonitor != null) {
+            try {
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getMonthlyStats(month, year) else null
+                }
+                if (result != null) return result
+            } catch (_: Exception) {
+                // Fall through to local computation.
+            }
+        }
+
+        return safeDbCall(
             dispatcher,
             "Failed to get monthly stats for user '$userId' ($month/$year)",
         ) {
@@ -123,42 +213,64 @@ class StatsRepositoryImpl(
                 weeklyBreakdown = weeklyBreakdown,
             )
         }
+    }
 
-    override suspend fun getTotalStats(userId: String): TotalStats? = safeDbCall(
-        dispatcher,
-        "Failed to get total stats for user '$userId'",
-    ) {
-        val sessions = queries.selectWorkoutSessionsByUserId(userId)
-            .executeAsList()
-            .map { it.toDomain() }
+    /**
+     * Returns all-time stats for [userId].
+     *
+     * Tries the Ktor API first when online; falls back to local computation
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
+     */
+    override suspend fun getTotalStats(userId: String): TotalStats? {
+        // Try Ktor API first if available and online.
+        if (ktorApiClient != null && networkMonitor != null) {
+            try {
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getTotalStats(userId) else null
+                }
+                if (result != null) return result
+            } catch (_: Exception) {
+                // Fall through to local computation.
+            }
+        }
 
-        if (sessions.isEmpty()) return@safeDbCall null
+        return safeDbCall(
+            dispatcher,
+            "Failed to get total stats for user '$userId'",
+        ) {
+            val sessions = queries.selectWorkoutSessionsByUserId(userId)
+                .executeAsList()
+                .map { it.toDomain() }
 
-        val timeCredit = timeCreditRepository.get(userId)
+            if (sessions.isEmpty()) return@safeDbCall null
 
-        val today = clock.now().toLocalDateTime(timeZone).date
-        val sessionDates = sessions
-            .map { sessionDate(it) }
-            .distinct()
-            .sorted()
+            val timeCredit = timeCreditRepository.get(userId)
 
-        val (currentStreak, longestStreak) = calculateStreaks(sessionDates, today)
+            val today = clock.now().toLocalDateTime(timeZone).date
+            val sessionDates = sessions
+                .map { sessionDate(it) }
+                .distinct()
+                .sorted()
 
-        val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
+            val (currentStreak, longestStreak) = calculateStreaks(sessionDates, today)
 
-        TotalStats(
-            userId = userId,
-            totalPushUps = sessions.sumOf { it.pushUpCount },
-            totalSessions = sessions.size,
-            totalEarnedSeconds = timeCredit?.totalEarnedSeconds
-                ?: sessions.sumOf { it.earnedTimeCreditSeconds },
-            totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
-            averageQuality = avgQuality,
-            averagePushUpsPerSession = averagePushUps(sessions),
-            bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
-            currentStreakDays = currentStreak,
-            longestStreakDays = longestStreak,
-        )
+            val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
+
+            TotalStats(
+                userId = userId,
+                totalPushUps = sessions.sumOf { it.pushUpCount },
+                totalSessions = sessions.size,
+                totalEarnedSeconds = timeCredit?.totalEarnedSeconds
+                    ?: sessions.sumOf { it.earnedTimeCreditSeconds },
+                totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
+                averageQuality = avgQuality,
+                averagePushUpsPerSession = averagePushUps(sessions),
+                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
+                currentStreakDays = currentStreak,
+                longestStreakDays = longestStreak,
+            )
+        }
     }
 
     // =========================================================================

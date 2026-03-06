@@ -122,6 +122,8 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
         )
     }
 
@@ -137,6 +139,8 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
         )
     }
 
@@ -153,6 +157,8 @@ val repositoryModule: Module = module {
             timeCreditRepository = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            ktorApiClient = getOrNull<KtorApiClient>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
         )
     }
 
