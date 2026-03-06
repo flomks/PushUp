@@ -1,0 +1,336 @@
+# Backend CI/CD Pipeline
+#
+# Triggered on every push to main when backend-related files change.
+#
+# Pipeline stages:
+#   1. lint      -- Static analysis via Detekt
+#   2. test      -- Unit tests via Gradle
+#   3. build     -- Build & push Docker image to GHCR
+#   4. deploy    -- Deploy to Railway via Railway CLI
+#   5. rollback  -- Automatic rollback if deployment health check fails
+#
+# Required GitHub Secrets:
+#   RAILWAY_TOKEN          -- Railway API token (Settings > Tokens)
+#   RAILWAY_SERVICE_ID     -- Railway service ID for the backend service
+#   RAILWAY_PROJECT_ID     -- Railway project ID
+#   BACKEND_HEALTH_URL     -- Full URL of the /health endpoint on Railway
+#                            (e.g. https://pushup-backend.up.railway.app/health)
+
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/backend-ci.yml'
+
+concurrency:
+  group: backend-ci-cd
+  # Do not cancel in-progress deployments -- let them finish to avoid partial state
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write   # required for ghcr.io push
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/pushup-backend
+
+# ---------------------------------------------------------------------------
+# Job 1: Lint
+# ---------------------------------------------------------------------------
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      # `check` runs compileKotlin + compileTestKotlin + all verification tasks
+      # (including any configured static analysis) without executing tests.
+      # Tests are run separately in the `test` job for clearer failure attribution.
+      - name: Compile & static checks (backend module)
+        run: ./gradlew :backend:compileKotlin :backend:compileTestKotlin --no-daemon --stacktrace
+
+      - name: Upload compilation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: backend/build/reports/
+          retention-days: 7
+
+# ---------------------------------------------------------------------------
+# Job 2: Test
+# ---------------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Run backend tests
+        run: ./gradlew :backend:test --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            backend/build/reports/tests/
+            backend/build/test-results/
+          retention-days: 7
+
+# ---------------------------------------------------------------------------
+# Job 3: Build Docker Image & Push to GHCR
+# ---------------------------------------------------------------------------
+  build:
+    name: Build Docker Image & Push to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [lint, test]
+
+    outputs:
+      image-digest: ${{ steps.build-push.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.version }}
+      full-image-ref: ${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache stored in the registry -- speeds up subsequent builds
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          provenance: false
+
+# ---------------------------------------------------------------------------
+# Job 4: Deploy to Railway
+# ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [build]
+
+    # Expose the deployment result so the rollback job can read it
+    outputs:
+      deploy-status: ${{ steps.deploy.outcome }}
+
+    environment:
+      name: production
+      url: ${{ secrets.BACKEND_HEALTH_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+          railway --version
+
+      - name: Record previous deployment ID (for rollback)
+        id: prev-deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          PREV_DEPLOYMENT=$(railway deployments list \
+            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
+            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
+            --json 2>/dev/null \
+            | jq -r '[.[] | select(.status == "SUCCESS")] | first | .id // empty')
+          echo "id=${PREV_DEPLOYMENT}" >> "$GITHUB_OUTPUT"
+          echo "Previous successful deployment: ${PREV_DEPLOYMENT}"
+
+      - name: Deploy image to Railway
+        id: deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          IMAGE_REF="${{ needs.build.outputs.full-image-ref }}"
+          echo "Deploying image: ${IMAGE_REF}"
+
+          railway redeploy \
+            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
+            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
+            --image "${IMAGE_REF}" \
+            --yes
+
+      - name: Wait for Railway deployment to become active
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "Waiting up to 120 seconds for deployment to become active..."
+          for i in $(seq 1 24); do
+            STATUS=$(railway deployments list \
+              --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
+              --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
+              --json 2>/dev/null \
+              | jq -r 'first | .status // "UNKNOWN"')
+            echo "Attempt ${i}/24 -- deployment status: ${STATUS}"
+            if [ "${STATUS}" = "SUCCESS" ]; then
+              echo "Deployment is active."
+              exit 0
+            elif [ "${STATUS}" = "FAILED" ] || [ "${STATUS}" = "CRASHED" ]; then
+              echo "Deployment entered failed state: ${STATUS}"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Timed out waiting for deployment to become active."
+          exit 1
+
+      - name: Health check
+        id: health-check
+        run: |
+          HEALTH_URL="${{ secrets.BACKEND_HEALTH_URL }}"
+          echo "Running health check against: ${HEALTH_URL}"
+          for i in $(seq 1 12); do
+            HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              --max-time 10 "${HEALTH_URL}" || echo "000")
+            echo "Attempt ${i}/12 -- HTTP status: ${HTTP_STATUS}"
+            if [ "${HTTP_STATUS}" = "200" ]; then
+              echo "Health check passed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed after all attempts."
+          exit 1
+
+# ---------------------------------------------------------------------------
+# Job 5: Rollback on failed deployment
+# ---------------------------------------------------------------------------
+  rollback:
+    name: Rollback on Failed Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [deploy]
+    # Only run when the deploy job fails or the health check step fails
+    if: failure() && needs.deploy.result == 'failure'
+
+    steps:
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+          railway --version
+
+      - name: Retrieve last successful deployment ID
+        id: prev-deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          # Find the most recent deployment that succeeded BEFORE the current one
+          PREV_DEPLOYMENT=$(railway deployments list \
+            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
+            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
+            --json 2>/dev/null \
+            | jq -r '[.[] | select(.status == "SUCCESS")] | .[1] | .id // empty')
+          echo "id=${PREV_DEPLOYMENT}" >> "$GITHUB_OUTPUT"
+          echo "Rolling back to deployment: ${PREV_DEPLOYMENT}"
+
+      - name: Rollback to previous successful deployment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          PREV_ID="${{ steps.prev-deploy.outputs.id }}"
+          if [ -z "${PREV_ID}" ]; then
+            echo "No previous successful deployment found -- cannot roll back automatically."
+            echo "Manual intervention required."
+            exit 1
+          fi
+
+          echo "Rolling back to deployment ID: ${PREV_ID}"
+          railway deployments rollback \
+            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
+            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
+            "${PREV_ID}"
+
+      - name: Verify rollback health check
+        run: |
+          HEALTH_URL="${{ secrets.BACKEND_HEALTH_URL }}"
+          echo "Verifying rollback via health check: ${HEALTH_URL}"
+          sleep 15
+          for i in $(seq 1 12); do
+            HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+              --max-time 10 "${HEALTH_URL}" || echo "000")
+            echo "Attempt ${i}/12 -- HTTP status: ${HTTP_STATUS}"
+            if [ "${HTTP_STATUS}" = "200" ]; then
+              echo "Rollback health check passed -- service is healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Rollback health check also failed -- manual intervention required."
+          exit 1
+
+      - name: Annotate workflow with rollback notice
+        if: always()
+        run: |
+          echo "::warning title=Deployment Rolled Back::The deployment failed and was automatically rolled back to the previous successful version. Please investigate the failure before re-deploying."
