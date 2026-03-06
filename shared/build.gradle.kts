@@ -51,6 +51,8 @@ kotlin {
             implementation(libs.koin.android)
             // Ktor Client engine for Android
             implementation(libs.ktor.client.okhttp)
+            // Secure token storage (EncryptedSharedPreferences)
+            implementation(libs.androidx.security.crypto)
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)

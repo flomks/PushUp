@@ -2,17 +2,20 @@ package com.pushup.di
 
 import com.flomks.pushup.db.DatabaseDriverFactory
 import com.flomks.pushup.db.IosDatabaseDriverFactory
+import com.pushup.data.storage.TokenStorage
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
 /**
  * iOS-specific Koin module.
  *
- * Provides the [IosDatabaseDriverFactory] as the platform [DatabaseDriverFactory]
- * implementation. This binding is required by [databaseModule] in [AppModule.kt].
+ * Provides:
+ * - [IosDatabaseDriverFactory] as the platform [DatabaseDriverFactory] implementation.
+ * - [TokenStorage] backed by the iOS Keychain for secure token persistence.
  */
 val iosModule = module {
     single<DatabaseDriverFactory> { IosDatabaseDriverFactory() }
+    single { TokenStorage() }
 }
 
 /**
