@@ -1,8 +1,7 @@
 import AVFoundation
-import Combine
 import UIKit
 
-// MARK: - Camera Position
+// MARK: - CameraPosition
 
 enum CameraPosition {
     case front
@@ -14,17 +13,20 @@ enum CameraPosition {
         case .back:  return .back
         }
     }
+
+    var toggled: CameraPosition {
+        self == .back ? .front : .back
+    }
 }
 
-// MARK: - Camera Error
+// MARK: - CameraError
 
-enum CameraError: LocalizedError {
+enum CameraError: LocalizedError, Equatable {
     case permissionDenied
     case permissionRestricted
     case deviceNotAvailable
     case inputConfigurationFailed
     case outputConfigurationFailed
-    case sessionStartFailed
 
     var errorDescription: String? {
         switch self {
@@ -38,135 +40,243 @@ enum CameraError: LocalizedError {
             return "Failed to configure the camera input."
         case .outputConfigurationFailed:
             return "Failed to configure the camera output."
-        case .sessionStartFailed:
-            return "Failed to start the camera session."
         }
     }
 }
 
-// MARK: - Camera State
+// MARK: - CameraState
 
-enum CameraState {
+enum CameraState: Equatable {
     case idle
     case running
     case stopped
     case error(CameraError)
 }
 
-// MARK: - Sample Buffer Delegate Protocol
+// MARK: - CameraManagerDelegate
 
+/// Receives raw video frames on a dedicated high-priority serial queue.
+/// Implementations must be non-blocking; heavy work should be dispatched elsewhere.
 protocol CameraManagerDelegate: AnyObject {
-    /// Called on the session queue for every captured video frame.
     func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer)
 }
 
 // MARK: - CameraManager
 
-/// Manages an AVCaptureSession that delivers 30 FPS CMSampleBuffer frames
-/// via `CameraManagerDelegate`. Supports front/back camera switching.
+/// Manages an `AVCaptureSession` that delivers 30 FPS `CMSampleBuffer` frames
+/// via `CameraManagerDelegate`. Supports front/back camera switching and
+/// automatic session suspension when the app enters the background.
+///
+/// **Threading model**
+/// - All AVFoundation mutations run on `sessionQueue` (serial).
+/// - `@Published` state is always updated on the main queue.
+/// - `delegate` callbacks arrive on `videoOutputQueue` (serial, `.userInteractive`).
 final class CameraManager: NSObject, ObservableObject {
 
-    // MARK: Published state
+    // MARK: - Published state
 
     @Published private(set) var state: CameraState = .idle
     @Published private(set) var currentPosition: CameraPosition = .back
-    @Published private(set) var previewLayer: AVCaptureVideoPreviewLayer?
 
-    // MARK: Internal session objects
+    /// The preview layer backed by the capture session.
+    /// Created once in `init`; never nil, never replaced.
+    let previewLayer: AVCaptureVideoPreviewLayer
 
-    let session = AVCaptureSession()
+    // MARK: - Private session objects
 
+    private let session = AVCaptureSession()
+
+    /// Serial queue for all AVFoundation configuration and lifecycle calls.
     private let sessionQueue = DispatchQueue(
-        label: "com.pushup.camera.sessionQueue",
+        label: "com.pushup.camera.session",
         qos: .userInitiated
     )
+
+    /// High-priority serial queue for sample buffer delivery.
+    /// `.userInteractive` ensures Vision/ML processing gets CPU time within the 33 ms frame budget.
     private let videoOutputQueue = DispatchQueue(
-        label: "com.pushup.camera.videoOutputQueue",
-        qos: .userInitiated
+        label: "com.pushup.camera.videoOutput",
+        qos: .userInteractive
     )
 
     private var currentInput: AVCaptureDeviceInput?
     private let videoOutput = AVCaptureVideoDataOutput()
 
-    weak var delegate: CameraManagerDelegate?
+    // MARK: - Delegate (thread-safe access)
 
-    // MARK: - Initialisation
+    /// Protected by `delegateLock` so it can be set on any thread and read
+    /// safely from `videoOutputQueue` inside `captureOutput`.
+    private let delegateLock = NSLock()
+    private weak var _delegate: CameraManagerDelegate?
+
+    var delegate: CameraManagerDelegate? {
+        get {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            return _delegate
+        }
+        set {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            _delegate = newValue
+        }
+    }
+
+    // MARK: - Background observation tokens
+
+    private var backgroundObserver: NSObjectProtocol?
+    private var foregroundObserver: NSObjectProtocol?
+
+    // MARK: - Init / Deinit
 
     override init() {
-        super.init()
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
         previewLayer = layer
+        super.init()
+        subscribeToAppLifecycle()
+    }
+
+    deinit {
+        if let token = backgroundObserver { NotificationCenter.default.removeObserver(token) }
+        if let token = foregroundObserver { NotificationCenter.default.removeObserver(token) }
+    }
+
+    // MARK: - App Lifecycle
+
+    private func subscribeToAppLifecycle() {
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.stopSession()
+        }
+
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            // Only restart if we were actively running before backgrounding.
+            guard let self, case .running = self.state else { return }
+            self.startSession()
+        }
     }
 
     // MARK: - Permission
 
-    /// Checks the current authorisation status and requests access if needed.
-    /// Calls `completion` on the main queue with the result.
+    /// Checks authorisation status and requests access when undetermined.
+    /// The completion closure is always called on the **main queue**.
     func requestPermission(completion: @escaping (Result<Void, CameraError>) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            completion(.success(()))
+            DispatchQueue.main.async { completion(.success(())) }
 
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
-                    if granted {
-                        completion(.success(()))
-                    } else {
-                        completion(.failure(.permissionDenied))
-                    }
+                    completion(granted ? .success(()) : .failure(.permissionDenied))
                 }
             }
 
         case .denied:
-            completion(.failure(.permissionDenied))
+            DispatchQueue.main.async { completion(.failure(.permissionDenied)) }
 
         case .restricted:
-            completion(.failure(.permissionRestricted))
+            DispatchQueue.main.async { completion(.failure(.permissionRestricted)) }
 
         @unknown default:
-            completion(.failure(.permissionDenied))
+            DispatchQueue.main.async { completion(.failure(.permissionDenied)) }
         }
     }
 
-    // MARK: - Setup
+    // MARK: - Public API
 
-    /// Configures the session for the given camera position.
-    /// Must be called after permission is granted.
-    func configure(position: CameraPosition = .back) {
-        sessionQueue.async { [weak self] in
+    /// Requests permission, configures the session for `position`, and starts it.
+    /// All errors are surfaced via the `state` published property.
+    func setupAndStart(position: CameraPosition = .back) {
+        requestPermission { [weak self] result in
             guard let self else { return }
-            do {
-                try self.configureSession(position: position)
-                DispatchQueue.main.async {
-                    self.currentPosition = position
+            switch result {
+            case .success:
+                self.sessionQueue.async { [weak self] in
+                    guard let self else { return }
+                    do {
+                        try self.configureSession(position: position)
+                        self.session.startRunning()
+                        DispatchQueue.main.async {
+                            self.currentPosition = position
+                            self.state = .running
+                        }
+                    } catch let error as CameraError {
+                        DispatchQueue.main.async { self.state = .error(error) }
+                    } catch {
+                        DispatchQueue.main.async { self.state = .error(.inputConfigurationFailed) }
+                    }
                 }
-            } catch let error as CameraError {
-                DispatchQueue.main.async {
-                    self.state = .error(error)
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.state = .error(.inputConfigurationFailed)
-                }
+            case .failure(let error):
+                // Already on main queue (requestPermission guarantees this).
+                self.state = .error(error)
             }
         }
     }
 
+    /// Starts the capture session. No-op if already running.
+    func startSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, !self.session.isRunning else { return }
+            self.session.startRunning()
+            DispatchQueue.main.async { self.state = .running }
+        }
+    }
+
+    /// Stops the capture session. No-op if already stopped.
+    func stopSession() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.session.isRunning else { return }
+            self.session.stopRunning()
+            DispatchQueue.main.async { self.state = .stopped }
+        }
+    }
+
+    /// Atomically swaps the active camera input to the opposite lens.
+    /// The session continues running without interruption on supported hardware.
+    func switchCamera() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            let newPosition = self.currentPosition.toggled
+            // Capture running state before reconfiguration (beginConfiguration
+            // may implicitly pause delivery on some devices).
+            let wasRunning = self.session.isRunning
+            do {
+                try self.configureSession(position: newPosition)
+                if wasRunning && !self.session.isRunning {
+                    self.session.startRunning()
+                }
+                DispatchQueue.main.async { self.currentPosition = newPosition }
+            } catch let error as CameraError {
+                DispatchQueue.main.async { self.state = .error(error) }
+            } catch {
+                DispatchQueue.main.async { self.state = .error(.inputConfigurationFailed) }
+            }
+        }
+    }
+
+    // MARK: - Session Configuration (must run on sessionQueue)
+
     private func configureSession(position: CameraPosition) throws {
         session.beginConfiguration()
+        // commitConfiguration is always called, even on early throw.
         defer { session.commitConfiguration() }
 
-        // Preset: high quality, supports 30 FPS on all modern iPhones
         if session.canSetSessionPreset(.high) {
             session.sessionPreset = .high
         }
 
-        // Remove existing inputs
+        // --- Input ---
         session.inputs.forEach { session.removeInput($0) }
 
-        // Add new video input
         let device = try captureDevice(for: position)
         let input = try AVCaptureDeviceInput(device: device)
         guard session.canAddInput(input) else {
@@ -175,15 +285,16 @@ final class CameraManager: NSObject, ObservableObject {
         session.addInput(input)
         currentInput = input
 
-        // Configure 30 FPS on the device
-        try configureFrameRate(device: device, fps: 30)
+        // Lock 30 FPS before committing so the preset and frame rate are
+        // applied atomically within the same beginConfiguration block.
+        configureFrameRate(device: device, targetFPS: 30)
 
-        // Remove existing outputs
+        // --- Output ---
         session.outputs.forEach { session.removeOutput($0) }
 
-        // Add video data output
         videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
         videoOutput.alwaysDiscardsLateVideoFrames = true
+        // YCbCr 4:2:0 full-range: optimal for VNDetectHumanBodyPoseRequest (Task 2.2).
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         ]
@@ -192,13 +303,14 @@ final class CameraManager: NSObject, ObservableObject {
         }
         session.addOutput(videoOutput)
 
-        // Set video orientation to portrait
+        // --- Connection orientation & mirroring ---
         if let connection = videoOutput.connection(with: .video) {
+            // Rotate to portrait (90 degrees clockwise).
             if connection.isVideoRotationAngleSupported(90) {
                 connection.videoRotationAngle = 90
             }
-            // Mirror front camera
-            if position == .front {
+            if position == .front,
+               connection.isVideoMirroringSupported {
                 connection.isVideoMirrored = true
             }
         }
@@ -206,82 +318,50 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Frame Rate
 
-    private func configureFrameRate(device: AVCaptureDevice, fps: Int) throws {
-        let targetFPS = CMTime(value: 1, timescale: CMTimeScale(fps))
+    /// Locks the device to `targetFPS` by selecting the highest-resolution
+    /// format that supports the requested rate, then clamping min/max durations.
+    /// Silently skips if no matching format exists (session preset already
+    /// guarantees a sensible default on all modern iPhones).
+    private func configureFrameRate(device: AVCaptureDevice, targetFPS: Int) {
+        let targetRate = Double(targetFPS)
+        let targetDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
 
-        // Find a format that supports the target FPS
-        let supportedFormat = device.formats.first { format in
-            format.videoSupportedFrameRateRanges.contains { range in
-                range.minFrameRate <= Double(fps) && Double(fps) <= range.maxFrameRate
+        // Prefer the current active format if it already supports the target FPS,
+        // otherwise find the highest-resolution format that does.
+        let candidateFormat: AVCaptureDevice.Format? = {
+            let supports: (AVCaptureDevice.Format) -> Bool = { format in
+                format.videoSupportedFrameRateRanges.contains {
+                    $0.minFrameRate <= targetRate && targetRate <= $0.maxFrameRate
+                }
             }
-        }
+            if supports(device.activeFormat) { return device.activeFormat }
+            return device.formats
+                .filter(supports)
+                .max {
+                    let dimA = $0.formatDescription.dimensions
+                    let dimB = $1.formatDescription.dimensions
+                    return Int(dimA.width) * Int(dimA.height) < Int(dimB.width) * Int(dimB.height)
+                }
+        }()
 
-        guard let format = supportedFormat else { return }
+        guard let format = candidateFormat else { return }
 
-        try device.lockForConfiguration()
-        device.activeFormat = format
-        device.activeVideoMinFrameDuration = targetFPS
-        device.activeVideoMaxFrameDuration = targetFPS
-        device.unlockForConfiguration()
-    }
-
-    // MARK: - Session Lifecycle
-
-    /// Starts the capture session. Safe to call multiple times.
-    func startSession() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            guard !self.session.isRunning else { return }
-            self.session.startRunning()
-            DispatchQueue.main.async {
-                self.state = .running
-            }
-        }
-    }
-
-    /// Stops the capture session. Safe to call multiple times.
-    func stopSession() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            guard self.session.isRunning else { return }
-            self.session.stopRunning()
-            DispatchQueue.main.async {
-                self.state = .stopped
-            }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            device.activeFormat = format
+            device.activeVideoMinFrameDuration = targetDuration
+            device.activeVideoMaxFrameDuration = targetDuration
+        } catch {
+            // Frame rate configuration is best-effort; the session will still
+            // deliver frames at the device default (typically 30 FPS).
         }
     }
 
-    // MARK: - Camera Switching
-
-    /// Switches between front and back camera.
-    func switchCamera() {
-        let newPosition: CameraPosition = currentPosition == .back ? .front : .back
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            do {
-                try self.configureSession(position: newPosition)
-                DispatchQueue.main.async {
-                    self.currentPosition = newPosition
-                }
-                // Restart session if it was running
-                if !self.session.isRunning {
-                    self.session.startRunning()
-                }
-            } catch let error as CameraError {
-                DispatchQueue.main.async {
-                    self.state = .error(error)
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    self.state = .error(.inputConfigurationFailed)
-                }
-            }
-        }
-    }
-
-    // MARK: - Helpers
+    // MARK: - Device Discovery
 
     private func captureDevice(for position: CameraPosition) throws -> AVCaptureDevice {
+        // Ordered by preference: multi-lens systems first for best quality.
         let deviceTypes: [AVCaptureDevice.DeviceType] = [
             .builtInTripleCamera,
             .builtInDualWideCamera,
@@ -289,46 +369,16 @@ final class CameraManager: NSObject, ObservableObject {
             .builtInWideAngleCamera
         ]
 
-        let discoverySession = AVCaptureDevice.DiscoverySession(
+        let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: deviceTypes,
             mediaType: .video,
             position: position.avPosition
         )
 
-        guard let device = discoverySession.devices.first else {
+        guard let device = discovery.devices.first else {
             throw CameraError.deviceNotAvailable
         }
         return device
-    }
-
-    // MARK: - Full Setup Convenience
-
-    /// Requests permission, configures the session, and starts it.
-    /// Reports errors via the `state` published property.
-    func setupAndStart(position: CameraPosition = .back) {
-        requestPermission { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success:
-                // Run configure + start serially on the session queue so that
-                // startRunning() is guaranteed to execute after configuration.
-                self.sessionQueue.async { [weak self] in
-                    guard let self else { return }
-                    do {
-                        try self.configureSession(position: position)
-                        DispatchQueue.main.async { self.currentPosition = position }
-                        self.session.startRunning()
-                        DispatchQueue.main.async { self.state = .running }
-                    } catch let error as CameraError {
-                        DispatchQueue.main.async { self.state = .error(error) }
-                    } catch {
-                        DispatchQueue.main.async { self.state = .error(.inputConfigurationFailed) }
-                    }
-                }
-            case .failure(let error):
-                self.state = .error(error)
-            }
-        }
     }
 }
 
@@ -341,6 +391,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
+        // `delegate` getter acquires delegateLock, making this read thread-safe.
         delegate?.cameraManager(self, didOutput: sampleBuffer)
     }
 
@@ -349,6 +400,17 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         didDrop sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        // Frames are dropped when processing is too slow; this is expected behaviour.
+        // Late frames are discarded intentionally (`alwaysDiscardsLateVideoFrames = true`).
+        // Log in debug builds only to avoid performance overhead in production.
+        #if DEBUG
+        var mode: CMAttachmentMode = 0
+        if let reason = CMGetAttachment(
+            sampleBuffer,
+            key: kCMSampleBufferAttachmentKey_DroppedFrameReason,
+            attachmentModeOut: &mode
+        ) {
+            _ = reason // Available for breakpoint inspection.
+        }
+        #endif
     }
 }
