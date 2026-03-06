@@ -122,6 +122,8 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            cloudSyncApi = runCatching { get<com.pushup.data.api.CloudSyncApi>() }.getOrNull(),
+            networkMonitor = runCatching { get<com.pushup.domain.usecase.sync.NetworkMonitor>(named(NETWORK_MONITOR)) }.getOrNull(),
         )
     }
 
@@ -137,6 +139,8 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            cloudSyncApi = runCatching { get<com.pushup.data.api.CloudSyncApi>() }.getOrNull(),
+            networkMonitor = runCatching { get<com.pushup.domain.usecase.sync.NetworkMonitor>(named(NETWORK_MONITOR)) }.getOrNull(),
         )
     }
 
@@ -153,6 +157,8 @@ val repositoryModule: Module = module {
             timeCreditRepository = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            ktorApiClient = runCatching { get<com.pushup.data.api.KtorApiClient>() }.getOrNull(),
+            networkMonitor = runCatching { get<com.pushup.domain.usecase.sync.NetworkMonitor>(named(NETWORK_MONITOR)) }.getOrNull(),
         )
     }
 
