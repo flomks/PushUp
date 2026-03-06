@@ -4,5 +4,7 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>PushUp uses the camera to detect and count your push-ups in real time using pose estimation.</string>
 </dict>
 </plist>
