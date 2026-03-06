@@ -62,7 +62,7 @@ class SupabaseClient(
     private val tokenProvider: suspend () -> String,
     private val clock: Clock = Clock.System,
     maxRetries: Int = 3,
-) : ApiClientBase(maxRetries) {
+) : ApiClientBase(maxRetries), CloudSyncApi {
 
     private val restBase: String get() = "$supabaseUrl/rest/v1"
 
@@ -73,7 +73,7 @@ class SupabaseClient(
     /**
      * Returns all workout sessions for the authenticated user, newest first.
      */
-    suspend fun getWorkoutSessions(): List<WorkoutSession> = withRetry {
+    override suspend fun getWorkoutSessions(): List<WorkoutSession> = withRetry {
         val token = tokenProvider()
         httpClient.get("$restBase/workout_sessions") {
             supabaseHeaders(token)
@@ -88,7 +88,7 @@ class SupabaseClient(
      *
      * @throws ApiException.NotFound if no session with [id] exists.
      */
-    suspend fun getWorkoutSession(id: String): WorkoutSession = withRetry {
+    override suspend fun getWorkoutSession(id: String): WorkoutSession = withRetry {
         val token = tokenProvider()
         val list = httpClient.get("$restBase/workout_sessions") {
             supabaseHeaders(token)
@@ -126,7 +126,7 @@ class SupabaseClient(
     /**
      * Creates a new workout session and returns the server-assigned row.
      */
-    suspend fun createWorkoutSession(request: CreateWorkoutSessionRequest): WorkoutSession =
+    override suspend fun createWorkoutSession(request: CreateWorkoutSessionRequest): WorkoutSession =
         withRetry {
             val token = tokenProvider()
             httpClient.post("$restBase/workout_sessions") {
@@ -147,7 +147,7 @@ class SupabaseClient(
      *
      * @throws ApiException.NotFound if no session with [id] exists.
      */
-    suspend fun updateWorkoutSession(
+    override suspend fun updateWorkoutSession(
         id: String,
         request: UpdateWorkoutSessionRequest,
     ): WorkoutSession = withRetry {
@@ -246,7 +246,7 @@ class SupabaseClient(
      *
      * There is at most one row per user (UNIQUE constraint on `user_id`).
      */
-    suspend fun getTimeCredit(userId: String): TimeCredit? = withRetry {
+    override suspend fun getTimeCredit(userId: String): TimeCredit? = withRetry {
         val token = tokenProvider()
         httpClient.get("$restBase/time_credits") {
             supabaseHeaders(token)
@@ -263,7 +263,7 @@ class SupabaseClient(
      *
      * @throws ApiException.NotFound if no time credit record exists for [userId].
      */
-    suspend fun updateTimeCredit(
+    override suspend fun updateTimeCredit(
         userId: String,
         request: UpdateTimeCreditRequest,
     ): TimeCredit = withRetry {
