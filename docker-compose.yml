@@ -18,9 +18,14 @@ services:
     expose:
       - "8080"
 
-    # Umgebungsvariablen aus .env Datei auf dem Server laden
+    # Umgebungsvariablen aus .env Datei laden.
+    # Auf dem Server liegt die Datei unter /opt/pushup/.env (siehe DEPLOYMENT.md).
+    # Lokal kann eine .env im selben Verzeichnis wie docker-compose.yml genutzt werden.
     env_file:
-      - /opt/pushup/.env
+      - path: /opt/pushup/.env
+        required: false
+      - path: .env
+        required: false
 
     # Healthcheck -- Docker prueft ob der Container gesund ist
     healthcheck:
