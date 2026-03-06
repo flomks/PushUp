@@ -33,7 +33,7 @@ fun Application.module() {
     configureMonitoring()
     configureStatusPages()
     configureCORS()
-    configureDatabase()
+    val databaseReady = configureDatabase()
     configureAuth()
-    configureRouting()
+    configureRouting(databaseReady = databaseReady)
 }

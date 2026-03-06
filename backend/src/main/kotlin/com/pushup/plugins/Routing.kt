@@ -12,13 +12,14 @@ import io.ktor.server.routing.routing
 
 fun Application.configureRouting(
     statsService: StatsService = StatsService(),
+    databaseReady: Boolean = true,
 ) {
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, HealthResponse(status = "ok"))
         }
 
-        userRoutes()
+        userRoutes(databaseReady = databaseReady)
         statsRoutes(statsService)
     }
 }
