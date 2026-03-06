@@ -12,6 +12,7 @@ import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
@@ -82,15 +83,17 @@ class StatsRepositoryImpl(
      * Returns daily stats for [date].
      *
      * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline.
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
      */
     override suspend fun getDailyStats(userId: String, date: LocalDate): DailyStats? {
         // Try Ktor API first if available and online.
         if (ktorApiClient != null && networkMonitor != null) {
             try {
-                if (networkMonitor.isConnected()) {
-                    return ktorApiClient.getDailyStats(date)
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getDailyStats(date) else null
                 }
+                if (result != null) return result
             } catch (_: Exception) {
                 // Fall through to local computation.
             }
@@ -111,15 +114,17 @@ class StatsRepositoryImpl(
      * Returns weekly stats for the week starting on [weekStart].
      *
      * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline.
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
      */
     override suspend fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStats? {
         // Try Ktor API first if available and online.
         if (ktorApiClient != null && networkMonitor != null) {
             try {
-                if (networkMonitor.isConnected()) {
-                    return ktorApiClient.getWeeklyStats(weekStart)
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getWeeklyStats(weekStart) else null
                 }
+                if (result != null) return result
             } catch (_: Exception) {
                 // Fall through to local computation.
             }
@@ -161,15 +166,17 @@ class StatsRepositoryImpl(
      * Returns monthly stats for [month]/[year].
      *
      * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline.
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
      */
     override suspend fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStats? {
         // Try Ktor API first if available and online.
         if (ktorApiClient != null && networkMonitor != null) {
             try {
-                if (networkMonitor.isConnected()) {
-                    return ktorApiClient.getMonthlyStats(month, year)
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getMonthlyStats(month, year) else null
                 }
+                if (result != null) return result
             } catch (_: Exception) {
                 // Fall through to local computation.
             }
@@ -212,15 +219,17 @@ class StatsRepositoryImpl(
      * Returns all-time stats for [userId].
      *
      * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline.
+     * on any failure or when offline. Both the connectivity check and the API
+     * call run on [dispatcher] to ensure main-safety.
      */
     override suspend fun getTotalStats(userId: String): TotalStats? {
         // Try Ktor API first if available and online.
         if (ktorApiClient != null && networkMonitor != null) {
             try {
-                if (networkMonitor.isConnected()) {
-                    return ktorApiClient.getTotalStats(userId)
+                val result = withContext(dispatcher) {
+                    if (networkMonitor.isConnected()) ktorApiClient.getTotalStats(userId) else null
                 }
+                if (result != null) return result
             } catch (_: Exception) {
                 // Fall through to local computation.
             }

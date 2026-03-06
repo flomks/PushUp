@@ -3,17 +3,12 @@ package com.pushup.data.repository
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
-import com.pushup.data.api.KtorApiClient
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.db.PushUpDatabase
-import com.pushup.domain.model.DailyStats
-import com.pushup.domain.model.MonthlyStats
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
-import com.pushup.domain.model.TotalStats
-import com.pushup.domain.model.WeeklyStats
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.usecase.sync.AlwaysConnectedNetworkMonitor
 import com.pushup.domain.usecase.sync.AlwaysOfflineNetworkMonitor
@@ -21,7 +16,6 @@ import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -278,9 +272,10 @@ class CloudSyncRepositoryTests {
         repo.save(session)
         advanceUntilIdle() // Let background coroutines complete.
 
-        // The background sync should have called createWorkoutSession.
+        // The background sync should have called createWorkoutSession with the correct session ID.
         assertEquals(1, fakeApi.createSessionCalls.size)
-        assertEquals(session.id, fakeApi.createSessionCalls.first().userId.let { session.id })
+        assertEquals(session.userId, fakeApi.createSessionCalls.first().userId)
+        assertEquals(session.startedAt.toString(), fakeApi.createSessionCalls.first().startedAt)
     }
 
     @Test

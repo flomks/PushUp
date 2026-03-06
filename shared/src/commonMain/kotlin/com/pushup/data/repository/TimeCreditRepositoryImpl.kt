@@ -99,9 +99,15 @@ class TimeCreditRepositoryImpl(
 
     /**
      * Atomically adds earned seconds and triggers a background sync.
+     *
+     * The new totals are computed inside the transaction and passed directly to
+     * [triggerBackgroundSync] -- no second DB read is needed, which avoids a
+     * TOCTOU race if another coroutine mutates the record concurrently.
      */
     override suspend fun addEarnedSeconds(userId: String, seconds: Long): Unit {
         require(seconds > 0) { "seconds must be > 0, was $seconds" }
+        var newEarned = 0L
+        var newSpent = 0L
         safeDbCall(
             dispatcher,
             "Failed to add $seconds earned seconds for user '$userId'",
@@ -110,39 +116,43 @@ class TimeCreditRepositoryImpl(
             database.transaction {
                 val existing = queries.selectTimeCreditByUserId(userId).executeAsOneOrNull()
                 if (existing != null) {
+                    newEarned = existing.totalEarnedSeconds + seconds
+                    newSpent = existing.totalSpentSeconds
                     queries.updateTimeCredit(
-                        totalEarnedSeconds = existing.totalEarnedSeconds + seconds,
-                        totalSpentSeconds = existing.totalSpentSeconds,
+                        totalEarnedSeconds = newEarned,
+                        totalSpentSeconds = newSpent,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                         id = existing.id,
                     )
                 } else {
+                    newEarned = seconds
+                    newSpent = 0L
                     queries.insertTimeCredit(
                         id = userId,
                         userId = userId,
-                        totalEarnedSeconds = seconds,
-                        totalSpentSeconds = 0,
+                        totalEarnedSeconds = newEarned,
+                        totalSpentSeconds = newSpent,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                     )
                 }
             }
         }
-        // Trigger background sync after the local mutation.
-        val updated = safeDbCall(dispatcher, "") {
-            queries.selectTimeCreditByUserId(userId).executeAsOneOrNull()?.toDomain()
-        }
-        if (updated != null) {
-            triggerBackgroundSync(userId, updated.totalEarnedSeconds, updated.totalSpentSeconds)
-        }
+        triggerBackgroundSync(userId, newEarned, newSpent)
     }
 
     /**
      * Atomically adds spent seconds and triggers a background sync.
+     *
+     * The new totals are computed inside the transaction and passed directly to
+     * [triggerBackgroundSync] -- no second DB read is needed, which avoids a
+     * TOCTOU race if another coroutine mutates the record concurrently.
      */
     override suspend fun addSpentSeconds(userId: String, seconds: Long): Unit {
         require(seconds > 0) { "seconds must be > 0, was $seconds" }
+        var newEarned = 0L
+        var newSpent = 0L
         safeDbCall(
             dispatcher,
             "Failed to add $seconds spent seconds for user '$userId'",
@@ -151,32 +161,30 @@ class TimeCreditRepositoryImpl(
             database.transaction {
                 val existing = queries.selectTimeCreditByUserId(userId).executeAsOneOrNull()
                 if (existing != null) {
+                    newEarned = existing.totalEarnedSeconds
+                    newSpent = existing.totalSpentSeconds + seconds
                     queries.updateTimeCredit(
-                        totalEarnedSeconds = existing.totalEarnedSeconds,
-                        totalSpentSeconds = existing.totalSpentSeconds + seconds,
+                        totalEarnedSeconds = newEarned,
+                        totalSpentSeconds = newSpent,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                         id = existing.id,
                     )
                 } else {
+                    newEarned = 0L
+                    newSpent = seconds
                     queries.insertTimeCredit(
                         id = userId,
                         userId = userId,
-                        totalEarnedSeconds = 0,
-                        totalSpentSeconds = seconds,
+                        totalEarnedSeconds = newEarned,
+                        totalSpentSeconds = newSpent,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                     )
                 }
             }
         }
-        // Trigger background sync after the local mutation.
-        val updated = safeDbCall(dispatcher, "") {
-            queries.selectTimeCreditByUserId(userId).executeAsOneOrNull()?.toDomain()
-        }
-        if (updated != null) {
-            triggerBackgroundSync(userId, updated.totalEarnedSeconds, updated.totalSpentSeconds)
-        }
+        triggerBackgroundSync(userId, newEarned, newSpent)
     }
 
     override suspend fun markAsSynced(userId: String): Unit = safeDbCall(

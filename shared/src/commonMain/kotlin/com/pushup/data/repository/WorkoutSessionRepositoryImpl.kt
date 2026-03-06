@@ -3,6 +3,7 @@ package com.pushup.data.repository
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.toCreateRequest
 import com.pushup.data.mapper.syncStatusToString
 import com.pushup.data.mapper.toDomain
@@ -243,7 +244,7 @@ class WorkoutSessionRepositoryImpl(
                     try {
                         api.updateWorkoutSession(
                             id = session.id,
-                            request = com.pushup.data.api.dto.UpdateWorkoutSessionRequest(
+                            request = UpdateWorkoutSessionRequest(
                                 endedAt = session.endedAt?.toString(),
                                 pushUpCount = session.pushUpCount,
                                 earnedTimeCredits = session.earnedTimeCreditSeconds.toInt(),
@@ -287,7 +288,7 @@ class WorkoutSessionRepositoryImpl(
                 for (remote in remoteSessions) {
                     if (remote.userId != userId) continue
                     try {
-                        val local = safeDbCall(dispatcher, "") {
+                        val local = safeDbCall(dispatcher, "Failed to read local session '${remote.id}' during cloud merge") {
                             queries.selectWorkoutSessionById(remote.id).executeAsOneOrNull()?.toDomain()
                         }
                         val shouldWrite = local == null || remote.startedAt > local.startedAt
