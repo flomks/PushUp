@@ -34,20 +34,33 @@ kotlin {
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines)
             implementation(libs.koin.core)
+            // Ktor Client -- core + plugins (engine is platform-specific)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.contentNegotiation)
+            implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.client.auth)
+            implementation(libs.ktor.serialization.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.driver.android)
             implementation(libs.koin.android)
+            // Ktor Client engine for Android
+            implementation(libs.ktor.client.okhttp)
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)
+            // Ktor Client engine for iOS (Darwin)
+            implementation(libs.ktor.client.darwin)
         }
         jvmMain.dependencies {
             implementation(libs.sqldelight.driver.jvm)
+            // Ktor Client engine for JVM/Desktop
+            implementation(libs.ktor.client.cio)
         }
         jvmTest.dependencies {
             // koin-test uses kotlin-reflect and is JVM-only; not available on Kotlin/Native
