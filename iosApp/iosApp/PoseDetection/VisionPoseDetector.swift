@@ -1,6 +1,5 @@
 import AVFoundation
 import CoreMedia
-import os.lock
 import Vision
 
 // MARK: - PoseDetectorDelegate
@@ -9,7 +8,10 @@ import Vision
 /// camera's `videoOutputQueue`).
 ///
 /// Implementations must be non-blocking. Dispatch UI updates to the main queue.
-protocol PoseDetectorDelegate: AnyObject {
+///
+/// Marked `Sendable` because instances are set from the main queue and called
+/// from the video output queue.
+protocol PoseDetectorDelegate: AnyObject, Sendable {
     /// Called after every successfully processed frame.
     /// - Parameters:
     ///   - detector: The detector that produced the result.
@@ -94,29 +96,22 @@ final class VisionPoseDetector: ObservableObject {
 
     // MARK: - Private State
 
-    /// Lock protecting `_isEnabled` and `_isProcessing`.
+    /// Lock protecting `_isEnabled`, `_isProcessing`, and `_frameCount`.
     ///
-    /// Uses `NSLock` for compatibility. Both flags are read/written from
+    /// Uses `NSLock` for compatibility. These fields are read/written from
     /// different queues (main queue sets `isEnabled`, video output queue
-    /// reads it and toggles `isProcessing`).
+    /// reads it and toggles `isProcessing`/`_frameCount`).
     private let stateLock = NSLock()
     private var _isEnabled: Bool = true
     private var _isProcessing: Bool = false
 
-    /// Reusable request -- creating it once avoids per-frame allocation overhead.
-    private let bodyPoseRequest = VNDetectHumanBodyPoseRequest()
-
     /// Monotonically increasing frame counter used for debug logging.
-    private var frameCount: UInt64 = 0
+    /// Protected by `stateLock` to prevent data races.
+    private var _frameCount: UInt64 = 0
 
     // MARK: - Init
 
-    init() {
-        // Limit to one observation (the most prominent person in the frame).
-        // Setting maximumObservationCount = 1 avoids allocating results for
-        // multiple people and keeps latency minimal.
-        bodyPoseRequest.maximumObservationCount = 1
-    }
+    init() {}
 
     // MARK: - Public API
 
@@ -129,16 +124,17 @@ final class VisionPoseDetector: ObservableObject {
     ///
     /// - Parameter sampleBuffer: A video frame delivered by `AVCaptureOutput`.
     func process(_ sampleBuffer: CMSampleBuffer) {
-        // Acquire lock to check both flags atomically and set isProcessing.
+        // Acquire lock to check both flags atomically, set isProcessing,
+        // and increment frame counter under the same critical section.
         stateLock.lock()
         guard _isEnabled, !_isProcessing else {
             stateLock.unlock()
             return
         }
         _isProcessing = true
+        _frameCount &+= 1
+        let currentFrame = _frameCount
         stateLock.unlock()
-
-        frameCount &+= 1
 
         defer {
             stateLock.lock()
@@ -148,7 +144,7 @@ final class VisionPoseDetector: ObservableObject {
 
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
 
-        // Obtain the pixel buffer. Vision can also accept CVPixelBuffer directly.
+        // Obtain the pixel buffer.
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             deliverResult(nil)
             return
@@ -163,22 +159,29 @@ final class VisionPoseDetector: ObservableObject {
             options: [:]
         )
 
+        // Create a fresh request per frame. While VNRequest can be reused
+        // when access is serialised, creating per-frame avoids subtle bugs
+        // if the serialisation invariant is ever relaxed, and the allocation
+        // cost (~microseconds) is negligible vs. the ~10 ms inference time.
+        let request = VNDetectHumanBodyPoseRequest()
+        request.maximumObservationCount = 1
+
         do {
             #if DEBUG
             let start = CACurrentMediaTime()
             #endif
 
-            try handler.perform([bodyPoseRequest])
+            try handler.perform([request])
 
             #if DEBUG
             let elapsed = (CACurrentMediaTime() - start) * 1_000
-            if frameCount % 30 == 0 {
+            if currentFrame % 30 == 0 {
                 // Log every 30 frames (~1 s at 30 FPS) to avoid log spam.
-                print("[VisionPoseDetector] frame \(frameCount): \(String(format: "%.1f", elapsed)) ms")
+                print("[VisionPoseDetector] frame \(currentFrame): \(String(format: "%.1f", elapsed)) ms")
             }
             #endif
 
-            let pose = buildPose(from: bodyPoseRequest.results?.first, timestamp: timestamp)
+            let pose = buildPose(from: request.results?.first, timestamp: timestamp)
             deliverResult(pose)
 
         } catch {
@@ -229,8 +232,11 @@ final class VisionPoseDetector: ObservableObject {
 
     /// Delivers the result to both the delegate and the `@Published` property.
     private func deliverResult(_ pose: BodyPose?) {
-        // Read delegate under lock (may be nil if cleared from main queue).
-        delegate?.poseDetector(self, didDetect: pose)
+        // Capture a strong reference to the delegate for the duration of the
+        // call. The lock-protected getter returns a strong optional; holding
+        // it here prevents deallocation between the nil-check and the call.
+        let currentDelegate = delegate
+        currentDelegate?.poseDetector(self, didDetect: pose)
 
         DispatchQueue.main.async { [weak self] in
             self?.currentPose = pose

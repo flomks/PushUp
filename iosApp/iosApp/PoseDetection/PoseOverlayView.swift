@@ -148,17 +148,15 @@ struct PoseOverlayContainerView: View {
     @StateObject private var detector = VisionPoseDetector()
 
     var body: some View {
-        let detectorRef = detector
         ZStack {
-            CameraContainerView { sampleBuffer in
-                // `detectorRef` is a local copy of the reference captured by
-                // value. This avoids capturing `self` or the `@StateObject`
-                // property wrapper directly. The `VisionPoseDetector` instance
-                // is kept alive by SwiftUI's `@StateObject` ownership; this
-                // closure simply holds an additional strong reference for the
-                // duration of the camera session, which is correct because the
-                // camera stops in `onDisappear` before the view is torn down.
-                detectorRef.process(sampleBuffer)
+            CameraContainerView { [detector] sampleBuffer in
+                // Capture `detector` by value in the capture list. This creates
+                // a strong reference to the VisionPoseDetector instance (not the
+                // @StateObject wrapper). The instance is kept alive by SwiftUI's
+                // @StateObject ownership; the closure holds an additional strong
+                // reference for the duration of the camera session. The camera
+                // stops in `onDisappear` before the view is torn down.
+                detector.process(sampleBuffer)
             }
 
             PoseOverlayView(

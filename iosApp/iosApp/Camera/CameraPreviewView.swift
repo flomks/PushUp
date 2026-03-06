@@ -60,7 +60,7 @@ final class PreviewUIView: UIView {
 
 // MARK: - CameraUnavailableView
 
-/// Displayed in place of the camera preview when the camera cannot be used —
+/// Displayed in place of the camera preview when the camera cannot be used --
 /// for example when permission is denied or the device has no camera (Simulator).
 struct CameraUnavailableView: View {
 
@@ -126,7 +126,10 @@ struct CameraContainerView: View {
 
     /// Optional closure called on the video output queue for every captured frame.
     /// Keep implementations non-blocking; dispatch heavy work to a background queue.
-    var onSampleBuffer: ((CMSampleBuffer) -> Void)?
+    ///
+    /// Marked `@Sendable` because it is invoked on the video output queue but
+    /// captured from the main-queue SwiftUI context.
+    var onSampleBuffer: (@Sendable (CMSampleBuffer) -> Void)?
 
     @StateObject private var cameraManager = CameraManager()
 
@@ -146,7 +149,7 @@ struct CameraContainerView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
-        .onChange(of: onSampleBuffer != nil) { _ in
+        .onChange(of: onSampleBuffer != nil) { _, _ in
             // Re-attach whenever the closure presence changes.
             attachDelegate()
         }
@@ -204,12 +207,15 @@ struct CameraContainerView: View {
 ///
 /// **Ownership:** `CameraContainerView` holds a strong reference via `@State`.
 /// `CameraManager.delegate` holds only a `weak` reference, so this object's
-/// lifetime is controlled entirely by the view — no retain cycle possible.
-final class SampleBufferHandler: CameraManagerDelegate {
+/// lifetime is controlled entirely by the view -- no retain cycle possible.
+///
+/// Conforms to `@unchecked Sendable` because the stored closure is `@Sendable`
+/// and the class has no mutable state after initialisation.
+final class SampleBufferHandler: CameraManagerDelegate, @unchecked Sendable {
 
-    private let handler: (CMSampleBuffer) -> Void
+    private let handler: @Sendable (CMSampleBuffer) -> Void
 
-    init(handler: @escaping (CMSampleBuffer) -> Void) {
+    init(handler: @escaping @Sendable (CMSampleBuffer) -> Void) {
         self.handler = handler
     }
 
