@@ -86,30 +86,42 @@ jobs:
           host:     ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key:      ${{ secrets.SERVER_SSH_KEY }}
-          port:     ${{ secrets.SERVER_PORT || '22' }}
           script: |
             set -e
 
-            # Ins Deployment-Verzeichnis wechseln
             cd /opt/pushup
 
-            # Neues Image ziehen
-            docker pull ghcr.io/flomks/pushup-backend:latest
+            # Vorheriges :latest als Rollback-Tag sichern
+            if docker image inspect ghcr.io/flomks/pushup-backend:latest \
+                 > /dev/null 2>&1; then
+              docker tag ghcr.io/flomks/pushup-backend:latest \
+                         ghcr.io/flomks/pushup-backend:rollback
+              echo "Rollback-Tag gesetzt."
+            else
+              echo "Kein vorheriges Image vorhanden -- kein Rollback-Tag."
+            fi
 
-            # Container neu starten mit neuem Image
+            # Neues Image ziehen und Container neu starten
             docker compose up -d --pull always pushup-backend
 
-            # Kurz warten bis der Container hochgefahren ist
-            sleep 5
+            # Warten bis Container hochgefahren ist
+            sleep 10
 
             # Health-Check
-            curl --fail --silent http://localhost:8080/health || {
-              echo "Health check failed -- rolling back"
-              docker compose down
+            if curl --fail --silent http://localhost:8080/health; then
+              echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
+              docker image prune -f
+            else
+              echo "Health check fehlgeschlagen -- starte Rollback..."
+              if docker image inspect ghcr.io/flomks/pushup-backend:rollback \
+                   > /dev/null 2>&1; then
+                docker tag ghcr.io/flomks/pushup-backend:rollback \
+                           ghcr.io/flomks/pushup-backend:latest
+                docker compose up -d --pull never pushup-backend
+                echo "Rollback abgeschlossen."
+              else
+                echo "Kein Rollback-Image vorhanden -- manueller Eingriff noetig."
+                docker compose down
+              fi
               exit 1
-            }
-
-            echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
-
-            # Alte ungenutzte Images aufraeumen
-            docker image prune -f
+            fi
