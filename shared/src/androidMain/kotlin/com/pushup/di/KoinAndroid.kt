@@ -3,6 +3,7 @@ package com.pushup.di
 import android.content.Context
 import com.flomks.pushup.db.AndroidDatabaseDriverFactory
 import com.flomks.pushup.db.DatabaseDriverFactory
+import com.pushup.data.storage.TokenStorage
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -12,14 +13,16 @@ import org.koin.dsl.module
 /**
  * Android-specific Koin module.
  *
- * Provides the [AndroidDatabaseDriverFactory] as the platform [DatabaseDriverFactory]
- * implementation. This binding is required by [databaseModule] in [AppModule.kt].
+ * Provides:
+ * - [AndroidDatabaseDriverFactory] as the platform [DatabaseDriverFactory] implementation.
+ * - [TokenStorage] backed by [EncryptedSharedPreferences] for secure token persistence.
  *
- * The [Context] is resolved from the Koin Android context that is set up
- * by [androidContext] in [initKoin].
+ * Both bindings require the Android [Context] which is resolved from the Koin
+ * Android context set up by [androidContext] in [initKoin].
  */
 val androidModule = module {
     single<DatabaseDriverFactory> { AndroidDatabaseDriverFactory(context = androidContext()) }
+    single { TokenStorage(context = androidContext()) }
 }
 
 /**

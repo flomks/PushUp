@@ -33,6 +33,29 @@ interface UserRepository {
     suspend fun updateUser(user: User)
 
     /**
+     * Atomically inserts or replaces the [user] in the data store.
+     *
+     * Equivalent to SQL `INSERT OR REPLACE`. Safe to call regardless of whether
+     * the user already exists -- eliminates the read-then-write TOCTOU race that
+     * would occur when calling [saveUser] or [updateUser] conditionally.
+     *
+     * @param user The user to insert or replace.
+     */
+    suspend fun upsertUser(user: User)
+
+    /**
+     * Deletes the user with [userId] from the data store.
+     *
+     * All associated data (workout sessions, time credits, settings) is cascade-deleted
+     * by the database foreign-key constraints.
+     *
+     * This is a no-op if no user with [userId] exists.
+     *
+     * @param userId The ID of the user to delete.
+     */
+    suspend fun deleteUser(userId: String)
+
+    /**
      * Observes the currently authenticated user as a reactive [Flow].
      *
      * Emits `null` when no user is signed in.

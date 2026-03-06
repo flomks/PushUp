@@ -3,8 +3,11 @@ package com.pushup.di
 import com.flomks.pushup.db.DatabaseDriverFactory
 import com.pushup.data.api.JwtTokenProvider
 import com.pushup.data.api.KtorApiClient
+import com.pushup.data.api.AuthClient
+import com.pushup.data.api.SupabaseAuthClient
 import com.pushup.data.api.SupabaseClient
 import com.pushup.data.api.createHttpClient
+import com.pushup.data.repository.AuthRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -12,6 +15,7 @@ import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.UserSettingsRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
@@ -32,6 +36,13 @@ import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
+import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
+import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
+import com.pushup.domain.usecase.auth.LoginWithEmailUseCase
+import com.pushup.domain.usecase.auth.LoginWithGoogleUseCase
+import com.pushup.domain.usecase.auth.LogoutUseCase
+import com.pushup.domain.usecase.auth.RefreshTokenUseCase
+import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.datetime.Clock
@@ -138,6 +149,16 @@ val repositoryModule: Module = module {
             clock = get(),
         )
     }
+
+    single<AuthRepository> {
+        AuthRepositoryImpl(
+            authClient = get(),
+            tokenStorage = get(),
+            userRepository = get(),
+            clock = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+        )
+    }
 }
 
 /**
@@ -177,6 +198,15 @@ val useCaseModule: Module = module {
     factory { GetWeeklyStatsUseCase(statsRepository = get()) }
     factory { GetMonthlyStatsUseCase(statsRepository = get()) }
     factory { GetTotalStatsUseCase(statsRepository = get()) }
+
+    // Auth use-cases (Task 1B.8)
+    factory { RegisterWithEmailUseCase(authRepository = get()) }
+    factory { LoginWithEmailUseCase(authRepository = get()) }
+    factory { LoginWithAppleUseCase(authRepository = get()) }
+    factory { LoginWithGoogleUseCase(authRepository = get()) }
+    factory { LogoutUseCase(authRepository = get()) }
+    factory { GetCurrentUserUseCase(authRepository = get()) }
+    factory { RefreshTokenUseCase(authRepository = get()) }
 }
 
 /**
@@ -222,6 +252,17 @@ const val BACKEND_BASE_URL = "backend_base_url"
 const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
 
 /**
+ * Named Koin qualifier for the debug flag.
+ *
+ * Bind this in your platform-specific module:
+ * ```kotlin
+ * single<Boolean>(named(IS_DEBUG)) { BuildConfig.DEBUG }
+ * ```
+ * Defaults to `false` when not bound (production-safe).
+ */
+const val IS_DEBUG = "is_debug"
+
+/**
  * API module: binds the [io.ktor.client.HttpClient], [SupabaseClient], and
  * [KtorApiClient] as **singletons**.
  *
@@ -232,16 +273,22 @@ const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
  * - `String` named [BACKEND_BASE_URL]
  * - [JwtTokenProvider] named [JWT_TOKEN_PROVIDER]
  *
+ * Optionally accepts:
+ * - `Boolean` named [IS_DEBUG] -- enables HTTP header logging in debug builds.
+ *   Defaults to `false` when not bound.
+ *
  * In development / testing, these can be provided via a test module that
  * supplies mock values.
  */
 val apiModule: Module = module {
-    // Shared HttpClient -- one instance for both API clients
+    // Shared HttpClient -- one instance for both API clients.
+    // Resolves IS_DEBUG from Koin; defaults to false if not bound (production-safe).
     single {
-        createHttpClient(isDebug = false)
+        val isDebug = runCatching { get<Boolean>(named(IS_DEBUG)) }.getOrDefault(false)
+        createHttpClient(isDebug = isDebug)
     }
 
-    // Supabase REST API client
+    // Supabase REST API client (PostgREST)
     single {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
         SupabaseClient(
@@ -249,6 +296,16 @@ val apiModule: Module = module {
             supabaseUrl = get(named(SUPABASE_URL)),
             supabaseAnonKey = get(named(SUPABASE_ANON_KEY)),
             tokenProvider = { tokenProvider.getToken() },
+            clock = get(),
+        )
+    }
+
+    // Supabase Auth API client (bound as AuthClient interface for testability)
+    single<AuthClient> {
+        SupabaseAuthClient(
+            httpClient = get(),
+            supabaseUrl = get(named(SUPABASE_URL)),
+            supabaseAnonKey = get(named(SUPABASE_ANON_KEY)),
             clock = get(),
         )
     }

@@ -111,6 +111,10 @@ UPDATE User
 SET email = ?, displayName = ?, syncedAt = ?
 WHERE id = ?;
 
+upsertUser:
+INSERT OR REPLACE INTO User (id, email, displayName, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?);
+
 deleteUser:
 DELETE FROM User
 WHERE id = ?;

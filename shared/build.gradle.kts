@@ -8,6 +8,12 @@ plugins {
 }
 
 kotlin {
+    // Opt-in to stable expect/actual classes (currently in Beta -- suppresses the warning).
+    // See: https://youtrack.jetbrains.com/issue/KT-61573
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -51,6 +57,8 @@ kotlin {
             implementation(libs.koin.android)
             // Ktor Client engine for Android
             implementation(libs.ktor.client.okhttp)
+            // Secure token storage (EncryptedSharedPreferences)
+            implementation(libs.androidx.security.crypto)
         }
         iosMain.dependencies {
             implementation(libs.sqldelight.driver.native)

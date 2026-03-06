@@ -26,7 +26,7 @@ import kotlinx.serialization.SerializationException
  * keeping the public API surface clean and the retry/error-mapping logic
  * in a single, testable place.
  */
-internal abstract class ApiClientBase(
+abstract class ApiClientBase(
     /** Maximum number of retry attempts for transient errors. */
     protected val maxRetries: Int = 3,
 ) {

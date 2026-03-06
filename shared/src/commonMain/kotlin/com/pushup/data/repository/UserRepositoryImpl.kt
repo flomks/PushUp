@@ -60,6 +60,26 @@ class UserRepositoryImpl(
         )
     }
 
+    override suspend fun upsertUser(user: User): Unit = safeDbCall(
+        dispatcher,
+        "Failed to upsert user '${user.id}'",
+    ) {
+        queries.upsertUser(
+            id = user.id,
+            email = user.email,
+            displayName = user.displayName,
+            createdAt = user.createdAt.toEpochMilliseconds(),
+            syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
+        )
+    }
+
+    override suspend fun deleteUser(userId: String): Unit = safeDbCall(
+        dispatcher,
+        "Failed to delete user '$userId'",
+    ) {
+        queries.deleteUser(id = userId)
+    }
+
     override fun observeCurrentUser(): Flow<User?> =
         queries.selectCurrentUser()
             .asFlow()
