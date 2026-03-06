@@ -7,7 +7,7 @@ import Vision
 ///
 /// Covers all joints required for push-up detection (shoulders, elbows,
 /// wrists, hips) plus knees for future exercise support.
-enum JointName: String, CaseIterable, Hashable {
+enum JointName: String, CaseIterable, Hashable, Sendable {
     case leftShoulder
     case rightShoulder
     case leftElbow
@@ -46,7 +46,7 @@ enum JointName: String, CaseIterable, Hashable {
 ///   Vision framework's coordinate system.
 /// - `confidence`: Value in [0, 1] reported by Vision. Joints below the
 ///   `BodyPose.minimumConfidence` threshold are marked `isDetected = false`.
-struct Joint: Equatable {
+struct Joint: Equatable, Sendable {
 
     /// Minimum confidence threshold below which a joint is considered undetected.
     static let minimumConfidence: Float = 0.3
@@ -78,7 +78,7 @@ struct Joint: Equatable {
 ///
 /// Convert to UIKit/SwiftUI coordinates (origin top-left) with
 /// `CGPoint(x: joint.position.x, y: 1 - joint.position.y)`.
-struct BodyPose {
+struct BodyPose: Sendable {
 
     // MARK: - Storage
 

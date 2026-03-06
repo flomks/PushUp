@@ -1,11 +1,12 @@
 import AVFoundation
-import Combine
 import CoreMedia
+import os.lock
 import Vision
 
 // MARK: - PoseDetectorDelegate
 
-/// Receives pose detection results on the detector's internal serial queue.
+/// Receives pose detection results on the caller's queue (typically the
+/// camera's `videoOutputQueue`).
 ///
 /// Implementations must be non-blocking. Dispatch UI updates to the main queue.
 protocol PoseDetectorDelegate: AnyObject {
@@ -52,24 +53,58 @@ final class VisionPoseDetector: ObservableObject {
     /// `nil` when no person is visible or detection is paused.
     @Published private(set) var currentPose: BodyPose?
 
-    // MARK: - Delegate
+    // MARK: - Delegate (thread-safe)
 
-    weak var delegate: PoseDetectorDelegate?
+    /// Protected by `delegateLock` so it can be set from the main queue and
+    /// read safely from the video output queue inside `deliverResult`.
+    private let delegateLock = NSLock()
+    private weak var _delegate: PoseDetectorDelegate?
 
-    // MARK: - Configuration
+    var delegate: PoseDetectorDelegate? {
+        get {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            return _delegate
+        }
+        set {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            _delegate = newValue
+        }
+    }
+
+    // MARK: - Configuration (thread-safe)
 
     /// When `true`, the detector processes every incoming frame.
     /// Set to `false` to pause detection without stopping the camera.
-    var isEnabled: Bool = true
+    ///
+    /// Thread-safe: reads and writes are protected by `stateLock`.
+    var isEnabled: Bool {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return _isEnabled
+        }
+        set {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            _isEnabled = newValue
+        }
+    }
 
     // MARK: - Private State
 
-    /// Reusable request — creating it once avoids per-frame allocation overhead.
-    private let bodyPoseRequest = VNDetectHumanBodyPoseRequest()
+    /// Lock protecting `_isEnabled` and `_isProcessing`.
+    ///
+    /// Uses `NSLock` for compatibility. Both flags are read/written from
+    /// different queues (main queue sets `isEnabled`, video output queue
+    /// reads it and toggles `isProcessing`).
+    private let stateLock = NSLock()
+    private var _isEnabled: Bool = true
+    private var _isProcessing: Bool = false
 
-    /// Guards against re-entrant processing when a frame arrives before the
-    /// previous Vision request has completed.
-    private var isProcessing: Bool = false
+    /// Reusable request -- creating it once avoids per-frame allocation overhead.
+    private let bodyPoseRequest = VNDetectHumanBodyPoseRequest()
 
     /// Monotonically increasing frame counter used for debug logging.
     private var frameCount: UInt64 = 0
@@ -94,11 +129,22 @@ final class VisionPoseDetector: ObservableObject {
     ///
     /// - Parameter sampleBuffer: A video frame delivered by `AVCaptureOutput`.
     func process(_ sampleBuffer: CMSampleBuffer) {
-        guard isEnabled, !isProcessing else { return }
-        isProcessing = true
+        // Acquire lock to check both flags atomically and set isProcessing.
+        stateLock.lock()
+        guard _isEnabled, !_isProcessing else {
+            stateLock.unlock()
+            return
+        }
+        _isProcessing = true
+        stateLock.unlock()
+
         frameCount &+= 1
 
-        defer { isProcessing = false }
+        defer {
+            stateLock.lock()
+            _isProcessing = false
+            stateLock.unlock()
+        }
 
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
 
@@ -108,7 +154,7 @@ final class VisionPoseDetector: ObservableObject {
             return
         }
 
-        // Build a handler for this frame. Using `.image` orientation ensures
+        // Build a handler for this frame. The `.up` orientation ensures
         // Vision interprets the buffer in the correct upright orientation
         // (the camera output is already rotated to portrait by CameraManager).
         let handler = VNImageRequestHandler(
@@ -159,8 +205,8 @@ final class VisionPoseDetector: ObservableObject {
 
         for jointName in JointName.allCases {
             guard let point = try? observation.recognizedPoint(jointName.vnJointName) else {
-                // Joint not present in this observation — insert a zero-confidence placeholder
-                // so downstream code can always subscript without optional chaining.
+                // Joint not present in this observation -- insert a zero-confidence
+                // placeholder so downstream code can always subscript safely.
                 joints[jointName] = Joint(
                     name: jointName,
                     position: .zero,
@@ -183,7 +229,9 @@ final class VisionPoseDetector: ObservableObject {
 
     /// Delivers the result to both the delegate and the `@Published` property.
     private func deliverResult(_ pose: BodyPose?) {
+        // Read delegate under lock (may be nil if cleared from main queue).
         delegate?.poseDetector(self, didDetect: pose)
+
         DispatchQueue.main.async { [weak self] in
             self?.currentPose = pose
         }

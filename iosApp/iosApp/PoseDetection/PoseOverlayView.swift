@@ -148,9 +148,17 @@ struct PoseOverlayContainerView: View {
     @StateObject private var detector = VisionPoseDetector()
 
     var body: some View {
+        let detectorRef = detector
         ZStack {
-            CameraContainerView { [weak detector] sampleBuffer in
-                detector?.process(sampleBuffer)
+            CameraContainerView { sampleBuffer in
+                // `detectorRef` is a local copy of the reference captured by
+                // value. This avoids capturing `self` or the `@StateObject`
+                // property wrapper directly. The `VisionPoseDetector` instance
+                // is kept alive by SwiftUI's `@StateObject` ownership; this
+                // closure simply holds an additional strong reference for the
+                // duration of the camera session, which is correct because the
+                // camera stops in `onDisappear` before the view is torn down.
+                detectorRef.process(sampleBuffer)
             }
 
             PoseOverlayView(
@@ -173,7 +181,7 @@ struct PoseOverlayContainerView: View {
 #Preview("Pose Overlay - Sample Pose") {
     // Build a synthetic pose for layout verification in Xcode Previews.
     let sampleJoints: [JointName: Joint] = Dictionary(
-        uniqueKeysWithValues: JointName.allCases.enumerated().map { index, name in
+        uniqueKeysWithValues: JointName.allCases.map { name in
             // Spread joints across the frame in a rough humanoid layout.
             let positions: [JointName: CGPoint] = [
                 .leftShoulder:  CGPoint(x: 0.40, y: 0.70),
