@@ -1,6 +1,10 @@
 package com.pushup.di
 
 import com.flomks.pushup.db.DatabaseDriverFactory
+import com.pushup.data.api.JwtTokenProvider
+import com.pushup.data.api.KtorApiClient
+import com.pushup.data.api.SupabaseClient
+import com.pushup.data.api.createHttpClient
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -176,14 +180,106 @@ val useCaseModule: Module = module {
 }
 
 /**
+ * Named Koin qualifier for the Supabase project URL.
+ *
+ * Bind this in your platform-specific module (or override in tests):
+ * ```kotlin
+ * single<String>(named(SUPABASE_URL)) { "https://<ref>.supabase.co" }
+ * ```
+ */
+const val SUPABASE_URL = "supabase_url"
+
+/**
+ * Named Koin qualifier for the Supabase anon (public) API key.
+ *
+ * Bind this in your platform-specific module (or override in tests):
+ * ```kotlin
+ * single<String>(named(SUPABASE_ANON_KEY)) { BuildConfig.SUPABASE_ANON_KEY }
+ * ```
+ */
+const val SUPABASE_ANON_KEY = "supabase_anon_key"
+
+/**
+ * Named Koin qualifier for the Ktor backend base URL.
+ *
+ * Bind this in your platform-specific module (or override in tests):
+ * ```kotlin
+ * single<String>(named(BACKEND_BASE_URL)) { "https://api.pushup.com" }
+ * ```
+ */
+const val BACKEND_BASE_URL = "backend_base_url"
+
+/**
+ * Named Koin qualifier for the [JwtTokenProvider] binding.
+ *
+ * Bind a [JwtTokenProvider] implementation in your platform-specific module:
+ * ```kotlin
+ * single<JwtTokenProvider>(named(JWT_TOKEN_PROVIDER)) {
+ *     JwtTokenProvider { supabaseAuth.currentSession?.accessToken ?: error("Not authenticated") }
+ * }
+ * ```
+ */
+const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
+
+/**
+ * API module: binds the [io.ktor.client.HttpClient], [SupabaseClient], and
+ * [KtorApiClient] as **singletons**.
+ *
+ * Requires the following named bindings to be provided by the platform-specific
+ * module before this module is used:
+ * - `String` named [SUPABASE_URL]
+ * - `String` named [SUPABASE_ANON_KEY]
+ * - `String` named [BACKEND_BASE_URL]
+ * - [JwtTokenProvider] named [JWT_TOKEN_PROVIDER]
+ *
+ * In development / testing, these can be provided via a test module that
+ * supplies mock values.
+ */
+val apiModule: Module = module {
+    // Shared HttpClient -- one instance for both API clients
+    single {
+        createHttpClient(isDebug = false)
+    }
+
+    // Supabase REST API client
+    single {
+        val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        SupabaseClient(
+            httpClient = get(),
+            supabaseUrl = get(named(SUPABASE_URL)),
+            supabaseAnonKey = get(named(SUPABASE_ANON_KEY)),
+            tokenProvider = { tokenProvider.getToken() },
+            clock = get(),
+        )
+    }
+
+    // Custom Ktor backend client
+    single {
+        val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        KtorApiClient(
+            httpClient = get(),
+            backendBaseUrl = get(named(BACKEND_BASE_URL)),
+            tokenProvider = { tokenProvider.getToken() },
+        )
+    }
+}
+
+/**
  * Aggregated list of all shared modules.
  *
  * Platform entry points (`initKoin()` on Android / iOS / JVM) should pass this
  * list together with their platform-specific module to `startKoin`.
+ *
+ * Note: [apiModule] is included here but requires the platform-specific module
+ * to provide the named string bindings ([SUPABASE_URL], [SUPABASE_ANON_KEY],
+ * [BACKEND_BASE_URL]) and the JWT token provider ([JWT_TOKEN_PROVIDER]).
+ * If you are not yet integrating the API layer, you can exclude [apiModule]
+ * from the list and add it later.
  */
 val sharedModules: List<Module> = listOf(
     infrastructureModule,
     databaseModule,
     repositoryModule,
     useCaseModule,
+    apiModule,
 )
