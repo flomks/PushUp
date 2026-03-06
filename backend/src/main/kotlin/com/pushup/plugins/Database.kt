@@ -34,8 +34,11 @@ object Users : Table("users") {
  *
  * In non-production mode (KTOR_ENV != "production") the server will log a
  * warning and skip database initialisation if DATABASE_URL is not set.
+ *
+ * @return true if the database was successfully initialised, false if skipped
+ *         (only possible in non-production mode).
  */
-fun Application.configureDatabase() {
+fun Application.configureDatabase(): Boolean {
     val databaseUrl = System.getenv("DATABASE_URL")
     val isDev = System.getenv("KTOR_ENV") != "production"
 
@@ -47,7 +50,7 @@ fun Application.configureDatabase() {
             )
         }
         log.warn("DATABASE_URL not set -- database connection is DISABLED (non-production mode)")
-        return
+        return false
     }
 
     log.info("Initialising database connection pool ...")
@@ -69,4 +72,5 @@ fun Application.configureDatabase() {
     Database.connect(dataSource)
 
     log.info("Database connection pool ready (pool size: ${hikariConfig.maximumPoolSize})")
+    return true
 }

@@ -12,18 +12,21 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.format.DateTimeFormatter
 
 /**
  * Registers all user-related API routes under /api.
  *
+ * @param databaseReady Whether the database connection was successfully
+ *                      initialised. When false, all DB-dependent endpoints
+ *                      return 503 instead of an opaque 500.
+ *
  * Routes:
  *   GET /api/me  -- Returns the currently authenticated user's profile.
  *                   Requires a valid Supabase JWT in the Authorization header.
  */
-fun Route.userRoutes() {
+fun Route.userRoutes(databaseReady: Boolean = true) {
     route("/api") {
         authenticate(JWT_AUTH) {
             /**
@@ -53,7 +56,7 @@ fun Route.userRoutes() {
 
                 // Guard: if the database was not initialised (dev mode without
                 // DATABASE_URL), return 503 instead of an opaque 500.
-                if (TransactionManager.defaultDatabase == null) {
+                if (!databaseReady) {
                     call.respond(
                         HttpStatusCode.ServiceUnavailable,
                         ErrorResponse(

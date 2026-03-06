@@ -5,6 +5,7 @@ name: Build & Deploy to Root Server
 #   1. Baut das Docker-Image
 #   2. Pusht es zu GitHub Container Registry (ghcr.io)
 #   3. SSH-t in den Root-Server und zieht das neue Image
+#   4. Rollback auf das vorherige Image wenn der Health-Check fehlschlaegt
 on:
   push:
     branches: [ main ]
@@ -16,7 +17,9 @@ on:
 
 concurrency:
   group: deploy-root-server
-  cancel-in-progress: true
+  # Laufende Deployments NICHT abbrechen -- ein abgebrochener Deploy
+  # hinterlaesst den Server in einem undefinierten Zustand.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -77,39 +80,77 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: Checkout (fuer docker-compose.yml)
-        uses: actions/checkout@v4
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
           host:     ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key:      ${{ secrets.SERVER_SSH_KEY }}
-          port:     ${{ secrets.SERVER_PORT || '22' }}
           script: |
-            set -e
+            set -euo pipefail
 
-            # Ins Deployment-Verzeichnis wechseln
             cd /opt/pushup
 
-            # Neues Image ziehen
-            docker pull ghcr.io/flomks/pushup-backend:latest
+            # ------------------------------------------------------------------
+            # 1. Vorheriges :latest als :rollback sichern (BEVOR prune laeuft)
+            # ------------------------------------------------------------------
+            if docker image inspect ghcr.io/flomks/pushup-backend:latest \
+                 > /dev/null 2>&1; then
+              docker tag ghcr.io/flomks/pushup-backend:latest \
+                         ghcr.io/flomks/pushup-backend:rollback
+              echo "Rollback-Tag gesetzt."
+            else
+              echo "Kein vorheriges Image -- kein Rollback-Tag."
+            fi
 
-            # Container neu starten mit neuem Image
+            # ------------------------------------------------------------------
+            # 2. Neues Image ziehen und Container neu starten
+            # ------------------------------------------------------------------
             docker compose up -d --pull always pushup-backend
 
-            # Kurz warten bis der Container hochgefahren ist
-            sleep 5
+            # ------------------------------------------------------------------
+            # 3. Health-Check (20 Versuche x 5 s = 100 s)
+            #    start_period in docker-compose.yml ist 15 s, daher erst nach
+            #    einer kurzen Pause anfangen zu pruefen.
+            # ------------------------------------------------------------------
+            echo "Warte auf Container-Start..."
+            sleep 15
 
-            # Health-Check
-            curl --fail --silent http://localhost:8080/health || {
-              echo "Health check failed -- rolling back"
+            HEALTHY=false
+            for i in $(seq 1 20); do
+              HTTP=$(curl --silent --output /dev/null \
+                         --write-out "%{http_code}" \
+                         --max-time 5 \
+                         http://localhost:8080/health || echo "000")
+              echo "Health-Check Versuch ${i}/20 -- HTTP ${HTTP}"
+              if [ "${HTTP}" = "200" ]; then
+                HEALTHY=true
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "${HEALTHY}" = "true" ]; then
+              echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
+              # Erst NACH erfolgreichem Deploy alte Images aufraeumen
+              # (nicht :rollback -- das wird beim naechsten Deploy ueberschrieben)
+              docker image prune -f --filter "until=24h"
+              exit 0
+            fi
+
+            # ------------------------------------------------------------------
+            # 4. Health-Check fehlgeschlagen -- Rollback
+            # ------------------------------------------------------------------
+            echo "Health-Check fehlgeschlagen -- starte Rollback..."
+            if docker image inspect ghcr.io/flomks/pushup-backend:rollback \
+                 > /dev/null 2>&1; then
+              docker tag ghcr.io/flomks/pushup-backend:rollback \
+                         ghcr.io/flomks/pushup-backend:latest
+              docker compose up -d --pull never pushup-backend
+              echo "Rollback abgeschlossen -- vorherige Version laeuft wieder."
+            else
+              echo "Kein Rollback-Image vorhanden -- manueller Eingriff noetig."
               docker compose down
-              exit 1
-            }
+            fi
 
-            echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
-
-            # Alte ungenutzte Images aufraeumen
-            docker image prune -f
+            exit 1
