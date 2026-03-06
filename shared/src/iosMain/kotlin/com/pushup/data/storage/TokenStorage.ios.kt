@@ -1,6 +1,7 @@
 package com.pushup.data.storage
 
 import com.pushup.domain.model.AuthToken
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -8,14 +9,15 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import platform.CoreFoundation.CFDictionaryRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.NSData
 import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
-import platform.Foundation.dataUsingEncoding
 import platform.Foundation.create
+import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -44,19 +46,19 @@ import platform.Security.kSecValueData
  * available after the device is unlocked for the first time -- this is required
  * for background token refresh operations.
  *
+ * ## Kotlin/Native 2.x compatibility
+ * Keychain Security framework constants (kSecClass, kSecAttrService, etc.) are
+ * typed as `COpaquePointer` in the Kotlin/Native cinterop bindings. They cannot
+ * be cast to `NSString` directly. Instead, [NSMutableDictionary.setObject] accepts
+ * `Any?` on the Kotlin side, and the underlying Objective-C runtime handles the
+ * correct CF/NS bridging at runtime. The `@Suppress("UNCHECKED_CAST")` annotations
+ * on the [CFDictionaryRef] casts are required for the Security API call sites.
+ *
  * ## Error handling
  * [save] throws [IllegalStateException] if the Keychain write fails for any
- * reason (e.g. device locked, Keychain unavailable). This ensures the caller
- * (the repository layer) is always aware of a failed save rather than silently
- * proceeding with an unauthenticated state.
- *
- * ## Setup
- * Bind this class in your Koin iOS module:
- * ```kotlin
- * single { TokenStorage() }
- * ```
+ * reason (e.g. device locked, Keychain unavailable).
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 actual class TokenStorage {
 
     /**
@@ -65,43 +67,41 @@ actual class TokenStorage {
      * Uses an update-then-add strategy:
      * 1. Attempt `SecItemUpdate` on the existing item.
      * 2. If the item does not exist (`errSecItemNotFound`), add it with `SecItemAdd`.
-     * 3. Any other non-success status from either call throws [IllegalStateException].
+     * 3. Any other non-success status throws [IllegalStateException].
      *
      * @throws IllegalStateException if the Keychain write fails.
      */
     actual fun save(token: AuthToken) {
         val json = Json.encodeToString(token)
-        val data = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
+        val data: NSData = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
         // Attempt to update an existing item first.
-        val updateQuery = buildQuery()
+        val updateQuery = buildBaseQuery()
         val updateAttributes = NSMutableDictionary().apply {
-            setObject(data, forKey = kSecValueData as NSString)
+            setObject(data, forKey = kSecValueData)
         }
+
         @Suppress("UNCHECKED_CAST")
         val updateStatus = SecItemUpdate(
-            updateQuery as platform.CoreFoundation.CFDictionaryRef,
-            updateAttributes as platform.CoreFoundation.CFDictionaryRef,
+            updateQuery as CFDictionaryRef,
+            updateAttributes as CFDictionaryRef,
         )
 
         when (updateStatus) {
-            errSecSuccess -> return  // Updated successfully.
+            errSecSuccess -> return
 
             errSecItemNotFound -> {
                 // Item does not exist yet -- add it.
                 val addQuery = NSMutableDictionary().apply {
-                    setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
-                    setObject(SERVICE, forKey = kSecAttrService as NSString)
-                    setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
-                    setObject(kSecAttrAccessibleAfterFirstUnlock, forKey = kSecAttrAccessible as NSString)
-                    setObject(data, forKey = kSecValueData as NSString)
+                    setObject(kSecClassGenericPassword, forKey = kSecClass)
+                    setObject(SERVICE, forKey = kSecAttrService)
+                    setObject(ACCOUNT, forKey = kSecAttrAccount)
+                    setObject(kSecAttrAccessibleAfterFirstUnlock, forKey = kSecAttrAccessible)
+                    setObject(data, forKey = kSecValueData)
                 }
                 @Suppress("UNCHECKED_CAST")
-                val addStatus = SecItemAdd(
-                    addQuery as platform.CoreFoundation.CFDictionaryRef,
-                    null,
-                )
+                val addStatus = SecItemAdd(addQuery as CFDictionaryRef, null)
                 // errSecDuplicateItem can occur in a race where another thread added
                 // the item between our update attempt and this add. Treat it as success.
                 check(addStatus == errSecSuccess || addStatus == errSecDuplicateItem) {
@@ -115,21 +115,19 @@ actual class TokenStorage {
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */
     actual fun load(): AuthToken? = memScoped {
-        val query = buildQuery {
-            setObject(true, forKey = kSecReturnData as NSString)
-            setObject(kSecMatchLimitOne, forKey = kSecMatchLimit as NSString)
+        val query = buildBaseQuery().apply {
+            setObject(true, forKey = kSecReturnData)
+            setObject(kSecMatchLimitOne, forKey = kSecMatchLimit)
         }
         val result = alloc<CFTypeRefVar>()
+
         @Suppress("UNCHECKED_CAST")
-        val status = SecItemCopyMatching(
-            query as platform.CoreFoundation.CFDictionaryRef,
-            result.ptr,
-        )
+        val status = SecItemCopyMatching(query as CFDictionaryRef, result.ptr)
         if (status != errSecSuccess) return null
 
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
-        // NSString.create(data, encoding) is the idiomatic way to decode NSData -> String
-        // in Kotlin/Native 2.x. The old data.bytes?.reinterpret() pattern was removed.
+        // NSString.create(data:encoding:) is the correct Kotlin/Native 2.x API
+        // for decoding an NSData buffer to a String without raw pointer arithmetic.
         val json = NSString.create(data = data, encoding = NSUTF8StringEncoding)
             as? String ?: return null
         runCatching { Json.decodeFromString<AuthToken>(json) }.getOrNull()
@@ -137,9 +135,9 @@ actual class TokenStorage {
 
     /** Removes the stored token from the Keychain. */
     actual fun clear() {
-        val query = buildQuery()
+        val query = buildBaseQuery()
         @Suppress("UNCHECKED_CAST")
-        SecItemDelete(query as platform.CoreFoundation.CFDictionaryRef)
+        SecItemDelete(query as CFDictionaryRef)
         // Ignore the return value: errSecItemNotFound is expected when no token is stored.
     }
 
@@ -149,15 +147,17 @@ actual class TokenStorage {
 
     /**
      * Builds the base Keychain query dictionary identifying the token item.
-     * Additional attributes can be added via [extra].
+     *
+     * Keychain constants are `COpaquePointer` values in the Kotlin/Native cinterop
+     * bindings. [NSMutableDictionary.setObject] accepts `Any?`, so passing them
+     * directly is correct -- the Objective-C runtime bridges CF and NS types
+     * transparently at the call site.
      */
-    private fun buildQuery(extra: (NSMutableDictionary.() -> Unit)? = null): NSMutableDictionary =
-        NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
-            setObject(SERVICE, forKey = kSecAttrService as NSString)
-            setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
-            extra?.invoke(this)
-        }
+    private fun buildBaseQuery(): NSMutableDictionary = NSMutableDictionary().apply {
+        setObject(kSecClassGenericPassword, forKey = kSecClass)
+        setObject(SERVICE, forKey = kSecAttrService)
+        setObject(ACCOUNT, forKey = kSecAttrAccount)
+    }
 
     private companion object {
         const val SERVICE = "com.pushup.auth"
