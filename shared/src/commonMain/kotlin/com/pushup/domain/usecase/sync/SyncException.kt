@@ -38,12 +38,13 @@ sealed class SyncException(message: String, cause: Throwable? = null) :
      * Thrown when a sync operation fails after all retry attempts have been
      * exhausted.
      *
-     * @property partialResult Optional partial result if some items were synced
-     *   before the failure occurred.
+     * Note: in most cases the sync use-cases return a typed result object
+     * (e.g. [SyncTimeCreditResult.Failed]) rather than throwing this exception.
+     * [SyncFailed] is reserved for unrecoverable top-level failures where no
+     * partial result is available.
      */
     class SyncFailed(
         message: String = "Sync failed after all retries",
-        val partialResult: Any? = null,
         cause: Throwable? = null,
     ) : SyncException(message, cause)
 }

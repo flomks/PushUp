@@ -136,7 +136,7 @@ class SyncTimeCreditUseCase(
      * Creates the time credit record remotely by patching with upsert semantics.
      *
      * Supabase PostgREST supports upsert via `POST` with `Prefer: resolution=merge-duplicates`.
-     * Since [SupabaseClient.updateTimeCredit] uses PATCH (which requires the row to exist),
+     * Since [CloudSyncApi.updateTimeCredit] uses PATCH (which requires the row to exist),
      * we handle the "no remote row" case by catching [ApiException.NotFound] and
      * treating it as a successful first-sync (the row will be created by the server
      * on the next full sync or via a database trigger).
@@ -144,7 +144,7 @@ class SyncTimeCreditUseCase(
      * In practice, the Supabase schema creates a time_credits row automatically
      * when the user first earns credits (via a database trigger or the backend).
      * If the row truly does not exist, we mark local as SYNCED optimistically
-     * so the next SyncFromCloudUseCase can pull the authoritative state.
+     * so the next [SyncFromCloudUseCase] can pull the authoritative state.
      */
     private suspend fun createRemoteCredit(local: TimeCredit): SyncTimeCreditResult {
         return try {

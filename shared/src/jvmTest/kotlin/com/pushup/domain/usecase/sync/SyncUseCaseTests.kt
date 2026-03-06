@@ -46,7 +46,7 @@ import kotlin.test.assertTrue
  * - [SyncManager]
  *
  * Uses an in-memory SQLite database for the local repositories and a
- * [FakeSupabaseClient] for the remote API. A [FakeAuthRepository] provides
+ * [FakeCloudSyncApi] for the remote API. A [FakeAuthRepository] provides
  * the current user without requiring a real Supabase connection.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -191,7 +191,6 @@ class SyncUseCaseTests {
         timeCreditRepository = timeCreditRepo,
         supabaseClient = fakeSupabase,
         networkMonitor = networkMonitor,
-        clock = fixedClock,
         maxRetries = 2,
         baseDelayMs = 0L,
     )
@@ -203,7 +202,6 @@ class SyncUseCaseTests {
         syncTimeCreditUseCase = makeSyncTimeCreditUseCase(networkMonitor),
         syncFromCloudUseCase = makeSyncFromCloudUseCase(networkMonitor),
         authRepository = fakeAuthRepo,
-        networkMonitor = networkMonitor,
     )
 
     // =========================================================================
@@ -575,7 +573,8 @@ class SyncUseCaseTests {
         val useCase = makeSyncFromCloudUseCase()
         val result = useCase("user-1")
 
-        assertTrue(result.sessionsDownloaded > 0)
+        assertEquals(1, result.sessionsDownloaded)
+        assertEquals(1, result.sessionsInsertedOrUpdated)
         val local = sessionRepo.getById("remote-session")
         assertNotNull(local)
         assertEquals(SyncStatus.SYNCED, local.syncStatus)
@@ -726,6 +725,7 @@ class SyncUseCaseTests {
         val result = useCase("user-1")
 
         assertEquals(0, result.sessionsDownloaded)
+        assertEquals(0, result.sessionsInsertedOrUpdated)
         assertTrue(result.timeCreditSynced)
         assertTrue(result.isFullSuccess)
     }
@@ -738,8 +738,9 @@ class SyncUseCaseTests {
         val useCase = makeSyncFromCloudUseCase()
         val result = useCase("user-1")
 
-        // Sessions failed to download, but time credit may still succeed
+        // Sessions failed to download (network error), but time credit may still succeed
         assertEquals(0, result.sessionsDownloaded)
+        assertEquals(0, result.sessionsInsertedOrUpdated)
     }
 
     // =========================================================================
@@ -758,7 +759,8 @@ class SyncUseCaseTests {
     }
 
     @Test
-    fun syncManager_syncAll_skipsWhenOffline() = runTest {
+    fun syncManager_syncAll_completedWithNoNetworkErrorsWhenOffline() = runTest {
+        insertUser()
         fakeAuthRepo.currentUser = User(
             id = "user-1",
             email = "test@example.com",
@@ -770,8 +772,13 @@ class SyncUseCaseTests {
 
         val result = manager.syncAll()
 
-        assertIs<SyncResult.Skipped>(result)
-        assertEquals("No internet connection", (result as SyncResult.Skipped).reason)
+        // SyncManager does not short-circuit on offline; each use-case throws
+        // SyncException.NoNetwork which is captured in the error fields.
+        assertIs<SyncResult.Completed>(result)
+        assertIs<SyncException.NoNetwork>((result as SyncResult.Completed).workoutsError)
+        assertIs<SyncException.NoNetwork>(result.timeCreditError)
+        assertIs<SyncException.NoNetwork>(result.fromCloudError)
+        assertFalse(result.isFullSuccess)
     }
 
     @Test

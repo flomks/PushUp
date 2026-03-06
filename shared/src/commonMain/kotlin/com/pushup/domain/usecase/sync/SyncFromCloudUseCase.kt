@@ -9,7 +9,6 @@ import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlinx.coroutines.delay
-import kotlinx.datetime.Clock
 
 /**
  * Use-case: Download the latest data from Supabase and merge it into the local database.
@@ -38,12 +37,12 @@ import kotlinx.datetime.Clock
  * ## Retry with exponential back-off
  * Transient network errors are retried up to [maxRetries] times with
  * exponential back-off: `baseDelayMs * 2^attempt` (default: 500ms, 1s, 2s).
+ * Non-transient errors (401, 403, etc.) abort immediately without retrying.
  *
  * @property sessionRepository    Local repository for workout sessions.
  * @property timeCreditRepository Local repository for time credits.
  * @property supabaseClient       Remote API client for Supabase PostgREST operations.
  * @property networkMonitor       Checks whether the device has internet connectivity.
- * @property clock                Used to timestamp newly inserted local records.
  * @property maxRetries           Maximum retry attempts (default 3).
  * @property baseDelayMs          Base delay in milliseconds for exponential back-off (default 500).
  */
@@ -52,7 +51,6 @@ class SyncFromCloudUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
-    private val clock: Clock = Clock.System,
     private val maxRetries: Int = 3,
     private val baseDelayMs: Long = 500L,
 ) {
@@ -72,14 +70,15 @@ class SyncFromCloudUseCase(
             throw SyncException.NoNetwork("Cannot sync from cloud: no internet connection")
         }
 
-        val sessionsResult = fetchAndMergeSessions(userId)
-        val creditResult = fetchAndMergeTimeCredit(userId)
+        val sessionsResult = fetchAndMergeSessions()
+        val timeCreditSynced = fetchAndMergeTimeCredit(userId)
 
         return SyncFromCloudResult(
             sessionsDownloaded = sessionsResult.downloaded,
-            sessionsUpdated = sessionsResult.updated,
+            sessionsInsertedOrUpdated = sessionsResult.insertedOrUpdated,
+            sessionsKeptLocal = sessionsResult.keptLocal,
             sessionsFailed = sessionsResult.failed,
-            timeCreditSynced = creditResult,
+            timeCreditSynced = timeCreditSynced,
         )
     }
 
@@ -89,41 +88,44 @@ class SyncFromCloudUseCase(
 
     private data class SessionsMergeResult(
         val downloaded: Int,
-        val updated: Int,
+        val insertedOrUpdated: Int,
+        val keptLocal: Int,
         val failed: Int,
     )
 
-    private suspend fun fetchAndMergeSessions(userId: String): SessionsMergeResult {
-        val remoteSessions = fetchRemoteSessionsWithRetry() ?: return SessionsMergeResult(0, 0, 1)
+    private suspend fun fetchAndMergeSessions(): SessionsMergeResult {
+        val remoteSessions = fetchRemoteSessionsWithRetry()
+            ?: return SessionsMergeResult(downloaded = 0, insertedOrUpdated = 0, keptLocal = 0, failed = 1)
 
-        var downloaded = 0
-        var updated = 0
+        var insertedOrUpdated = 0
+        var keptLocal = 0
         var failed = 0
 
         for (remote in remoteSessions) {
             try {
-                mergeSession(remote)
-                downloaded++
-                updated++ // Count every processed record as "updated" for simplicity.
+                val wrote = mergeSession(remote)
+                if (wrote) insertedOrUpdated++ else keptLocal++
             } catch (_: Exception) {
                 failed++
             }
         }
 
-        return SessionsMergeResult(downloaded = downloaded, updated = updated, failed = failed)
+        return SessionsMergeResult(
+            downloaded = remoteSessions.size,
+            insertedOrUpdated = insertedOrUpdated,
+            keptLocal = keptLocal,
+            failed = failed,
+        )
     }
 
     private suspend fun fetchRemoteSessionsWithRetry(): List<WorkoutSession>? {
-        var lastException: Exception? = null
         repeat(maxRetries) { attempt ->
             try {
                 return supabaseClient.getWorkoutSessions()
             } catch (e: ApiException) {
                 if (!e.isTransient) return null
-                lastException = e
                 delay(baseDelayMs * (1L shl attempt))
-            } catch (e: Exception) {
-                lastException = e
+            } catch (_: Exception) {
                 delay(baseDelayMs * (1L shl attempt))
             }
         }
@@ -134,24 +136,29 @@ class SyncFromCloudUseCase(
      * Merges a single remote [WorkoutSession] into the local database.
      *
      * "Last Write Wins" on [WorkoutSession.startedAt]:
-     * - No local copy → insert remote (marked SYNCED).
-     * - Remote is strictly newer → overwrite local.
-     * - Local is newer or equal → keep local unchanged.
+     * - No local copy → insert remote (marked SYNCED). Returns `true`.
+     * - Remote is strictly newer → overwrite local. Returns `true`.
+     * - Local is newer or equal → keep local unchanged. Returns `false`.
+     *
+     * @return `true` if the local database was written, `false` if local was kept.
      */
-    private suspend fun mergeSession(remote: WorkoutSession) {
+    private suspend fun mergeSession(remote: WorkoutSession): Boolean {
         val local = sessionRepository.getById(remote.id)
-        when {
+        return when {
             local == null -> {
                 // New record from cloud -- insert it locally as SYNCED.
                 sessionRepository.save(remote.copy(syncStatus = SyncStatus.SYNCED))
+                true
             }
             remote.startedAt > local.startedAt -> {
                 // Remote is newer -- overwrite local.
                 sessionRepository.save(remote.copy(syncStatus = SyncStatus.SYNCED))
+                true
             }
             else -> {
                 // Local is newer or equal -- keep local, do not overwrite.
                 // The upload use-case will push the local version on the next sync.
+                false
             }
         }
     }
@@ -161,7 +168,6 @@ class SyncFromCloudUseCase(
     // =========================================================================
 
     private suspend fun fetchAndMergeTimeCredit(userId: String): Boolean {
-        var lastException: Exception? = null
         repeat(maxRetries) { attempt ->
             try {
                 val remote = supabaseClient.getTimeCredit(userId)
@@ -171,10 +177,8 @@ class SyncFromCloudUseCase(
                 return true
             } catch (e: ApiException) {
                 if (!e.isTransient) return false
-                lastException = e
                 delay(baseDelayMs * (1L shl attempt))
-            } catch (e: Exception) {
-                lastException = e
+            } catch (_: Exception) {
                 delay(baseDelayMs * (1L shl attempt))
             }
         }
@@ -212,14 +216,18 @@ class SyncFromCloudUseCase(
 /**
  * Summary of a [SyncFromCloudUseCase] invocation.
  *
- * @property sessionsDownloaded Total number of remote sessions processed.
- * @property sessionsUpdated    Number of sessions that were inserted or updated locally.
- * @property sessionsFailed     Number of sessions that could not be merged (parse errors, etc.).
- * @property timeCreditSynced   `true` if the time-credit record was successfully pulled.
+ * @property sessionsDownloaded      Total number of remote sessions received from the server.
+ * @property sessionsInsertedOrUpdated Number of sessions that were written to the local database
+ *   (either newly inserted or overwritten because the remote was newer).
+ * @property sessionsKeptLocal       Number of sessions where the local copy was newer or equal
+ *   and was therefore kept unchanged.
+ * @property sessionsFailed          Number of sessions that could not be merged (parse errors, etc.).
+ * @property timeCreditSynced        `true` if the time-credit record was successfully pulled.
  */
 data class SyncFromCloudResult(
     val sessionsDownloaded: Int,
-    val sessionsUpdated: Int,
+    val sessionsInsertedOrUpdated: Int,
+    val sessionsKeptLocal: Int,
     val sessionsFailed: Int,
     val timeCreditSynced: Boolean,
 ) {

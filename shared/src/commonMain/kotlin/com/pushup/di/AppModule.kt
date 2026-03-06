@@ -235,7 +235,6 @@ val useCaseModule: Module = module {
             timeCreditRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
-            clock = get(),
         )
     }
     single {
@@ -244,7 +243,6 @@ val useCaseModule: Module = module {
             syncTimeCreditUseCase = get(),
             syncFromCloudUseCase = get(),
             authRepository = get(),
-            networkMonitor = get(named(NETWORK_MONITOR)),
         )
     }
 }

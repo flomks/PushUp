@@ -16,15 +16,18 @@ import kotlinx.coroutines.launch
  * [SyncFromCloudUseCase] in the correct order and handles the common
  * lifecycle concerns:
  *
- * - **Network check**: delegates to [NetworkMonitor] before every sync.
  * - **Auth check**: reads the current user from [AuthRepository]; skips sync
  *   if no user is authenticated (guest mode).
- * - **Error isolation**: each use-case runs in a [SupervisorJob] child so that
- *   a failure in one does not cancel the others.
+ * - **Network check**: each individual use-case checks connectivity and throws
+ *   [SyncException.NoNetwork] if offline. [SyncManager] catches this via
+ *   [runCatching] and surfaces it in the [SyncResult.Completed] error fields.
+ * - **Error isolation**: each use-case is wrapped in [runCatching] so that a
+ *   failure in one does not prevent the others from running.
  * - **Periodic background sync**: [startPeriodicSync] launches a coroutine that
- *   calls [syncAll] every [periodicIntervalMs] milliseconds.
+ *   calls [syncAll] every [periodicIntervalMs] milliseconds. The first execution
+ *   fires immediately; subsequent executions are delayed by [periodicIntervalMs].
  * - **Post-workout sync**: [syncAfterWorkout] runs a targeted upload immediately
- *   after a session is finished.
+ *   after a session is finished, without the full pull from cloud.
  *
  * ## Sync order
  * 1. [SyncWorkoutsUseCase] -- upload pending sessions first so the server has
@@ -33,26 +36,24 @@ import kotlinx.coroutines.launch
  * 3. [SyncFromCloudUseCase] -- pull the authoritative state from the server.
  *
  * ## Thread safety
- * All public methods are `suspend` functions and are safe to call from any
- * coroutine context. The internal [scope] uses [SupervisorJob] so that
- * individual child failures do not propagate upward.
+ * All public `suspend` functions are safe to call from any coroutine context.
+ * The internal [scope] uses [SupervisorJob] so that individual child failures
+ * do not propagate upward and cancel the scope.
  *
- * @property syncWorkoutsUseCase  Uploads pending workout sessions.
+ * @property syncWorkoutsUseCase   Uploads pending workout sessions.
  * @property syncTimeCreditUseCase Uploads pending time-credit changes.
  * @property syncFromCloudUseCase  Downloads the latest data from Supabase.
  * @property authRepository        Provides the current authenticated user ID.
- * @property networkMonitor        Checks internet connectivity before syncing.
  * @property scope                 [CoroutineScope] used for periodic sync jobs.
  *   Defaults to a new scope with [SupervisorJob]; override in tests.
  * @property periodicIntervalMs    Interval between periodic background syncs in
- *   milliseconds. Defaults to 15 minutes.
+ *   milliseconds. Defaults to [DEFAULT_PERIODIC_INTERVAL_MS] (15 minutes).
  */
 class SyncManager(
     private val syncWorkoutsUseCase: SyncWorkoutsUseCase,
     private val syncTimeCreditUseCase: SyncTimeCreditUseCase,
     private val syncFromCloudUseCase: SyncFromCloudUseCase,
     private val authRepository: AuthRepository,
-    private val networkMonitor: NetworkMonitor,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     val periodicIntervalMs: Long = DEFAULT_PERIODIC_INTERVAL_MS,
 ) {
@@ -72,14 +73,13 @@ class SyncManager(
      * - When the app returns to the foreground.
      *
      * @return A [SyncResult] summarising the outcome of all three use-cases.
-     *   Returns [SyncResult.Skipped] if the user is not authenticated or offline.
+     *   Returns [SyncResult.Skipped] if the user is not authenticated.
+     *   If the device is offline, each use-case will fail with [SyncException.NoNetwork]
+     *   which is captured in the corresponding error field of [SyncResult.Completed].
      */
     suspend fun syncAll(): SyncResult {
-        val userId = resolveUserId() ?: return SyncResult.Skipped(reason = "User not authenticated")
-
-        if (!networkMonitor.isConnected()) {
-            return SyncResult.Skipped(reason = "No internet connection")
-        }
+        val userId = resolveUserId()
+            ?: return SyncResult.Skipped(reason = "User not authenticated")
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
@@ -103,14 +103,11 @@ class SyncManager(
      * by the next periodic sync.
      *
      * @return A [SyncResult] summarising the upload outcome.
-     *   Returns [SyncResult.Skipped] if the user is not authenticated or offline.
+     *   Returns [SyncResult.Skipped] if the user is not authenticated.
      */
     suspend fun syncAfterWorkout(): SyncResult {
-        val userId = resolveUserId() ?: return SyncResult.Skipped(reason = "User not authenticated")
-
-        if (!networkMonitor.isConnected()) {
-            return SyncResult.Skipped(reason = "No internet connection")
-        }
+        val userId = resolveUserId()
+            ?: return SyncResult.Skipped(reason = "User not authenticated")
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
@@ -131,14 +128,11 @@ class SyncManager(
      * Use this after login on a new device to restore all cloud data locally.
      *
      * @return A [SyncResult] summarising the pull outcome.
-     *   Returns [SyncResult.Skipped] if the user is not authenticated or offline.
+     *   Returns [SyncResult.Skipped] if the user is not authenticated.
      */
     suspend fun syncFromCloud(): SyncResult {
-        val userId = resolveUserId() ?: return SyncResult.Skipped(reason = "User not authenticated")
-
-        if (!networkMonitor.isConnected()) {
-            return SyncResult.Skipped(reason = "No internet connection")
-        }
+        val userId = resolveUserId()
+            ?: return SyncResult.Skipped(reason = "User not authenticated")
 
         val fromCloudResult = runCatching { syncFromCloudUseCase(userId) }
 
@@ -155,6 +149,7 @@ class SyncManager(
     /**
      * Starts a periodic background sync that calls [syncAll] every [periodicIntervalMs].
      *
+     * The first sync fires immediately; subsequent syncs are delayed by [periodicIntervalMs].
      * Calling this method while a periodic sync is already running replaces the
      * existing job with a new one (idempotent restart).
      *
@@ -165,9 +160,9 @@ class SyncManager(
         periodicSyncJob?.cancel()
         periodicSyncJob = scope.launch {
             while (isActive) {
-                delay(periodicIntervalMs)
                 runCatching { syncAll() }
-                // Errors are swallowed here -- the next iteration will retry.
+                // Errors are swallowed -- the next iteration will retry.
+                delay(periodicIntervalMs)
             }
         }
     }
@@ -215,7 +210,7 @@ sealed class SyncResult {
     /**
      * The sync was skipped because a precondition was not met.
      *
-     * @property reason Human-readable explanation (e.g. "No internet connection").
+     * @property reason Human-readable explanation (e.g. "User not authenticated").
      */
     data class Skipped(val reason: String) : SyncResult()
 
@@ -224,6 +219,8 @@ sealed class SyncResult {
      *
      * Individual use-case results may be `null` if that use-case was not
      * invoked (e.g. [fromCloud] is `null` after [SyncManager.syncAfterWorkout]).
+     * An error field being non-null does not prevent the other use-cases from
+     * running -- each is isolated via [runCatching].
      *
      * @property workouts       Result of [SyncWorkoutsUseCase], or `null` if not run.
      * @property workoutsError  Exception from [SyncWorkoutsUseCase], or `null` on success.
