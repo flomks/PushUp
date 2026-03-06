@@ -3,18 +3,17 @@
 # Triggered on every push to main when backend-related files change.
 #
 # Pipeline stages:
-#   1. lint      -- Static analysis via Detekt
-#   2. test      -- Unit tests via Gradle
-#   3. build     -- Build & push Docker image to GHCR
-#   4. deploy    -- Deploy to Railway via Railway CLI
-#   5. rollback  -- Automatic rollback if deployment health check fails
+#   1. lint    -- Kotlin compilation check (catches type/syntax errors)
+#   2. test    -- Unit tests via Gradle
+#   3. build   -- Build & push Docker image to GHCR (ghcr.io)
+#   4. deploy  -- SSH into root server, pull new image, restart container,
+#                 run health check -- rollback to previous image on failure
 #
 # Required GitHub Secrets:
-#   RAILWAY_TOKEN          -- Railway API token (Settings > Tokens)
-#   RAILWAY_SERVICE_ID     -- Railway service ID for the backend service
-#   RAILWAY_PROJECT_ID     -- Railway project ID
-#   BACKEND_HEALTH_URL     -- Full URL of the /health endpoint on Railway
-#                            (e.g. https://pushup-backend.up.railway.app/health)
+#   SERVER_HOST     -- IP address of the root server
+#   SERVER_USER     -- SSH username (e.g. root or ubuntu)
+#   SERVER_SSH_KEY  -- Private SSH key (full content incl. BEGIN/END lines)
+#   SERVER_PORT     -- SSH port (optional, defaults to 22)
 
 name: Backend CI/CD
 
@@ -29,11 +28,12 @@ on:
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
       - 'gradle.properties'
+      - 'docker-compose.yml'
       - '.github/workflows/backend-ci.yml'
 
 concurrency:
   group: backend-ci-cd
-  # Do not cancel in-progress deployments -- let them finish to avoid partial state
+  # Never cancel an in-progress deployment -- let it finish to avoid partial state
   cancel-in-progress: false
 
 permissions:
@@ -42,7 +42,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/pushup-backend
+  IMAGE_NAME: ghcr.io/flomks/pushup-backend
 
 # ---------------------------------------------------------------------------
 # Job 1: Lint
@@ -65,13 +65,10 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: false
 
-      # `check` runs compileKotlin + compileTestKotlin + all verification tasks
-      # (including any configured static analysis) without executing tests.
-      # Tests are run separately in the `test` job for clearer failure attribution.
-      - name: Compile & static checks (backend module)
+      # Compile Kotlin sources -- catches type errors and syntax issues
+      # without running tests (tests run in the dedicated test job below).
+      - name: Compile backend Kotlin sources
         run: ./gradlew :backend:compileKotlin :backend:compileTestKotlin --no-daemon --stacktrace
 
       - name: Upload compilation reports
@@ -102,8 +99,6 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: false
 
       - name: Run backend tests
         run: ./gradlew :backend:test --no-daemon --stacktrace
@@ -128,9 +123,8 @@ jobs:
     needs: [lint, test]
 
     outputs:
-      image-digest: ${{ steps.build-push.outputs.digest }}
+      # Short SHA tag used to pin the exact image during deploy & rollback
       image-tag: ${{ steps.meta.outputs.version }}
-      full-image-ref: ${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}
 
     steps:
       - name: Checkout
@@ -156,7 +150,6 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        id: build-push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -166,171 +159,117 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Layer cache stored in the registry -- speeds up subsequent builds
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-to:   type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
           provenance: false
 
 # ---------------------------------------------------------------------------
-# Job 4: Deploy to Railway
+# Job 4: Deploy to Root Server via SSH
 # ---------------------------------------------------------------------------
   deploy:
-    name: Deploy to Railway
+    name: Deploy to Root Server via SSH
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [build]
 
-    # Expose the deployment result so the rollback job can read it
-    outputs:
-      deploy-status: ${{ steps.deploy.outcome }}
-
-    environment:
-      name: production
-      url: ${{ secrets.BACKEND_HEALTH_URL }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Deploy, health-check, rollback on failure
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host:     ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key:      ${{ secrets.SERVER_SSH_KEY }}
+          port:     ${{ secrets.SERVER_PORT || '22' }}
+          # NEW_TAG is the exact sha- tag built in the previous job.
+          # Passing it as an env var keeps the script free of expression syntax.
+          envs: NEW_TAG
+          script_stop: true   # abort on first error (set -e equivalent)
+          script: |
+            set -euo pipefail
 
-      - name: Install Railway CLI
-        run: |
-          curl -fsSL https://railway.app/install.sh | sh
-          railway --version
+            DEPLOY_DIR=/opt/pushup
+            IMAGE=ghcr.io/flomks/pushup-backend
+            NEW_IMAGE="${IMAGE}:${NEW_TAG}"
 
-      - name: Record previous deployment ID (for rollback)
-        id: prev-deploy
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          PREV_DEPLOYMENT=$(railway deployments list \
-            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
-            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
-            --json 2>/dev/null \
-            | jq -r '[.[] | select(.status == "SUCCESS")] | first | .id // empty')
-          echo "id=${PREV_DEPLOYMENT}" >> "$GITHUB_OUTPUT"
-          echo "Previous successful deployment: ${PREV_DEPLOYMENT}"
+            echo "==> Deploying ${NEW_IMAGE}"
 
-      - name: Deploy image to Railway
-        id: deploy
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          IMAGE_REF="${{ needs.build.outputs.full-image-ref }}"
-          echo "Deploying image: ${IMAGE_REF}"
+            cd "${DEPLOY_DIR}"
 
-          railway redeploy \
-            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
-            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
-            --image "${IMAGE_REF}" \
-            --yes
+            # ------------------------------------------------------------------
+            # 1. Record the currently running image tag for rollback
+            # ------------------------------------------------------------------
+            PREV_IMAGE=$(docker inspect pushup-backend \
+              --format '{{.Config.Image}}' 2>/dev/null || echo "")
+            echo "    Previous image: ${PREV_IMAGE:-<none>}"
 
-      - name: Wait for Railway deployment to become active
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          echo "Waiting up to 120 seconds for deployment to become active..."
-          for i in $(seq 1 24); do
-            STATUS=$(railway deployments list \
-              --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
-              --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
-              --json 2>/dev/null \
-              | jq -r 'first | .status // "UNKNOWN"')
-            echo "Attempt ${i}/24 -- deployment status: ${STATUS}"
-            if [ "${STATUS}" = "SUCCESS" ]; then
-              echo "Deployment is active."
-              exit 0
-            elif [ "${STATUS}" = "FAILED" ] || [ "${STATUS}" = "CRASHED" ]; then
-              echo "Deployment entered failed state: ${STATUS}"
-              exit 1
-            fi
-            sleep 5
-          done
-          echo "Timed out waiting for deployment to become active."
-          exit 1
+            # ------------------------------------------------------------------
+            # 2. Pull the new image
+            # ------------------------------------------------------------------
+            docker pull "${NEW_IMAGE}"
 
-      - name: Health check
-        id: health-check
-        run: |
-          HEALTH_URL="${{ secrets.BACKEND_HEALTH_URL }}"
-          echo "Running health check against: ${HEALTH_URL}"
-          for i in $(seq 1 12); do
-            HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-              --max-time 10 "${HEALTH_URL}" || echo "000")
-            echo "Attempt ${i}/12 -- HTTP status: ${HTTP_STATUS}"
-            if [ "${HTTP_STATUS}" = "200" ]; then
-              echo "Health check passed."
+            # ------------------------------------------------------------------
+            # 3. Update docker-compose.yml to use the pinned sha- tag
+            #    (avoids relying on :latest during rollback)
+            # ------------------------------------------------------------------
+            sed -i "s|image: ${IMAGE}:.*|image: ${NEW_IMAGE}|g" docker-compose.yml
+
+            # ------------------------------------------------------------------
+            # 4. Restart the container with the new image
+            # ------------------------------------------------------------------
+            docker compose up -d --pull never pushup-backend
+
+            # ------------------------------------------------------------------
+            # 5. Health check (12 attempts x 5 s = 60 s window)
+            # ------------------------------------------------------------------
+            echo "==> Running health check..."
+            HEALTHY=false
+            for i in $(seq 1 12); do
+              HTTP=$(curl --silent --output /dev/null \
+                         --write-out "%{http_code}" \
+                         --max-time 5 \
+                         http://localhost:8080/health || echo "000")
+              echo "    Attempt ${i}/12 -- HTTP ${HTTP}"
+              if [ "${HTTP}" = "200" ]; then
+                HEALTHY=true
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "${HEALTHY}" = "true" ]; then
+              echo "==> Deploy successful -- pushup.weareo.fun is up to date"
+              # Clean up dangling images to free disk space
+              docker image prune -f
               exit 0
             fi
-            sleep 5
-          done
-          echo "Health check failed after all attempts."
-          exit 1
 
-# ---------------------------------------------------------------------------
-# Job 5: Rollback on failed deployment
-# ---------------------------------------------------------------------------
-  rollback:
-    name: Rollback on Failed Deployment
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [deploy]
-    # Only run when the deploy job fails or the health check step fails
-    if: failure() && needs.deploy.result == 'failure'
+            # ------------------------------------------------------------------
+            # 6. Health check failed -- roll back to previous image
+            # ------------------------------------------------------------------
+            echo "==> Health check failed -- rolling back to ${PREV_IMAGE:-latest}"
 
-    steps:
-      - name: Install Railway CLI
-        run: |
-          curl -fsSL https://railway.app/install.sh | sh
-          railway --version
+            if [ -n "${PREV_IMAGE}" ]; then
+              # Restore the previous image reference in docker-compose.yml
+              sed -i "s|image: ${NEW_IMAGE}|image: ${PREV_IMAGE}|g" docker-compose.yml
+              docker compose up -d --pull never pushup-backend
+            else
+              # No previous image recorded -- fall back to :latest
+              sed -i "s|image: ${NEW_IMAGE}|image: ${IMAGE}:latest|g" docker-compose.yml
+              docker compose up -d --pull always pushup-backend
+            fi
 
-      - name: Retrieve last successful deployment ID
-        id: prev-deploy
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          # Find the most recent deployment that succeeded BEFORE the current one
-          PREV_DEPLOYMENT=$(railway deployments list \
-            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
-            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
-            --json 2>/dev/null \
-            | jq -r '[.[] | select(.status == "SUCCESS")] | .[1] | .id // empty')
-          echo "id=${PREV_DEPLOYMENT}" >> "$GITHUB_OUTPUT"
-          echo "Rolling back to deployment: ${PREV_DEPLOYMENT}"
+            # Verify rollback is healthy
+            sleep 10
+            RB_HTTP=$(curl --silent --output /dev/null \
+                          --write-out "%{http_code}" \
+                          --max-time 5 \
+                          http://localhost:8080/health || echo "000")
+            if [ "${RB_HTTP}" = "200" ]; then
+              echo "==> Rollback successful -- previous version is running"
+            else
+              echo "==> Rollback health check also failed (HTTP ${RB_HTTP}) -- manual intervention required"
+            fi
 
-      - name: Rollback to previous successful deployment
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: |
-          PREV_ID="${{ steps.prev-deploy.outputs.id }}"
-          if [ -z "${PREV_ID}" ]; then
-            echo "No previous successful deployment found -- cannot roll back automatically."
-            echo "Manual intervention required."
+            # Exit with error so GitHub Actions marks this run as failed
             exit 1
-          fi
-
-          echo "Rolling back to deployment ID: ${PREV_ID}"
-          railway deployments rollback \
-            --project "${{ secrets.RAILWAY_PROJECT_ID }}" \
-            --service "${{ secrets.RAILWAY_SERVICE_ID }}" \
-            "${PREV_ID}"
-
-      - name: Verify rollback health check
-        run: |
-          HEALTH_URL="${{ secrets.BACKEND_HEALTH_URL }}"
-          echo "Verifying rollback via health check: ${HEALTH_URL}"
-          sleep 15
-          for i in $(seq 1 12); do
-            HTTP_STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
-              --max-time 10 "${HEALTH_URL}" || echo "000")
-            echo "Attempt ${i}/12 -- HTTP status: ${HTTP_STATUS}"
-            if [ "${HTTP_STATUS}" = "200" ]; then
-              echo "Rollback health check passed -- service is healthy."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "Rollback health check also failed -- manual intervention required."
-          exit 1
-
-      - name: Annotate workflow with rollback notice
-        if: always()
-        run: |
-          echo "::warning title=Deployment Rolled Back::The deployment failed and was automatically rolled back to the previous successful version. Please investigate the failure before re-deploying."
+        env:
+          NEW_TAG: ${{ needs.build.outputs.image-tag }}
