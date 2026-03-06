@@ -15,7 +15,7 @@ import platform.Foundation.NSMutableDictionary
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.dataUsingEncoding
-import platform.Foundation.stringWithCString
+import platform.Foundation.create
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -128,10 +128,10 @@ actual class TokenStorage {
         if (status != errSecSuccess) return null
 
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
-        val json = NSString.stringWithCString(
-            cString = data.bytes?.reinterpret() ?: return null,
-            encoding = NSUTF8StringEncoding,
-        ) as? String ?: return null
+        // NSString.create(data, encoding) is the idiomatic way to decode NSData -> String
+        // in Kotlin/Native 2.x. The old data.bytes?.reinterpret() pattern was removed.
+        val json = NSString.create(data = data, encoding = NSUTF8StringEncoding)
+            as? String ?: return null
         runCatching { Json.decodeFromString<AuthToken>(json) }.getOrNull()
     }
 
