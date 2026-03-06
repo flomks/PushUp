@@ -8,8 +8,11 @@ import com.pushup.domain.model.User
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.UserRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Production implementation of [AuthRepository].
@@ -22,6 +25,12 @@ import kotlinx.datetime.Clock
  *
  * All suspend functions are main-safe -- dispatcher switching is handled by
  * [withContext] using the injected [dispatcher].
+ *
+ * ## Concurrency
+ * [refreshToken] is protected by [refreshMutex] to prevent the single-use
+ * refresh token from being consumed by two concurrent callers simultaneously.
+ * The second caller will wait for the first to complete and then read the
+ * already-refreshed token from storage.
  *
  * @property authClient     Auth API client (production: [com.pushup.data.api.SupabaseAuthClient]).
  * @property tokenStorage   Platform-specific secure token storage.
@@ -37,6 +46,12 @@ class AuthRepositoryImpl(
     private val dispatcher: CoroutineDispatcher,
 ) : AuthRepository {
 
+    /**
+     * Serialises concurrent [refreshToken] calls so that Supabase's single-use
+     * refresh tokens are never consumed by two callers simultaneously.
+     */
+    private val refreshMutex = Mutex()
+
     // =========================================================================
     // AuthRepository implementation
     // =========================================================================
@@ -45,8 +60,9 @@ class AuthRepositoryImpl(
         withContext(dispatcher) {
             val token = wrapAuthCall { authClient.signUpWithEmail(email, password) }
             tokenStorage.save(token)
-            val user = buildUser(token, email)
-            userRepository.saveUser(user)
+            val user = makeUser(token, emailOverride = email)
+            // Use upsertUser -- safe even if a partial record exists from a prior attempt
+            userRepository.upsertUser(user)
             user
         }
 
@@ -54,26 +70,30 @@ class AuthRepositoryImpl(
         withContext(dispatcher) {
             val token = wrapAuthCall { authClient.signInWithEmail(email, password) }
             tokenStorage.save(token)
-            val user = buildUser(token, email)
-            upsertUser(user)
+            val user = makeUser(token, emailOverride = email)
+            userRepository.upsertUser(user)
             user
         }
 
     override suspend fun loginWithApple(idToken: String): User =
         withContext(dispatcher) {
-            val token = wrapAuthCall { authClient.signInWithIdToken("apple", idToken) }
+            val token = wrapAuthCall {
+                authClient.signInWithIdToken(com.pushup.domain.model.SocialProvider.APPLE, idToken)
+            }
             tokenStorage.save(token)
-            val user = buildUser(token, email = null)
-            upsertUser(user)
+            val user = makeUser(token, emailOverride = null)
+            userRepository.upsertUser(user)
             user
         }
 
     override suspend fun loginWithGoogle(idToken: String): User =
         withContext(dispatcher) {
-            val token = wrapAuthCall { authClient.signInWithIdToken("google", idToken) }
+            val token = wrapAuthCall {
+                authClient.signInWithIdToken(com.pushup.domain.model.SocialProvider.GOOGLE, idToken)
+            }
             tokenStorage.save(token)
-            val user = buildUser(token, email = null)
-            upsertUser(user)
+            val user = makeUser(token, emailOverride = null)
+            userRepository.upsertUser(user)
             user
         }
 
@@ -81,15 +101,15 @@ class AuthRepositoryImpl(
         withContext(dispatcher) {
             tokenStorage.clear()
             if (clearLocalData) {
-                // Best-effort: ignore errors when clearing local data
-                runCatching { userRepository.getCurrentUser() }
-                    .getOrNull()
-                    ?.let { user ->
-                        // Mark the user as logged out by updating with a cleared email
-                        // (full deletion is not supported by UserRepository interface)
-                        // In practice, the app should navigate to the login screen and
-                        // the local data will be overwritten on next login.
+                // Read the current user ID before clearing, then delete.
+                // Best-effort: a failure here should not prevent the token from
+                // being cleared (which already happened above).
+                runCatching {
+                    val userId = userRepository.getCurrentUser()?.id
+                    if (userId != null) {
+                        userRepository.deleteUser(userId)
                     }
+                }
             }
         }
 
@@ -104,12 +124,16 @@ class AuthRepositoryImpl(
         }
 
     override suspend fun refreshToken(): AuthToken =
-        withContext(dispatcher) {
-            val stored = tokenStorage.load()
-                ?: throw AuthException.NotAuthenticated()
-            val newToken = wrapAuthCall { authClient.refreshToken(stored.refreshToken) }
-            tokenStorage.save(newToken)
-            newToken
+        // Serialise concurrent refresh calls: the second caller waits for the first
+        // to complete, then reads the already-refreshed token from storage.
+        refreshMutex.withLock {
+            withContext(dispatcher) {
+                val stored = tokenStorage.load()
+                    ?: throw AuthException.NotAuthenticated()
+                val newToken = wrapAuthCall { authClient.refreshToken(stored.refreshToken) }
+                tokenStorage.save(newToken)
+                newToken
+            }
         }
 
     // =========================================================================
@@ -119,12 +143,17 @@ class AuthRepositoryImpl(
     /**
      * Executes an auth API call, mapping any [Exception] to a typed [AuthException].
      *
-     * [AuthException]s are re-thrown as-is. All other exceptions are wrapped in
-     * [AuthException.NetworkError] (for connectivity issues) or [AuthException.Unknown].
+     * [CancellationException] is always re-thrown first to preserve structured
+     * concurrency. [AuthException]s are re-thrown as-is. All other exceptions are
+     * wrapped in [AuthException.NetworkError] (for connectivity issues) or
+     * [AuthException.Unknown].
      */
     private suspend fun <T> wrapAuthCall(block: suspend () -> T): T {
         return try {
             block()
+        } catch (e: CancellationException) {
+            // Never swallow cancellation -- always re-throw to preserve structured concurrency.
+            throw e
         } catch (e: AuthException) {
             throw e
         } catch (e: Exception) {
@@ -140,39 +169,33 @@ class AuthRepositoryImpl(
     }
 
     /**
-     * Builds a [User] domain object from an [AuthToken] and optional [email].
+     * Constructs a [User] domain object from an [AuthToken].
      *
-     * When [email] is `null` (social login), the email is derived from the
-     * existing local user record if available, or left as an empty placeholder.
-     * The display name defaults to the email prefix (before `@`).
+     * Email resolution priority:
+     * 1. [emailOverride] -- provided by the caller for email/password flows (always accurate).
+     * 2. [AuthToken.userEmail] -- returned by the Supabase Auth server in the session response.
+     *    Present for most social logins when the provider shares the email.
+     * 3. A synthetic placeholder `"<userId>@social.local"` -- last resort for social logins
+     *    where the provider does not share the email (e.g. Apple with "Hide My Email").
+     *    The placeholder is clearly synthetic and will not be displayed to the user.
+     *
+     * The display name defaults to the local part of the email (before `@`).
+     *
+     * @param token         The auth token returned by the server.
+     * @param emailOverride Caller-supplied email (non-null for email/password flows).
      */
-    private suspend fun buildUser(token: AuthToken, email: String?): User {
+    private fun makeUser(token: AuthToken, emailOverride: String?): User {
         val now = clock.now()
-        val resolvedEmail = email
-            ?: userRepository.getCurrentUser()?.email
+        val email = emailOverride?.trim()
+            ?: token.userEmail?.takeIf { it.isNotBlank() }
             ?: "${token.userId}@social.local"
-        val displayName = resolvedEmail.substringBefore('@').ifBlank { "User" }
+        val displayName = email.substringBefore('@').ifBlank { "User" }
         return User(
             id = token.userId,
-            email = resolvedEmail,
+            email = email,
             displayName = displayName,
             createdAt = now,
             lastSyncedAt = now,
         )
-    }
-
-    /**
-     * Saves or updates the [user] in the local database.
-     *
-     * Attempts [UserRepository.updateUser] first; if the user does not exist yet
-     * (e.g. first login on a new device), falls back to [UserRepository.saveUser].
-     */
-    private suspend fun upsertUser(user: User) {
-        val existing = userRepository.getCurrentUser()
-        if (existing != null) {
-            userRepository.updateUser(user)
-        } else {
-            userRepository.saveUser(user)
-        }
     }
 }

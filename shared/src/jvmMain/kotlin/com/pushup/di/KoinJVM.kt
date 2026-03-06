@@ -2,14 +2,16 @@ package com.pushup.di
 
 import com.flomks.pushup.db.DatabaseDriverFactory
 import com.flomks.pushup.db.JvmDatabaseDriverFactory
+import com.pushup.data.storage.TokenStorage
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
 /**
  * JVM/Desktop-specific Koin module.
  *
- * Provides the [JvmDatabaseDriverFactory] as the platform [DatabaseDriverFactory]
- * implementation. This binding is required by [databaseModule] in [AppModule.kt].
+ * Provides:
+ * - [JvmDatabaseDriverFactory] as the platform [DatabaseDriverFactory] implementation.
+ * - [TokenStorage] backed by an in-memory store (JVM/Desktop builds and unit tests).
  *
  * By default the factory uses a persistent file-based SQLite database stored in
  * `~/.pushup/pushup.db`. Pass a custom [dbPath] to override the location, or
@@ -18,6 +20,7 @@ import org.koin.dsl.module
  */
 val jvmModule = module {
     single<DatabaseDriverFactory> { JvmDatabaseDriverFactory() }
+    single { TokenStorage() }
 }
 
 /**

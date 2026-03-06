@@ -252,6 +252,17 @@ const val BACKEND_BASE_URL = "backend_base_url"
 const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
 
 /**
+ * Named Koin qualifier for the debug flag.
+ *
+ * Bind this in your platform-specific module:
+ * ```kotlin
+ * single<Boolean>(named(IS_DEBUG)) { BuildConfig.DEBUG }
+ * ```
+ * Defaults to `false` when not bound (production-safe).
+ */
+const val IS_DEBUG = "is_debug"
+
+/**
  * API module: binds the [io.ktor.client.HttpClient], [SupabaseClient], and
  * [KtorApiClient] as **singletons**.
  *
@@ -262,13 +273,19 @@ const val JWT_TOKEN_PROVIDER = "jwt_token_provider"
  * - `String` named [BACKEND_BASE_URL]
  * - [JwtTokenProvider] named [JWT_TOKEN_PROVIDER]
  *
+ * Optionally accepts:
+ * - `Boolean` named [IS_DEBUG] -- enables HTTP header logging in debug builds.
+ *   Defaults to `false` when not bound.
+ *
  * In development / testing, these can be provided via a test module that
  * supplies mock values.
  */
 val apiModule: Module = module {
-    // Shared HttpClient -- one instance for both API clients
+    // Shared HttpClient -- one instance for both API clients.
+    // Resolves IS_DEBUG from Koin; defaults to false if not bound (production-safe).
     single {
-        createHttpClient(isDebug = false)
+        val isDebug = runCatching { get<Boolean>(named(IS_DEBUG)) }.getOrDefault(false)
+        createHttpClient(isDebug = isDebug)
     }
 
     // Supabase REST API client (PostgREST)

@@ -12,7 +12,8 @@ import com.pushup.domain.repository.AuthRepository
  * profile is persisted to the local database.
  *
  * ## Validation
- * - [email] must not be blank and must contain `@`.
+ * - [email] must not be blank, must contain `@`, must have a non-empty local part
+ *   (before `@`) and a non-empty domain part containing at least one `.`.
  * - [password] must be at least [MIN_PASSWORD_LENGTH] characters.
  *
  * ## Error handling
@@ -46,7 +47,13 @@ class RegisterWithEmailUseCase(
 
     private fun validateEmail(email: String) {
         require(email.isNotBlank()) { "Email must not be blank" }
-        require(email.contains('@')) { "Email must contain '@'" }
+        val trimmed = email.trim()
+        val atIndex = trimmed.indexOf('@')
+        require(atIndex > 0) { "Email must have a non-empty local part before '@'" }
+        val domain = trimmed.substring(atIndex + 1)
+        require(domain.contains('.') && domain.length > 2) {
+            "Email must have a valid domain (e.g. 'example.com')"
+        }
     }
 
     private fun validatePassword(password: String) {

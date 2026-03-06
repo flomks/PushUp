@@ -20,6 +20,8 @@ import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecDuplicateItem
+import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlock
@@ -42,6 +44,12 @@ import platform.Security.kSecValueData
  * available after the device is unlocked for the first time -- this is required
  * for background token refresh operations.
  *
+ * ## Error handling
+ * [save] throws [IllegalStateException] if the Keychain write fails for any
+ * reason (e.g. device locked, Keychain unavailable). This ensures the caller
+ * (the repository layer) is always aware of a failed save rather than silently
+ * proceeding with an unauthenticated state.
+ *
  * ## Setup
  * Bind this class in your Koin iOS module:
  * ```kotlin
@@ -51,17 +59,23 @@ import platform.Security.kSecValueData
 @OptIn(ExperimentalForeignApi::class)
 actual class TokenStorage {
 
-    /** Persists [token] to the Keychain as a JSON-encoded generic password item. */
+    /**
+     * Persists [token] to the Keychain as a JSON-encoded generic password item.
+     *
+     * Uses an update-then-add strategy:
+     * 1. Attempt `SecItemUpdate` on the existing item.
+     * 2. If the item does not exist (`errSecItemNotFound`), add it with `SecItemAdd`.
+     * 3. Any other non-success status from either call throws [IllegalStateException].
+     *
+     * @throws IllegalStateException if the Keychain write fails.
+     */
     actual fun save(token: AuthToken) {
         val json = Json.encodeToString(token)
-        val data = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return
+        val data = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
+            ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
-        // Try to update an existing item first.
-        val updateQuery = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
-            setObject(SERVICE, forKey = kSecAttrService as NSString)
-            setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
-        }
+        // Attempt to update an existing item first.
+        val updateQuery = buildQuery()
         val updateAttributes = NSMutableDictionary().apply {
             setObject(data, forKey = kSecValueData as NSString)
         }
@@ -71,26 +85,37 @@ actual class TokenStorage {
             updateAttributes as platform.CoreFoundation.CFDictionaryRef,
         )
 
-        if (updateStatus == errSecSuccess) return
+        when (updateStatus) {
+            errSecSuccess -> return  // Updated successfully.
 
-        // Item did not exist -- add it.
-        val addQuery = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
-            setObject(SERVICE, forKey = kSecAttrService as NSString)
-            setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
-            setObject(kSecAttrAccessibleAfterFirstUnlock, forKey = kSecAttrAccessible as NSString)
-            setObject(data, forKey = kSecValueData as NSString)
+            errSecItemNotFound -> {
+                // Item does not exist yet -- add it.
+                val addQuery = NSMutableDictionary().apply {
+                    setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
+                    setObject(SERVICE, forKey = kSecAttrService as NSString)
+                    setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
+                    setObject(kSecAttrAccessibleAfterFirstUnlock, forKey = kSecAttrAccessible as NSString)
+                    setObject(data, forKey = kSecValueData as NSString)
+                }
+                @Suppress("UNCHECKED_CAST")
+                val addStatus = SecItemAdd(
+                    addQuery as platform.CoreFoundation.CFDictionaryRef,
+                    null,
+                )
+                // errSecDuplicateItem can occur in a race where another thread added
+                // the item between our update attempt and this add. Treat it as success.
+                check(addStatus == errSecSuccess || addStatus == errSecDuplicateItem) {
+                    "TokenStorage.save: SecItemAdd failed with OSStatus $addStatus"
+                }
+            }
+
+            else -> error("TokenStorage.save: SecItemUpdate failed with OSStatus $updateStatus")
         }
-        @Suppress("UNCHECKED_CAST")
-        SecItemAdd(addQuery as platform.CoreFoundation.CFDictionaryRef, null)
     }
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */
     actual fun load(): AuthToken? = memScoped {
-        val query = NSMutableDictionary().apply {
-            setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
-            setObject(SERVICE, forKey = kSecAttrService as NSString)
-            setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
+        val query = buildQuery {
             setObject(true, forKey = kSecReturnData as NSString)
             setObject(kSecMatchLimitOne, forKey = kSecMatchLimit as NSString)
         }
@@ -112,14 +137,27 @@ actual class TokenStorage {
 
     /** Removes the stored token from the Keychain. */
     actual fun clear() {
-        val query = NSMutableDictionary().apply {
+        val query = buildQuery()
+        @Suppress("UNCHECKED_CAST")
+        SecItemDelete(query as platform.CoreFoundation.CFDictionaryRef)
+        // Ignore the return value: errSecItemNotFound is expected when no token is stored.
+    }
+
+    // =========================================================================
+    // Private helpers
+    // =========================================================================
+
+    /**
+     * Builds the base Keychain query dictionary identifying the token item.
+     * Additional attributes can be added via [extra].
+     */
+    private fun buildQuery(extra: (NSMutableDictionary.() -> Unit)? = null): NSMutableDictionary =
+        NSMutableDictionary().apply {
             setObject(kSecClassGenericPassword, forKey = kSecClass as NSString)
             setObject(SERVICE, forKey = kSecAttrService as NSString)
             setObject(ACCOUNT, forKey = kSecAttrAccount as NSString)
+            extra?.invoke(this)
         }
-        @Suppress("UNCHECKED_CAST")
-        SecItemDelete(query as platform.CoreFoundation.CFDictionaryRef)
-    }
 
     private companion object {
         const val SERVICE = "com.pushup.auth"

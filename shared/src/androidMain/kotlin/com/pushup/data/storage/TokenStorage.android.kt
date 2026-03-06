@@ -15,6 +15,17 @@ import kotlinx.serialization.json.Json
  * [EncryptedSharedPreferences] file. The encryption key is stored in the
  * Android Keystore and the value is AES-256-GCM encrypted.
  *
+ * ## Write durability
+ * [save] uses [SharedPreferences.Editor.commit] (synchronous) rather than
+ * [SharedPreferences.Editor.apply] (asynchronous). Token persistence is a
+ * security-critical operation: if the process is killed immediately after
+ * [save] returns, the token must already be on disk so the user is not
+ * unexpectedly logged out on next launch. The synchronous write adds only a
+ * few milliseconds of latency and is called at most once per login.
+ *
+ * [clear] uses [apply] because a failed clear is less dangerous than a failed
+ * save -- the token will expire naturally on the server.
+ *
  * ## Setup
  * Bind this class in your Koin Android module:
  * ```kotlin
@@ -39,11 +50,19 @@ actual class TokenStorage(context: Context) {
         )
     }
 
-    /** Persists [token] to [EncryptedSharedPreferences] as a JSON string. */
+    /**
+     * Persists [token] to [EncryptedSharedPreferences] as a JSON string.
+     *
+     * Uses [SharedPreferences.Editor.commit] (synchronous) to guarantee the
+     * token is flushed to disk before this function returns.
+     *
+     * @throws IllegalStateException if the write fails (commit returns false).
+     */
     actual fun save(token: AuthToken) {
-        prefs.edit()
+        val committed = prefs.edit()
             .putString(KEY_TOKEN, Json.encodeToString(token))
-            .apply()
+            .commit()
+        check(committed) { "TokenStorage.save: EncryptedSharedPreferences commit failed" }
     }
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */

@@ -1,6 +1,7 @@
 package com.pushup.data.api
 
 import com.pushup.domain.model.AuthToken
+import com.pushup.domain.model.SocialProvider
 
 /**
  * Abstraction over the Supabase Auth REST API.
@@ -33,12 +34,12 @@ interface AuthClient {
     /**
      * Signs in (or registers) a user using a social provider ID token.
      *
-     * @param provider The OAuth provider name: `"apple"` or `"google"`.
+     * @param provider The OAuth provider (typed enum -- prevents typos).
      * @param idToken  The identity token issued by the provider.
      * @return [AuthToken] for the authenticated session.
      * @throws com.pushup.domain.model.AuthException on failure.
      */
-    suspend fun signInWithIdToken(provider: String, idToken: String): AuthToken
+    suspend fun signInWithIdToken(provider: SocialProvider, idToken: String): AuthToken
 
     /**
      * Refreshes the access token using [refreshToken].

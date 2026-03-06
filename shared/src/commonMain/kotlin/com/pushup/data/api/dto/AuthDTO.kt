@@ -117,5 +117,6 @@ fun AuthSessionDTO.toAuthToken(currentEpochSeconds: Long): AuthToken {
         refreshToken = refresh,
         userId = uid,
         expiresAt = expiry,
+        userEmail = user.email?.takeIf { it.isNotBlank() },
     )
 }

@@ -8,6 +8,7 @@ import com.pushup.data.api.dto.RefreshTokenRequest
 import com.pushup.data.api.dto.toAuthToken
 import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.AuthToken
+import com.pushup.domain.model.SocialProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.header
@@ -53,11 +54,6 @@ class SupabaseAuthClient(
 ) : AuthClient {
 
     private val authBase: String get() = "$supabaseUrl/auth/v1"
-
-    private val lenientJson = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
 
     // =========================================================================
     // Public API
@@ -111,17 +107,17 @@ class SupabaseAuthClient(
      *
      * Calls `POST /auth/v1/token?grant_type=id_token`.
      *
-     * @param provider The OAuth provider name: `"apple"` or `"google"`.
+     * @param provider The OAuth provider (typed enum -- prevents typos).
      * @param idToken  The identity token issued by the provider.
      * @return [AuthToken] for the authenticated session.
      * @throws AuthException on failure.
      */
-    override suspend fun signInWithIdToken(provider: String, idToken: String): AuthToken {
+    override suspend fun signInWithIdToken(provider: SocialProvider, idToken: String): AuthToken {
         val response = httpClient.post("$authBase/token") {
             header("apikey", supabaseAnonKey)
             url.parameters.append("grant_type", "id_token")
             contentType(ContentType.Application.Json)
-            setBody(IdTokenRequest(provider = provider, idToken = idToken))
+            setBody(IdTokenRequest(provider = provider.apiValue, idToken = idToken))
         }
         if (!response.status.isSuccess()) {
             throw mapAuthError(response.status.value, runCatching { response.bodyAsText() }.getOrNull())
@@ -159,35 +155,51 @@ class SupabaseAuthClient(
     /**
      * Maps an HTTP error response from Supabase Auth to a typed [AuthException].
      *
-     * Supabase Auth uses a mix of HTTP status codes and JSON error bodies to
-     * communicate failure reasons. This function inspects both to produce the
-     * most specific [AuthException] subclass possible.
+     * Prefers structured error codes (`errorDto.error`, `errorDto.code`) over
+     * free-text message matching. Falls back to message matching only for codes
+     * that Supabase does not yet expose as structured fields.
+     *
+     * Supabase v2 error codes reference:
+     * https://supabase.com/docs/reference/javascript/auth-error-codes
      */
     private fun mapAuthError(statusCode: Int, body: String?): AuthException {
         val errorDto = body?.let {
-            runCatching { lenientJson.decodeFromString<AuthErrorDTO>(it) }.getOrNull()
+            runCatching { errorJson.decodeFromString<AuthErrorDTO>(it) }.getOrNull()
         }
         val errorCode = errorDto?.error
-        val errorMsg = errorDto?.errorDescription ?: errorDto?.message ?: body ?: "Unknown auth error"
+        // Prefer structured description; fall back to raw body (truncated for safety)
+        val errorMsg = errorDto?.errorDescription
+            ?: errorDto?.message
+            ?: body?.take(200)
+            ?: "Unknown auth error"
 
         return when {
             // 422 Unprocessable Entity -- validation errors
             statusCode == HttpStatusCode.UnprocessableEntity.value -> when {
-                errorMsg.contains("already registered", ignoreCase = true) ||
-                    errorMsg.contains("already in use", ignoreCase = true) ||
-                    errorMsg.contains("User already registered", ignoreCase = true) ->
+                // Supabase structured codes (preferred)
+                errorCode == "user_already_exists" ->
                     AuthException.EmailAlreadyInUse(errorMsg)
-                errorMsg.contains("invalid email", ignoreCase = true) ||
-                    errorMsg.contains("email address", ignoreCase = true) ->
+                errorCode == "email_exists" ->
+                    AuthException.EmailAlreadyInUse(errorMsg)
+                errorCode == "weak_password" ->
+                    AuthException.WeakPassword(errorMsg)
+                errorCode == "invalid_email" ->
                     AuthException.InvalidEmail(errorMsg)
+                // Fallback message matching for older Supabase versions
+                errorMsg.contains("already registered", ignoreCase = true) ||
+                    errorMsg.contains("already in use", ignoreCase = true) ->
+                    AuthException.EmailAlreadyInUse(errorMsg)
                 errorMsg.contains("password", ignoreCase = true) ->
                     AuthException.WeakPassword(errorMsg)
-                else -> AuthException.ServerError(statusCode, errorMsg)
+                errorMsg.contains("email", ignoreCase = true) ->
+                    AuthException.InvalidEmail(errorMsg)
+                else -> AuthException.ServerError(statusCode, sanitise(errorMsg))
             }
 
-            // 400 Bad Request -- often invalid credentials or malformed request
+            // 400 Bad Request -- invalid credentials or malformed request
             statusCode == HttpStatusCode.BadRequest.value -> when (errorCode) {
                 "invalid_grant" -> AuthException.InvalidCredentials(errorMsg)
+                "session_not_found" -> AuthException.SessionExpired(errorMsg)
                 else -> when {
                     errorMsg.contains("invalid login credentials", ignoreCase = true) ||
                         errorMsg.contains("invalid credentials", ignoreCase = true) ->
@@ -195,25 +207,49 @@ class SupabaseAuthClient(
                     errorMsg.contains("refresh_token", ignoreCase = true) ||
                         errorMsg.contains("token is expired", ignoreCase = true) ->
                         AuthException.SessionExpired(errorMsg)
-                    else -> AuthException.ServerError(statusCode, errorMsg)
+                    else -> AuthException.ServerError(statusCode, sanitise(errorMsg))
                 }
             }
 
             // 401 Unauthorized -- expired or invalid token
             statusCode == HttpStatusCode.Unauthorized.value -> when {
+                errorCode == "session_not_found" -> AuthException.SessionExpired(errorMsg)
                 errorMsg.contains("refresh_token", ignoreCase = true) ||
                     errorMsg.contains("expired", ignoreCase = true) ->
                     AuthException.SessionExpired(errorMsg)
                 else -> AuthException.InvalidCredentials(errorMsg)
             }
 
-            // 429 Too Many Requests -- rate limiting (treat as server error)
-            statusCode == 429 -> AuthException.ServerError(statusCode, "Too many requests -- please try again later")
+            // 429 Too Many Requests -- rate limiting
+            statusCode == 429 ->
+                AuthException.ServerError(statusCode, "Too many requests -- please try again later")
 
             // 5xx Server errors
-            statusCode >= 500 -> AuthException.ServerError(statusCode, errorMsg)
+            statusCode >= 500 -> AuthException.ServerError(statusCode, sanitise(errorMsg))
 
-            else -> AuthException.Unknown(errorMsg)
+            else -> AuthException.Unknown(sanitise(errorMsg))
+        }
+    }
+
+    /**
+     * Truncates and sanitises a server message before embedding it in an exception.
+     *
+     * Prevents raw server response bodies (which may contain internal details or
+     * user data) from being surfaced verbatim in logs or crash reports.
+     */
+    private fun sanitise(msg: String): String = msg.take(200)
+
+    private companion object {
+        /**
+         * Shared lenient [Json] instance for parsing Supabase Auth error bodies.
+         *
+         * Uses `ignoreUnknownKeys` and `isLenient` for resilience against minor
+         * format variations. Declared as a companion object constant to avoid
+         * allocating a new instance per request.
+         */
+        val errorJson = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
         }
     }
 }

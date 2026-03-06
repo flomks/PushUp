@@ -8,6 +8,12 @@ plugins {
 }
 
 kotlin {
+    // Opt-in to stable expect/actual classes (currently in Beta -- suppresses the warning).
+    // See: https://youtrack.jetbrains.com/issue/KT-61573
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)

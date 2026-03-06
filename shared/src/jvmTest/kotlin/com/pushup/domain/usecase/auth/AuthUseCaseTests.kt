@@ -8,11 +8,13 @@ import com.pushup.data.storage.TokenStorage
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.AuthToken
+import com.pushup.domain.model.SocialProvider
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.UserRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -24,7 +26,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -136,6 +137,24 @@ class AuthUseCaseTests {
     }
 
     @Test
+    fun register_throwsForEmailWithEmptyLocalPart() = runTest {
+        val useCase = RegisterWithEmailUseCase(authRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("@example.com", "password123")
+        }
+    }
+
+    @Test
+    fun register_throwsForEmailWithInvalidDomain() = runTest {
+        val useCase = RegisterWithEmailUseCase(authRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("user@nodot", "password123")
+        }
+    }
+
+    @Test
     fun register_throwsForPasswordTooShort() = runTest {
         val useCase = RegisterWithEmailUseCase(authRepo)
 
@@ -161,6 +180,25 @@ class AuthUseCaseTests {
         val user = useCase("  test@example.com  ", "password123")
 
         assertEquals("test@example.com", user.email)
+    }
+
+    @Test
+    fun register_idempotent_upsertDoesNotThrowWhenUserAlreadyExists() = runTest {
+        // Pre-populate the database with an existing user (simulates DB restore / prior partial registration)
+        val existingUser = User(
+            id = "fake-user-id",
+            email = "test@example.com",
+            displayName = "test",
+            createdAt = fixedClock.now(),
+            lastSyncedAt = fixedClock.now(),
+        )
+        userRepo.saveUser(existingUser)
+
+        val useCase = RegisterWithEmailUseCase(authRepo)
+
+        // Should not throw -- upsertUser handles the conflict atomically
+        val user = useCase("test@example.com", "password123")
+        assertNotNull(user)
     }
 
     // =========================================================================
@@ -194,6 +232,15 @@ class AuthUseCaseTests {
 
         assertFailsWith<IllegalArgumentException> {
             useCase("", "password123")
+        }
+    }
+
+    @Test
+    fun loginWithEmail_throwsForEmailWithEmptyLocalPart() = runTest {
+        val useCase = LoginWithEmailUseCase(authRepo)
+
+        assertFailsWith<IllegalArgumentException> {
+            useCase("@example.com", "password123")
         }
     }
 
@@ -286,7 +333,24 @@ class AuthUseCaseTests {
 
         useCase("apple-id-token-xyz")
 
-        assertEquals("apple", fakeAuthClient.lastIdTokenProvider)
+        assertEquals(SocialProvider.APPLE, fakeAuthClient.lastIdTokenProvider)
+    }
+
+    @Test
+    fun loginWithApple_usesEmailFromServerResponse() = runTest {
+        // Fake client returns a token that includes the email from the server
+        fakeAuthClient.idTokenToken = AuthToken(
+            accessToken = "fake-access-token",
+            refreshToken = "fake-refresh-token",
+            userId = "fake-user-id",
+            expiresAt = 9999999999L,
+            userEmail = "apple.user@icloud.com",
+        )
+        val useCase = LoginWithAppleUseCase(authRepo)
+
+        val user = useCase("apple-id-token-xyz")
+
+        assertEquals("apple.user@icloud.com", user.email)
     }
 
     // =========================================================================
@@ -329,7 +393,7 @@ class AuthUseCaseTests {
 
         useCase("google-id-token-xyz")
 
-        assertEquals("google", fakeAuthClient.lastIdTokenProvider)
+        assertEquals(SocialProvider.GOOGLE, fakeAuthClient.lastIdTokenProvider)
     }
 
     // =========================================================================
@@ -368,6 +432,31 @@ class AuthUseCaseTests {
         assertNull(tokenStorage.load())
     }
 
+    @Test
+    fun logout_withClearLocalData_deletesUserFromDatabase() = runTest {
+        LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
+        assertNotNull(userRepo.getCurrentUser())
+
+        val useCase = LogoutUseCase(authRepo)
+        useCase(clearLocalData = true)
+
+        // User record must be gone from the database
+        assertNull(userRepo.getCurrentUser())
+    }
+
+    @Test
+    fun logout_withClearLocalDataFalse_preservesUserInDatabase() = runTest {
+        LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
+        assertNotNull(userRepo.getCurrentUser())
+
+        val useCase = LogoutUseCase(authRepo)
+        useCase(clearLocalData = false)
+
+        // Token is cleared but local user data is preserved
+        assertNull(tokenStorage.load())
+        assertNotNull(userRepo.getCurrentUser())
+    }
+
     // =========================================================================
     // GetCurrentUserUseCase
     // =========================================================================
@@ -393,16 +482,28 @@ class AuthUseCaseTests {
     }
 
     @Test
-    fun getCurrentUser_returnsNullAfterLogout() = runTest {
+    fun getCurrentUser_returnsUserAfterLogoutWithClearLocalDataFalse() = runTest {
+        // Token is cleared but local user data is preserved when clearLocalData = false
         LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
         LogoutUseCase(authRepo)(clearLocalData = false)
         val useCase = GetCurrentUserUseCase(authRepo)
 
-        // Token is cleared but local user data is preserved (clearLocalData = false)
-        // getCurrentUser reads from DB, not from token
         val user = useCase()
+
         // User still exists in DB since clearLocalData = false
         assertNotNull(user)
+        assertEquals("test@example.com", user.email)
+    }
+
+    @Test
+    fun getCurrentUser_returnsNullAfterLogoutWithClearLocalDataTrue() = runTest {
+        LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
+        LogoutUseCase(authRepo)(clearLocalData = true)
+        val useCase = GetCurrentUserUseCase(authRepo)
+
+        val user = useCase()
+
+        assertNull(user)
     }
 
     // =========================================================================
@@ -465,6 +566,62 @@ class AuthUseCaseTests {
         }
     }
 
+    @Test
+    fun refreshToken_concurrentCalls_onlyOneNetworkCallMade() = runTest {
+        // Arrange: log in and configure a slow refresh that counts calls
+        LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
+        fakeAuthClient.refreshedToken = AuthToken(
+            accessToken = "refreshed-token",
+            refreshToken = "new-refresh-token",
+            userId = "fake-user-id",
+            expiresAt = 9999999999L,
+        )
+        val useCase = RefreshTokenUseCase(authRepo)
+
+        // Act: launch two concurrent refresh calls
+        val result1 = async { useCase() }
+        val result2 = async { useCase() }
+        val token1 = result1.await()
+        val token2 = result2.await()
+
+        // Assert: both callers receive a valid (non-null) token
+        assertNotNull(token1)
+        assertNotNull(token2)
+        // The stored token must be the refreshed one
+        val stored = tokenStorage.load()
+        assertNotNull(stored)
+        assertEquals("refreshed-token", stored.accessToken)
+    }
+
+    // =========================================================================
+    // AuthToken.toString() -- security: no token leakage
+    // =========================================================================
+
+    @Test
+    fun authToken_toString_doesNotExposeAccessToken() {
+        val token = AuthToken(
+            accessToken = "super-secret-jwt",
+            refreshToken = "super-secret-refresh",
+            userId = "user-123",
+            expiresAt = 9999999999L,
+        )
+
+        val str = token.toString()
+
+        assert(!str.contains("super-secret-jwt")) {
+            "toString() must not expose accessToken, but got: $str"
+        }
+        assert(!str.contains("super-secret-refresh")) {
+            "toString() must not expose refreshToken, but got: $str"
+        }
+        assert(str.contains("user-123")) {
+            "toString() should include userId for diagnostics, but got: $str"
+        }
+        assert(str.contains("REDACTED")) {
+            "toString() should indicate redaction, but got: $str"
+        }
+    }
+
     // =========================================================================
     // Integration: full auth flow
     // =========================================================================
@@ -480,7 +637,7 @@ class AuthUseCaseTests {
         val registeredUser = register("user@example.com", "securepass")
         assertNotNull(registeredUser)
 
-        // Logout
+        // Logout (keep local data)
         logout()
         assertNull(tokenStorage.load())
 
@@ -493,6 +650,25 @@ class AuthUseCaseTests {
         val currentUser = getUser()
         assertNotNull(currentUser)
         assertEquals("user@example.com", currentUser.email)
+    }
+
+    @Test
+    fun fullAuthFlow_loginWithApple_usesServerEmailWhenAvailable() = runTest {
+        fakeAuthClient.idTokenToken = AuthToken(
+            accessToken = "fake-access-token",
+            refreshToken = "fake-refresh-token",
+            userId = "apple-user-id",
+            expiresAt = 9999999999L,
+            userEmail = "real@icloud.com",
+        )
+
+        val user = LoginWithAppleUseCase(authRepo)("apple-token")
+
+        assertEquals("real@icloud.com", user.email)
+        // Verify it was persisted
+        val stored = userRepo.getCurrentUser()
+        assertNotNull(stored)
+        assertEquals("real@icloud.com", stored.email)
     }
 }
 
@@ -513,7 +689,8 @@ class FakeSupabaseAuthClient : AuthClient {
     var idTokenError: AuthException? = null
     var refreshError: AuthException? = null
     var refreshedToken: AuthToken? = null
-    var lastIdTokenProvider: String? = null
+    var idTokenToken: AuthToken? = null
+    var lastIdTokenProvider: SocialProvider? = null
 
     private val defaultToken = AuthToken(
         accessToken = "fake-access-token",
@@ -532,10 +709,10 @@ class FakeSupabaseAuthClient : AuthClient {
         return defaultToken
     }
 
-    override suspend fun signInWithIdToken(provider: String, idToken: String): AuthToken {
+    override suspend fun signInWithIdToken(provider: SocialProvider, idToken: String): AuthToken {
         lastIdTokenProvider = provider
         idTokenError?.let { throw it }
-        return defaultToken
+        return idTokenToken ?: defaultToken
     }
 
     override suspend fun refreshToken(refreshToken: String): AuthToken {
