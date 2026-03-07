@@ -1,14 +1,15 @@
-import Foundation
-
 // MARK: - PushUpPhase
 
 /// The discrete phases of a push-up cycle tracked by `PushUpStateMachine`.
 ///
 /// The valid progression is:
 /// ```
-/// IDLE -> DOWN -> UP -> (push-up counted) -> IDLE
+/// IDLE -> DOWN -> COOLDOWN -> IDLE
 /// ```
-/// A partial cycle (e.g. DOWN without a subsequent UP) does **not** count.
+/// A push-up is counted at the moment the machine transitions from DOWN to
+/// COOLDOWN (i.e. when the UP angle threshold is held for the required number
+/// of consecutive frames). A partial cycle (DOWN without a subsequent UP) does
+/// **not** count.
 enum PushUpPhase: Equatable, Sendable {
 
     /// No push-up in progress. The person is either standing, resting, or the
@@ -19,12 +20,6 @@ enum PushUpPhase: Equatable, Sendable {
     /// Entered when the elbow angle drops below `Configuration.downAngleThreshold`
     /// for at least `Configuration.hysteresisFrameCount` consecutive frames.
     case down
-
-    /// The person has pushed back up to the top position.
-    /// Entered when the elbow angle rises above `Configuration.upAngleThreshold`
-    /// for at least `Configuration.hysteresisFrameCount` consecutive frames
-    /// **after** a `down` phase.
-    case up
 
     /// A cooldown period immediately after a push-up is counted.
     /// Prevents double-counting when the angle briefly dips back below the
@@ -48,12 +43,12 @@ extension PushUpStateMachine {
         /// Elbow angle (degrees) below which the DOWN phase is entered.
         /// Default: 90°. A fully bent elbow at the bottom of a push-up is
         /// typically 60–80°; 90° gives a comfortable margin.
-        var downAngleThreshold: Double = 90.0
+        let downAngleThreshold: Double
 
-        /// Elbow angle (degrees) above which the UP phase is entered.
+        /// Elbow angle (degrees) above which the push-up is counted (UP phase).
         /// Default: 160°. A fully extended elbow is ~170–180°; 160° avoids
         /// requiring perfect lockout.
-        var upAngleThreshold: Double = 160.0
+        let upAngleThreshold: Double
 
         // MARK: Hysteresis
 
@@ -62,7 +57,8 @@ extension PushUpStateMachine {
         ///
         /// Higher values reduce noise-induced false transitions at the cost of
         /// slightly delayed counting. At 30 FPS, 3 frames ≈ 100 ms.
-        var hysteresisFrameCount: Int = 3
+        /// Must be >= 1.
+        let hysteresisFrameCount: Int
 
         // MARK: Cooldown
 
@@ -71,7 +67,39 @@ extension PushUpStateMachine {
         /// At 30 FPS, 15 frames ≈ 500 ms. This prevents a single push-up from
         /// being counted twice if the angle briefly oscillates around the UP
         /// threshold at the top of the movement.
-        var cooldownFrameCount: Int = 15
+        /// Must be >= 1.
+        let cooldownFrameCount: Int
+
+        // MARK: Init
+
+        /// Creates a configuration with the given parameters.
+        ///
+        /// - Precondition: `downAngleThreshold` < `upAngleThreshold`
+        /// - Precondition: `hysteresisFrameCount` >= 1
+        /// - Precondition: `cooldownFrameCount` >= 1
+        init(
+            downAngleThreshold: Double = 90.0,
+            upAngleThreshold: Double = 160.0,
+            hysteresisFrameCount: Int = 3,
+            cooldownFrameCount: Int = 15
+        ) {
+            precondition(
+                downAngleThreshold < upAngleThreshold,
+                "downAngleThreshold (\(downAngleThreshold)) must be less than upAngleThreshold (\(upAngleThreshold))"
+            )
+            precondition(
+                hysteresisFrameCount >= 1,
+                "hysteresisFrameCount must be >= 1, got \(hysteresisFrameCount)"
+            )
+            precondition(
+                cooldownFrameCount >= 1,
+                "cooldownFrameCount must be >= 1, got \(cooldownFrameCount)"
+            )
+            self.downAngleThreshold  = downAngleThreshold
+            self.upAngleThreshold    = upAngleThreshold
+            self.hysteresisFrameCount = hysteresisFrameCount
+            self.cooldownFrameCount  = cooldownFrameCount
+        }
 
         // MARK: Defaults
 
@@ -87,10 +115,9 @@ extension PushUpStateMachine {
 ///
 /// **State diagram**
 /// ```
-/// IDLE  --[angle < downThreshold for N frames]--> DOWN
-/// DOWN  --[angle > upThreshold   for N frames]--> UP   (push-up counted)
-/// UP    --[immediately]                        --> COOLDOWN
-/// COOLDOWN --[after M frames]                  --> IDLE
+/// IDLE     --[angle < downThreshold for N frames]--> DOWN
+/// DOWN     --[angle > upThreshold   for N frames]--> COOLDOWN  (push-up counted)
+/// COOLDOWN --[after M frames]                     --> IDLE
 /// ```
 ///
 /// **Hysteresis**
@@ -155,11 +182,6 @@ final class PushUpStateMachine {
             return handleIdle(angle: angle)
         case .down:
             return handleDown(angle: angle)
-        case .up:
-            // Transition to cooldown immediately; push-up was already counted
-            // when we entered .up.
-            enterCooldown()
-            return false
         case .cooldown:
             return handleCooldown()
         }
@@ -196,7 +218,7 @@ final class PushUpStateMachine {
 
     private func handleDown(angle: Double?) -> Bool {
         guard let angle else {
-            // Missing pose: don't advance the pending counter, but stay in DOWN.
+            // Missing pose: reset pending counter but stay in DOWN.
             pendingFrameCount = 0
             return false
         }
@@ -204,12 +226,11 @@ final class PushUpStateMachine {
         if angle > configuration.upAngleThreshold {
             pendingFrameCount += 1
             if pendingFrameCount >= configuration.hysteresisFrameCount {
-                // Full cycle complete: DOWN -> UP.
+                // Full cycle complete: count the push-up and enter cooldown.
                 pushUpCount += 1
-                phase = .up
+                phase = .cooldown
+                cooldownFramesRemaining = configuration.cooldownFrameCount
                 pendingFrameCount = 0
-                // Immediately transition to cooldown on the *next* call.
-                // We return true here so the caller knows a push-up was counted.
                 return true
             }
         } else {
@@ -218,16 +239,8 @@ final class PushUpStateMachine {
         return false
     }
 
-    private func enterCooldown() {
-        phase = .cooldown
-        cooldownFramesRemaining = configuration.cooldownFrameCount
-        pendingFrameCount = 0
-    }
-
     private func handleCooldown() -> Bool {
-        if cooldownFramesRemaining > 0 {
-            cooldownFramesRemaining -= 1
-        }
+        cooldownFramesRemaining -= 1
         if cooldownFramesRemaining == 0 {
             phase = .idle
         }

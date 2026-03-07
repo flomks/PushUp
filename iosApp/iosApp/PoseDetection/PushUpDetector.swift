@@ -1,5 +1,4 @@
 import CoreGraphics
-import Foundation
 
 // MARK: - PushUpEvent
 
@@ -10,8 +9,8 @@ struct PushUpEvent: Sendable {
     /// this one).
     let count: Int
 
-    /// The elbow angle (degrees) at the moment the UP phase was confirmed.
-    /// Useful for downstream quality scoring.
+    /// The averaged elbow angle (degrees) at the moment the push-up was counted.
+    /// Useful for downstream quality scoring (Task 2.4).
     let elbowAngleAtCompletion: Double
 
     /// The timestamp of the frame that triggered the count, in seconds since
@@ -51,8 +50,9 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// ```
 /// angle = acos( (BA · BC) / (|BA| * |BC|) )
 /// ```
-/// Vision coordinates (origin bottom-left, y increases upward) are used
-/// directly; the formula is invariant to coordinate-system orientation.
+/// All arithmetic is performed in `Double` precision. Vision coordinates
+/// (origin bottom-left, y increases upward) are used directly; the formula
+/// is invariant to coordinate-system orientation.
 ///
 /// **Side selection**
 /// - If both sides are detected: use the average of left and right angles.
@@ -117,13 +117,17 @@ final class PushUpDetector {
 
         let counted = stateMachine.update(angle: angle)
 
-        if counted, let delegate {
+        if counted {
+            // `stateMachine.update` only returns `true` from `handleDown`, which
+            // requires a non-nil angle via its `guard let angle` statement.
+            // Therefore `angle` is guaranteed non-nil here.
+            let completionAngle = angle! // swiftlint:disable:this force_unwrap
             let event = PushUpEvent(
                 count: stateMachine.pushUpCount,
-                elbowAngleAtCompletion: angle ?? 0,
+                elbowAngleAtCompletion: completionAngle,
                 timestamp: pose?.timestamp ?? 0
             )
-            delegate.pushUpDetector(self, didCount: event)
+            delegate?.pushUpDetector(self, didCount: event)
         }
     }
 
@@ -134,7 +138,7 @@ final class PushUpDetector {
         currentElbowAngle = nil
     }
 
-    // MARK: - Angle Computation
+    // MARK: - Angle Computation (internal for testing via @testable import)
 
     /// Returns the averaged elbow angle (degrees) from the pose, or `nil` when
     /// no usable joints are available.
@@ -153,14 +157,10 @@ final class PushUpDetector {
         )
 
         switch (leftAngle, rightAngle) {
-        case let (l?, r?):
-            return (l + r) / 2.0
-        case let (l?, nil):
-            return l
-        case let (nil, r?):
-            return r
-        case (nil, nil):
-            return nil
+        case let (l?, r?):   return (l + r) / 2.0
+        case let (l?, nil):  return l
+        case let (nil, r?):  return r
+        case (nil, nil):     return nil
         }
     }
 
@@ -192,6 +192,9 @@ final class PushUpDetector {
     /// Returns the angle at `vertex` formed by the vectors vertex->a and
     /// vertex->b, in degrees.
     ///
+    /// All arithmetic is performed in `Double` to avoid precision loss on
+    /// platforms where `CGFloat` is 32-bit.
+    ///
     /// Uses the dot-product formula:
     /// ```
     /// angle = acos( (va · vb) / (|va| * |vb|) )
@@ -199,18 +202,21 @@ final class PushUpDetector {
     /// Returns `nil` when either vector has zero length (degenerate case where
     /// two joints share the same position).
     func angleBetween(a: CGPoint, vertex: CGPoint, b: CGPoint) -> Double? {
-        let va = CGPoint(x: a.x - vertex.x, y: a.y - vertex.y)
-        let vb = CGPoint(x: b.x - vertex.x, y: b.y - vertex.y)
+        // Promote to Double immediately to ensure full precision on all platforms.
+        let vax = Double(a.x - vertex.x)
+        let vay = Double(a.y - vertex.y)
+        let vbx = Double(b.x - vertex.x)
+        let vby = Double(b.y - vertex.y)
 
-        let magA = sqrt(va.x * va.x + va.y * va.y)
-        let magB = sqrt(vb.x * vb.x + vb.y * vb.y)
+        let magA = (vax * vax + vay * vay).squareRoot()
+        let magB = (vbx * vbx + vby * vby).squareRoot()
 
         guard magA > 0, magB > 0 else { return nil }
 
-        let dot = va.x * vb.x + va.y * vb.y
+        let dot = vax * vbx + vay * vby
         // Clamp to [-1, 1] to guard against floating-point rounding errors
         // that would cause acos to return NaN.
-        let cosAngle = max(-1.0, min(1.0, Double(dot / (magA * magB))))
+        let cosAngle = max(-1.0, min(1.0, dot / (magA * magB)))
         return acos(cosAngle) * (180.0 / .pi)
     }
 }
