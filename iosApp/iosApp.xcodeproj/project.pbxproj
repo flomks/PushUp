@@ -9,7 +9,12 @@
 /* Begin PBXFileReference section */
 		762F76641E8CA1A01EE35518 /* PushUp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PushUp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001A1B2C3D4 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXBuildFile section */
+		B1C2D3E4F5A60003B1C2D3E4 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */; };
+/* End PBXBuildFile section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		F7ECC39265BC3C77E9DF2A56 /* Exceptions for "iosApp" folder in "iosApp" target */ = {
@@ -47,6 +52,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1C2D3E4F5A60003B1C2D3E4 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,6 +72,7 @@
 				9F4D9F82323457B224A5E714 /* Configuration */,
 				654BDDC85199D44B8C4EFBC8 /* iosApp */,
 				A1B2C3D4E5F60002A1B2C3D4 /* iosAppTests */,
+				B1C2D3E4F5A60002B1C2D3E4 /* Frameworks */,
 				DFB462212BE42F5B86961EF7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -77,6 +84,14 @@
 				A1B2C3D4E5F60001A1B2C3D4 /* iosAppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B1C2D3E4F5A60002B1C2D3E4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
