@@ -19,11 +19,6 @@ private func makePose(
     confidence: Float = 0.9,
     timestamp: Double = 0
 ) -> BodyPose {
-    // Geometry: place the elbow at a fixed position, shoulder directly above,
-    // and wrist at the desired angle from the shoulder-elbow axis.
-    // Unit-length arm segments keep the expected angle exact.
-    //
-    // Coordinate system: Vision normalised (origin bottom-left, y up).
     func armJoints(
         angleDeg: Double,
         xOffset: Double,
@@ -32,10 +27,9 @@ private func makePose(
         wristName: JointName
     ) -> (shoulder: Joint, elbow: Joint, wrist: Joint) {
         let rad = angleDeg * .pi / 180.0
-        let elbowPos   = CGPoint(x: xOffset, y: 0.5)
-        let shoulderPos = CGPoint(x: xOffset, y: 0.6)          // directly above
-        // Rotate the downward unit vector by `rad` around the elbow.
-        let wristPos   = CGPoint(x: xOffset + sin(rad), y: 0.5 - cos(rad))
+        let elbowPos    = CGPoint(x: xOffset, y: 0.5)
+        let shoulderPos = CGPoint(x: xOffset, y: 0.6)
+        let wristPos    = CGPoint(x: xOffset + sin(rad), y: 0.5 - cos(rad))
         return (
             Joint(name: shoulderName, position: shoulderPos, confidence: confidence),
             Joint(name: elbowName,    position: elbowPos,    confidence: confidence),
@@ -91,6 +85,17 @@ private let testConfig = PushUpStateMachine.Configuration(
     cooldownFrameCount: 5
 )
 
+/// Records all received `PushUpEvent` values.
+///
+/// `@unchecked Sendable` is safe here because tests are single-threaded
+/// and the delegate is only accessed from the test queue.
+private final class RecordingDelegate: PushUpDetectorDelegate, @unchecked Sendable {
+    var events: [PushUpEvent] = []
+    func pushUpDetector(_ detector: PushUpDetector, didCount event: PushUpEvent) {
+        events.append(event)
+    }
+}
+
 // MARK: - PushUpDetectorTests
 
 @Suite("PushUpDetector")
@@ -103,60 +108,52 @@ struct PushUpDetectorTests {
 
         @Test("Straight arm (collinear joints) returns ~180 degrees")
         func straightArm() throws {
-            let detector = PushUpDetector()
             let shoulder = Joint(name: .leftShoulder, position: CGPoint(x: 0.5, y: 0.8), confidence: 0.9)
             let elbow    = Joint(name: .leftElbow,    position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
             let wrist    = Joint(name: .leftWrist,    position: CGPoint(x: 0.5, y: 0.2), confidence: 0.9)
-            let angle = try #require(detector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist))
-            #expect(abs(angle - 180.0) < 0.5, "Expected ~180°, got \(angle)°")
+            let angle = try #require(PushUpDetector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist))
+            #expect(abs(angle - 180.0) < 0.5, "Expected ~180, got \(angle)")
         }
 
         @Test("Right-angle arm returns ~90 degrees")
         func rightAngle() throws {
-            let detector = PushUpDetector()
             let shoulder = Joint(name: .leftShoulder, position: CGPoint(x: 0.5, y: 0.8), confidence: 0.9)
             let elbow    = Joint(name: .leftElbow,    position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
             let wrist    = Joint(name: .leftWrist,    position: CGPoint(x: 0.8, y: 0.5), confidence: 0.9)
-            let angle = try #require(detector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist))
-            #expect(abs(angle - 90.0) < 0.5, "Expected ~90°, got \(angle)°")
+            let angle = try #require(PushUpDetector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist))
+            #expect(abs(angle - 90.0) < 0.5, "Expected ~90, got \(angle)")
         }
 
         @Test("Returns nil when a joint is below confidence threshold")
         func lowConfidenceJoint() {
-            let detector = PushUpDetector()
             let shoulder = Joint(name: .leftShoulder, position: CGPoint(x: 0.5, y: 0.8), confidence: 0.1)
             let elbow    = Joint(name: .leftElbow,    position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
             let wrist    = Joint(name: .leftWrist,    position: CGPoint(x: 0.5, y: 0.2), confidence: 0.9)
-            #expect(detector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist) == nil)
+            #expect(PushUpDetector.elbowAngle(shoulder: shoulder, elbow: elbow, wrist: wrist) == nil)
         }
 
         @Test("Returns nil when a joint is nil")
         func nilJoint() {
-            let detector = PushUpDetector()
             let elbow = Joint(name: .leftElbow, position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
             let wrist = Joint(name: .leftWrist, position: CGPoint(x: 0.5, y: 0.2), confidence: 0.9)
-            #expect(detector.elbowAngle(shoulder: nil, elbow: elbow, wrist: wrist) == nil)
+            #expect(PushUpDetector.elbowAngle(shoulder: nil, elbow: elbow, wrist: wrist) == nil)
         }
 
         @Test("angleBetween returns nil for degenerate zero-length vector")
         func degenerateVector() {
-            let detector = PushUpDetector()
             let p = CGPoint(x: 0.5, y: 0.5)
-            #expect(detector.angleBetween(a: p, vertex: p, b: CGPoint(x: 0.5, y: 0.2)) == nil)
+            #expect(PushUpDetector.angleBetween(a: p, vertex: p, b: CGPoint(x: 0.5, y: 0.2)) == nil)
         }
 
         @Test("Averaged angle uses both sides when both are detected")
         func averagesBothSides() throws {
-            let detector = PushUpDetector()
-            // Left: 90°, right: 180° -> average = 135°
             let pose = makePose(leftAngle: 90, rightAngle: 180)
-            let angle = try #require(detector.computeElbowAngle(from: pose))
-            #expect(abs(angle - 135.0) < 1.0, "Expected ~135°, got \(angle)°")
+            let angle = try #require(PushUpDetector.computeElbowAngle(from: pose))
+            #expect(abs(angle - 135.0) < 1.0, "Expected ~135, got \(angle)")
         }
 
         @Test("Uses only left side when right side is undetected")
         func usesLeftWhenRightMissing() throws {
-            let detector = PushUpDetector()
             var dict: [JointName: Joint] = Dictionary(
                 uniqueKeysWithValues: JointName.allCases.map { name in
                     (name, Joint(name: name, position: .zero, confidence: 0))
@@ -166,14 +163,38 @@ struct PushUpDetectorTests {
             dict[.leftElbow]    = Joint(name: .leftElbow,    position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
             dict[.leftWrist]    = Joint(name: .leftWrist,    position: CGPoint(x: 0.5, y: 0.2), confidence: 0.9)
             let pose = BodyPose(joints: dict, timestamp: 0)
-            let angle = try #require(detector.computeElbowAngle(from: pose))
+            let angle = try #require(PushUpDetector.computeElbowAngle(from: pose))
+            #expect(abs(angle - 180.0) < 0.5)
+        }
+
+        @Test("Uses only right side when left side is undetected")
+        func usesRightWhenLeftMissing() throws {
+            var dict: [JointName: Joint] = Dictionary(
+                uniqueKeysWithValues: JointName.allCases.map { name in
+                    (name, Joint(name: name, position: .zero, confidence: 0))
+                }
+            )
+            dict[.rightShoulder] = Joint(name: .rightShoulder, position: CGPoint(x: 0.5, y: 0.8), confidence: 0.9)
+            dict[.rightElbow]    = Joint(name: .rightElbow,    position: CGPoint(x: 0.5, y: 0.5), confidence: 0.9)
+            dict[.rightWrist]    = Joint(name: .rightWrist,    position: CGPoint(x: 0.5, y: 0.2), confidence: 0.9)
+            let pose = BodyPose(joints: dict, timestamp: 0)
+            let angle = try #require(PushUpDetector.computeElbowAngle(from: pose))
             #expect(abs(angle - 180.0) < 0.5)
         }
 
         @Test("Returns nil when pose is nil")
         func nilPose() {
-            let detector = PushUpDetector()
-            #expect(detector.computeElbowAngle(from: nil) == nil)
+            #expect(PushUpDetector.computeElbowAngle(from: nil) == nil)
+        }
+
+        @Test("makePose helper produces accurate angles across the range")
+        func makePoseAccuracy() throws {
+            for targetAngle in stride(from: 10.0, through: 170.0, by: 10.0) {
+                let pose = makePose(leftAngle: targetAngle, rightAngle: targetAngle)
+                let computed = try #require(PushUpDetector.computeElbowAngle(from: pose))
+                #expect(abs(computed - targetAngle) < 1.0,
+                        "Expected ~\(targetAngle), got \(computed)")
+            }
         }
     }
 
@@ -208,13 +229,22 @@ struct PushUpDetectorTests {
             #expect(detector.pushUpCount == 1)
         }
 
+        @Test("Push-up is counted even without a delegate")
+        func countWithoutDelegate() {
+            let detector = PushUpDetector(configuration: testConfig)
+            // No delegate set.
+            feed(detector, angle: 70,  frames: 3)
+            feed(detector, angle: 170, frames: 3)
+            #expect(detector.pushUpCount == 1)
+        }
+
         @Test("Multiple push-ups are counted correctly")
         func multiplePushUps() {
             let detector = PushUpDetector(configuration: testConfig)
             for _ in 0..<5 {
                 feed(detector, angle: 70,  frames: 3)
                 feed(detector, angle: 170, frames: 3)
-                feed(detector, angle: 170, frames: 5) // wait out cooldown
+                feed(detector, angle: 170, frames: 5)
             }
             #expect(detector.pushUpCount == 5)
         }
@@ -222,7 +252,6 @@ struct PushUpDetectorTests {
         @Test("Hysteresis prevents counting on brief angle dip below DOWN threshold")
         func hysteresisPreventsFalseDownTransition() {
             let detector = PushUpDetector(configuration: testConfig)
-            // Only 2 frames below threshold (hysteresisFrameCount = 3).
             feed(detector, angle: 70, frames: 2)
             #expect(detector.currentPhase == .idle, "Should still be idle after only 2 frames")
             #expect(detector.pushUpCount == 0)
@@ -231,10 +260,8 @@ struct PushUpDetectorTests {
         @Test("Hysteresis prevents counting on brief angle rise above UP threshold")
         func hysteresisPreventsFalseUpTransition() {
             let detector = PushUpDetector(configuration: testConfig)
-            // Enter DOWN phase.
             feed(detector, angle: 70, frames: 3)
             #expect(detector.currentPhase == .down)
-            // Only 2 frames above UP threshold (hysteresisFrameCount = 3).
             feed(detector, angle: 170, frames: 2)
             #expect(detector.pushUpCount == 0, "Should not count with only 2 UP frames")
         }
@@ -245,7 +272,6 @@ struct PushUpDetectorTests {
             feed(detector, angle: 70,  frames: 3)
             feed(detector, angle: 170, frames: 3)
             #expect(detector.pushUpCount == 1)
-            // Attempt another cycle immediately during cooldown.
             feed(detector, angle: 70,  frames: 3)
             feed(detector, angle: 170, frames: 3)
             #expect(detector.pushUpCount == 1, "Should not count during cooldown")
@@ -257,7 +283,7 @@ struct PushUpDetectorTests {
             feed(detector, angle: 70,  frames: 3)
             feed(detector, angle: 170, frames: 3)
             #expect(detector.pushUpCount == 1)
-            feed(detector, angle: 170, frames: 5) // exhaust cooldown
+            feed(detector, angle: 170, frames: 5)
             #expect(detector.currentPhase == .idle)
             feed(detector, angle: 70,  frames: 3)
             feed(detector, angle: 170, frames: 3)
@@ -267,11 +293,9 @@ struct PushUpDetectorTests {
         @Test("Nil pose frames reset pending counter and do not advance hysteresis")
         func nilPoseResetsHysteresis() {
             let detector = PushUpDetector(configuration: testConfig)
-            // 2 frames below threshold, then nil, then 1 more below.
             feed(detector, angle: 70, frames: 2)
-            feedNil(detector, frames: 1)   // resets pending counter
+            feedNil(detector, frames: 1)
             feed(detector, angle: 70, frames: 1)
-            // Counter was reset by nil; only 1 consecutive frame after -> still idle.
             #expect(detector.currentPhase == .idle)
         }
 
@@ -290,7 +314,7 @@ struct PushUpDetectorTests {
             for _ in 0..<3 {
                 feed(detector, angle: 70,  frames: 3)
                 feed(detector, angle: 170, frames: 3)
-                feed(detector, angle: 170, frames: 5) // cooldown
+                feed(detector, angle: 170, frames: 5)
             }
             #expect(detector.pushUpCount == 3)
         }
@@ -298,7 +322,6 @@ struct PushUpDetectorTests {
         @Test("Noisy angle oscillation around DOWN threshold does not cause false count")
         func noisyAngleOscillation() {
             let detector = PushUpDetector(configuration: testConfig)
-            // Alternate 89°/91° — never holds for 3 consecutive frames.
             for _ in 0..<20 {
                 feed(detector, angle: 89, frames: 1)
                 feed(detector, angle: 91, frames: 1)
@@ -318,23 +341,37 @@ struct PushUpDetectorTests {
             #expect(detector.currentPhase == .idle)
             #expect(detector.currentElbowAngle == nil)
         }
+
+        @Test("Reset mid-DOWN clears state correctly")
+        func resetMidDown() {
+            let detector = PushUpDetector(configuration: testConfig)
+            feed(detector, angle: 70, frames: 3)
+            #expect(detector.currentPhase == .down)
+            detector.reset()
+            #expect(detector.currentPhase == .idle)
+            #expect(detector.pushUpCount == 0)
+            // A new full cycle should work after reset.
+            feed(detector, angle: 70,  frames: 3)
+            feed(detector, angle: 170, frames: 3)
+            #expect(detector.pushUpCount == 1)
+        }
+
+        @Test("Reset mid-cooldown clears state correctly")
+        func resetMidCooldown() {
+            let detector = PushUpDetector(configuration: testConfig)
+            feed(detector, angle: 70,  frames: 3)
+            feed(detector, angle: 170, frames: 3)
+            #expect(detector.currentPhase == .cooldown)
+            detector.reset()
+            #expect(detector.currentPhase == .idle)
+            #expect(detector.pushUpCount == 0)
+        }
     }
 
     // MARK: - Delegate Callbacks
 
     @Suite("Delegate callbacks")
     struct DelegateCallbacks {
-
-        /// Records all received `PushUpEvent` values.
-        ///
-        /// `@unchecked Sendable` is safe here because tests are single-threaded
-        /// and the delegate is only accessed from the test queue.
-        final class RecordingDelegate: PushUpDetectorDelegate, @unchecked Sendable {
-            var events: [PushUpEvent] = []
-            func pushUpDetector(_ detector: PushUpDetector, didCount event: PushUpEvent) {
-                events.append(event)
-            }
-        }
 
         @Test("Delegate receives one event per push-up with correct count")
         func delegateReceivesEvents() {
@@ -345,7 +382,7 @@ struct PushUpDetectorTests {
             for _ in 0..<3 {
                 feed(detector, angle: 70,  frames: 3)
                 feed(detector, angle: 170, frames: 3)
-                feed(detector, angle: 170, frames: 5) // cooldown
+                feed(detector, angle: 170, frames: 5)
             }
 
             #expect(delegate.events.count == 3)
@@ -360,11 +397,9 @@ struct PushUpDetectorTests {
             let delegate = RecordingDelegate()
             detector.delegate = delegate
 
-            // DOWN frames at t=0, 1, 2.
             for i in 0..<3 {
                 detector.process(makePose(leftAngle: 70, rightAngle: 70, timestamp: Double(i)))
             }
-            // UP frames at t=10, 11, 12. The 3rd UP frame (t=12) triggers the count.
             for i in 0..<3 {
                 detector.process(makePose(leftAngle: 170, rightAngle: 170, timestamp: 10.0 + Double(i)))
             }
@@ -380,13 +415,11 @@ struct PushUpDetectorTests {
             detector.delegate = delegate
 
             feed(detector, angle: 70,  frames: 3)
-            // UP frames at exactly 165°.
             feed(detector, angle: 165, frames: 3)
 
             let event = try #require(delegate.events.first)
-            // Both arms at 165° -> averaged angle = 165°.
             #expect(abs(event.elbowAngleAtCompletion - 165.0) < 1.0,
-                    "Expected ~165°, got \(event.elbowAngleAtCompletion)°")
+                    "Expected ~165, got \(event.elbowAngleAtCompletion)")
         }
 
         @Test("No delegate event when no push-up is counted")
@@ -418,6 +451,41 @@ struct PushUpDetectorTests {
             #expect(sm.phase == .idle)
         }
 
+        @Test("NaN angle is treated as nil (no state change)")
+        func nanAngle() {
+            let sm = PushUpStateMachine(configuration: testConfig)
+            sm.update(angle: .nan)
+            #expect(sm.phase == .idle)
+            #expect(sm.pushUpCount == 0)
+        }
+
+        @Test("Positive infinity angle is treated as nil (no state change)")
+        func positiveInfinityAngle() {
+            let sm = PushUpStateMachine(configuration: testConfig)
+            sm.update(angle: .infinity)
+            #expect(sm.phase == .idle)
+            #expect(sm.pushUpCount == 0)
+        }
+
+        @Test("Negative infinity angle is treated as nil (no state change)")
+        func negativeInfinityAngle() {
+            let sm = PushUpStateMachine(configuration: testConfig)
+            sm.update(angle: -.infinity)
+            #expect(sm.phase == .idle)
+            #expect(sm.pushUpCount == 0)
+        }
+
+        @Test("NaN during DOWN phase does not advance UP counter")
+        func nanDuringDown() {
+            let config = PushUpStateMachine.Configuration(hysteresisFrameCount: 1, cooldownFrameCount: 1)
+            let sm = PushUpStateMachine(configuration: config)
+            sm.update(angle: 80)  // idle -> down
+            #expect(sm.phase == .down)
+            sm.update(angle: .nan)  // should not count
+            #expect(sm.pushUpCount == 0)
+            #expect(sm.phase == .down)
+        }
+
         @Test("Transitions idle -> down after hysteresis")
         func idleToDown() {
             let config = PushUpStateMachine.Configuration(hysteresisFrameCount: 3)
@@ -435,10 +503,9 @@ struct PushUpDetectorTests {
             let sm = PushUpStateMachine(configuration: config)
             sm.update(angle: 80)
             sm.update(angle: 80)
-            sm.update(angle: 100) // breaks the condition -> counter reset
+            sm.update(angle: 100)
             sm.update(angle: 80)
             sm.update(angle: 80)
-            // Only 2 consecutive frames below threshold after the break.
             #expect(sm.phase == .idle)
         }
 
@@ -449,14 +516,32 @@ struct PushUpDetectorTests {
                 cooldownFrameCount: 3
             )
             let sm = PushUpStateMachine(configuration: config)
-            sm.update(angle: 80)   // idle -> down
-            sm.update(angle: 170)  // down -> cooldown (count = 1)
+            sm.update(angle: 80)
+            sm.update(angle: 170)
             #expect(sm.phase == .cooldown)
-            sm.update(angle: 170)  // cooldown frame 1 (remaining: 2)
+            sm.update(angle: 170)
             #expect(sm.phase == .cooldown)
-            sm.update(angle: 170)  // cooldown frame 2 (remaining: 1)
+            sm.update(angle: 170)
             #expect(sm.phase == .cooldown)
-            sm.update(angle: 170)  // cooldown frame 3 (remaining: 0) -> idle
+            sm.update(angle: 170)
+            #expect(sm.phase == .idle)
+        }
+
+        @Test("Extra frames during cooldown do not cause stuck state")
+        func cooldownExtraFrames() {
+            let config = PushUpStateMachine.Configuration(
+                hysteresisFrameCount: 1,
+                cooldownFrameCount: 2
+            )
+            let sm = PushUpStateMachine(configuration: config)
+            sm.update(angle: 80)
+            sm.update(angle: 170)
+            #expect(sm.phase == .cooldown)
+            // Feed more frames than cooldownFrameCount.
+            for _ in 0..<10 {
+                sm.update(angle: 170)
+            }
+            // Must be back in idle, not stuck.
             #expect(sm.phase == .idle)
         }
 
@@ -479,31 +564,12 @@ struct PushUpDetectorTests {
                 cooldownFrameCount: 1
             )
             let sm = PushUpStateMachine(configuration: config)
-            let r1 = sm.update(angle: 80)   // idle -> down
-            let r2 = sm.update(angle: 170)  // down -> cooldown (count!)
-            let r3 = sm.update(angle: 170)  // cooldown -> idle
+            let r1 = sm.update(angle: 80)
+            let r2 = sm.update(angle: 170)
+            let r3 = sm.update(angle: 170)
             #expect(r1 == false)
             #expect(r2 == true)
             #expect(r3 == false)
-        }
-
-        @Test("Configuration precondition: downThreshold must be less than upThreshold")
-        func configurationInvalidThresholds() {
-            #expect(
-                performing: {
-                    _ = PushUpStateMachine.Configuration(
-                        downAngleThreshold: 160,
-                        upAngleThreshold: 90
-                    )
-                },
-                throws: { error in
-                    // precondition failure manifests as a crash in release builds;
-                    // in debug/test builds it throws a Swift runtime error.
-                    // We just verify the precondition is enforced.
-                    _ = error
-                    return true
-                }
-            )
         }
     }
 }

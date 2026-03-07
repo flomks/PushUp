@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 // MARK: - PushUpEvent
 
@@ -38,7 +39,7 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 ///
 /// **Algorithm overview**
 /// 1. For each frame, compute the elbow angle on both sides using the
-///    shoulder–elbow–wrist joint triple.
+///    shoulder-elbow-wrist joint triple.
 /// 2. Average the left and right angles (or use whichever side has higher
 ///    confidence when only one side is visible).
 /// 3. Feed the averaged angle into a `PushUpStateMachine` that applies
@@ -48,7 +49,7 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// The angle at joint B in the triple (A, B, C) is computed as the angle
 /// between vectors BA and BC using the dot-product formula:
 /// ```
-/// angle = acos( (BA · BC) / (|BA| * |BC|) )
+/// angle = acos( (BA . BC) / (|BA| * |BC|) )
 /// ```
 /// All arithmetic is performed in `Double` precision. Vision coordinates
 /// (origin bottom-left, y increases upward) are used directly; the formula
@@ -60,8 +61,10 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// - If neither side is detected: pass `nil` to the state machine (no-op).
 ///
 /// **Thread safety**
-/// `PushUpDetector` is **not** thread-safe. All calls to `process(_:)` must
-/// come from the same serial queue (typically the video output queue).
+/// `PushUpDetector` is designed to be called from a single serial queue
+/// (typically `CameraManager`'s `videoOutputQueue`). The `delegate` property
+/// is protected by an `NSLock` so it can be safely set from the main queue
+/// and read from the video output queue.
 ///
 /// **Usage**
 /// ```swift
@@ -75,9 +78,25 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// ```
 final class PushUpDetector {
 
-    // MARK: - Delegate
+    // MARK: - Delegate (thread-safe)
 
-    weak var delegate: PushUpDetectorDelegate?
+    /// Protected by `delegateLock` so it can be set from the main queue and
+    /// read safely from the video output queue inside `process(_:)`.
+    private let delegateLock = NSLock()
+    private weak var _delegate: PushUpDetectorDelegate?
+
+    var delegate: PushUpDetectorDelegate? {
+        get {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            return _delegate
+        }
+        set {
+            delegateLock.lock()
+            defer { delegateLock.unlock() }
+            _delegate = newValue
+        }
+    }
 
     // MARK: - Public State
 
@@ -112,22 +131,32 @@ final class PushUpDetector {
     ///   person was detected. A `nil` pose advances the cooldown timer but
     ///   does not advance any pending-transition counter.
     func process(_ pose: BodyPose?) {
-        let angle = computeElbowAngle(from: pose)
+        let angle = Self.computeElbowAngle(from: pose)
         currentElbowAngle = angle
 
         let counted = stateMachine.update(angle: angle)
 
         if counted {
-            // `stateMachine.update` only returns `true` from `handleDown`, which
-            // requires a non-nil angle via its `guard let angle` statement.
-            // Therefore `angle` is guaranteed non-nil here.
-            let completionAngle = angle! // swiftlint:disable:this force_unwrap
+            // Safe unwrap: `stateMachine.update` only returns `true` from
+            // `handleDown`, which requires a non-nil, finite angle via its
+            // `guard let angle` statement. If this invariant is ever broken
+            // by a future refactor, the assertionFailure will fire in debug
+            // builds and the fallback prevents a production crash.
+            guard let completionAngle = angle, let pose else {
+                assertionFailure(
+                    "angle and pose must be non-nil when a push-up is counted"
+                )
+                return
+            }
             let event = PushUpEvent(
                 count: stateMachine.pushUpCount,
                 elbowAngleAtCompletion: completionAngle,
-                timestamp: pose?.timestamp ?? 0
+                timestamp: pose.timestamp
             )
-            delegate?.pushUpDetector(self, didCount: event)
+            // Capture a strong reference to the delegate for the duration of
+            // the call. The lock-protected getter returns a strong optional.
+            let currentDelegate = delegate
+            currentDelegate?.pushUpDetector(self, didCount: event)
         }
     }
 
@@ -138,11 +167,11 @@ final class PushUpDetector {
         currentElbowAngle = nil
     }
 
-    // MARK: - Angle Computation (internal for testing via @testable import)
+    // MARK: - Angle Computation
 
     /// Returns the averaged elbow angle (degrees) from the pose, or `nil` when
     /// no usable joints are available.
-    func computeElbowAngle(from pose: BodyPose?) -> Double? {
+    static func computeElbowAngle(from pose: BodyPose?) -> Double? {
         guard let pose else { return nil }
 
         let leftAngle  = elbowAngle(
@@ -169,7 +198,7 @@ final class PushUpDetector {
     ///
     /// Returns `nil` when any of the three joints is missing or below the
     /// confidence threshold.
-    func elbowAngle(
+    static func elbowAngle(
         shoulder: Joint?,
         elbow: Joint?,
         wrist: Joint?
@@ -197,11 +226,11 @@ final class PushUpDetector {
     ///
     /// Uses the dot-product formula:
     /// ```
-    /// angle = acos( (va · vb) / (|va| * |vb|) )
+    /// angle = acos( (va . vb) / (|va| * |vb|) )
     /// ```
     /// Returns `nil` when either vector has zero length (degenerate case where
     /// two joints share the same position).
-    func angleBetween(a: CGPoint, vertex: CGPoint, b: CGPoint) -> Double? {
+    static func angleBetween(a: CGPoint, vertex: CGPoint, b: CGPoint) -> Double? {
         // Promote to Double immediately to ensure full precision on all platforms.
         let vax = Double(a.x - vertex.x)
         let vay = Double(a.y - vertex.y)

@@ -4,12 +4,24 @@
 ///
 /// The valid progression is:
 /// ```
-/// IDLE -> DOWN -> COOLDOWN -> IDLE
+/// IDLE  --[angle < downThreshold for N frames]--> DOWN
+/// DOWN  --[angle > upThreshold   for N frames]--> COOLDOWN  (push-up counted)
+/// COOLDOWN --[after M frames]                 --> IDLE
 /// ```
+///
 /// A push-up is counted at the moment the machine transitions from DOWN to
 /// COOLDOWN (i.e. when the UP angle threshold is held for the required number
 /// of consecutive frames). A partial cycle (DOWN without a subsequent UP) does
 /// **not** count.
+///
+/// **Design note:** The ticket specifies a four-state model
+/// (IDLE -> DOWN -> UP -> counted). This implementation collapses the UP state
+/// into the DOWN-to-COOLDOWN transition because the UP condition is evaluated
+/// while in DOWN and the push-up is counted atomically. The observable
+/// behaviour is identical: a full DOWN-then-UP cycle is required. The
+/// `currentPhase` property does not report a separate `.up` value; consumers
+/// that need to distinguish "arms extending" from "arms bent" should compare
+/// `currentElbowAngle` against the configured thresholds directly.
 enum PushUpPhase: Equatable, Sendable {
 
     /// No push-up in progress. The person is either standing, resting, or the
@@ -41,13 +53,13 @@ extension PushUpStateMachine {
         // MARK: Angle thresholds
 
         /// Elbow angle (degrees) below which the DOWN phase is entered.
-        /// Default: 90°. A fully bent elbow at the bottom of a push-up is
-        /// typically 60–80°; 90° gives a comfortable margin.
+        /// Default: 90 degrees. A fully bent elbow at the bottom of a push-up is
+        /// typically 60-80 degrees; 90 degrees gives a comfortable margin.
         let downAngleThreshold: Double
 
-        /// Elbow angle (degrees) above which the push-up is counted (UP phase).
-        /// Default: 160°. A fully extended elbow is ~170–180°; 160° avoids
-        /// requiring perfect lockout.
+        /// Elbow angle (degrees) above which the push-up is counted.
+        /// Default: 160 degrees. A fully extended elbow is ~170-180 degrees; 160
+        /// avoids requiring perfect lockout.
         let upAngleThreshold: Double
 
         // MARK: Hysteresis
@@ -56,7 +68,7 @@ extension PushUpStateMachine {
         /// before a state transition is accepted.
         ///
         /// Higher values reduce noise-induced false transitions at the cost of
-        /// slightly delayed counting. At 30 FPS, 3 frames ≈ 100 ms.
+        /// slightly delayed counting. At 30 FPS, 3 frames = ~100 ms.
         /// Must be >= 1.
         let hysteresisFrameCount: Int
 
@@ -64,7 +76,7 @@ extension PushUpStateMachine {
 
         /// Number of frames to remain in `.cooldown` after a push-up is counted.
         ///
-        /// At 30 FPS, 15 frames ≈ 500 ms. This prevents a single push-up from
+        /// At 30 FPS, 15 frames = ~500 ms. This prevents a single push-up from
         /// being counted twice if the angle briefly oscillates around the UP
         /// threshold at the top of the movement.
         /// Must be >= 1.
@@ -129,8 +141,12 @@ extension PushUpStateMachine {
 /// **Cooldown**
 /// After a push-up is counted the machine enters `.cooldown` for
 /// `configuration.cooldownFrameCount` frames before returning to `.idle`.
-/// This prevents double-counting when the elbow angle briefly dips below the
-/// UP threshold at the top of the movement.
+/// During cooldown the angle parameter is intentionally ignored; no new
+/// cycle can begin until cooldown expires.
+///
+/// **Non-finite angles**
+/// `NaN`, `+infinity`, and `-infinity` are treated as missing data (same as
+/// `nil`). This prevents spurious transitions from corrupted sensor input.
 ///
 /// **Thread safety**
 /// `PushUpStateMachine` is **not** thread-safe. All calls to `update(angle:)`
@@ -148,7 +164,9 @@ final class PushUpStateMachine {
 
     // MARK: - Configuration
 
-    let configuration: Configuration
+    /// The configuration used by this state machine instance. Read-only after
+    /// initialisation.
+    private let configuration: Configuration
 
     // MARK: - Private Counters
 
@@ -171,18 +189,27 @@ final class PushUpStateMachine {
     /// Feeds a new elbow-angle measurement into the state machine.
     ///
     /// - Parameter angle: The elbow angle in degrees for the current frame.
-    ///   Pass `nil` when the pose is not detected or confidence is too low;
-    ///   the machine will treat this as a "no-op" frame (pending counters are
-    ///   not advanced, but cooldown still ticks down).
+    ///   Pass `nil` when the pose is not detected or confidence is too low.
+    ///   Non-finite values (`NaN`, `+/-infinity`) are treated as `nil`.
+    ///   The machine will treat missing data as a "no-op" frame (pending
+    ///   counters are not advanced, but cooldown still ticks down).
     /// - Returns: `true` if a push-up was counted on this frame, `false` otherwise.
     @discardableResult
     func update(angle: Double?) -> Bool {
+        // Sanitise: treat non-finite values as missing data.
+        let sanitised: Double? = {
+            guard let angle, angle.isFinite else { return nil }
+            return angle
+        }()
+
         switch phase {
         case .idle:
-            return handleIdle(angle: angle)
+            return handleIdle(angle: sanitised)
         case .down:
-            return handleDown(angle: angle)
+            return handleDown(angle: sanitised)
         case .cooldown:
+            // Angle is intentionally ignored during cooldown. No new cycle can
+            // begin until the cooldown period expires.
             return handleCooldown()
         }
     }
@@ -239,9 +266,12 @@ final class PushUpStateMachine {
         return false
     }
 
+    /// Ticks down the cooldown counter. Uses `<= 0` instead of `== 0` as a
+    /// defensive guard against any scenario where the counter reaches a
+    /// negative value, preventing the machine from being permanently stuck.
     private func handleCooldown() -> Bool {
         cooldownFramesRemaining -= 1
-        if cooldownFramesRemaining == 0 {
+        if cooldownFramesRemaining <= 0 {
             phase = .idle
         }
         return false
