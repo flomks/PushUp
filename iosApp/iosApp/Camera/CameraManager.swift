@@ -3,7 +3,7 @@ import UIKit
 
 // MARK: - CameraPosition
 
-enum CameraPosition {
+enum CameraPosition: Sendable {
     case front
     case back
 
@@ -21,7 +21,7 @@ enum CameraPosition {
 
 // MARK: - CameraError
 
-enum CameraError: LocalizedError, Equatable {
+enum CameraError: LocalizedError, Equatable, Sendable {
     case permissionDenied
     case permissionRestricted
     case deviceNotAvailable
@@ -46,7 +46,7 @@ enum CameraError: LocalizedError, Equatable {
 
 // MARK: - CameraState
 
-enum CameraState: Equatable {
+enum CameraState: Equatable, Sendable {
     case idle
     case running
     case stopped
@@ -57,7 +57,10 @@ enum CameraState: Equatable {
 
 /// Receives raw video frames on a dedicated high-priority serial queue.
 /// Implementations must be non-blocking; heavy work should be dispatched elsewhere.
-protocol CameraManagerDelegate: AnyObject {
+///
+/// Marked `Sendable` because instances are set from the main queue and called
+/// from the video output queue.
+protocol CameraManagerDelegate: AnyObject, Sendable {
     func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer)
 }
 
@@ -122,6 +125,14 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Position lock
+
+    /// Protects `_currentPositionInternal` for safe cross-queue reads.
+    /// The `@Published currentPosition` is only written on the main queue,
+    /// but `switchCamera()` needs to read the current position from `sessionQueue`.
+    private let positionLock = NSLock()
+    private var _currentPositionInternal: CameraPosition = .back
+
     // MARK: - Background observation tokens
 
     private var backgroundObserver: NSObjectProtocol?
@@ -145,10 +156,12 @@ final class CameraManager: NSObject, ObservableObject {
     // MARK: - App Lifecycle
 
     private func subscribeToAppLifecycle() {
+        // Use `queue: .main` to ensure `@Published` state is read/written
+        // exclusively on the main queue, preventing data races.
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
-            queue: nil
+            queue: .main
         ) { [weak self] _ in
             self?.stopSession()
         }
@@ -156,7 +169,7 @@ final class CameraManager: NSObject, ObservableObject {
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
-            queue: nil
+            queue: .main
         ) { [weak self] _ in
             // Only restart if we were actively running before backgrounding.
             guard let self, case .running = self.state else { return }
@@ -205,6 +218,7 @@ final class CameraManager: NSObject, ObservableObject {
                     do {
                         try self.configureSession(position: position)
                         self.session.startRunning()
+                        self.updatePosition(position)
                         DispatchQueue.main.async {
                             self.currentPosition = position
                             self.state = .running
@@ -243,9 +257,14 @@ final class CameraManager: NSObject, ObservableObject {
     /// Atomically swaps the active camera input to the opposite lens.
     /// The session continues running without interruption on supported hardware.
     func switchCamera() {
+        // Read the current position under lock so it is safe to call from
+        // any queue. The `@Published currentPosition` is only written on
+        // the main queue, but we may be called before it updates.
+        let current = readPosition()
+        let newPosition = current.toggled
+
         sessionQueue.async { [weak self] in
             guard let self else { return }
-            let newPosition = self.currentPosition.toggled
             // Capture running state before reconfiguration (beginConfiguration
             // may implicitly pause delivery on some devices).
             let wasRunning = self.session.isRunning
@@ -254,6 +273,7 @@ final class CameraManager: NSObject, ObservableObject {
                 if wasRunning && !self.session.isRunning {
                     self.session.startRunning()
                 }
+                self.updatePosition(newPosition)
                 DispatchQueue.main.async { self.currentPosition = newPosition }
             } catch let error as CameraError {
                 DispatchQueue.main.async { self.state = .error(error) }
@@ -263,6 +283,20 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Position Helpers (thread-safe)
+
+    private func readPosition() -> CameraPosition {
+        positionLock.lock()
+        defer { positionLock.unlock() }
+        return _currentPositionInternal
+    }
+
+    private func updatePosition(_ position: CameraPosition) {
+        positionLock.lock()
+        defer { positionLock.unlock() }
+        _currentPositionInternal = position
+    }
+
     // MARK: - Session Configuration (must run on sessionQueue)
 
     private func configureSession(position: CameraPosition) throws {
@@ -270,7 +304,11 @@ final class CameraManager: NSObject, ObservableObject {
         // commitConfiguration is always called, even on early throw.
         defer { session.commitConfiguration() }
 
-        if session.canSetSessionPreset(.high) {
+        // 720p is sufficient for VNDetectHumanBodyPoseRequest and reduces
+        // memory bandwidth / thermal load compared to `.high`.
+        if session.canSetSessionPreset(.hd1280x720) {
+            session.sessionPreset = .hd1280x720
+        } else if session.canSetSessionPreset(.high) {
             session.sessionPreset = .high
         }
 
@@ -294,7 +332,7 @@ final class CameraManager: NSObject, ObservableObject {
 
         videoOutput.setSampleBufferDelegate(self, queue: videoOutputQueue)
         videoOutput.alwaysDiscardsLateVideoFrames = true
-        // YCbCr 4:2:0 full-range: optimal for VNDetectHumanBodyPoseRequest (Task 2.2).
+        // YCbCr 4:2:0 full-range: optimal for VNDetectHumanBodyPoseRequest.
         videoOutput.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
         ]
@@ -320,8 +358,8 @@ final class CameraManager: NSObject, ObservableObject {
 
     /// Locks the device to `targetFPS` by selecting the highest-resolution
     /// format that supports the requested rate, then clamping min/max durations.
-    /// Silently skips if no matching format exists (session preset already
-    /// guarantees a sensible default on all modern iPhones).
+    /// Best-effort: silently falls back to the device default if no matching
+    /// format exists.
     private func configureFrameRate(device: AVCaptureDevice, targetFPS: Int) {
         let targetRate = Double(targetFPS)
         let targetDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
@@ -353,8 +391,9 @@ final class CameraManager: NSObject, ObservableObject {
             device.activeVideoMinFrameDuration = targetDuration
             device.activeVideoMaxFrameDuration = targetDuration
         } catch {
-            // Frame rate configuration is best-effort; the session will still
-            // deliver frames at the device default (typically 30 FPS).
+            #if DEBUG
+            print("[CameraManager] Frame rate configuration failed: \(error)")
+            #endif
         }
     }
 
@@ -391,8 +430,10 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         didOutput sampleBuffer: CMSampleBuffer,
         from connection: AVCaptureConnection
     ) {
-        // `delegate` getter acquires delegateLock, making this read thread-safe.
-        delegate?.cameraManager(self, didOutput: sampleBuffer)
+        // Capture a strong reference for the duration of the call to prevent
+        // deallocation between the nil-check and the method invocation.
+        let currentDelegate = delegate
+        currentDelegate?.cameraManager(self, didOutput: sampleBuffer)
     }
 
     func captureOutput(
