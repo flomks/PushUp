@@ -16,7 +16,7 @@ struct FormScore: Equatable, Sendable {
     ///
     /// Derived from the minimum elbow angle observed while the state machine
     /// was in the `.down` phase:
-    /// - angle >= 90°  → 0.0  (barely bent)
+    /// - angle > 90°   → 0.0  (not bent enough)
     /// - angle == 90°  → 0.5  (spec anchor point)
     /// - angle == 70°  → 0.8  (spec anchor point)
     /// - angle <= 60°  → 1.0  (full depth)
@@ -279,7 +279,7 @@ final class FormScorer {
     /// interpolation between the three spec anchor points.
     ///
     /// Anchor mapping (from spec):
-    /// - angle >= 90° → 0.0  (no depth credit above the DOWN threshold)
+    /// - angle > 90°  → 0.0  (not bent enough for depth credit)
     /// - angle == 90° → 0.5
     /// - angle == 70° → 0.8
     /// - angle <= 60° → 1.0
@@ -293,7 +293,7 @@ final class FormScorer {
         let high = configuration.depthAnchorHigh  // 70° → 0.8
         let full = configuration.depthAnchorFull  // 60° → 1.0
 
-        if angle >= half {
+        if angle > half {
             return 0.0
         } else if angle >= high {
             // Segment [high, half]: score rises from 0.5 to 0.8 as angle falls.
@@ -392,11 +392,11 @@ final class FormScorer {
     }
 }
 
-// MARK: - Array + mean (internal)
+// MARK: - Array + mean
 
-extension Array where Element == Double {
+private extension Array where Element == Double {
     /// The arithmetic mean of the array's elements.
-    /// Callers are responsible for ensuring the array is non-empty before calling.
+    /// Callers must ensure the array is non-empty before calling.
     var mean: Double {
         precondition(!isEmpty, "mean called on empty array")
         return reduce(0, +) / Double(count)
