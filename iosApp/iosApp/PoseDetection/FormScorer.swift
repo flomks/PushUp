@@ -16,7 +16,7 @@ struct FormScore: Equatable, Sendable {
     ///
     /// Derived from the minimum elbow angle observed while the state machine
     /// was in the `.down` phase:
-    /// - angle >= 90°  → 0.0  (barely bent)
+    /// - angle > 90°   → 0.0  (not bent enough)
     /// - angle == 90°  → 0.5  (spec anchor point)
     /// - angle == 70°  → 0.8  (spec anchor point)
     /// - angle <= 60°  → 1.0  (full depth)
@@ -27,7 +27,8 @@ struct FormScore: Equatable, Sendable {
 
     /// Form quality: how well the body was held during the push-up.
     ///
-    /// Composite of three sub-scores, each weighted equally:
+    /// Composite of up to three sub-scores, averaged over whichever are
+    /// available for the current camera angle:
     /// 1. **Back alignment** – shoulder-hip line is horizontal (parallel to
     ///    the ground). Deviations from horizontal reduce this sub-score.
     /// 2. **Arm symmetry** – left and right elbow angles are similar.
@@ -54,8 +55,13 @@ struct FormScore: Equatable, Sendable {
 /// ```swift
 /// let scorer = FormScorer()
 ///
-/// // Inside PushUpDetectorDelegate / pose-processing loop:
-/// scorer.recordFrame(pose: currentPose, elbowAngle: currentAngle, isInDownPhase: isDown)
+/// // Inside the pose-processing loop (same queue as PushUpDetector):
+/// scorer.recordFrame(
+///     pose: currentPose,
+///     leftElbowAngle: leftAngle,
+///     rightElbowAngle: rightAngle,
+///     isInDownPhase: stateMachine.phase == .down
+/// )
 ///
 /// // When PushUpDetector fires a push-up event:
 /// if let score = scorer.finalisePushUp() {
@@ -76,32 +82,32 @@ final class FormScorer {
         // MARK: Depth scoring anchors
 
         /// Elbow angle (degrees) that maps to a depth score of 0.5.
-        /// Default: 90° (spec anchor).
+        /// Default: 90° (spec anchor). Must be greater than `depthAnchorHigh`.
         let depthAnchorHalf: Double
 
         /// Elbow angle (degrees) that maps to a depth score of 0.8.
-        /// Default: 70° (spec anchor).
+        /// Default: 70° (spec anchor). Must be greater than `depthAnchorFull`.
         let depthAnchorHigh: Double
 
         /// Elbow angle (degrees) at or below which the depth score is 1.0.
-        /// Default: 60° (spec anchor).
+        /// Default: 60° (spec anchor). Must be positive.
         let depthAnchorFull: Double
 
         // MARK: Form scoring thresholds
 
         /// Maximum shoulder-hip angle deviation (degrees) from horizontal
         /// before the back-alignment sub-score reaches 0.
-        /// Default: 30°.
+        /// Default: 30°. Must be positive.
         let maxBackAngleDeviation: Double
 
         /// Maximum left-right elbow angle difference (degrees) before the
         /// arm-symmetry sub-score reaches 0.
-        /// Default: 30°.
+        /// Default: 30°. Must be positive.
         let maxArmAsymmetry: Double
 
         /// Maximum frame-to-frame elbow angle change (degrees) before the
         /// smoothness sub-score for that frame reaches 0.
-        /// Default: 30°.
+        /// Default: 30°. Must be positive.
         let maxFrameAngleDelta: Double
 
         // MARK: Init
@@ -114,14 +120,22 @@ final class FormScorer {
             maxArmAsymmetry: Double = 30.0,
             maxFrameAngleDelta: Double = 30.0
         ) {
-            precondition(depthAnchorFull < depthAnchorHigh && depthAnchorHigh < depthAnchorHalf,
-                         "Depth anchors must satisfy: full < high < half")
-            self.depthAnchorHalf = depthAnchorHalf
-            self.depthAnchorHigh = depthAnchorHigh
-            self.depthAnchorFull = depthAnchorFull
+            precondition(
+                depthAnchorFull > 0 && depthAnchorFull < depthAnchorHigh && depthAnchorHigh < depthAnchorHalf,
+                "Depth anchors must satisfy 0 < full(\(depthAnchorFull)) < high(\(depthAnchorHigh)) < half(\(depthAnchorHalf))"
+            )
+            precondition(maxBackAngleDeviation > 0,
+                         "maxBackAngleDeviation must be positive, got \(maxBackAngleDeviation)")
+            precondition(maxArmAsymmetry > 0,
+                         "maxArmAsymmetry must be positive, got \(maxArmAsymmetry)")
+            precondition(maxFrameAngleDelta > 0,
+                         "maxFrameAngleDelta must be positive, got \(maxFrameAngleDelta)")
+            self.depthAnchorHalf      = depthAnchorHalf
+            self.depthAnchorHigh      = depthAnchorHigh
+            self.depthAnchorFull      = depthAnchorFull
             self.maxBackAngleDeviation = maxBackAngleDeviation
-            self.maxArmAsymmetry = maxArmAsymmetry
-            self.maxFrameAngleDelta = maxFrameAngleDelta
+            self.maxArmAsymmetry      = maxArmAsymmetry
+            self.maxFrameAngleDelta   = maxFrameAngleDelta
         }
 
         /// Default configuration matching the Task 2.4 specification.
@@ -133,7 +147,8 @@ final class FormScorer {
     private let configuration: Configuration
 
     /// Minimum averaged elbow angle observed while in the DOWN phase.
-    /// Reset at the start of each push-up cycle.
+    /// Initialised to `.infinity` so any real angle is smaller.
+    /// Reset at the start of each push-up cycle via `reset()`.
     private var minDownPhaseAngle: Double = .infinity
 
     /// Accumulated back-alignment sub-scores across all frames in the current
@@ -162,18 +177,19 @@ final class FormScorer {
 
     /// Records a single video frame during an active push-up cycle.
     ///
-    /// Call this for every frame while the push-up state machine is in the
-    /// `.down` or transitioning phases (i.e. between the moment the DOWN
-    /// threshold is crossed and the moment the push-up is counted).
+    /// Call this for every frame while the push-up state machine is active
+    /// (i.e. between the moment the DOWN threshold is first crossed and the
+    /// moment the push-up is counted).
     ///
     /// - Parameters:
     ///   - pose: The body pose for this frame, or `nil` when no person is
-    ///     detected. Nil frames are skipped for form scoring but still advance
-    ///     the smoothness baseline.
+    ///     detected. A nil pose skips all sub-score sampling and resets the
+    ///     smoothness baseline so the next valid frame does not produce a
+    ///     spurious large delta.
     ///   - leftElbowAngle: The left-arm elbow angle in degrees, or `nil` when
-    ///     the left arm joints are not detected.
+    ///     the left arm joints are not detected or below confidence threshold.
     ///   - rightElbowAngle: The right-arm elbow angle in degrees, or `nil`
-    ///     when the right arm joints are not detected.
+    ///     when the right arm joints are not detected or below confidence threshold.
     ///   - isInDownPhase: `true` while the state machine is in `.down`.
     ///     Only frames in the DOWN phase contribute to `depthScore`.
     func recordFrame(
@@ -182,26 +198,21 @@ final class FormScorer {
         rightElbowAngle: Double?,
         isInDownPhase: Bool
     ) {
-        // --- Depth tracking ---
-        if isInDownPhase {
-            let averaged = averagedAngle(left: leftElbowAngle, right: rightElbowAngle)
-            if let angle = averaged, angle.isFinite {
-                minDownPhaseAngle = min(minDownPhaseAngle, angle)
-            }
+        let averaged = Self.averagedAngle(left: leftElbowAngle, right: rightElbowAngle)
+
+        // --- Depth tracking (DOWN phase only) ---
+        if isInDownPhase, let angle = averaged, angle.isFinite {
+            minDownPhaseAngle = min(minDownPhaseAngle, angle)
         }
 
-        // --- Form sub-scores ---
-        let averaged = averagedAngle(left: leftElbowAngle, right: rightElbowAngle)
+        // --- Form sub-scores (all frames) ---
 
-        // Back alignment: requires hip joints.
-        if let pose {
-            let backScore = backAlignmentScore(pose: pose)
-            if let score = backScore {
-                backAlignmentSamples.append(score)
-            }
+        // Back alignment: requires at least one shoulder and one hip joint.
+        if let pose, let score = Self.backAlignmentScore(pose: pose, configuration: configuration) {
+            backAlignmentSamples.append(score)
         }
 
-        // Arm symmetry: requires both arms.
+        // Arm symmetry: requires both arms to be detected.
         if let left = leftElbowAngle, let right = rightElbowAngle,
            left.isFinite, right.isFinite {
             let asymmetry = abs(left - right)
@@ -211,15 +222,15 @@ final class FormScorer {
 
         // Smoothness: frame-to-frame angle delta.
         if let current = averaged, current.isFinite {
-            if let previous = previousAveragedAngle, previous.isFinite {
+            if let previous = previousAveragedAngle {
                 let delta = abs(current - previous)
                 let score = max(0.0, 1.0 - delta / configuration.maxFrameAngleDelta)
                 smoothnessSamples.append(score)
             }
             previousAveragedAngle = current
         } else {
-            // Missing pose: reset the previous angle so the next valid frame
-            // does not produce a spurious large delta.
+            // Missing pose: reset the baseline so the next valid frame does
+            // not produce a spurious large delta.
             previousAveragedAngle = nil
         }
     }
@@ -230,14 +241,13 @@ final class FormScorer {
     /// to accumulate data for the next push-up.
     ///
     /// - Returns: A `FormScore` for the completed push-up, or `nil` when
-    ///   insufficient data was collected (e.g. the pose was never detected).
+    ///   insufficient data was collected (no DOWN-phase angle data and no
+    ///   form sub-score samples at all).
     @discardableResult
     func finalisePushUp() -> FormScore? {
         defer { reset() }
-
         let depth = computeDepthScore()
         let form  = computeFormScore()
-
         guard let depth, let form else { return nil }
         return FormScore(depthScore: depth, formScore: form)
     }
@@ -259,23 +269,22 @@ final class FormScorer {
     /// the DOWN phase using piecewise-linear interpolation between the three
     /// spec anchor points.
     ///
+    /// Returns `nil` when no DOWN-phase angle data was collected.
+    func computeDepthScore() -> Double? {
+        guard minDownPhaseAngle.isFinite else { return nil }
+        return Self.depthScore(for: minDownPhaseAngle, configuration: configuration)
+    }
+
+    /// Maps an elbow angle to a depth score using piecewise-linear
+    /// interpolation between the three spec anchor points.
+    ///
     /// Anchor mapping (from spec):
-    /// - angle >= 90° → 0.0  (no depth credit above the DOWN threshold)
+    /// - angle > 90°  → 0.0  (not bent enough for depth credit)
     /// - angle == 90° → 0.5
     /// - angle == 70° → 0.8
     /// - angle <= 60° → 1.0
     ///
-    /// The segment 90°→70° maps [0.5, 0.8] and the segment 70°→60° maps
-    /// [0.8, 1.0]. Values outside [60°, 90°] are clamped.
-    func computeDepthScore() -> Double? {
-        guard minDownPhaseAngle.isFinite else { return nil }
-        return Self.depthScore(
-            for: minDownPhaseAngle,
-            configuration: configuration
-        )
-    }
-
-    /// Pure function exposed for unit testing.
+    /// Exposed as a `static` pure function for unit testing.
     static func depthScore(
         for angle: Double,
         configuration: Configuration = .default
@@ -284,98 +293,82 @@ final class FormScorer {
         let high = configuration.depthAnchorHigh  // 70° → 0.8
         let full = configuration.depthAnchorFull  // 60° → 1.0
 
-        if angle >= half {
-            // Above the DOWN threshold: no depth credit.
+        if angle > half {
             return 0.0
         } else if angle >= high {
-            // Segment: [high, half] → [0.8, 0.5]  (angle decreasing → score increasing)
-            let t = (half - angle) / (half - high)   // 0 at half, 1 at high
-            return 0.5 + t * (0.8 - 0.5)
+            // Segment [high, half]: score rises from 0.5 to 0.8 as angle falls.
+            let t = (half - angle) / (half - high)
+            return 0.5 + t * 0.3
         } else if angle >= full {
-            // Segment: [full, high] → [1.0, 0.8]
-            let t = (high - angle) / (high - full)   // 0 at high, 1 at full
-            return 0.8 + t * (1.0 - 0.8)
+            // Segment [full, high]: score rises from 0.8 to 1.0 as angle falls.
+            let t = (high - angle) / (high - full)
+            return 0.8 + t * 0.2
         } else {
-            // Below the full-depth threshold: maximum score.
             return 1.0
         }
     }
 
     // MARK: - Form Score
 
-    /// Computes the composite form score as the mean of the three sub-score
-    /// averages. Returns `nil` when no samples were collected for any
-    /// sub-score (all three must have at least one sample).
+    /// Computes the composite form score as the mean of whichever sub-score
+    /// averages have at least one sample.
+    ///
+    /// This is intentionally lenient: if hip joints were never detected (e.g.
+    /// the camera angle only shows the upper body) the back-alignment
+    /// sub-score is simply omitted and the remaining sub-scores are averaged.
+    ///
+    /// Returns `nil` only when no sub-score samples were collected at all.
     func computeFormScore() -> Double? {
-        // Each sub-score is the mean of its samples, or nil when empty.
-        let backScore       = backAlignmentSamples.isEmpty  ? nil : backAlignmentSamples.mean
-        let symmetryScore   = armSymmetrySamples.isEmpty    ? nil : armSymmetrySamples.mean
-        let smoothnessScore = smoothnessSamples.isEmpty     ? nil : smoothnessSamples.mean
-
-        // Collect whichever sub-scores are available and average them.
-        // This is intentionally lenient: if hip joints were never detected
-        // (e.g. camera angle only shows upper body) we still score the
-        // remaining sub-components.
-        let available = [backScore, symmetryScore, smoothnessScore].compactMap { $0 }
+        let candidates: [Double?] = [
+            backAlignmentSamples.isEmpty  ? nil : backAlignmentSamples.mean,
+            armSymmetrySamples.isEmpty    ? nil : armSymmetrySamples.mean,
+            smoothnessSamples.isEmpty     ? nil : smoothnessSamples.mean,
+        ]
+        let available = candidates.compactMap { $0 }
         guard !available.isEmpty else { return nil }
         return available.reduce(0, +) / Double(available.count)
     }
 
     // MARK: - Back Alignment Sub-Score
 
-    /// Returns a back-alignment score in [0, 1] for the given pose.
+    /// Maps a body pose to a back-alignment score in [0, 1].
     ///
     /// The score is based on the angle of the shoulder-midpoint to
-    /// hip-midpoint line relative to horizontal. A perfectly horizontal back
+    /// hip-midpoint line relative to horizontal. A perfectly horizontal spine
     /// (parallel to the ground in push-up position) scores 1.0. Deviations
-    /// reduce the score linearly down to 0 at `maxBackAngleDeviation`.
+    /// reduce the score linearly to 0 at `maxBackAngleDeviation`.
     ///
-    /// Returns `nil` when the required joints (at least one shoulder and one
-    /// hip) are not detected.
-    func backAlignmentScore(pose: BodyPose) -> Double? {
-        return Self.backAlignmentScore(pose: pose, configuration: configuration)
-    }
-
-    /// Pure function exposed for unit testing.
+    /// Returns `nil` when neither shoulder nor hip can be located (both joints
+    /// on both sides are below the confidence threshold).
+    ///
+    /// Exposed as a `static` pure function for unit testing.
     static func backAlignmentScore(
         pose: BodyPose,
         configuration: Configuration = .default
     ) -> Double? {
-        // Compute shoulder midpoint (use both if available, else one side).
-        let shoulderMid = midpoint(
-            a: pose.leftShoulder,
-            b: pose.rightShoulder
-        )
-        // Compute hip midpoint.
-        let hipMid = midpoint(
-            a: pose.leftHip,
-            b: pose.rightHip
-        )
+        guard
+            let shoulder = midpoint(a: pose.leftShoulder, b: pose.rightShoulder),
+            let hip      = midpoint(a: pose.leftHip,      b: pose.rightHip)
+        else { return nil }
 
-        guard let shoulder = shoulderMid, let hip = hipMid else { return nil }
-
-        // Angle of the spine vector (shoulder -> hip) relative to horizontal.
-        // In Vision coordinates (origin bottom-left, y up), a horizontal line
-        // has dy == 0. We measure the absolute deviation from horizontal.
         let dx = Double(hip.x - shoulder.x)
         let dy = Double(hip.y - shoulder.y)
 
-        // Avoid atan2(0, 0) for degenerate case.
+        // Degenerate case: shoulder and hip at the same position.
         guard dx != 0 || dy != 0 else { return 1.0 }
 
         let angleFromHorizontal = abs(atan2(dy, dx) * (180.0 / .pi))
-        // Map 0° deviation → 1.0, maxDeviation → 0.0, clamped.
-        let score = max(0.0, 1.0 - angleFromHorizontal / configuration.maxBackAngleDeviation)
-        return score
+        return max(0.0, 1.0 - angleFromHorizontal / configuration.maxBackAngleDeviation)
     }
 
     // MARK: - Geometry Helpers
 
-    /// Returns the midpoint of two detected joints, or the position of
-    /// whichever single joint is detected, or `nil` when neither is detected.
+    /// Returns the midpoint of two detected joints, the position of whichever
+    /// single joint is detected, or `nil` when neither is detected.
     private static func midpoint(a: Joint?, b: Joint?) -> CGPoint? {
-        switch (a?.isDetected == true ? a : nil,
-                b?.isDetected == true ? b : nil) {
+        let detectedA = a?.isDetected == true ? a : nil
+        let detectedB = b?.isDetected == true ? b : nil
+        switch (detectedA, detectedB) {
         case let (a?, b?):
             return CGPoint(
                 x: (a.position.x + b.position.x) / 2,
@@ -388,13 +381,13 @@ final class FormScorer {
     }
 
     /// Returns the average of two optional angles, or whichever is non-nil,
-    /// or nil when both are nil.
-    private func averagedAngle(left: Double?, right: Double?) -> Double? {
+    /// or `nil` when both are nil.
+    static func averagedAngle(left: Double?, right: Double?) -> Double? {
         switch (left, right) {
-        case let (l?, r?): return (l + r) / 2.0
+        case let (l?, r?):  return (l + r) / 2.0
         case let (l?, nil): return l
         case let (nil, r?): return r
-        case (nil, nil): return nil
+        case (nil, nil):    return nil
         }
     }
 }
@@ -402,8 +395,10 @@ final class FormScorer {
 // MARK: - Array + mean
 
 private extension Array where Element == Double {
+    /// The arithmetic mean of the array's elements.
+    /// Callers must ensure the array is non-empty before calling.
     var mean: Double {
-        guard !isEmpty else { return 0 }
+        precondition(!isEmpty, "mean called on empty array")
         return reduce(0, +) / Double(count)
     }
 }

@@ -161,17 +161,15 @@ final class PushUpDetector {
             elbow:    pose?.rightElbow,
             wrist:    pose?.rightWrist
         )
-        let angle = Self.averagedAngle(left: leftAngle, right: rightAngle)
+        let angle = FormScorer.averagedAngle(left: leftAngle, right: rightAngle)
         currentElbowAngle = angle
 
+        // Snapshot the phase BEFORE updating the state machine so that the
+        // frame that triggers the DOWN→COOLDOWN transition (the final UP frame)
+        // is correctly treated as a non-DOWN frame by the form scorer.
         let isInDownPhase = stateMachine.phase == .down
         let counted = stateMachine.update(angle: angle)
 
-        // Feed the current frame into the form scorer. We pass the per-side
-        // angles so the scorer can compute the arm-symmetry sub-score.
-        // The `isInDownPhase` flag is evaluated BEFORE the state machine
-        // update so that the frame that triggers the DOWN→COOLDOWN transition
-        // (the last UP frame) is not incorrectly attributed to the DOWN phase.
         formScorer.recordFrame(
             pose: pose,
             leftElbowAngle: leftAngle,
@@ -218,32 +216,15 @@ final class PushUpDetector {
 
     /// Returns the averaged elbow angle (degrees) from the pose, or `nil` when
     /// no usable joints are available.
+    ///
+    /// Convenience wrapper used by tests and external callers. The hot path in
+    /// `process(_:)` computes per-side angles directly to avoid a redundant
+    /// call.
     static func computeElbowAngle(from pose: BodyPose?) -> Double? {
         guard let pose else { return nil }
-
-        let leftAngle  = elbowAngle(
-            shoulder: pose.leftShoulder,
-            elbow:    pose.leftElbow,
-            wrist:    pose.leftWrist
-        )
-        let rightAngle = elbowAngle(
-            shoulder: pose.rightShoulder,
-            elbow:    pose.rightElbow,
-            wrist:    pose.rightWrist
-        )
-
-        return averagedAngle(left: leftAngle, right: rightAngle)
-    }
-
-    /// Returns the average of two optional angles, or whichever is non-nil,
-    /// or nil when both are nil.
-    static func averagedAngle(left: Double?, right: Double?) -> Double? {
-        switch (left, right) {
-        case let (l?, r?):  return (l + r) / 2.0
-        case let (l?, nil): return l
-        case let (nil, r?): return r
-        case (nil, nil):    return nil
-        }
+        let left  = elbowAngle(shoulder: pose.leftShoulder,  elbow: pose.leftElbow,  wrist: pose.leftWrist)
+        let right = elbowAngle(shoulder: pose.rightShoulder, elbow: pose.rightElbow, wrist: pose.rightWrist)
+        return FormScorer.averagedAngle(left: left, right: right)
     }
 
     /// Computes the angle at `elbow` formed by the vectors elbow->shoulder and

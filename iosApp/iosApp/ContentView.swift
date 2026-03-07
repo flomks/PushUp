@@ -12,12 +12,23 @@ struct ContentView: View {
 
     @StateObject private var viewModel = PushUpDemoViewModel()
 
+    /// Stable `@Sendable` closure stored in `@State` so it is created once
+    /// and never re-allocated on subsequent `body` evaluations.
+    ///
+    /// A new closure reference on every render would trigger
+    /// `CameraContainerView.onChange(of: onSampleBuffer != nil)` each time,
+    /// causing unnecessary delegate re-attachment on the camera manager.
+    ///
+    /// Initialised to `nil`; set to a real closure in `onAppear` after
+    /// `viewModel` is fully initialised. The closure calls the `nonisolated`
+    /// `process(_:)` method, so it is safe to invoke from the video output
+    /// queue without crossing the main-actor isolation boundary.
+    @State private var sampleBufferProcessor: (@Sendable (CMSampleBuffer) -> Void)?
+
     var body: some View {
         ZStack {
             // MARK: Camera feed (full screen)
-            CameraContainerView { sampleBuffer in
-                viewModel.process(sampleBuffer)
-            }
+            CameraContainerView(onSampleBuffer: sampleBufferProcessor)
             .ignoresSafeArea()
 
             // MARK: Overlay
@@ -31,7 +42,16 @@ struct ContentView: View {
                 bottomCard
             }
         }
-        .onAppear { viewModel.reset() }
+        .onAppear {
+            // Create the stable processor closure once. Capturing viewModel
+            // strongly is safe: @StateObject is already retained by SwiftUI
+            // for the view's lifetime, and process(_:) is nonisolated.
+            if sampleBufferProcessor == nil {
+                let vm = viewModel
+                sampleBufferProcessor = { buf in vm.process(buf) }
+            }
+            viewModel.reset()
+        }
     }
 
     // MARK: - Subviews
@@ -111,7 +131,12 @@ final class PushUpDemoViewModel: ObservableObject {
     @Published private(set) var currentPhase: PushUpPhase = .idle
 
     private let poseDetector = VisionPoseDetector()
-    private let pushUpDetector = PushUpDetector()
+
+    /// Accessed from the video output queue inside `didDetectPose` and from
+    /// the main actor inside `reset()`. These two call sites are serialised by
+    /// the app's usage pattern (reset is only called when no workout is
+    /// running), so `nonisolated(unsafe)` is correct here.
+    nonisolated(unsafe) private let pushUpDetector = PushUpDetector()
 
     init() {
         poseDetector.delegate = PoseDetectorBridge(viewModel: self)
