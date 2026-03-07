@@ -118,7 +118,11 @@ final class PushUpDemoViewModel: ObservableObject {
         pushUpDetector.delegate = PushUpDetectorBridge(viewModel: self)
     }
 
-    func process(_ sampleBuffer: CMSampleBuffer) {
+    /// Called from the video output queue (background thread).
+    /// `nonisolated` so the `@Sendable` closure in `CameraContainerView`
+    /// can call it directly without hopping to the main actor.
+    /// `poseDetector.process` is designed for background-queue use.
+    nonisolated func process(_ sampleBuffer: CMSampleBuffer) {
         poseDetector.process(sampleBuffer)
     }
 
