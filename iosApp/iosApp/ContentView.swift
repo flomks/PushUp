@@ -12,16 +12,23 @@ struct ContentView: View {
 
     @StateObject private var viewModel = PushUpDemoViewModel()
 
+    /// Stable `@Sendable` closure stored in `@State` so it is created once
+    /// and never re-allocated on subsequent `body` evaluations.
+    ///
+    /// A new closure reference on every render would trigger
+    /// `CameraContainerView.onChange(of: onSampleBuffer != nil)` each time,
+    /// causing unnecessary delegate re-attachment on the camera manager.
+    ///
+    /// Initialised to `nil`; set to a real closure in `onAppear` after
+    /// `viewModel` is fully initialised. The closure calls the `nonisolated`
+    /// `process(_:)` method, so it is safe to invoke from the video output
+    /// queue without crossing the main-actor isolation boundary.
+    @State private var sampleBufferProcessor: (@Sendable (CMSampleBuffer) -> Void)?
+
     var body: some View {
         ZStack {
             // MARK: Camera feed (full screen)
-            // Capture a nonisolated reference to `process` so the @Sendable
-            // closure can call it from the video output queue without crossing
-            // the main-actor isolation boundary.
-            let processor: @Sendable (CMSampleBuffer) -> Void = { [weak viewModel] buf in
-                viewModel?.process(buf)
-            }
-            CameraContainerView(onSampleBuffer: processor)
+            CameraContainerView(onSampleBuffer: sampleBufferProcessor)
             .ignoresSafeArea()
 
             // MARK: Overlay
@@ -35,7 +42,16 @@ struct ContentView: View {
                 bottomCard
             }
         }
-        .onAppear { viewModel.reset() }
+        .onAppear {
+            // Create the stable processor closure once. Capturing viewModel
+            // strongly is safe: @StateObject is already retained by SwiftUI
+            // for the view's lifetime, and process(_:) is nonisolated.
+            if sampleBufferProcessor == nil {
+                let vm = viewModel
+                sampleBufferProcessor = { buf in vm.process(buf) }
+            }
+            viewModel.reset()
+        }
     }
 
     // MARK: - Subviews

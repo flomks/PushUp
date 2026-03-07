@@ -86,25 +86,6 @@ private func makePose(
     return BodyPose(joints: dict, timestamp: timestamp)
 }
 
-/// Feeds `count` identical frames into `scorer`.
-private func feedFrames(
-    _ scorer: FormScorer,
-    pose: BodyPose,
-    leftAngle: Double?,
-    rightAngle: Double?,
-    isInDownPhase: Bool,
-    count: Int
-) {
-    for _ in 0..<count {
-        scorer.recordFrame(
-            pose: pose,
-            leftElbowAngle: leftAngle,
-            rightElbowAngle: rightAngle,
-            isInDownPhase: isInDownPhase
-        )
-    }
-}
-
 // MARK: - FormScorerTests
 
 @Suite("FormScorer")
@@ -349,16 +330,18 @@ struct FormScorerTests {
         @Test("Perfectly symmetric arms contribute maximum symmetry sub-score")
         func symmetricArmsMaxScore() throws {
             let scorer = FormScorer()
-            let pose = makePose(leftAngle: 70.0, rightAngle: 70.0)
+            // Horizontal spine so back-alignment sub-score is also 1.0.
+            let pose = makePose(leftAngle: 70.0, rightAngle: 70.0, spineAngleDeg: 0.0)
 
-            // Feed frames with identical left and right angles.
+            // Feed multiple frames so smoothness samples are also collected.
             for _ in 0..<5 {
                 scorer.recordFrame(pose: pose, leftElbowAngle: 70.0, rightElbowAngle: 70.0, isInDownPhase: true)
             }
 
             let result = try #require(scorer.finalisePushUp())
-            // Symmetry sub-score is 1.0 (0 asymmetry). Form score should be high.
-            #expect(result.formScore > 0.5, "Symmetric arms should produce high form score")
+            // All three sub-scores should be 1.0 → formScore == 1.0.
+            #expect(abs(result.formScore - 1.0) < 0.01,
+                    "Perfect symmetry, alignment, and smoothness should give formScore 1.0, got \(result.formScore)")
         }
 
         @Test("Maximum asymmetry reduces symmetry sub-score to 0")
@@ -404,7 +387,8 @@ struct FormScorerTests {
         @Test("Constant angle produces maximum smoothness sub-score")
         func constantAngleMaxSmoothness() throws {
             let scorer = FormScorer()
-            let pose = makePose(leftAngle: 70.0, rightAngle: 70.0)
+            // Horizontal spine so back-alignment is also 1.0.
+            let pose = makePose(leftAngle: 70.0, rightAngle: 70.0, spineAngleDeg: 0.0)
 
             // Feed many frames with the same angle.
             for _ in 0..<10 {
@@ -412,8 +396,9 @@ struct FormScorerTests {
             }
 
             let result = try #require(scorer.finalisePushUp())
-            // Smoothness sub-score should be 1.0 (zero delta between frames).
-            #expect(result.formScore > 0.5, "Constant angle should produce high form score")
+            // Zero delta → smoothness 1.0; symmetric → symmetry 1.0; horizontal → alignment 1.0.
+            #expect(abs(result.formScore - 1.0) < 0.01,
+                    "Constant angle with perfect form should give formScore 1.0, got \(result.formScore)")
         }
 
         @Test("Jerky movement at max delta reduces smoothness sub-score to 0")
@@ -655,123 +640,111 @@ struct FormScorerTests {
     @Suite("Integration with PushUpDetector")
     struct DetectorIntegration {
 
+        /// Tight state-machine configuration shared across all integration tests.
+        private let detectorConfig = PushUpStateMachine.Configuration(
+            downAngleThreshold: 90,
+            upAngleThreshold: 160,
+            hysteresisFrameCount: 3,
+            cooldownFrameCount: 5
+        )
+
         /// Builds a full pose with arm joints at the given angle and a
         /// horizontal spine (ideal push-up position).
         private func makeFullPose(angle: Double, timestamp: Double = 0) -> BodyPose {
             makePose(leftAngle: angle, rightAngle: angle, spineAngleDeg: 0.0, timestamp: timestamp)
         }
 
+        /// Runs one complete push-up cycle through `detector` and returns the
+        /// resulting event.
+        private func runOnePushUp(
+            detector: PushUpDetector,
+            downAngle: Double = 70.0,
+            upAngle: Double = 170.0
+        ) {
+            for i in 0..<3 { detector.process(makeFullPose(angle: downAngle, timestamp: Double(i))) }
+            for i in 0..<3 { detector.process(makeFullPose(angle: upAngle,   timestamp: 10.0 + Double(i))) }
+        }
+
         @Test("PushUpEvent carries a non-nil FormScore after a complete push-up")
         func eventCarriesFormScore() throws {
-            let config = PushUpStateMachine.Configuration(
-                downAngleThreshold: 90,
-                upAngleThreshold: 160,
-                hysteresisFrameCount: 3,
-                cooldownFrameCount: 5
-            )
-            let detector = PushUpDetector(configuration: config)
+            let detector = PushUpDetector(configuration: detectorConfig)
             let delegate = RecordingDelegate()
             detector.delegate = delegate
 
-            // DOWN phase: 3 frames at 70°.
-            for i in 0..<3 {
-                detector.process(makeFullPose(angle: 70.0, timestamp: Double(i)))
-            }
-            // UP phase: 3 frames at 170°.
-            for i in 0..<3 {
-                detector.process(makeFullPose(angle: 170.0, timestamp: 10.0 + Double(i)))
-            }
+            runOnePushUp(detector: detector, downAngle: 70.0)
 
             let event = try #require(delegate.events.first)
             let score = try #require(event.formScore,
                                      "PushUpEvent should carry a non-nil FormScore")
-            #expect(score.depthScore >= 0.0 && score.depthScore <= 1.0)
+            // depthScore: 3 DOWN frames at 70° → should be 0.8 (spec anchor).
+            #expect(abs(score.depthScore - 0.8) < 0.01,
+                    "Expected depthScore ~0.8 for 70° push-up, got \(score.depthScore)")
             #expect(score.formScore  >= 0.0 && score.formScore  <= 1.0)
             #expect(abs(score.combinedScore - (score.depthScore + score.formScore) / 2.0) < 0.0001)
         }
 
         @Test("Deeper push-up produces higher depthScore than shallow push-up")
         func deeperPushUpHigherDepthScore() throws {
-            let config = PushUpStateMachine.Configuration(
-                downAngleThreshold: 90,
-                upAngleThreshold: 160,
-                hysteresisFrameCount: 3,
-                cooldownFrameCount: 5
-            )
-
-            // Deep push-up detector.
-            let deepDetector = PushUpDetector(configuration: config)
-            let deepDelegate = RecordingDelegate()
+            let deepDetector    = PushUpDetector(configuration: detectorConfig)
+            let deepDelegate    = RecordingDelegate()
             deepDetector.delegate = deepDelegate
+            runOnePushUp(detector: deepDetector, downAngle: 60.0)
 
-            for i in 0..<3 { deepDetector.process(makeFullPose(angle: 60.0, timestamp: Double(i))) }
-            for i in 0..<3 { deepDetector.process(makeFullPose(angle: 170.0, timestamp: 10.0 + Double(i))) }
-
-            // Shallow push-up detector.
-            let shallowDetector = PushUpDetector(configuration: config)
-            let shallowDelegate = RecordingDelegate()
+            let shallowDetector    = PushUpDetector(configuration: detectorConfig)
+            let shallowDelegate    = RecordingDelegate()
             shallowDetector.delegate = shallowDelegate
-
-            for i in 0..<3 { shallowDetector.process(makeFullPose(angle: 88.0, timestamp: Double(i))) }
-            for i in 0..<3 { shallowDetector.process(makeFullPose(angle: 170.0, timestamp: 10.0 + Double(i))) }
+            runOnePushUp(detector: shallowDetector, downAngle: 88.0)
 
             let deepScore    = try #require(deepDelegate.events.first?.formScore)
             let shallowScore = try #require(shallowDelegate.events.first?.formScore)
 
+            // 60° → depthScore 1.0; 88° → depthScore just above 0.5.
             #expect(deepScore.depthScore > shallowScore.depthScore,
-                    "Deep push-up (\(deepScore.depthScore)) should score higher than shallow (\(shallowScore.depthScore))")
+                    "Deep (\(deepScore.depthScore)) should exceed shallow (\(shallowScore.depthScore))")
+            #expect(abs(deepScore.depthScore - 1.0) < 0.001,
+                    "60° push-up should score 1.0, got \(deepScore.depthScore)")
+            #expect(shallowScore.depthScore > 0.5 && shallowScore.depthScore < 0.6,
+                    "88° push-up should score just above 0.5, got \(shallowScore.depthScore)")
         }
 
-        @Test("Reset clears form scorer state in detector")
+        @Test("Reset clears form scorer state; subsequent cycle scores independently")
         func resetClearsFormScorerInDetector() throws {
-            let config = PushUpStateMachine.Configuration(
-                downAngleThreshold: 90,
-                upAngleThreshold: 160,
-                hysteresisFrameCount: 3,
-                cooldownFrameCount: 5
-            )
-            let detector = PushUpDetector(configuration: config)
+            let detector = PushUpDetector(configuration: detectorConfig)
             let delegate = RecordingDelegate()
             detector.delegate = delegate
 
-            // Partial DOWN phase.
+            // Partial DOWN phase, then reset.
             for i in 0..<3 { detector.process(makeFullPose(angle: 70.0, timestamp: Double(i))) }
             detector.reset()
 
-            // After reset, a new full cycle should produce a fresh score.
-            for i in 0..<3 { detector.process(makeFullPose(angle: 70.0, timestamp: Double(i))) }
-            for i in 0..<3 { detector.process(makeFullPose(angle: 170.0, timestamp: 10.0 + Double(i))) }
+            // A fresh full cycle should produce exactly one event with valid scores.
+            runOnePushUp(detector: detector, downAngle: 70.0)
 
             #expect(delegate.events.count == 1, "Should count exactly one push-up after reset")
             let score = try #require(delegate.events.first?.formScore)
-            #expect(score.depthScore >= 0.0 && score.depthScore <= 1.0)
+            #expect(abs(score.depthScore - 0.8) < 0.01,
+                    "Post-reset depthScore should be 0.8 for 70°, got \(score.depthScore)")
         }
 
         @Test("Multiple push-ups each carry independent FormScores")
         func multiplePushUpsIndependentScores() throws {
-            let config = PushUpStateMachine.Configuration(
-                downAngleThreshold: 90,
-                upAngleThreshold: 160,
-                hysteresisFrameCount: 3,
-                cooldownFrameCount: 5
-            )
-            let detector = PushUpDetector(configuration: config)
+            let detector = PushUpDetector(configuration: detectorConfig)
             let delegate = RecordingDelegate()
             detector.delegate = delegate
 
-            // Three push-ups.
             for _ in 0..<3 {
-                for i in 0..<3 { detector.process(makeFullPose(angle: 70.0, timestamp: Double(i))) }
-                for i in 0..<3 { detector.process(makeFullPose(angle: 170.0, timestamp: 10.0 + Double(i))) }
-                // Wait out cooldown.
+                runOnePushUp(detector: detector, downAngle: 70.0)
+                // Wait out cooldown (5 frames).
                 for i in 0..<5 { detector.process(makeFullPose(angle: 170.0, timestamp: 20.0 + Double(i))) }
             }
 
             #expect(delegate.events.count == 3, "Expected 3 push-up events")
             for event in delegate.events {
                 let score = try #require(event.formScore)
-                #expect(score.depthScore >= 0.0 && score.depthScore <= 1.0)
+                #expect(abs(score.depthScore - 0.8) < 0.01,
+                        "Each push-up at 70° should score 0.8, got \(score.depthScore)")
                 #expect(score.formScore  >= 0.0 && score.formScore  <= 1.0)
+                #expect(abs(score.combinedScore - (score.depthScore + score.formScore) / 2.0) < 0.0001)
             }
         }
     }
