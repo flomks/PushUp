@@ -7,7 +7,7 @@ import shared
 /// Errors that can occur during a push-up tracking session.
 ///
 /// Observe `PushUpTrackingManager.lastError` to react to these in the UI.
-enum TrackingError: LocalizedError, Equatable {
+enum TrackingError: LocalizedError, Equatable, Sendable {
     case alreadyTracking
     case notTracking
     case cameraError(CameraError)
@@ -55,6 +55,7 @@ enum TrackingError: LocalizedError, Equatable {
 /// - `stopTracking()` stops the `AVCaptureSession` and clears the delegate
 ///   chain, releasing the camera hardware and Vision pipeline.
 /// - The session timer is invalidated synchronously in `stopTracking()`.
+/// - Bridge objects are strongly retained by the manager and released on stop.
 ///
 /// **Usage**
 /// ```swift
@@ -62,11 +63,12 @@ enum TrackingError: LocalizedError, Equatable {
 /// let manager = PushUpTrackingManager()
 /// manager.startTracking()
 ///
-/// // Observe published properties:
+/// // Observe published properties via SwiftUI or Combine:
 /// manager.$currentCount
 ///     .sink { count in print("Push-ups: \(count)") }
 ///     .store(in: &cancellables)
 ///
+/// // Always call stopTracking() before releasing the manager.
 /// manager.stopTracking()
 /// ```
 @MainActor
@@ -77,7 +79,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Total push-ups counted in the current session.
     @Published private(set) var currentCount: Int = 0
 
-    /// The combined form score (0.0–1.0) of the most recently completed push-up,
+    /// The combined form score (0.0-1.0) of the most recently completed push-up,
     /// or `nil` when no push-up has been counted yet in this session.
     @Published private(set) var currentFormScore: Double? = nil
 
@@ -95,12 +97,14 @@ final class PushUpTrackingManager: ObservableObject {
 
     private let cameraManager: CameraManager
     private let poseDetector: VisionPoseDetector
-
-    /// `PushUpDetector` is a `final class` with its own internal locking for
-    /// the delegate property. `process(_:)` is designed to be called from the
-    /// video output queue. Storing it as a plain `let` is safe because the
-    /// reference itself never changes after `init`.
     private let pushUpDetector: PushUpDetector
+
+    /// Strong references to the delegate bridges. `CameraManager.delegate`,
+    /// `VisionPoseDetector.delegate`, and `PushUpDetector.delegate` are all
+    /// `weak`, so the manager must hold strong references to keep the bridges
+    /// alive for the duration of a tracking session.
+    private var poseDetectorBridge: PoseDetectorBridge?
+    private var pushUpDetectorBridge: PushUpDetectorBridge?
 
     // MARK: - Private: KMP Use Cases
 
@@ -127,6 +131,11 @@ final class PushUpTrackingManager: ObservableObject {
     /// from `PushUpEvent.timestamp`). Used to compute `durationMs` for
     /// `RecordPushUpUseCase`. Main-actor isolated.
     private var lastPushUpTimestamp: Double? = nil
+
+    /// The `Task` running `startKMPWorkout()`. Stored so that `stopTracking()`
+    /// can cancel it to prevent an orphaned KMP session if the user stops
+    /// before the KMP workout has been created.
+    private var startWorkoutTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -158,8 +167,6 @@ final class PushUpTrackingManager: ObservableObject {
         self.startWorkout = startWorkout
         self.recordPushUp = recordPushUp
         self.finishWorkout = finishWorkout
-
-        wireDetectionPipeline()
     }
 
     /// Convenience initialiser that resolves use cases from the Koin DI graph.
@@ -178,18 +185,17 @@ final class PushUpTrackingManager: ObservableObject {
 
     /// `deinit` is `nonisolated` because ARC calls it from an arbitrary thread.
     /// All mutable state that needs cleanup is handled synchronously in
-    /// `stopTracking()`. The timer invalidation here is a last-resort safety net
-    /// for cases where the owner forgets to call `stopTracking()`.
+    /// `stopTracking()`. The timer reference is captured directly (not via
+    /// `self`) because `[weak self]` would always be `nil` inside `deinit`.
     nonisolated deinit {
-        // `Timer.invalidate()` is thread-safe when the timer has already been
-        // invalidated (no-op). If `stopTracking()` was called correctly this is
-        // always a no-op. We access `sessionTimer` without the main actor here
-        // only as a safety net; the real cleanup path is `stopTracking()`.
-        // Using MainActor.assumeIsolated would crash if not on main thread, so
-        // we use a fire-and-forget dispatch instead.
-        DispatchQueue.main.async { [weak self] in
-            self?.sessionTimer?.invalidate()
-            self?.sessionTimer = nil
+        // Capture the timer reference directly. In `deinit`, `self` is the
+        // last owner, so no concurrent access is possible. The timer must be
+        // invalidated on the main thread (run loop requirement).
+        let timer = sessionTimer
+        if timer != nil {
+            DispatchQueue.main.async {
+                timer?.invalidate()
+            }
         }
     }
 
@@ -199,9 +205,10 @@ final class PushUpTrackingManager: ObservableObject {
     ///
     /// 1. Validates that no session is already active.
     /// 2. Resets the detection pipeline and clears any previous error.
-    /// 3. Starts the camera (requests permission if needed).
-    /// 4. Calls `StartWorkoutUseCase` (KMP) to open a new workout session.
-    /// 5. Starts the session timer.
+    /// 3. Wires the delegate chain (camera -> pose detector -> push-up detector).
+    /// 4. Starts the camera (requests permission if needed).
+    /// 5. Calls `StartWorkoutUseCase` (KMP) to open a new workout session.
+    /// 6. Starts the session timer.
     ///
     /// If the KMP use case fails, the camera is stopped, `isTracking` is set
     /// back to `false`, and `lastError` is populated.
@@ -215,12 +222,17 @@ final class PushUpTrackingManager: ObservableObject {
 
         lastError = nil
         resetDetectionState()
+
+        // (Re-)wire the delegate chain. This must happen on every start because
+        // stopTracking() clears the delegates to release camera resources.
+        wireDetectionPipeline()
+
         cameraManager.setupAndStart(position: .front)
         isTracking = true
         sessionStartDate = Date()
         startSessionTimer()
 
-        Task {
+        startWorkoutTask = Task {
             await startKMPWorkout()
         }
     }
@@ -228,10 +240,11 @@ final class PushUpTrackingManager: ObservableObject {
     /// Stops the current push-up tracking session.
     ///
     /// 1. Validates that a session is active.
-    /// 2. Stops the camera and releases hardware resources synchronously.
-    /// 3. Invalidates the session timer synchronously.
-    /// 4. Resets `sessionDuration` to `0` immediately.
-    /// 5. Calls `FinishWorkoutUseCase` (KMP) to close the workout session.
+    /// 2. Cancels any in-flight KMP startup task.
+    /// 3. Stops the camera and releases hardware resources synchronously.
+    /// 4. Invalidates the session timer synchronously.
+    /// 5. Resets `sessionDuration` to `0` immediately.
+    /// 6. Calls `FinishWorkoutUseCase` (KMP) to close the workout session.
     func stopTracking() {
         guard isTracking else {
             #if DEBUG
@@ -240,9 +253,13 @@ final class PushUpTrackingManager: ObservableObject {
             return
         }
 
+        // Cancel the startup task to prevent an orphaned KMP session if the
+        // user stops before startKMPWorkout() has completed.
+        startWorkoutTask?.cancel()
+        startWorkoutTask = nil
+
         // Capture session ID before clearing state so the async KMP call
-        // below receives the correct value even if stopTracking() is called
-        // again before the Task completes.
+        // below receives the correct value.
         let sessionId = activeSessionId
 
         // All synchronous cleanup happens here, before any async work.
@@ -261,15 +278,27 @@ final class PushUpTrackingManager: ObservableObject {
 
     /// Wires the delegate chain:
     /// `CameraManager` -> `VisionPoseDetector` -> `PushUpDetector` -> `self`
+    ///
+    /// Creates new bridge objects and stores strong references to them. The
+    /// bridges hold weak references back to the manager to prevent retain cycles.
+    /// The `PoseDetectorBridge` captures a direct reference to `pushUpDetector`
+    /// at creation time so it can call `process(_:)` on the video output queue
+    /// without crossing the main-actor isolation boundary.
     private func wireDetectionPipeline() {
         // CameraManager delivers frames to VisionPoseDetector.
         cameraManager.delegate = poseDetector
 
         // VisionPoseDetector delivers poses to PushUpDetector via a bridge.
-        poseDetector.delegate = PoseDetectorBridge(manager: self)
+        // The bridge captures `pushUpDetector` directly to avoid accessing
+        // a @MainActor-isolated property from the video output queue.
+        let poseBridge = PoseDetectorBridge(pushUpDetector: pushUpDetector)
+        poseDetectorBridge = poseBridge
+        poseDetector.delegate = poseBridge
 
         // PushUpDetector delivers push-up events to self via a bridge.
-        pushUpDetector.delegate = PushUpDetectorBridge(manager: self)
+        let pushUpBridge = PushUpDetectorBridge(manager: self)
+        pushUpDetectorBridge = pushUpBridge
+        pushUpDetector.delegate = pushUpBridge
     }
 
     // MARK: - Private: Detection State
@@ -285,12 +314,17 @@ final class PushUpTrackingManager: ObservableObject {
     // MARK: - Private: Camera Resources
 
     /// Stops the capture session and clears the delegate chain to release
-    /// camera hardware and Vision pipeline resources.
+    /// camera hardware and Vision pipeline resources. Also releases the
+    /// strong references to bridge objects.
     private func releaseCameraResources() {
         cameraManager.stopSession()
         // Clear delegates to break retain cycles and stop frame delivery.
         cameraManager.delegate = nil
         poseDetector.delegate = nil
+        pushUpDetector.delegate = nil
+        // Release bridge objects.
+        poseDetectorBridge = nil
+        pushUpDetectorBridge = nil
     }
 
     // MARK: - Private: Session Timer
@@ -299,13 +333,16 @@ final class PushUpTrackingManager: ObservableObject {
         sessionTimer?.invalidate()
         // The timer is scheduled on the main run loop (this method is
         // main-actor isolated), so the callback fires on the main thread.
-        // No additional Task hop is needed.
+        // `MainActor.assumeIsolated` makes the actor isolation explicit for
+        // Swift 6 strict concurrency compliance.
         sessionTimer = Timer.scheduledTimer(
             withTimeInterval: 1.0,
             repeats: true
         ) { [weak self] _ in
-            guard let self, let start = self.sessionStartDate else { return }
-            self.sessionDuration = Date().timeIntervalSince(start)
+            MainActor.assumeIsolated {
+                guard let self, let start = self.sessionStartDate else { return }
+                self.sessionDuration = Date().timeIntervalSince(start)
+            }
         }
     }
 
@@ -318,20 +355,36 @@ final class PushUpTrackingManager: ObservableObject {
 
     /// Resolves the local user and starts a KMP workout session.
     ///
-    /// Called from a background `Task` after the camera has started.
+    /// Called from a cancellable `Task` after the camera has started.
     /// On failure: stops the camera, resets `isTracking`, and sets `lastError`.
+    /// On cancellation: returns early without setting `activeSessionId`.
     private func startKMPWorkout() async {
         do {
             let user: User = try await withKMPSuspend { handler in
                 self.getOrCreateLocalUser.invoke(completionHandler: handler)
             }
+
+            // Check cancellation between the two KMP calls. If stopTracking()
+            // was called while getOrCreateLocalUser was in flight, we must not
+            // start a new workout session.
+            try Task.checkCancellation()
+
             let session: WorkoutSession = try await withKMPSuspend { handler in
                 self.startWorkout.invoke(userId: user.id, completionHandler: handler)
             }
-            // Only set activeSessionId after both use cases succeed.
+
+            // Final cancellation check before committing the session ID.
+            guard !Task.isCancelled else { return }
+
             activeSessionId = session.id
             #if DEBUG
-            print("[PushUpTrackingManager] KMP workout started: \(session.id)")
+            print("[PushUpTrackingManager] KMP workout started: session=\(session.id)")
+            #endif
+        } catch is CancellationError {
+            // stopTracking() cancelled us. No cleanup needed -- stopTracking()
+            // already handled everything.
+            #if DEBUG
+            print("[PushUpTrackingManager] startKMPWorkout cancelled")
             #endif
         } catch {
             #if DEBUG
@@ -364,6 +417,8 @@ final class PushUpTrackingManager: ObservableObject {
 
         // Compute duration in milliseconds since the previous push-up.
         // Default to 2000 ms for the first rep (a reasonable average).
+        // If timestamps go backwards (e.g. during camera switch), the default
+        // is used to avoid negative or zero durations.
         let eventTimestamp = event.timestamp
         let durationMs: Int64
         if let prev = lastPushUpTimestamp, eventTimestamp > prev {
@@ -386,10 +441,13 @@ final class PushUpTrackingManager: ObservableObject {
             (event.formScore?.formScore ?? 0.5).clamped(to: 0.0...1.0)
         )
 
+        // Capture use case reference to avoid strong self in the closure.
+        let useCase = self.recordPushUp
+
         Task {
             do {
                 _ = try await withKMPSuspend { handler in
-                    self.recordPushUp.invoke(
+                    useCase.invoke(
                         sessionId: sessionId,
                         durationMs: durationMs,
                         depthScore: depthScore,
@@ -453,7 +511,7 @@ final class PushUpTrackingManager: ObservableObject {
 private extension Double {
     /// Returns the value clamped to the given closed range.
     func clamped(to range: ClosedRange<Double>) -> Double {
-        min(max(self, range.lowerBound), range.upperBound)
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
 
@@ -468,15 +526,33 @@ private extension Double {
 /// ```
 /// This helper converts that callback pattern to `async throws`.
 ///
+/// **Double-resume protection**: The completion handler may be called more than
+/// once in certain Kotlin/Native interop edge cases (e.g. coroutine cancellation).
+/// An `NSLock`-protected flag ensures the continuation is resumed exactly once.
+///
 /// - Parameter body: A closure that receives the continuation callback and
-///   must call it exactly once with either a non-nil result or a non-nil error.
+///   must call it at least once with either a non-nil result or a non-nil error.
 /// - Returns: The unwrapped result value.
 /// - Throws: The error passed to the continuation, if any.
 private func withKMPSuspend<T>(
     _ body: @escaping (@escaping (T?, Error?) -> Void) -> Void
 ) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in
+        let lock = NSLock()
+        var hasResumed = false
+
         body { result, error in
+            lock.lock()
+            guard !hasResumed else {
+                lock.unlock()
+                #if DEBUG
+                print("[KMPBridge] WARNING: completion handler called more than once -- ignored")
+                #endif
+                return
+            }
+            hasResumed = true
+            lock.unlock()
+
             if let error {
                 continuation.resume(throwing: error)
             } else if let result {
@@ -500,31 +576,33 @@ private func withKMPSuspend<T>(
 // MARK: - Delegate Bridges
 
 /// Bridges `PoseDetectorDelegate` callbacks (video output queue) to
-/// `PushUpTrackingManager`.
+/// `PushUpDetector`.
 ///
-/// The bridge holds a weak reference to the manager to prevent retain cycles.
-/// It is `@unchecked Sendable` because the manager reference is only read
-/// (never written) after initialisation, and the bridge only calls
-/// `pushUpDetector.process(_:)` which is designed for the video output queue.
+/// Captures a direct reference to the `PushUpDetector` at creation time so
+/// that `process(_:)` can be called on the video output queue without crossing
+/// the main-actor isolation boundary. The manager is not referenced at all,
+/// eliminating any actor-isolation concerns.
+///
+/// `@unchecked Sendable` is safe because `pushUpDetector` is an immutable
+/// reference to a `final class` whose `process(_:)` method is designed for
+/// the video output queue.
 private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendable {
 
-    private weak var manager: PushUpTrackingManager?
+    private let pushUpDetector: PushUpDetector
 
-    init(manager: PushUpTrackingManager) {
-        self.manager = manager
+    init(pushUpDetector: PushUpDetector) {
+        self.pushUpDetector = pushUpDetector
     }
 
     func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?) {
-        // Forward to the push-up detector on the video output queue.
-        // `PushUpDetector.process(_:)` is designed for this queue.
-        manager?.pushUpDetector.process(pose)
+        pushUpDetector.process(pose)
     }
 }
 
 /// Bridges `PushUpDetectorDelegate` callbacks (video output queue) to
 /// `PushUpTrackingManager`.
 ///
-/// The bridge holds a weak reference to the manager to prevent retain cycles.
+/// Holds a weak reference to the manager to prevent retain cycles.
 /// Push-up events are dispatched to the main actor so that `handlePushUpEvent`
 /// can safely access main-actor-isolated state.
 private final class PushUpDetectorBridge: PushUpDetectorDelegate, @unchecked Sendable {
@@ -536,8 +614,6 @@ private final class PushUpDetectorBridge: PushUpDetectorDelegate, @unchecked Sen
     }
 
     func pushUpDetector(_ detector: PushUpDetector, didCount event: PushUpEvent) {
-        // Hop to the main actor so the manager can safely update its
-        // @Published properties and call KMP use cases.
         Task { @MainActor [weak manager] in
             manager?.handlePushUpEvent(event)
         }
