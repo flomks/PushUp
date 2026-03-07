@@ -16,11 +16,17 @@ import org.koin.core.component.get
  *
  * **Usage from Swift**
  * ```swift
+ * // At app startup (before any use case is needed):
+ * KoinIOSKt.doInitKoin()
+ *
+ * // Then resolve use cases on demand:
  * let helper = DIHelper.shared
  * let startWorkout = helper.startWorkoutUseCase()
  * ```
  *
- * Requires [initKoin] to have been called before any method is invoked.
+ * Requires [initKoin] to have been called before [shared] is first accessed.
+ * The [shared] instance is created lazily so that accessing the companion
+ * object before Koin is initialised does not crash.
  */
 class DIHelper private constructor() : KoinComponent {
 
@@ -49,11 +55,17 @@ class DIHelper private constructor() : KoinComponent {
 
     companion object {
         /**
-         * Singleton instance.
+         * Lazily-initialised singleton instance.
+         *
+         * Lazy initialisation ensures that the [DIHelper] constructor (and
+         * therefore the first Koin `get()` call) only runs after [initKoin]
+         * has been called. Accessing [shared] before [initKoin] will still
+         * crash at the first `get()` call, but the companion object itself
+         * is safe to reference before Koin is ready.
          *
          * A single [DIHelper] is sufficient because all use cases are resolved
          * lazily on each call to the factory methods above.
          */
-        val shared: DIHelper = DIHelper()
+        val shared: DIHelper by lazy { DIHelper() }
     }
 }
