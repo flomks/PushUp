@@ -15,9 +15,13 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             // MARK: Camera feed (full screen)
-            CameraContainerView { sampleBuffer in
-                viewModel.process(sampleBuffer)
+            // Capture a nonisolated reference to `process` so the @Sendable
+            // closure can call it from the video output queue without crossing
+            // the main-actor isolation boundary.
+            let processor: @Sendable (CMSampleBuffer) -> Void = { [weak viewModel] buf in
+                viewModel?.process(buf)
             }
+            CameraContainerView(onSampleBuffer: processor)
             .ignoresSafeArea()
 
             // MARK: Overlay
@@ -111,7 +115,12 @@ final class PushUpDemoViewModel: ObservableObject {
     @Published private(set) var currentPhase: PushUpPhase = .idle
 
     private let poseDetector = VisionPoseDetector()
-    private let pushUpDetector = PushUpDetector()
+
+    /// Accessed from the video output queue inside `didDetectPose` and from
+    /// the main actor inside `reset()`. These two call sites are serialised by
+    /// the app's usage pattern (reset is only called when no workout is
+    /// running), so `nonisolated(unsafe)` is correct here.
+    nonisolated(unsafe) private let pushUpDetector = PushUpDetector()
 
     init() {
         poseDetector.delegate = PoseDetectorBridge(viewModel: self)
