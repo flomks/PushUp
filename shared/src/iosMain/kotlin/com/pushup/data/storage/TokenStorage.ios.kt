@@ -81,7 +81,9 @@ actual class TokenStorage {
      */
     actual fun save(token: AuthToken) {
         val json = Json.encodeToString(token)
-        val data: NSData = (json as NSString).dataUsingEncoding(NSUTF8StringEncoding)
+        @Suppress("CAST_NEVER_SUCCEEDS")
+        val nsJson = json as NSString
+        val data: NSData = nsJson.dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
         // Build the base query identifying the existing item.
@@ -142,6 +144,7 @@ actual class TokenStorage {
         val data = CFBridgingRelease(result.value) as? NSData ?: return null
         // NSString.create(data:encoding:) is the correct Kotlin/Native 2.x API
         // for decoding an NSData buffer to a String without raw pointer arithmetic.
+        @Suppress("CAST_NEVER_SUCCEEDS")
         val json = NSString.create(data = data, encoding = NSUTF8StringEncoding)
             as? String ?: return null
         runCatching { Json.decodeFromString<AuthToken>(json) }.getOrNull()

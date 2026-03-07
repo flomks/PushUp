@@ -158,7 +158,7 @@ struct CameraContainerView: View {
     // MARK: Private
 
     private func attachDelegate() {
-        if let handler = onSampleBuffer {
+        if let handler: @Sendable (CMSampleBuffer) -> Void = onSampleBuffer {
             let wrapper = SampleBufferHandler(handler: handler)
             sampleBufferHandler = wrapper      // strong ref kept in @State
             cameraManager.delegate = wrapper   // weak ref in CameraManager

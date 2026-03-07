@@ -47,12 +47,16 @@ protocol PoseDetectorDelegate: AnyObject, Sendable {
 ///     detector.process(sampleBuffer)
 /// }
 /// ```
-final class VisionPoseDetector: ObservableObject {
+final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published State
 
     /// The most recently detected pose, updated on the main queue.
     /// `nil` when no person is visible or detection is paused.
+    ///
+    /// Thread safety: only written on the main queue via `DispatchQueue.main.async`
+    /// in `deliverResult`. The `@unchecked Sendable` conformance is safe because
+    /// all mutable state is protected by locks or confined to a single queue.
     @Published private(set) var currentPose: BodyPose?
 
     // MARK: - Delegate (thread-safe)
@@ -164,7 +168,6 @@ final class VisionPoseDetector: ObservableObject {
         // if the serialisation invariant is ever relaxed, and the allocation
         // cost (~microseconds) is negligible vs. the ~10 ms inference time.
         let request = VNDetectHumanBodyPoseRequest()
-        request.maximumObservationCount = 1
 
         do {
             #if DEBUG
