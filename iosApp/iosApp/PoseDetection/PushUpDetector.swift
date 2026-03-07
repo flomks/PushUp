@@ -11,12 +11,19 @@ struct PushUpEvent: Sendable {
     let count: Int
 
     /// The averaged elbow angle (degrees) at the moment the push-up was counted.
-    /// Useful for downstream quality scoring (Task 2.4).
     let elbowAngleAtCompletion: Double
 
     /// The timestamp of the frame that triggered the count, in seconds since
     /// device boot (from `BodyPose.timestamp`).
     let timestamp: Double
+
+    /// Quality scores for this push-up, or `nil` when insufficient pose data
+    /// was available to compute them (e.g. the person was never fully detected
+    /// during the DOWN phase).
+    ///
+    /// `formScore.depthScore` and `formScore.formScore` map directly to the
+    /// `depthScore` and `formScore` fields of a `PushUpRecord`.
+    let formScore: FormScore?
 }
 
 // MARK: - PushUpDetectorDelegate
@@ -44,6 +51,10 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 ///    confidence when only one side is visible).
 /// 3. Feed the averaged angle into a `PushUpStateMachine` that applies
 ///    hysteresis and cooldown to produce a robust count.
+/// 4. Simultaneously feed pose data into a `FormScorer` that accumulates
+///    quality metrics (depth, back alignment, arm symmetry, smoothness).
+///    When a push-up is counted the scorer produces a `FormScore` that is
+///    included in the `PushUpEvent`.
 ///
 /// **Elbow angle calculation**
 /// The angle at joint B in the triple (A, B, C) is computed as the angle
@@ -113,14 +124,23 @@ final class PushUpDetector {
     // MARK: - Private
 
     private let stateMachine: PushUpStateMachine
+    private let formScorer: FormScorer
 
     // MARK: - Init
 
-    /// Creates a detector with the given state machine configuration.
-    /// - Parameter configuration: Thresholds and hysteresis settings.
-    ///   Defaults to `PushUpStateMachine.Configuration.default`.
-    init(configuration: PushUpStateMachine.Configuration = .default) {
+    /// Creates a detector with the given state machine and form-scorer
+    /// configurations.
+    /// - Parameters:
+    ///   - configuration: Thresholds and hysteresis settings for the state
+    ///     machine. Defaults to `PushUpStateMachine.Configuration.default`.
+    ///   - formScorerConfiguration: Scoring parameters for `FormScorer`.
+    ///     Defaults to `FormScorer.Configuration.default`.
+    init(
+        configuration: PushUpStateMachine.Configuration = .default,
+        formScorerConfiguration: FormScorer.Configuration = .default
+    ) {
         self.stateMachine = PushUpStateMachine(configuration: configuration)
+        self.formScorer   = FormScorer(configuration: formScorerConfiguration)
     }
 
     // MARK: - Public API
@@ -131,10 +151,33 @@ final class PushUpDetector {
     ///   person was detected. A `nil` pose advances the cooldown timer but
     ///   does not advance any pending-transition counter.
     func process(_ pose: BodyPose?) {
-        let angle = Self.computeElbowAngle(from: pose)
+        let leftAngle  = Self.elbowAngle(
+            shoulder: pose?.leftShoulder,
+            elbow:    pose?.leftElbow,
+            wrist:    pose?.leftWrist
+        )
+        let rightAngle = Self.elbowAngle(
+            shoulder: pose?.rightShoulder,
+            elbow:    pose?.rightElbow,
+            wrist:    pose?.rightWrist
+        )
+        let angle = Self.averagedAngle(left: leftAngle, right: rightAngle)
         currentElbowAngle = angle
 
+        let isInDownPhase = stateMachine.phase == .down
         let counted = stateMachine.update(angle: angle)
+
+        // Feed the current frame into the form scorer. We pass the per-side
+        // angles so the scorer can compute the arm-symmetry sub-score.
+        // The `isInDownPhase` flag is evaluated BEFORE the state machine
+        // update so that the frame that triggers the DOWN→COOLDOWN transition
+        // (the last UP frame) is not incorrectly attributed to the DOWN phase.
+        formScorer.recordFrame(
+            pose: pose,
+            leftElbowAngle: leftAngle,
+            rightElbowAngle: rightAngle,
+            isInDownPhase: isInDownPhase
+        )
 
         if counted {
             // Safe unwrap: `stateMachine.update` only returns `true` from
@@ -146,12 +189,15 @@ final class PushUpDetector {
                 assertionFailure(
                     "angle and pose must be non-nil when a push-up is counted"
                 )
+                formScorer.reset()
                 return
             }
+            let score = formScorer.finalisePushUp()
             let event = PushUpEvent(
                 count: stateMachine.pushUpCount,
                 elbowAngleAtCompletion: completionAngle,
-                timestamp: pose.timestamp
+                timestamp: pose.timestamp,
+                formScore: score
             )
             // Capture a strong reference to the delegate for the duration of
             // the call. The lock-protected getter returns a strong optional.
@@ -160,10 +206,11 @@ final class PushUpDetector {
         }
     }
 
-    /// Resets the detector and its underlying state machine.
+    /// Resets the detector and its underlying state machine and form scorer.
     /// Call this when starting a new workout session.
     func reset() {
         stateMachine.reset()
+        formScorer.reset()
         currentElbowAngle = nil
     }
 
@@ -185,11 +232,17 @@ final class PushUpDetector {
             wrist:    pose.rightWrist
         )
 
-        switch (leftAngle, rightAngle) {
-        case let (l?, r?):   return (l + r) / 2.0
-        case let (l?, nil):  return l
-        case let (nil, r?):  return r
-        case (nil, nil):     return nil
+        return averagedAngle(left: leftAngle, right: rightAngle)
+    }
+
+    /// Returns the average of two optional angles, or whichever is non-nil,
+    /// or nil when both are nil.
+    static func averagedAngle(left: Double?, right: Double?) -> Double? {
+        switch (left, right) {
+        case let (l?, r?):  return (l + r) / 2.0
+        case let (l?, nil): return l
+        case let (nil, r?): return r
+        case (nil, nil):    return nil
         }
     }
 
