@@ -30,8 +30,58 @@ Controls:
 
 from __future__ import annotations
 import math
+import sys
 import cv2
 import mediapipe as mp
+
+# ---------------------------------------------------------------------------
+# MediaPipe API-Kompatibilität
+# Alte API (< 0.10.14): mp.solutions.pose
+# Neue API (>= 0.10.14): mp.tasks.vision.PoseLandmarker
+# Wir nutzen die alte API wenn verfügbar, sonst die neue.
+# ---------------------------------------------------------------------------
+
+_USE_LEGACY_API = hasattr(mp, "solutions") and hasattr(mp.solutions, "pose")
+
+if not _USE_LEGACY_API:
+    # Neue Tasks-API
+    from mediapipe.tasks import python as mp_tasks
+    from mediapipe.tasks.python import vision as mp_vision
+    from mediapipe.tasks.python.vision import RunningMode
+    import urllib.request, os, tempfile
+
+    _MODEL_URL  = (
+        "https://storage.googleapis.com/mediapipe-models/"
+        "pose_landmarker/pose_landmarker_lite/float16/latest/"
+        "pose_landmarker_lite.task"
+    )
+    _MODEL_PATH = os.path.join(tempfile.gettempdir(), "pose_landmarker_lite.task")
+
+    def _download_model():
+        if not os.path.exists(_MODEL_PATH):
+            print("  Lade MediaPipe Pose-Modell herunter (~5 MB)...")
+            urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
+            print("  Modell gespeichert:", _MODEL_PATH)
+
+    # Landmark-Indizes in der neuen API (identisch mit PoseLandmark enum)
+    class _LM:
+        LEFT_SHOULDER  = 11
+        RIGHT_SHOULDER = 12
+        LEFT_ELBOW     = 13
+        RIGHT_ELBOW    = 14
+        LEFT_WRIST     = 15
+        RIGHT_WRIST    = 16
+        LEFT_HIP       = 23
+        RIGHT_HIP      = 24
+        LEFT_KNEE      = 25
+        RIGHT_KNEE     = 26
+        LEFT_ANKLE     = 27
+        RIGHT_ANKLE    = 28
+
+    LM = _LM
+else:
+    mp_pose = mp.solutions.pose
+    LM      = mp_pose.PoseLandmark
 
 # ---------------------------------------------------------------------------
 # Konfiguration
@@ -257,16 +307,37 @@ class PushUpStateMachine:
 
 # ---------------------------------------------------------------------------
 # Landmark-Extraktion (MediaPipe -> Pixel-Koordinaten)
+# Funktioniert mit alter API (mp.solutions) und neuer Tasks-API.
 # ---------------------------------------------------------------------------
 
-mp_pose  = mp.solutions.pose
-LM       = mp_pose.PoseLandmark
-VIS_MIN  = 0.35   # Mindest-Visibility damit ein Punkt als erkannt gilt
+VIS_MIN = 0.35   # Mindest-Visibility damit ein Punkt als erkannt gilt
+
+# Mapping: interner Name -> Landmark-Index (neue API) oder Enum (alte API)
+_JOINT_MAP = {
+    "ls": LM.LEFT_SHOULDER,
+    "rs": LM.RIGHT_SHOULDER,
+    "le": LM.LEFT_ELBOW,
+    "re": LM.RIGHT_ELBOW,
+    "lw": LM.LEFT_WRIST,
+    "rw": LM.RIGHT_WRIST,
+    "lh": LM.LEFT_HIP,
+    "rh": LM.RIGHT_HIP,
+    "lk": LM.LEFT_KNEE,
+    "rk": LM.RIGHT_KNEE,
+    "la": LM.LEFT_ANKLE,
+    "ra": LM.RIGHT_ANKLE,
+}
 
 
-def get_pt(landmarks, name, w, h):
+def _lm_index(name_or_enum):
+    """Gibt den Integer-Index zurück, egal ob Enum oder int."""
+    return name_or_enum if isinstance(name_or_enum, int) else name_or_enum.value
+
+
+def get_pt(landmarks, lm_ref, w, h):
     """Gibt (x, y) in Pixeln zurück oder None wenn Visibility zu niedrig."""
-    lm = landmarks[name.value]
+    idx = _lm_index(lm_ref)
+    lm  = landmarks[idx]
     if lm.visibility < VIS_MIN:
         return None
     return (int(lm.x * w), int(lm.y * h))
@@ -275,18 +346,8 @@ def get_pt(landmarks, name, w, h):
 def extract_joints(landmarks, w, h) -> dict:
     """Extrahiert alle für Push-Up-Analyse relevanten Gelenke."""
     return {
-        "ls": get_pt(landmarks, LM.LEFT_SHOULDER,  w, h),
-        "rs": get_pt(landmarks, LM.RIGHT_SHOULDER, w, h),
-        "le": get_pt(landmarks, LM.LEFT_ELBOW,     w, h),
-        "re": get_pt(landmarks, LM.RIGHT_ELBOW,    w, h),
-        "lw": get_pt(landmarks, LM.LEFT_WRIST,     w, h),
-        "rw": get_pt(landmarks, LM.RIGHT_WRIST,    w, h),
-        "lh": get_pt(landmarks, LM.LEFT_HIP,       w, h),
-        "rh": get_pt(landmarks, LM.RIGHT_HIP,      w, h),
-        "lk": get_pt(landmarks, LM.LEFT_KNEE,      w, h),
-        "rk": get_pt(landmarks, LM.RIGHT_KNEE,     w, h),
-        "la": get_pt(landmarks, LM.LEFT_ANKLE,     w, h),
-        "ra": get_pt(landmarks, LM.RIGHT_ANKLE,    w, h),
+        key: get_pt(landmarks, lm_ref, w, h)
+        for key, lm_ref in _JOINT_MAP.items()
     }
 
 
@@ -479,6 +540,29 @@ def draw_hud(frame, sm: PushUpStateMachine, fa: FormAnalyser,
 # Hauptschleife
 # ---------------------------------------------------------------------------
 
+def _process_frame_legacy(pose_ctx, frame):
+    """Verarbeitet einen Frame mit der alten mp.solutions API."""
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb.flags.writeable = False
+    results = pose_ctx.process(rgb)
+    rgb.flags.writeable = True
+    if results.pose_landmarks:
+        return results.pose_landmarks.landmark
+    return None
+
+
+def _process_frame_new(landmarker, frame):
+    """Verarbeitet einen Frame mit der neuen MediaPipe Tasks API."""
+    import mediapipe as mp
+    from mediapipe.framework.formats import landmark_pb2
+    rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    result = landmarker.detect(mp_img)
+    if result.pose_landmarks:
+        return result.pose_landmarks[0]   # erste Person
+    return None
+
+
 def main():
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
@@ -489,16 +573,35 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    sm          = PushUpStateMachine()
-    fa          = FormAnalyser()
-    show_debug  = True   # Gelenk-Labels + Winkel an Ellbogen
-    show_form   = True   # Körperlinie + Formfehler-Warnungen
+    sm         = PushUpStateMachine()
+    fa         = FormAnalyser()
+    show_debug = True
+    show_form  = True
 
-    pose = mp_pose.Pose(
-        min_detection_confidence=MIN_DETECTION_CONF,
-        min_tracking_confidence=MIN_TRACKING_CONF,
-        model_complexity=1,
-    )
+    # Pose-Detektor je nach verfügbarer API initialisieren
+    if _USE_LEGACY_API:
+        print("  MediaPipe: legacy API (mp.solutions.pose)")
+        pose_ctx   = mp_pose.Pose(
+            min_detection_confidence=MIN_DETECTION_CONF,
+            min_tracking_confidence=MIN_TRACKING_CONF,
+            model_complexity=1,
+        )
+        process_fn = lambda f: _process_frame_legacy(pose_ctx, f)
+        cleanup_fn = pose_ctx.close
+    else:
+        print("  MediaPipe: neue Tasks API (PoseLandmarker)")
+        _download_model()
+        base_opts  = mp_tasks.BaseOptions(model_asset_path=_MODEL_PATH)
+        opts       = mp_vision.PoseLandmarkerOptions(
+            base_options=base_opts,
+            running_mode=RunningMode.IMAGE,
+            num_poses=1,
+            min_pose_detection_confidence=MIN_DETECTION_CONF,
+            min_tracking_confidence=MIN_TRACKING_CONF,
+        )
+        landmarker = mp_vision.PoseLandmarker.create_from_options(opts)
+        process_fn = lambda f: _process_frame_new(landmarker, f)
+        cleanup_fn = landmarker.close
 
     print("Push-Up Debug Tool")
     print(f"  DOWN < {DOWN_ANGLE_THRESHOLD}°  |  UP > {UP_ANGLE_THRESHOLD}°  |  Hysterese: {HYSTERESIS_FRAMES} Frames")
@@ -513,60 +616,41 @@ def main():
         frame = cv2.flip(frame, 1)
         h, w  = frame.shape[:2]
 
-        # MediaPipe: Pose erkennen
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb.flags.writeable = False
-        results = pose.process(rgb)
-        rgb.flags.writeable = True
-
+        landmarks       = process_fn(frame)
         elbow_angle_val = None
         joints          = {}
         body_deviation  = None
         form_warnings   = []
 
-        if results.pose_landmarks:
-            lms    = results.pose_landmarks.landmark
-            joints = extract_joints(lms, w, h)
+        if landmarks is not None:
+            joints = extract_joints(landmarks, w, h)
 
-            # Winkel berechnen
-            left_angle  = angle_between(joints.get("ls"), joints.get("le"), joints.get("lw"))
-            right_angle = angle_between(joints.get("rs"), joints.get("re"), joints.get("rw"))
+            left_angle      = angle_between(joints.get("ls"), joints.get("le"), joints.get("lw"))
+            right_angle     = angle_between(joints.get("rs"), joints.get("re"), joints.get("rw"))
             elbow_angle_val = averaged(left_angle, right_angle)
+            body_deviation  = FormAnalyser._body_line_deviation(joints)
 
-            # Körperlinie
-            body_deviation = FormAnalyser._body_line_deviation(joints)
-
-            # State Machine updaten
             counted = sm.update(elbow_angle_val)
             if counted:
                 print(f"  Rep #{sm.push_up_count}  |  Winkel: {elbow_angle_val:.1f}°")
 
-            # Formanalyse
             form_warnings = fa.update(joints, elbow_angle_val, sm.phase)
             if form_warnings:
                 print(f"  Formfehler: {', '.join(form_warnings)}")
 
-            # Zeichnen (OpenCV)
             phase_color = PHASE_COLORS[sm.phase]
-
             if show_form:
                 draw_body_line(frame, joints, body_deviation)
-
             draw_skeleton(frame, joints, phase_color, show_debug)
-
             if show_debug:
                 draw_elbow_angles(frame, joints, left_angle, right_angle, phase_color)
-
         else:
-            # Kein Mensch erkannt -- State Machine mit None füttern
             sm.update(None)
             fa.update({}, None, sm.phase)
 
         draw_angle_bar(frame, elbow_angle_val, PHASE_COLORS[sm.phase], w, h)
-
         if show_form and form_warnings:
             draw_form_warnings(frame, form_warnings, w)
-
         draw_hud(frame, sm, fa, elbow_angle_val, w, h, show_debug)
 
         cv2.imshow("PushUp Debug", frame)
@@ -587,7 +671,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-    pose.close()
+    cleanup_fn()
 
 
 if __name__ == "__main__":
