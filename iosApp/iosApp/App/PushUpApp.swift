@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Root entry point of the PushUp iOS application.
 ///

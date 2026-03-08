@@ -13,15 +13,22 @@ import org.koin.dsl.module
 /**
  * iOS-specific Koin module.
  *
- * Provides:
- * - [IosDatabaseDriverFactory] as the platform [DatabaseDriverFactory] implementation.
+ * Provides all platform-specific bindings required by [sharedModules]:
+ *
+ * - [IosDatabaseDriverFactory] as the platform [DatabaseDriverFactory].
  * - [TokenStorage] backed by the iOS Keychain for secure token persistence.
- * - [IosNetworkMonitor] as the [NetworkMonitor] implementation.
+ * - [IosNetworkMonitor] as the [NetworkMonitor] implementation (NWPathMonitor).
+ * - [JwtTokenProvider] that reads the stored access token from [TokenStorage].
+ *   Throws [IllegalStateException] when the user is not authenticated, which
+ *   prevents unauthenticated requests from being sent silently.
  * - Placeholder named-string bindings for [SUPABASE_URL], [SUPABASE_ANON_KEY],
- *   [BACKEND_BASE_URL], and [JWT_TOKEN_PROVIDER] so that [apiModule] can be
- *   loaded without crashing at startup. Replace these with real values once
- *   the backend integration is configured (Task 3.x).
- * - [IS_DEBUG] flag set to `true` in debug builds.
+ *   and [BACKEND_BASE_URL]. Replace these with real values once the backend
+ *   integration is configured (Task 3.x). The app will start and the local
+ *   (offline) feature set will work; any network call will fail gracefully
+ *   with a Ktor connection error rather than a crash.
+ * - [IS_DEBUG] hardcoded to `false`. Kotlin/Native has no `BuildConfig`
+ *   equivalent. Enable verbose HTTP logging by overriding this binding in a
+ *   debug-only Koin module if needed.
  */
 val iosModule = module {
     // Platform database driver
@@ -30,20 +37,38 @@ val iosModule = module {
     // Keychain-backed token storage
     single { TokenStorage() }
 
-    // Network connectivity monitor (NWPathMonitor)
-    single<NetworkMonitor>(named(NETWORK_MONITOR)) { IosNetworkMonitor() }
+    // Network connectivity monitor (NWPathMonitor, iOS 12+).
+    // The monitor is cancelled via onClose so the native resource is released
+    // cleanly when Koin is stopped (e.g. in unit tests or app teardown).
+    single<NetworkMonitor>(named(NETWORK_MONITOR)) {
+        IosNetworkMonitor()
+    } onClose {
+        (it as? IosNetworkMonitor)?.cancel()
+    }
 
-    // JWT token provider: reads the stored token from TokenStorage.
-    // Returns an empty string when no token is present (unauthenticated state).
-    // Replace with a real Supabase Auth session provider in Task 3.x.
+    // JWT token provider: reads the stored access token from TokenStorage.
+    //
+    // Throws IllegalStateException when the user is not authenticated.
+    // This is intentional: callers that invoke authenticated API endpoints
+    // without a valid session should receive an explicit error rather than
+    // silently sending an empty Bearer token to the backend.
+    //
+    // Replace with a Supabase Auth session provider in Task 3.x once the
+    // auth flow is implemented.
     single<JwtTokenProvider>(named(JWT_TOKEN_PROVIDER)) {
         val storage = get<TokenStorage>()
-        JwtTokenProvider { storage.load()?.accessToken ?: "" }
+        JwtTokenProvider {
+            storage.load()?.accessToken
+                ?: error(
+                    "JwtTokenProvider: no authenticated session found. " +
+                        "Call LoginWithEmailUseCase or a social login use case first."
+                )
+        }
     }
 
     // Supabase project URL.
-    // Replace with the real project URL from your Supabase dashboard.
-    // Example: "https://<ref>.supabase.co"
+    // Replace with the real project URL from your Supabase dashboard:
+    //   "https://<ref>.supabase.co"
     single<String>(named(SUPABASE_URL)) { "" }
 
     // Supabase anon (public) API key.
@@ -54,32 +79,39 @@ val iosModule = module {
     // Replace with the real backend URL once deployed.
     single<String>(named(BACKEND_BASE_URL)) { "" }
 
-    // Debug flag: enables verbose HTTP logging in debug builds.
-    single<Boolean>(named(IS_DEBUG)) {
-        // Kotlin/Native does not have a BuildConfig equivalent.
-        // Set to false for production; override in a debug-specific module if needed.
-        false
-    }
+    // HTTP debug logging flag.
+    // Kotlin/Native has no BuildConfig equivalent; hardcoded to false.
+    // To enable verbose logging in development, override this binding in a
+    // debug-only module passed to startKoin alongside iosModule.
+    single<Boolean>(named(IS_DEBUG)) { false }
 }
 
 /**
  * Initialises Koin for the iOS application.
  *
- * Call this function from your Swift `@main` entry point or `AppDelegate`
+ * Call this function from `AppDelegate.application(_:didFinishLaunchingWithOptions:)`
  * **before** any Koin-managed dependency is accessed:
  *
  * ```swift
+ * final class AppDelegate: NSObject, UIApplicationDelegate {
+ *     func application(
+ *         _ application: UIApplication,
+ *         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+ *     ) -> Bool {
+ *         KoinIOSKt.doInitKoin()
+ *         return true
+ *     }
+ * }
+ *
  * @main
  * struct PushUpApp: App {
- *     init() {
- *         KoinIOSKt.doInitKoin()
- *     }
- *     var body: some Scene { ... }
+ *     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+ *     var body: some Scene { WindowGroup { ContentView() } }
  * }
  * ```
  *
  * Returns `Unit` (mapped to `Void` in Swift) to keep the Swift API surface
- * clean -- callers have no use for the internal `KoinApplication` object.
+ * clean — callers have no use for the internal `KoinApplication` object.
  */
 fun initKoin() {
     startKoin {
