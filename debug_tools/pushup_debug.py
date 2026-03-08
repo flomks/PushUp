@@ -1016,7 +1016,13 @@ def main() -> None:
     error_result:     list = [None]
 
     def init_camera() -> None:
-        cap = cv2.VideoCapture(0)
+        # Auf Windows ist das Standard-Backend (MSMF / Microsoft Media Foundation)
+        # extrem langsam beim Öffnen (5-15 Sekunden). DirectShow (cv2.CAP_DSHOW)
+        # startet sofort. Auf Mac/Linux hat das Flag keinen Effekt.
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            # Fallback ohne Backend-Flag falls DirectShow nicht verfügbar
+            cap = cv2.VideoCapture(0)
         if not cap.isOpened():
             error_result[0] = "Webcam nicht gefunden. Versuche VideoCapture(1)."
             return
