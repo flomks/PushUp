@@ -82,8 +82,15 @@ final class CameraManager: NSObject, ObservableObject {
     @Published private(set) var currentPosition: CameraPosition = .back
 
     /// Current zoom factor applied to the active capture device.
-    /// Always starts at 1.0 (fully zoomed out) and resets on camera switch.
+    /// Always starts at 1.0 (main lens) and resets on camera switch.
     @Published private(set) var currentZoomFactor: CGFloat = 1.0
+
+    /// The minimum zoom factor supported by the active device.
+    /// On back cameras with an ultra-wide lens (builtInTripleCamera,
+    /// builtInDualWideCamera) this is typically 0.5x, which causes the
+    /// virtual device to switch to the ultra-wide lens automatically.
+    /// On single-lens devices and the front camera this is always 1.0.
+    @Published private(set) var minZoomFactor: CGFloat = 1.0
 
     /// The preview layer backed by the capture session.
     /// Created once in `init`; never nil, never replaced.
@@ -295,16 +302,19 @@ final class CameraManager: NSObject, ObservableObject {
 
     /// Sets the zoom factor on the active capture device.
     ///
-    /// The value is clamped to `[1.0, device.activeFormat.videoMaxZoomFactor]`
-    /// so callers do not need to guard against out-of-range values.
+    /// The value is clamped to `[device.minAvailableVideoZoomFactor, min(maxZoom, 10.0)]`.
+    /// On back cameras with an ultra-wide lens the minimum is 0.5x; the virtual
+    /// device switches lenses automatically when the factor crosses the
+    /// `virtualDeviceSwitchOverVideoZoomFactors` boundary.
     /// This method is safe to call from any queue.
     func setZoomFactor(_ factor: CGFloat) {
         sessionQueue.async { [weak self] in
             guard let self,
                   let input = self.currentInput else { return }
             let device = input.device
+            let minZoom = device.minAvailableVideoZoomFactor
             let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 10.0)
-            let clamped = max(1.0, min(factor, maxZoom))
+            let clamped = max(minZoom, min(factor, maxZoom))
             do {
                 try device.lockForConfiguration()
                 device.videoZoomFactor = clamped
@@ -319,7 +329,9 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    /// Resets the zoom to 1.0x (fully zoomed out) on the active device.
+    /// Resets the zoom to 1.0x (main lens) on the active device.
+    /// Ultra-wide (0.5x) is intentionally not the default; the user must
+    /// pinch out explicitly to reach it.
     func resetZoom() {
         setZoomFactor(1.0)
     }
@@ -363,6 +375,13 @@ final class CameraManager: NSObject, ObservableObject {
         }
         session.addInput(input)
         currentInput = input
+
+        // Publish the minimum zoom factor for this device so the UI can
+        // allow pinching out to the ultra-wide lens on supported hardware.
+        // minAvailableVideoZoomFactor is 0.5 on triple/dual-wide back cameras
+        // and 1.0 on single-lens devices and the front camera.
+        let minZoom = device.minAvailableVideoZoomFactor
+        DispatchQueue.main.async { self.minZoomFactor = minZoom }
 
         // Lock 30 FPS before committing so the preset and frame rate are
         // applied atomically within the same beginConfiguration block.
