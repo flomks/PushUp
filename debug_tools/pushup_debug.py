@@ -143,11 +143,88 @@ Joints = dict[str, Pt]
 
 
 def extract_joints(landmarks: list, w: int, h: int) -> Joints:
+    """Rohe Pixel-Koordinaten — werden für State Machine und Winkelberechnung verwendet."""
     out: Joints = {}
     for key, idx in _JOINT_MAP.items():
         lm = landmarks[idx]
         out[key] = None if lm.visibility < CFG.vis_min else (int(lm.x * w), int(lm.y * h))
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skeleton Smoother  — EMA-Glättung nur für die Anzeige
+#
+# Strategie:
+#   - Rohe Joints → PushUpAnalyser (Winkel, State Machine) — kein Lag
+#   - Geglättete Joints → Renderer (Skelett, Körperlinie, Winkeltext)
+#
+# EMA-Formel:  smooth = alpha * raw + (1 - alpha) * smooth_prev
+#   alpha = 0.35  →  ~3 Frames Glättung, kaum Lag
+#
+# Reset-Logik:
+#   Wenn ein Gelenk für >= RESET_FRAMES Frames fehlt und dann wieder
+#   auftaucht, wird der EMA-Zustand sofort auf den neuen Wert gesetzt
+#   statt langsam hinzugleiten — verhindert sichtbare "Sprünge".
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SkeletonSmoother:
+    """
+    Exponential Moving Average auf Gelenk-Koordinaten.
+    Nur für die Darstellung verwenden — nicht für Winkelberechnung.
+    """
+
+    ALPHA       = 0.35   # Glättungsfaktor: höher = reaktiver, niedriger = glatter
+    RESET_FRAMES = 6     # Frames ohne Gelenk nach denen der EMA-Zustand resettet wird
+
+    def __init__(self) -> None:
+        # Float-Koordinaten des letzten geglätteten Frames
+        self._smooth: dict[str, tuple[float, float]] = {}
+        # Zählt wie viele Frames ein Gelenk in Folge fehlt
+        self._missing: dict[str, int] = {}
+
+    def smooth(self, joints: Joints) -> Joints:
+        """
+        Gibt geglättete Joints zurück.
+        Rohe Joints bleiben unverändert — diese Methode erstellt eine Kopie.
+        """
+        result: Joints = {}
+
+        for key, pt in joints.items():
+            if pt is None:
+                # Gelenk fehlt: Fehlzähler erhöhen
+                self._missing[key] = self._missing.get(key, 0) + 1
+                # Geglätteten Wert behalten solange er noch frisch ist,
+                # danach None zurückgeben damit das Gelenk nicht "eingefroren" wirkt
+                if self._missing.get(key, 0) <= self.RESET_FRAMES and key in self._smooth:
+                    sx, sy = self._smooth[key]
+                    result[key] = (int(sx), int(sy))
+                else:
+                    result[key] = None
+                    self._smooth.pop(key, None)
+            else:
+                missing_count = self._missing.get(key, 0)
+                self._missing[key] = 0
+
+                rx, ry = float(pt[0]), float(pt[1])
+
+                if key not in self._smooth or missing_count >= self.RESET_FRAMES:
+                    # Erstes Auftreten oder nach längerem Fehlen: direkt setzen
+                    self._smooth[key] = (rx, ry)
+                else:
+                    # EMA
+                    sx, sy = self._smooth[key]
+                    nx = self.ALPHA * rx + (1.0 - self.ALPHA) * sx
+                    ny = self.ALPHA * ry + (1.0 - self.ALPHA) * sy
+                    self._smooth[key] = (nx, ny)
+
+                sx, sy = self._smooth[key]
+                result[key] = (int(sx), int(sy))
+
+        return result
+
+    def reset(self) -> None:
+        self._smooth.clear()
+        self._missing.clear()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -603,6 +680,7 @@ def main() -> None:
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
     analyser   = PushUpAnalyser()
+    smoother   = SkeletonSmoother()   # nur für Darstellung, nicht für Logik
     show_debug = True
     show_form  = True
 
@@ -631,13 +709,14 @@ def main() -> None:
             all_warnings: list[str]   = []
 
             if result.pose_landmarks:
-                lms         = result.pose_landmarks[0]
-                joints      = extract_joints(lms, w, h)
+                lms    = result.pose_landmarks[0]
+                joints = extract_joints(lms, w, h)   # roh → für Logik
+
+                # Winkel + State Machine auf rohen Koordinaten (kein Lag)
                 left_angle  = angle_at(joints.get("ls"), joints.get("le"), joints.get("lw"))
                 right_angle = angle_at(joints.get("rs"), joints.get("re"), joints.get("rw"))
                 elbow_angle = best(left_angle, right_angle)
 
-                # Analyse (State Machine + Formcheck in einem Schritt)
                 frame_warnings, rep_result = analyser.update(elbow_angle, joints)
                 all_warnings = frame_warnings
 
@@ -654,15 +733,19 @@ def main() -> None:
                         print(f"  ½ Halbe Rep  |  {', '.join(rep_result.warnings)}")
                         all_warnings += rep_result.warnings
 
-                # Zeichnen
+                # Geglättete Koordinaten nur für die Darstellung
+                smooth_joints = smoother.smooth(joints)
+
                 phase_color = PHASE_COLOR[analyser.phase.key]
                 if show_form:
-                    dev = analyser.body_line_deviation(joints)
-                    Renderer.body_line(frame, joints, dev)
-                Renderer.skeleton(frame, joints, phase_color, show_debug)
+                    dev = analyser.body_line_deviation(smooth_joints)
+                    Renderer.body_line(frame, smooth_joints, dev)
+                Renderer.skeleton(frame, smooth_joints, phase_color, show_debug)
                 if show_debug:
-                    Renderer.elbow_angles(frame, joints, left_angle, right_angle, phase_color)
+                    # Winkeltext an geglätteter Ellbogen-Position, aber roher Winkelwert
+                    Renderer.elbow_angles(frame, smooth_joints, left_angle, right_angle, phase_color)
             else:
+                smoother.smooth({})   # Fehlzähler weiter hochzählen
                 analyser.update(None, {})
 
             Renderer.angle_bar(frame, elbow_angle, PHASE_COLOR[analyser.phase.key], w, h)
@@ -676,6 +759,7 @@ def main() -> None:
             if   key == ord("q"): break
             elif key == ord("r"):
                 analyser.reset()
+                smoother.reset()
                 print("  Reset.")
             elif key == ord("d"):
                 show_debug = not show_debug
