@@ -82,6 +82,17 @@ class Config:
     body_line_error: float = 35.0    # ab hier roter Alarm
     half_rep_min:    float = 115.0   # Ellbogen muss mindestens so weit runter
 
+    # Körperposition & Varianten-Erkennung
+    # Alle Werte arbeiten mit normalisierten Y-Koordinaten (0=oben, 1=unten im Bild).
+    # Schulter und Hüfte haben ähnliche Y-Werte wenn die Person horizontal liegt.
+    horizontal_y_diff:   float = 0.15  # max. |shoulder_y - hip_y| für "liegt horizontal"
+    horizontal_confirm:  int   = 10    # Frames die Bedingung halten muss (Hysterese)
+    # Variante: Differenz Handgelenk-Y minus Knöchel-Y (normalisiert)
+    # Positiv = Handgelenk tiefer im Bild = Hände tiefer als Füße = Decline
+    # Negativ = Knöchel tiefer im Bild   = Füße tiefer als Hände = Incline
+    variant_threshold:   float = 0.08  # min. Differenz für Decline/Incline-Erkennung
+    variant_confirm:     int   = 20    # Frames für stabile Varianten-Erkennung
+
     # MediaPipe
     pose_conf:       float = 0.6
     track_conf:      float = 0.6
@@ -143,11 +154,250 @@ Joints = dict[str, Pt]
 
 
 def extract_joints(landmarks: list, w: int, h: int) -> Joints:
+    """Rohe Pixel-Koordinaten — werden für State Machine und Winkelberechnung verwendet."""
     out: Joints = {}
     for key, idx in _JOINT_MAP.items():
         lm = landmarks[idx]
         out[key] = None if lm.visibility < CFG.vis_min else (int(lm.x * w), int(lm.y * h))
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Skeleton Smoother  — EMA-Glättung nur für die Anzeige
+#
+# Strategie:
+#   - Rohe Joints → PushUpAnalyser (Winkel, State Machine) — kein Lag
+#   - Geglättete Joints → Renderer (Skelett, Körperlinie, Winkeltext)
+#
+# EMA-Formel:  smooth = alpha * raw + (1 - alpha) * smooth_prev
+#   alpha = 0.35  →  ~3 Frames Glättung, kaum Lag
+#
+# Reset-Logik:
+#   Wenn ein Gelenk für >= RESET_FRAMES Frames fehlt und dann wieder
+#   auftaucht, wird der EMA-Zustand sofort auf den neuen Wert gesetzt
+#   statt langsam hinzugleiten — verhindert sichtbare "Sprünge".
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SkeletonSmoother:
+    """
+    Exponential Moving Average auf Gelenk-Koordinaten.
+    Nur für die Darstellung verwenden — nicht für Winkelberechnung.
+    """
+
+    ALPHA       = 0.35   # Glättungsfaktor: höher = reaktiver, niedriger = glatter
+    RESET_FRAMES = 6     # Frames ohne Gelenk nach denen der EMA-Zustand resettet wird
+
+    def __init__(self) -> None:
+        # Float-Koordinaten des letzten geglätteten Frames
+        self._smooth: dict[str, tuple[float, float]] = {}
+        # Zählt wie viele Frames ein Gelenk in Folge fehlt
+        self._missing: dict[str, int] = {}
+
+    def smooth(self, joints: Joints) -> Joints:
+        """
+        Gibt geglättete Joints zurück.
+        Rohe Joints bleiben unverändert — diese Methode erstellt eine Kopie.
+        """
+        result: Joints = {}
+
+        for key, pt in joints.items():
+            if pt is None:
+                # Gelenk fehlt: Fehlzähler erhöhen
+                self._missing[key] = self._missing.get(key, 0) + 1
+                # Geglätteten Wert behalten solange er noch frisch ist,
+                # danach None zurückgeben damit das Gelenk nicht "eingefroren" wirkt
+                if self._missing.get(key, 0) <= self.RESET_FRAMES and key in self._smooth:
+                    sx, sy = self._smooth[key]
+                    result[key] = (int(sx), int(sy))
+                else:
+                    result[key] = None
+                    self._smooth.pop(key, None)
+            else:
+                missing_count = self._missing.get(key, 0)
+                self._missing[key] = 0
+
+                rx, ry = float(pt[0]), float(pt[1])
+
+                if key not in self._smooth or missing_count >= self.RESET_FRAMES:
+                    # Erstes Auftreten oder nach längerem Fehlen: direkt setzen
+                    self._smooth[key] = (rx, ry)
+                else:
+                    # EMA
+                    sx, sy = self._smooth[key]
+                    nx = self.ALPHA * rx + (1.0 - self.ALPHA) * sx
+                    ny = self.ALPHA * ry + (1.0 - self.ALPHA) * sy
+                    self._smooth[key] = (nx, ny)
+
+                sx, sy = self._smooth[key]
+                result[key] = (int(sx), int(sy))
+
+        return result
+
+    def reset(self) -> None:
+        self._smooth.clear()
+        self._missing.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Körperposition & Push-Up-Variante
+#
+# Erkennung basiert auf normalisierten Y-Koordinaten der Landmarks
+# (lm.y, Wertebereich 0=oben im Bild, 1=unten im Bild).
+# Pixel-Koordinaten werden NICHT verwendet — sie hängen von der
+# Kameraposition ab und wären unzuverlässig.
+#
+# Horizontal-Erkennung:
+#   Wenn |shoulder_y - hip_y| < horizontal_y_diff liegt die Person
+#   annähernd horizontal (Push-Up-Position). Im Stehen ist die Schulter
+#   deutlich höher (kleineres Y) als die Hüfte.
+#
+# Varianten-Erkennung (nur wenn horizontal):
+#   wrist_y - ankle_y > +threshold  → Decline  (Füße erhöht, Hände tiefer)
+#   wrist_y - ankle_y < -threshold  → Incline  (Hände erhöht, Füße tiefer)
+#   sonst                           → Normal
+#
+# Alle Übergänge haben eine Hysterese (N Frames) damit kurze Ausreißer
+# keine falschen Wechsel auslösen.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PushUpVariant(Enum):
+    UNKNOWN = auto()   # noch nicht erkannt / Person steht
+    NORMAL  = auto()   # Standard Push-Up
+    DECLINE = auto()   # Füße erhöht (schwerer)
+    INCLINE = auto()   # Hände erhöht (leichter)
+
+    @property
+    def label(self) -> str:
+        return {
+            PushUpVariant.UNKNOWN: "?",
+            PushUpVariant.NORMAL:  "Normal",
+            PushUpVariant.DECLINE: "Decline",
+            PushUpVariant.INCLINE: "Incline",
+        }[self]
+
+    @property
+    def color(self) -> tuple:
+        return {
+            PushUpVariant.UNKNOWN: C.GREY,
+            PushUpVariant.NORMAL:  C.GREEN,
+            PushUpVariant.DECLINE: C.ORANGE,
+            PushUpVariant.INCLINE: C.BLUE,
+        }[self]
+
+
+@dataclass
+class PositionState:
+    is_horizontal: bool          = False
+    variant:       PushUpVariant = PushUpVariant.UNKNOWN
+
+
+class PositionClassifier:
+    """
+    Erkennt ob die Person horizontal liegt und welche Push-Up-Variante
+    sie ausführt. Arbeitet ausschließlich mit normalisierten Landmark-Y-Werten.
+
+    Alle Übergänge sind hysteresiert damit kurze Ausreißer (z.B. ein Frame
+    mit schlechter Erkennung) keine falschen Wechsel auslösen.
+    """
+
+    def __init__(self, cfg: Config = CFG) -> None:
+        self.cfg     = cfg
+        self.state   = PositionState()
+        # Hysterese-Zähler für Horizontal-Erkennung
+        self._horiz_counter: int = 0   # positiv = Frames horizontal, negativ = Frames nicht
+        # Hysterese-Zähler für Varianten-Erkennung
+        self._variant_counter: dict[PushUpVariant, int] = {}
+
+    def update(self, landmarks: list | None) -> PositionState:
+        """
+        Verarbeitet einen Frame. Gibt den aktuellen PositionState zurück.
+        landmarks: rohe MediaPipe NormalizedLandmark-Liste oder None.
+        """
+        if landmarks is None:
+            self._decay()
+            return self.state
+
+        # Normalisierte Y-Werte der relevanten Punkte
+        # Mittelwert links/rechts für Robustheit
+        def y(idx_a: int, idx_b: int) -> float | None:
+            la, lb = landmarks[idx_a], landmarks[idx_b]
+            va = la.y if la.visibility >= self.cfg.vis_min else None
+            vb = lb.y if lb.visibility >= self.cfg.vis_min else None
+            if va is not None and vb is not None:
+                return (va + vb) / 2.0
+            return va if va is not None else vb
+
+        shoulder_y = y(LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER)
+        hip_y      = y(LM.LEFT_HIP,      LM.RIGHT_HIP)
+        wrist_y    = y(LM.LEFT_WRIST,    LM.RIGHT_WRIST)
+        ankle_y    = y(LM.LEFT_ANKLE,    LM.RIGHT_ANKLE)
+
+        # ── Horizontal-Erkennung ──────────────────────────────────────────
+        is_horiz_now = (
+            shoulder_y is not None
+            and hip_y is not None
+            and abs(shoulder_y - hip_y) < self.cfg.horizontal_y_diff
+        )
+
+        if is_horiz_now:
+            self._horiz_counter = min(
+                self._horiz_counter + 1, self.cfg.horizontal_confirm
+            )
+        else:
+            self._horiz_counter = max(self._horiz_counter - 1, 0)
+
+        self.state.is_horizontal = self._horiz_counter >= self.cfg.horizontal_confirm
+
+        # ── Varianten-Erkennung (nur wenn horizontal) ─────────────────────
+        if not self.state.is_horizontal or wrist_y is None or ankle_y is None:
+            self._variant_counter.clear()
+            if not self.state.is_horizontal:
+                self.state.variant = PushUpVariant.UNKNOWN
+            return self.state
+
+        diff = wrist_y - ankle_y   # positiv = Hände tiefer = Decline
+
+        if diff > self.cfg.variant_threshold:
+            raw_variant = PushUpVariant.DECLINE
+        elif diff < -self.cfg.variant_threshold:
+            raw_variant = PushUpVariant.INCLINE
+        else:
+            raw_variant = PushUpVariant.NORMAL
+
+        # Hysterese: Variante muss N Frames stabil sein
+        for v in list(PushUpVariant):
+            if v == PushUpVariant.UNKNOWN:
+                continue
+            if v == raw_variant:
+                self._variant_counter[v] = min(
+                    self._variant_counter.get(v, 0) + 1,
+                    self.cfg.variant_confirm,
+                )
+            else:
+                self._variant_counter[v] = max(
+                    self._variant_counter.get(v, 0) - 1, 0
+                )
+
+        # Variante mit höchstem Zähler gewinnt (muss Schwelle erreicht haben)
+        best_v, best_c = PushUpVariant.NORMAL, 0
+        for v, c in self._variant_counter.items():
+            if c >= self.cfg.variant_confirm and c > best_c:
+                best_v, best_c = v, c
+
+        self.state.variant = best_v
+        return self.state
+
+    def _decay(self) -> None:
+        """Zähler langsam abbauen wenn keine Landmarks vorhanden."""
+        self._horiz_counter = max(self._horiz_counter - 1, 0)
+        if self._horiz_counter == 0:
+            self.state.is_horizontal = False
+            self.state.variant       = PushUpVariant.UNKNOWN
+
+    def reset(self) -> None:
+        self.state            = PositionState()
+        self._horiz_counter   = 0
+        self._variant_counter = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -468,6 +718,38 @@ class Renderer:
                         FONT, 0.36, col, 1, cv2.LINE_AA)
 
     @staticmethod
+    def position_badge(frame, pos: PositionState, w: int) -> None:
+        """
+        Zeigt Körperposition (horizontal/stehend) und Push-Up-Variante
+        als Badge oben rechts in der oberen Leiste an.
+        """
+        if not pos.is_horizontal:
+            label = "Stehend"
+            color = C.GREY
+        else:
+            label = pos.variant.label
+            color = pos.variant.color
+
+        (tw, th), _ = cv2.getTextSize(label, FONT_BOLD, 0.62, 2)
+        px = w - tw - 90   # links vom Winkel-Wert
+        py = 10
+        cv2.rectangle(frame,
+                      (px - 8, py),
+                      (px + tw + 8, py + th + 12),
+                      (*color[:3],), -1, cv2.LINE_AA)
+        # Dunkler Text auf farbigem Hintergrund
+        cv2.putText(frame, label, (px, py + th + 4),
+                    FONT_BOLD, 0.62, C.BLACK, 2, cv2.LINE_AA)
+
+        # Kleines "Horizontal"-Indikator-Icon (einfache Linie)
+        if pos.is_horizontal:
+            ix = px - 22
+            iy = py + (th + 12) // 2
+            cv2.line(frame, (ix - 8, iy), (ix + 8, iy), color, 3, cv2.LINE_AA)
+            cv2.circle(frame, (ix - 8, iy), 3, color, -1, cv2.LINE_AA)
+            cv2.circle(frame, (ix + 8, iy), 3, color, -1, cv2.LINE_AA)
+
+    @staticmethod
     def warnings(frame, msgs: list[str], w: int, y_start: int = 72) -> None:
         for i, msg in enumerate(msgs):
             y  = y_start + i * 34
@@ -486,8 +768,8 @@ class Renderer:
                         FONT, 0.62, C.WHITE, 2, cv2.LINE_AA)
 
     @staticmethod
-    def hud(frame, analyser: PushUpAnalyser, angle: float | None,
-            w: int, h: int, show_debug: bool) -> None:
+    def hud(frame, analyser: PushUpAnalyser, pos: PositionState,
+            angle: float | None, w: int, h: int, show_debug: bool) -> None:
         phase_color = PHASE_COLOR[analyser.phase.key]
         phase_label = PHASE_LABEL[analyser.phase.key]
 
@@ -519,6 +801,24 @@ class Renderer:
         if analyser.phase == Phase.DOWN and analyser._min_angle is not None:
             cv2.putText(frame, f"Min: {analyser._min_angle:.0f}°",
                         (14, h - 38), FONT, 0.5, C.YELLOW, 1, cv2.LINE_AA)
+
+        # Variante rechts unten (neben Steuerung)
+        if pos.is_horizontal:
+            var_label = pos.variant.label
+            var_color = pos.variant.color
+            (vw, vh), _ = cv2.getTextSize(var_label, FONT_BOLD, 0.6, 2)
+            vx = w - vw - 14
+            vy = h - 82
+            cv2.rectangle(frame, (vx - 6, vy - vh - 4), (vx + vw + 6, vy + 6),
+                          var_color, -1, cv2.LINE_AA)
+            cv2.putText(frame, var_label, (vx, vy),
+                        FONT_BOLD, 0.6, C.BLACK, 2, cv2.LINE_AA)
+            # "Horizontal"-Indikator darunter
+            cv2.putText(frame, "Horizontal",
+                        (vx - 2, vy + 22), FONT, 0.42, C.GREY, 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "Stehend",
+                        (w - 90, h - 82), FONT, 0.5, C.GREY, 1, cv2.LINE_AA)
 
         # Steuerung rechts unten
         cv2.putText(frame, "R=Reset  D=Debug  F=Form  Q=Quit",
@@ -602,9 +902,11 @@ def main() -> None:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    analyser   = PushUpAnalyser()
-    show_debug = True
-    show_form  = True
+    analyser    = PushUpAnalyser()
+    smoother    = SkeletonSmoother()
+    classifier  = PositionClassifier()
+    show_debug  = True
+    show_form   = True
 
     print("Push-Up Debug Tool")
     print(f"  DOWN < {CFG.down_threshold}°  |  UP > {CFG.up_threshold}°  |  Hysterese: {CFG.hysteresis} Frames")
@@ -629,15 +931,17 @@ def main() -> None:
             elbow_angle: float | None = None
             joints: Joints            = {}
             all_warnings: list[str]   = []
+            raw_lms                   = None
 
             if result.pose_landmarks:
-                lms         = result.pose_landmarks[0]
-                joints      = extract_joints(lms, w, h)
+                raw_lms = result.pose_landmarks[0]
+                joints  = extract_joints(raw_lms, w, h)   # roh → für Logik
+
+                # Winkel + State Machine auf rohen Koordinaten (kein Lag)
                 left_angle  = angle_at(joints.get("ls"), joints.get("le"), joints.get("lw"))
                 right_angle = angle_at(joints.get("rs"), joints.get("re"), joints.get("rw"))
                 elbow_angle = best(left_angle, right_angle)
 
-                # Analyse (State Machine + Formcheck in einem Schritt)
                 frame_warnings, rep_result = analyser.update(elbow_angle, joints)
                 all_warnings = frame_warnings
 
@@ -654,21 +958,27 @@ def main() -> None:
                         print(f"  ½ Halbe Rep  |  {', '.join(rep_result.warnings)}")
                         all_warnings += rep_result.warnings
 
-                # Zeichnen
+                # Geglättete Koordinaten nur für die Darstellung
+                smooth_joints = smoother.smooth(joints)
+
                 phase_color = PHASE_COLOR[analyser.phase.key]
                 if show_form:
-                    dev = analyser.body_line_deviation(joints)
-                    Renderer.body_line(frame, joints, dev)
-                Renderer.skeleton(frame, joints, phase_color, show_debug)
+                    dev = analyser.body_line_deviation(smooth_joints)
+                    Renderer.body_line(frame, smooth_joints, dev)
+                Renderer.skeleton(frame, smooth_joints, phase_color, show_debug)
                 if show_debug:
-                    Renderer.elbow_angles(frame, joints, left_angle, right_angle, phase_color)
+                    Renderer.elbow_angles(frame, smooth_joints, left_angle, right_angle, phase_color)
             else:
+                smoother.smooth({})
                 analyser.update(None, {})
+
+            # Körperposition & Variante (rohe Landmarks, unabhängig von Pixel-Coords)
+            pos = classifier.update(raw_lms)
 
             Renderer.angle_bar(frame, elbow_angle, PHASE_COLOR[analyser.phase.key], w, h)
             if show_form and all_warnings:
                 Renderer.warnings(frame, all_warnings, w)
-            Renderer.hud(frame, analyser, elbow_angle, w, h, show_debug)
+            Renderer.hud(frame, analyser, pos, elbow_angle, w, h, show_debug)
 
             cv2.imshow("PushUp Debug", frame)
 
@@ -676,6 +986,8 @@ def main() -> None:
             if   key == ord("q"): break
             elif key == ord("r"):
                 analyser.reset()
+                smoother.reset()
+                classifier.reset()
                 print("  Reset.")
             elif key == ord("d"):
                 show_debug = not show_debug
