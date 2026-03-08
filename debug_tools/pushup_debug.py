@@ -86,14 +86,19 @@ class Config:
     half_rep_min:    float = 115.0   # Ellbogen muss mindestens so weit runter
 
     # Körperposition & Varianten-Erkennung
-    # Alle Werte arbeiten mit normalisierten Y-Koordinaten (0=oben, 1=unten im Bild).
+    #
+    # Horizontal-Erkennung: normalisierte Bild-Y-Koordinaten (lm.y).
     # Schulter und Hüfte haben ähnliche Y-Werte wenn die Person horizontal liegt.
     horizontal_y_diff:   float = 0.15  # max. |shoulder_y - hip_y| für "liegt horizontal"
     horizontal_confirm:  int   = 10    # Frames die Bedingung halten muss (Hysterese)
-    # Variante: Differenz Handgelenk-Y minus Knöchel-Y (normalisiert)
-    # Positiv = Handgelenk tiefer im Bild = Hände tiefer als Füße = Decline
-    # Negativ = Knöchel tiefer im Bild   = Füße tiefer als Hände = Incline
-    variant_threshold:   float = 0.08  # min. Differenz für Decline/Incline-Erkennung
+    #
+    # Varianten-Erkennung: World-Landmark Y-Koordinaten (lm.y in Metern).
+    # In MediaPipe World-Koordinaten zeigt Y nach UNTEN (positiv = tiefer).
+    # Bei normalen Push-Ups: Schulter-Y ≈ Knöchel-Y (beide auf Bodenhöhe).
+    # Bei Decline (Füße erhöht): Knöchel-Y kleiner (höher) als Schulter-Y.
+    # Bei Incline (Hände erhöht): Schulter-Y kleiner (höher) als Knöchel-Y.
+    # World-Koordinaten sind kamerapositions-unabhängig → korrekte Neigung.
+    variant_threshold:   float = 0.12  # min. Höhendifferenz Schulter vs Knöchel (Meter)
     variant_confirm:     int   = 20    # Frames für stabile Varianten-Erkennung
 
     # MediaPipe
@@ -297,91 +302,130 @@ class PositionState:
 class PositionClassifier:
     """
     Erkennt ob die Person horizontal liegt und welche Push-Up-Variante
-    sie ausführt. Arbeitet ausschließlich mit normalisierten Landmark-Y-Werten.
+    sie ausführt.
 
-    Alle Übergänge sind hysteresiert damit kurze Ausreißer (z.B. ein Frame
-    mit schlechter Erkennung) keine falschen Wechsel auslösen.
+    Zwei getrennte Datenquellen für zwei getrennte Aufgaben:
+
+    1. Horizontal-Erkennung  →  normalisierte Bild-Y (lm.y, 0=oben, 1=unten)
+       Schulter-Y ≈ Hüfte-Y wenn die Person liegt. Kamerapositions-unabhängig
+       genug für diese grobe Unterscheidung.
+
+    2. Varianten-Erkennung   →  World-Landmark Y (lm.y in Metern, positiv=unten)
+       MediaPipe World-Koordinaten sind relativ zum Körpermittelpunkt und
+       kamerapositions-unabhängig. Der Y-Wert gibt die echte vertikale Höhe
+       des Gelenks an.
+
+       Normale Push-Ups:  Schulter-Y ≈ Knöchel-Y  (beide auf Bodenhöhe)
+       Decline (Füße ↑):  Knöchel-Y < Schulter-Y  (Füße höher = kleineres Y)
+       Incline (Hände ↑): Schulter-Y < Knöchel-Y  (Hände höher = kleineres Y)
+
+       Warum NICHT Bild-Y für Variante:
+       Bei seitlicher Kamera und normalen Push-Ups erscheinen die Knöchel
+       perspektivisch höher im Bild als die Handgelenke (Kamera-Perspektive,
+       nicht echte Höhe). World-Y ist davon unabhängig.
     """
 
     def __init__(self, cfg: Config = CFG) -> None:
-        self.cfg     = cfg
-        self.state   = PositionState()
-        # Hysterese-Zähler für Horizontal-Erkennung
-        self._horiz_counter: int = 0   # positiv = Frames horizontal, negativ = Frames nicht
-        # Hysterese-Zähler für Varianten-Erkennung
+        self.cfg              = cfg
+        self.state            = PositionState()
+        self._horiz_counter   = 0
         self._variant_counter: dict[PushUpVariant, int] = {}
 
-    def update(self, landmarks: list | None) -> PositionState:
-        """
-        Verarbeitet einen Frame. Gibt den aktuellen PositionState zurück.
-        landmarks: rohe MediaPipe NormalizedLandmark-Liste oder None.
-        """
-        if landmarks is None:
+    def update(
+        self,
+        norm_lms:  list | None,   # NormalizedLandmark (lm.x, lm.y, lm.visibility)
+        world_lms: list | None,   # Landmark in Metern  (lm.x, lm.y, lm.z)
+    ) -> PositionState:
+        if norm_lms is None:
             self._decay()
             return self.state
 
-        # Normalisierte Y-Werte der relevanten Punkte
-        # Mittelwert links/rechts für Robustheit
-        def y(idx_a: int, idx_b: int) -> float | None:
-            la, lb = landmarks[idx_a], landmarks[idx_b]
+        # ── Hilfsfunktionen ───────────────────────────────────────────────
+
+        def norm_y(idx_a: int, idx_b: int) -> float | None:
+            """Mittlerer normalisierter Bild-Y zweier Landmarks."""
+            la, lb = norm_lms[idx_a], norm_lms[idx_b]
             va = la.y if la.visibility >= self.cfg.vis_min else None
             vb = lb.y if lb.visibility >= self.cfg.vis_min else None
             if va is not None and vb is not None:
                 return (va + vb) / 2.0
             return va if va is not None else vb
 
-        shoulder_y = y(LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER)
-        hip_y      = y(LM.LEFT_HIP,      LM.RIGHT_HIP)
-        wrist_y    = y(LM.LEFT_WRIST,    LM.RIGHT_WRIST)
-        ankle_y    = y(LM.LEFT_ANKLE,    LM.RIGHT_ANKLE)
+        def world_y(idx_a: int, idx_b: int) -> float | None:
+            """Mittlerer World-Y (Meter) zweier Landmarks. Kein Visibility-Check
+            nötig — World-Landmarks haben keine Visibility, aber wenn norm_lms
+            sichtbar ist, ist world_lms verlässlich."""
+            if world_lms is None:
+                return None
+            la, lb = world_lms[idx_a], world_lms[idx_b]
+            # Sichtbarkeit aus norm_lms prüfen (world_lms hat kein visibility)
+            va_vis = norm_lms[idx_a].visibility >= self.cfg.vis_min
+            vb_vis = norm_lms[idx_b].visibility >= self.cfg.vis_min
+            if va_vis and vb_vis:
+                return (la.y + lb.y) / 2.0
+            if va_vis:
+                return la.y
+            if vb_vis:
+                return lb.y
+            return None
 
-        # ── Horizontal-Erkennung ──────────────────────────────────────────
+        # ── 1. Horizontal-Erkennung (Bild-Y) ─────────────────────────────
+        shoulder_ny = norm_y(LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER)
+        hip_ny      = norm_y(LM.LEFT_HIP,      LM.RIGHT_HIP)
+
         is_horiz_now = (
-            shoulder_y is not None
-            and hip_y is not None
-            and abs(shoulder_y - hip_y) < self.cfg.horizontal_y_diff
+            shoulder_ny is not None
+            and hip_ny  is not None
+            and abs(shoulder_ny - hip_ny) < self.cfg.horizontal_y_diff
         )
 
         if is_horiz_now:
-            self._horiz_counter = min(
-                self._horiz_counter + 1, self.cfg.horizontal_confirm
-            )
+            self._horiz_counter = min(self._horiz_counter + 1, self.cfg.horizontal_confirm)
         else:
             self._horiz_counter = max(self._horiz_counter - 1, 0)
 
         self.state.is_horizontal = self._horiz_counter >= self.cfg.horizontal_confirm
 
-        # ── Varianten-Erkennung (nur wenn horizontal) ─────────────────────
-        if not self.state.is_horizontal or wrist_y is None or ankle_y is None:
+        # ── 2. Varianten-Erkennung (World-Y) ─────────────────────────────
+        if not self.state.is_horizontal:
             self._variant_counter.clear()
-            if not self.state.is_horizontal:
-                self.state.variant = PushUpVariant.UNKNOWN
+            self.state.variant = PushUpVariant.UNKNOWN
             return self.state
 
-        diff = wrist_y - ankle_y   # positiv = Hände tiefer = Decline
+        shoulder_wy = world_y(LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER)
+        ankle_wy    = world_y(LM.LEFT_ANKLE,    LM.RIGHT_ANKLE)
 
-        if diff > self.cfg.variant_threshold:
-            raw_variant = PushUpVariant.DECLINE
-        elif diff < -self.cfg.variant_threshold:
-            raw_variant = PushUpVariant.INCLINE
+        if shoulder_wy is None or ankle_wy is None:
+            # World-Landmarks nicht verfügbar → Normal als sicherer Fallback
+            self.state.variant = PushUpVariant.NORMAL
+            return self.state
+
+        # In World-Koordinaten: positives Y = tiefer (Richtung Boden).
+        # diff = ankle_wy - shoulder_wy
+        #   > +threshold  → Knöchel tiefer als Schulter → Füße unten → Incline
+        #   < -threshold  → Knöchel höher als Schulter  → Füße oben  → Decline
+        #   sonst         → Normal
+        diff = ankle_wy - shoulder_wy
+
+        if diff < -self.cfg.variant_threshold:
+            raw_variant = PushUpVariant.DECLINE   # Knöchel höher = Füße erhöht
+        elif diff > self.cfg.variant_threshold:
+            raw_variant = PushUpVariant.INCLINE   # Knöchel tiefer = Hände erhöht
         else:
             raw_variant = PushUpVariant.NORMAL
 
-        # Hysterese: Variante muss N Frames stabil sein
-        for v in list(PushUpVariant):
-            if v == PushUpVariant.UNKNOWN:
-                continue
+        # Hysterese
+        for v in (PushUpVariant.NORMAL, PushUpVariant.DECLINE, PushUpVariant.INCLINE):
             if v == raw_variant:
                 self._variant_counter[v] = min(
-                    self._variant_counter.get(v, 0) + 1,
-                    self.cfg.variant_confirm,
+                    self._variant_counter.get(v, 0) + 1, self.cfg.variant_confirm
                 )
             else:
                 self._variant_counter[v] = max(
                     self._variant_counter.get(v, 0) - 1, 0
                 )
 
-        # Variante mit höchstem Zähler gewinnt (muss Schwelle erreicht haben)
+        # Variante mit höchstem stabilem Zähler gewinnt
         best_v, best_c = PushUpVariant.NORMAL, 0
         for v, c in self._variant_counter.items():
             if c >= self.cfg.variant_confirm and c > best_c:
@@ -391,7 +435,6 @@ class PositionClassifier:
         return self.state
 
     def _decay(self) -> None:
-        """Zähler langsam abbauen wenn keine Landmarks vorhanden."""
         self._horiz_counter = max(self._horiz_counter - 1, 0)
         if self._horiz_counter == 0:
             self.state.is_horizontal = False
@@ -948,9 +991,14 @@ def main() -> None:
             joints: Joints            = {}
             all_warnings: list[str]   = []
             raw_lms                   = None
+            world_lms                 = None
 
             if result.pose_landmarks:
-                raw_lms = result.pose_landmarks[0]
+                raw_lms   = result.pose_landmarks[0]
+                world_lms = (
+                    result.pose_world_landmarks[0]
+                    if result.pose_world_landmarks else None
+                )
                 joints  = extract_joints(raw_lms, w, h)   # roh → für Logik
 
                 # Winkel + State Machine auf rohen Koordinaten (kein Lag)
@@ -988,8 +1036,10 @@ def main() -> None:
                 smoother.smooth({})
                 analyser.update(None, {})
 
-            # Körperposition & Variante (rohe Landmarks, unabhängig von Pixel-Coords)
-            pos = classifier.update(raw_lms)
+            # Körperposition & Variante
+            # norm_lms für Horizontal-Erkennung (Bild-Y)
+            # world_lms für Varianten-Erkennung (echte metrische Höhe)
+            pos = classifier.update(raw_lms, world_lms)
 
             Renderer.angle_bar(frame, elbow_angle, PHASE_COLOR[analyser.phase.key], w, h)
             if show_form and all_warnings:
