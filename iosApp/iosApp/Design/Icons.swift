@@ -43,7 +43,9 @@ enum AppIcon: String {
     // MARK: - Pose / Camera
 
     case camera             = "camera"
+    case cameraViewfinder   = "camera.viewfinder"
     case cameraRotate       = "camera.rotate"
+    case eye                = "eye"
     case eyeSlash           = "eye.slash"
     case personSlash        = "person.slash"
     case person2            = "person.2"
@@ -68,10 +70,13 @@ enum AppIcon: String {
 
     // MARK: - Actions
 
+    case arrowRight         = "arrow.right"
     case arrowCounterclockwise = "arrow.counterclockwise"
     case arrowDownCircleFill = "arrow.down.circle.fill"
+    case checkmark          = "checkmark"
     case trash              = "trash"
     case squareAndArrowUp   = "square.and.arrow.up"
+    case paperplane         = "paperplane"
     case play               = "play"
     case playFill           = "play.fill"
     case pause              = "pause"
@@ -83,6 +88,18 @@ enum AppIcon: String {
 
     case sunMin             = "sun.min"
     case arrowLeftAndRightSquare = "arrow.left.and.right.square"
+
+    // MARK: - Auth / Onboarding
+
+    case envelope           = "envelope"
+    case envelopeFill       = "envelope.fill"
+    case lock               = "lock"
+    case lockRotation       = "lock.rotation"
+    case appleLogo          = "apple.logo"
+    case globe              = "globe"
+    case personBadgePlus    = "person.badge.plus"
+    case clockBadgeCheckmark = "clock.badge.checkmark"
+    case exclamationmarkCircleFill = "exclamationmark.circle.fill"
 
     // MARK: - Misc
 
