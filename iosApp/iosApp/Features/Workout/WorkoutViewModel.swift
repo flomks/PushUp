@@ -96,8 +96,8 @@ final class WorkoutViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(trackingManager: PushUpTrackingManager = PushUpTrackingManager()) {
-        self.trackingManager = trackingManager
+    init(trackingManager: PushUpTrackingManager? = nil) {
+        self.trackingManager = trackingManager ?? PushUpTrackingManager()
         bindTrackingManager()
         prepareHaptics()
     }
