@@ -115,9 +115,15 @@ final class PushUpTrackingManager: ObservableObject {
 
     // MARK: - Private: Camera & Detection Pipeline
 
-    private let cameraManager: CameraManager
+    /// The camera manager used by this tracking manager.
+    /// Exposed as `internal` so that `WorkoutViewModel` can forward
+    /// camera-switch requests and pass the preview layer to the view.
+    let cameraManager: CameraManager
     private let poseDetector: VisionPoseDetector
-    private let pushUpDetector: PushUpDetector
+    /// The push-up detector used by this tracking manager.
+    /// Exposed as `internal` so that `WorkoutView` can read `smoothedPose`
+    /// for the pose overlay without crossing the main-actor boundary.
+    let pushUpDetector: PushUpDetector
 
     /// Performance monitor: gates frame processing based on device tier and
     /// measured FPS. Also pauses processing when the app is backgrounded.
