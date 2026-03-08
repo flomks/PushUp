@@ -404,6 +404,7 @@ class StatsRepositoryImpl(
             DayOfWeek.FRIDAY -> 4
             DayOfWeek.SATURDAY -> 5
             DayOfWeek.SUNDAY -> 6
+            else -> 0
         }
         return date.minus(daysFromMonday, DateTimeUnit.DAY)
     }
