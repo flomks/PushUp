@@ -5,15 +5,15 @@ Webcam-basiertes Push-Up Tracking mit MediaPipe Pose Landmarker (Tasks API)
 und OpenCV.
 
 Rollenverteilung:
-  OpenCV              -- Kamera-Input, Spiegeln, Anzeige, alle Debug-Overlays
-  MediaPipe Tasks API -- Skelett-Erkennung, Landmark-Koordinaten (aktueller Standard)
-  Eigene Logik        -- Winkelberechnung, State Machine, Formanalyse
+  OpenCV              -- Kamera-Input, Spiegeln, Anzeige, alle Overlays
+  MediaPipe Tasks API -- Skelett-Erkennung, Landmark-Koordinaten
+  PushUpAnalyser      -- State Machine + Formanalyse als eine kohärente Einheit
 
 Metriken:
   - Ellbogenwinkel links + rechts (gemittelt)
-  - Körperlinie Schulter-Hüfte-Knöchel (Hüfte durchhängen / Hintern hoch)
-  - Tiefenbewertung der Rep (wie weit runter)
-  - Halbe Reps erkennen (runter aber nicht tief genug)
+  - Körperlinie Schulter-Hüfte-Knöchel
+  - Tiefenbewertung pro Rep
+  - Halbe Reps (runter aber nicht tief genug, dann abgebrochen)
   - Formfehler live eingeblendet
 
 Requirements:
@@ -23,10 +23,8 @@ Run:
     python debug_tools/pushup_debug.py
 
 Controls:
-    R  -- Reset Zähler und Stats
-    Q  -- Beenden
-    D  -- Debug-Overlay ein/aus (Gelenk-Labels + Winkel)
-    F  -- Formcheck ein/aus (Körperlinie + Warnungen)
+    R  -- Reset          D  -- Debug-Overlay
+    F  -- Formcheck      Q  -- Beenden
 """
 
 from __future__ import annotations
@@ -36,6 +34,8 @@ import os
 import sys
 import tempfile
 import urllib.request
+from dataclasses import dataclass, field
+from enum import Enum, auto
 
 import cv2
 import mediapipe as mp
@@ -43,11 +43,11 @@ from mediapipe.tasks import python as mp_tasks
 from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTaskRunningMode
 
-# ---------------------------------------------------------------------------
-# Modell-Download (einmalig, ~10 MB, wird im Temp-Ordner gecacht)
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Modell
+# ─────────────────────────────────────────────────────────────────────────────
 
-_MODEL_URL  = (
+_MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
     "pose_landmarker/pose_landmarker_full/float16/latest/"
     "pose_landmarker_full.task"
@@ -55,64 +55,81 @@ _MODEL_URL  = (
 _MODEL_PATH = os.path.join(tempfile.gettempdir(), "pose_landmarker_full.task")
 
 
-def _ensure_model() -> str:
+def ensure_model() -> str:
     if not os.path.exists(_MODEL_PATH):
-        print("Lade MediaPipe Pose-Modell herunter (~10 MB, einmalig)...")
+        print("Lade Pose-Modell herunter (~10 MB, einmalig)...")
         urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
-        print(f"Modell gespeichert: {_MODEL_PATH}")
+        print(f"Gespeichert: {_MODEL_PATH}")
     return _MODEL_PATH
 
 
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # Konfiguration
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Ellbogenwinkel-Schwellen (Grad) -- identisch mit iOS PushUpStateMachine
-DOWN_ANGLE_THRESHOLD = 90.0
-UP_ANGLE_THRESHOLD   = 160.0
+@dataclass(frozen=True)
+class Config:
+    # Ellbogenwinkel-Schwellen (identisch mit iOS PushUpStateMachine)
+    down_threshold:  float = 90.0    # unter diesem Wert  → DOWN
+    up_threshold:    float = 160.0   # über diesem Wert   → Rep gezählt
 
-HYSTERESIS_FRAMES = 3
-COOLDOWN_FRAMES   = 15
+    # Hysterese & Cooldown
+    hysteresis:      int   = 3       # Frames die Bedingung halten muss
+    cooldown_frames: int   = 15      # ~500 ms bei 30 FPS
 
-# Formcheck
-BODY_LINE_TOLERANCE_DEG = 15.0
-HALF_REP_THRESHOLD      = 120.0
+    # Formcheck
+    body_line_warn:  float = 15.0    # Abweichung Schulter-Hüfte-Knöchel (Grad)
+    body_line_error: float = 35.0    # ab hier roter Alarm
+    half_rep_min:    float = 115.0   # Ellbogen muss mindestens so weit runter
 
-MIN_POSE_CONF     = 0.6
-MIN_TRACKING_CONF = 0.6
+    # MediaPipe
+    pose_conf:       float = 0.6
+    track_conf:      float = 0.6
+    vis_min:         float = 0.35    # Mindest-Visibility für Gelenk-Erkennung
 
-# Farben (BGR)
-COLOR_WHITE  = (255, 255, 255)
-COLOR_GREEN  = (0,   220,   0)
-COLOR_YELLOW = (0,   220, 220)
-COLOR_RED    = (0,    60, 255)
-COLOR_GREY   = (160, 160, 160)
-COLOR_BLACK  = (0,     0,   0)
 
-PHASE_COLORS  = {"IDLE": COLOR_GREY, "DOWN": COLOR_YELLOW, "COOLDOWN": COLOR_GREEN}
-PHASE_LABELS  = {"IDLE": "Bereit",   "DOWN": "Runter",     "COOLDOWN": "Hoch!"}
+CFG = Config()
 
-# ---------------------------------------------------------------------------
-# Landmark-Indizes (MediaPipe Pose Landmarker Tasks API)
-# https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Farben & Stil  (BGR)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class C:
+    WHITE   = (255, 255, 255)
+    BLACK   = (  0,   0,   0)
+    GREY    = (140, 140, 140)
+    GREEN   = (  0, 210,  80)
+    YELLOW  = ( 30, 210, 255)
+    ORANGE  = ( 20, 140, 255)
+    RED     = (  0,  60, 220)
+    BLUE    = (220, 120,  30)
+    DARK    = ( 18,  18,  18)
+    # Phasen
+    IDLE    = (140, 140, 140)
+    DOWN    = ( 30, 210, 255)
+    COOLDOWN= (  0, 210,  80)
+
+
+PHASE_COLOR = {"IDLE": C.IDLE, "DOWN": C.DOWN, "COOLDOWN": C.COOLDOWN}
+PHASE_LABEL = {"IDLE": "Bereit", "DOWN": "Runter", "COOLDOWN": "Hoch!"}
+
+FONT       = cv2.FONT_HERSHEY_SIMPLEX
+FONT_BOLD  = cv2.FONT_HERSHEY_DUPLEX
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Landmark-Indizes  (MediaPipe Pose Landmarker Tasks API)
+# ─────────────────────────────────────────────────────────────────────────────
 
 class LM:
-    LEFT_SHOULDER  = 11
-    RIGHT_SHOULDER = 12
-    LEFT_ELBOW     = 13
-    RIGHT_ELBOW    = 14
-    LEFT_WRIST     = 15
-    RIGHT_WRIST    = 16
-    LEFT_HIP       = 23
-    RIGHT_HIP      = 24
-    LEFT_KNEE      = 25
-    RIGHT_KNEE     = 26
-    LEFT_ANKLE     = 27
-    RIGHT_ANKLE    = 28
+    LEFT_SHOULDER  = 11;  RIGHT_SHOULDER = 12
+    LEFT_ELBOW     = 13;  RIGHT_ELBOW    = 14
+    LEFT_WRIST     = 15;  RIGHT_WRIST    = 16
+    LEFT_HIP       = 23;  RIGHT_HIP      = 24
+    LEFT_KNEE      = 25;  RIGHT_KNEE     = 26
+    LEFT_ANKLE     = 27;  RIGHT_ANKLE    = 28
 
 
-_JOINT_INDICES: dict[str, int] = {
+_JOINT_MAP: dict[str, int] = {
     "ls": LM.LEFT_SHOULDER,  "rs": LM.RIGHT_SHOULDER,
     "le": LM.LEFT_ELBOW,     "re": LM.RIGHT_ELBOW,
     "lw": LM.LEFT_WRIST,     "rw": LM.RIGHT_WRIST,
@@ -121,282 +138,459 @@ _JOINT_INDICES: dict[str, int] = {
     "la": LM.LEFT_ANKLE,     "ra": LM.RIGHT_ANKLE,
 }
 
-VIS_MIN = 0.35
+Pt = tuple[int, int] | None
+Joints = dict[str, Pt]
 
-# ---------------------------------------------------------------------------
+
+def extract_joints(landmarks: list, w: int, h: int) -> Joints:
+    out: Joints = {}
+    for key, idx in _JOINT_MAP.items():
+        lm = landmarks[idx]
+        out[key] = None if lm.visibility < CFG.vis_min else (int(lm.x * w), int(lm.y * h))
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Geometrie
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
-def angle_between(a, vertex, b) -> float | None:
+def angle_at(a: Pt, vertex: Pt, b: Pt) -> float | None:
+    """Winkel am Scheitelpunkt `vertex` in Grad. None wenn ein Punkt fehlt."""
     if a is None or vertex is None or b is None:
         return None
-    vax, vay = a[0] - vertex[0], a[1] - vertex[1]
-    vbx, vby = b[0] - vertex[0], b[1] - vertex[1]
-    mag_a, mag_b = math.hypot(vax, vay), math.hypot(vbx, vby)
-    if mag_a == 0 or mag_b == 0:
+    ax, ay = a[0] - vertex[0], a[1] - vertex[1]
+    bx, by = b[0] - vertex[0], b[1] - vertex[1]
+    ma, mb = math.hypot(ax, ay), math.hypot(bx, by)
+    if ma == 0 or mb == 0:
         return None
-    cos_a = max(-1.0, min(1.0, (vax * vbx + vay * vby) / (mag_a * mag_b)))
-    return math.degrees(math.acos(cos_a))
+    return math.degrees(math.acos(max(-1.0, min(1.0, (ax*bx + ay*by) / (ma*mb)))))
 
 
-def averaged(a, b) -> float | None:
+def best(a: float | None, b: float | None) -> float | None:
+    """Mittelwert wenn beide vorhanden, sonst der vorhandene Wert."""
     if a is not None and b is not None:
         return (a + b) / 2.0
     return a if a is not None else b
 
 
-# ---------------------------------------------------------------------------
-# Landmark-Extraktion
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase-Enum
+# ─────────────────────────────────────────────────────────────────────────────
 
-def extract_joints(landmarks: list, w: int, h: int) -> dict[str, tuple[int, int] | None]:
-    result: dict[str, tuple[int, int] | None] = {}
-    for key, idx in _JOINT_INDICES.items():
-        lm = landmarks[idx]
-        result[key] = None if lm.visibility < VIS_MIN else (int(lm.x * w), int(lm.y * h))
-    return result
+class Phase(Enum):
+    IDLE     = auto()
+    DOWN     = auto()
+    COOLDOWN = auto()
+
+    @property
+    def key(self) -> str:
+        return self.name
 
 
-# ---------------------------------------------------------------------------
-# Formanalyse
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# PushUpAnalyser  — State Machine + Formanalyse als eine Einheit
+#
+# Bug-Fix gegenüber vorheriger Version:
+#   FormAnalyser.update() wurde NACH sm.update() aufgerufen. Wenn die State
+#   Machine in diesem Frame von DOWN → COOLDOWN wechselte, sah der
+#   FormAnalyser bereits phase=COOLDOWN, aber min_elbow_angle_this_rep war
+#   noch nicht für die COOLDOWN-Prüfung bereit (DOWN-Tracking lief im
+#   gleichen Frame noch nicht). Außerdem wurde die halbe-Rep-Logik nie
+#   getriggert weil man von DOWN direkt zu COOLDOWN geht — nie zu IDLE ohne
+#   Rep.
+#
+#   Fix: State Machine und Formanalyse sind jetzt eine Klasse. Die Übergänge
+#   werden explizit als Events behandelt (on_enter_down, on_rep_counted,
+#   on_rep_aborted) statt durch nachträgliches Phase-Vergleichen.
+# ─────────────────────────────────────────────────────────────────────────────
 
-class FormAnalyser:
+@dataclass
+class RepResult:
+    """Ergebnis einer abgeschlossenen oder abgebrochenen Rep."""
+    counted:     bool         # True = vollständige Rep
+    half:        bool         # True = abgebrochen (halbe Rep)
+    min_angle:   float | None # tiefster Ellbogenwinkel dieser Rep
+    warnings:    list[str] = field(default_factory=list)
 
-    def __init__(self) -> None:
-        self.min_elbow_angle_this_rep: float | None = None
-        self.half_rep_count: int = 0
 
-    def update(self, joints: dict, elbow_angle_val: float | None, phase: str) -> list[str]:
-        warnings: list[str] = []
+class PushUpAnalyser:
+    """
+    Kombiniert State Machine und Formanalyse.
+    Verarbeitet einen Winkelwert + Gelenke pro Frame.
+    Gibt RepResult zurück wenn eine Rep abgeschlossen oder abgebrochen wurde.
+    """
 
-        # Körperlinie
-        deviation = self._body_line_deviation(joints)
-        if deviation is not None:
-            if deviation > BODY_LINE_TOLERANCE_DEG + 20:
-                warnings.append(f"Hufte haengt durch! ({deviation:.0f}deg)")
-            elif deviation > BODY_LINE_TOLERANCE_DEG:
-                warnings.append(f"Koerperlinie pruefen ({deviation:.0f}deg)")
+    def __init__(self, cfg: Config = CFG) -> None:
+        self.cfg              = cfg
+        self.phase            = Phase.IDLE
+        self.rep_count        = 0
+        self.half_count       = 0
+        self._pending         = 0          # Hysterese-Zähler
+        self._cooldown_left   = 0
+        self._min_angle: float | None = None   # tiefster Winkel dieser Rep
 
-        # Tiefsten Punkt tracken
-        if phase == "DOWN" and elbow_angle_val is not None:
-            prev = self.min_elbow_angle_this_rep
-            self.min_elbow_angle_this_rep = (
-                elbow_angle_val if prev is None else min(prev, elbow_angle_val)
-            )
+    # ── Public API ────────────────────────────────────────────────────────────
 
-        # Rep abgeschlossen -> Tiefe bewerten
-        if phase == "COOLDOWN" and self.min_elbow_angle_this_rep is not None:
-            if self.min_elbow_angle_this_rep > DOWN_ANGLE_THRESHOLD:
-                warnings.append(f"Nicht tief genug! Min: {self.min_elbow_angle_this_rep:.0f}deg")
-            self.min_elbow_angle_this_rep = None
+    def update(
+        self,
+        elbow_angle: float | None,
+        joints: Joints,
+    ) -> tuple[list[str], RepResult | None]:
+        """
+        Verarbeitet einen Frame.
+        Gibt (frame_warnings, rep_result) zurück.
+          frame_warnings  -- Formfehler die JETZT aktiv sind (Körperlinie etc.)
+          rep_result      -- gesetzt wenn in diesem Frame eine Rep endete
+        """
+        frame_warnings = self._check_body_line(joints)
+        rep_result     = None
 
-        # Zurück zu IDLE ohne vollständige Rep -> halbe Rep
-        if phase == "IDLE" and self.min_elbow_angle_this_rep is not None:
-            if self.min_elbow_angle_this_rep > HALF_REP_THRESHOLD:
-                self.half_rep_count += 1
-                warnings.append(f"Halbe Rep! ({self.min_elbow_angle_this_rep:.0f}deg)")
-            self.min_elbow_angle_this_rep = None
+        if self.phase == Phase.IDLE:
+            rep_result = self._tick_idle(elbow_angle)
+        elif self.phase == Phase.DOWN:
+            rep_result = self._tick_down(elbow_angle)
+        else:
+            self._tick_cooldown()
 
-        return warnings
+        return frame_warnings, rep_result
 
     def reset(self) -> None:
-        self.min_elbow_angle_this_rep = None
-        self.half_rep_count = 0
+        self.phase          = Phase.IDLE
+        self.rep_count      = 0
+        self.half_count     = 0
+        self._pending       = 0
+        self._cooldown_left = 0
+        self._min_angle     = None
 
-    @staticmethod
-    def _body_line_deviation(joints: dict) -> float | None:
-        left  = angle_between(joints.get("ls"), joints.get("lh"), joints.get("la"))
-        right = angle_between(joints.get("rs"), joints.get("rh"), joints.get("ra"))
-        val   = averaged(left, right)
+    # ── State-Tick-Methoden ───────────────────────────────────────────────────
+
+    def _tick_idle(self, angle: float | None) -> RepResult | None:
+        if angle is None:
+            self._pending = 0
+            return None
+        if angle < self.cfg.down_threshold:
+            self._pending += 1
+            if self._pending >= self.cfg.hysteresis:
+                # Übergang IDLE → DOWN
+                self.phase    = Phase.DOWN
+                self._pending = 0
+                self._min_angle = angle   # ersten Wert sofort setzen
+        else:
+            self._pending = 0
+        return None
+
+    def _tick_down(self, angle: float | None) -> RepResult | None:
+        if angle is None:
+            # Pose verloren während DOWN → halbe Rep
+            return self._abort_rep("Pose verloren")
+
+        # Tiefsten Punkt tracken
+        if self._min_angle is None or angle < self._min_angle:
+            self._min_angle = angle
+
+        if angle > self.cfg.up_threshold:
+            self._pending += 1
+            if self._pending >= self.cfg.hysteresis:
+                # Vollständige Rep
+                return self._complete_rep()
+        else:
+            self._pending = 0
+
+        return None
+
+    def _tick_cooldown(self) -> None:
+        self._cooldown_left -= 1
+        if self._cooldown_left <= 0:
+            self.phase = Phase.IDLE
+
+    # ── Rep-Abschluss ─────────────────────────────────────────────────────────
+
+    def _complete_rep(self) -> RepResult:
+        self.rep_count     += 1
+        self.phase          = Phase.COOLDOWN
+        self._cooldown_left = self.cfg.cooldown_frames
+        self._pending       = 0
+
+        warnings: list[str] = []
+        min_a = self._min_angle
+        if min_a is not None and min_a > self.cfg.down_threshold:
+            warnings.append(f"Nicht tief genug (min {min_a:.0f}°)")
+
+        result = RepResult(counted=True, half=False, min_angle=min_a, warnings=warnings)
+        self._min_angle = None
+        return result
+
+    def _abort_rep(self, reason: str = "") -> RepResult:
+        """
+        Wird aufgerufen wenn die Person aus DOWN zurück zu IDLE geht
+        ohne die UP-Schwelle zu erreichen (halbe Rep).
+        """
+        min_a = self._min_angle
+        is_half = min_a is not None and min_a <= self.cfg.half_rep_min
+
+        if is_half:
+            self.half_count += 1
+
+        self.phase      = Phase.IDLE
+        self._pending   = 0
+        self._min_angle = None
+
+        warnings = []
+        if is_half:
+            label = f"Halbe Rep! (min {min_a:.0f}°)"
+            if reason:
+                label += f" – {reason}"
+            warnings.append(label)
+
+        return RepResult(counted=False, half=is_half, min_angle=min_a, warnings=warnings)
+
+    # ── Formcheck ─────────────────────────────────────────────────────────────
+
+    def _check_body_line(self, joints: Joints) -> list[str]:
+        """Prüft Schulter-Hüfte-Knöchel-Linie. Gibt Warnungen zurück."""
+        left  = angle_at(joints.get("ls"), joints.get("lh"), joints.get("la"))
+        right = angle_at(joints.get("rs"), joints.get("rh"), joints.get("ra"))
+        val   = best(left, right)
+        if val is None:
+            return []
+        dev = abs(180.0 - val)
+        if dev > self.cfg.body_line_error:
+            return [f"Hüfte hängt durch! ({dev:.0f}°)"]
+        if dev > self.cfg.body_line_warn:
+            return [f"Körperlinie prüfen ({dev:.0f}°)"]
+        return []
+
+    # ── Hilfsmethode für Zeichnen ─────────────────────────────────────────────
+
+    def body_line_deviation(self, joints: Joints) -> float | None:
+        left  = angle_at(joints.get("ls"), joints.get("lh"), joints.get("la"))
+        right = angle_at(joints.get("rs"), joints.get("rh"), joints.get("ra"))
+        val   = best(left, right)
         return None if val is None else abs(180.0 - val)
 
 
-# ---------------------------------------------------------------------------
-# State Machine (identisch mit PushUpStateMachine.swift)
-# ---------------------------------------------------------------------------
-
-class PushUpStateMachine:
-
-    IDLE = "IDLE"; DOWN = "DOWN"; COOLDOWN = "COOLDOWN"
-
-    def __init__(self) -> None:
-        self.phase = self.IDLE
-        self.push_up_count = 0
-        self.pending_frame_count = 0
-        self.cooldown_remaining = 0
-
-    def update(self, angle: float | None) -> bool:
-        if self.phase == self.IDLE:     return self._idle(angle)
-        if self.phase == self.DOWN:     return self._down(angle)
-        return self._cooldown()
-
-    def _idle(self, angle: float | None) -> bool:
-        if angle is None: self.pending_frame_count = 0; return False
-        if angle < DOWN_ANGLE_THRESHOLD:
-            self.pending_frame_count += 1
-            if self.pending_frame_count >= HYSTERESIS_FRAMES:
-                self.phase = self.DOWN; self.pending_frame_count = 0
-        else:
-            self.pending_frame_count = 0
-        return False
-
-    def _down(self, angle: float | None) -> bool:
-        if angle is None: self.pending_frame_count = 0; return False
-        if angle > UP_ANGLE_THRESHOLD:
-            self.pending_frame_count += 1
-            if self.pending_frame_count >= HYSTERESIS_FRAMES:
-                self.push_up_count += 1
-                self.phase = self.COOLDOWN
-                self.cooldown_remaining = COOLDOWN_FRAMES
-                self.pending_frame_count = 0
-                return True
-        else:
-            self.pending_frame_count = 0
-        return False
-
-    def _cooldown(self) -> bool:
-        self.cooldown_remaining -= 1
-        if self.cooldown_remaining <= 0: self.phase = self.IDLE
-        return False
-
-    def reset(self) -> None:
-        self.phase = self.IDLE; self.push_up_count = 0
-        self.pending_frame_count = 0; self.cooldown_remaining = 0
-
-
-# ---------------------------------------------------------------------------
-# OpenCV Zeichnen
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Renderer  — alle OpenCV-Zeichenoperationen
+# ─────────────────────────────────────────────────────────────────────────────
 
 _BONES = [
-    ("ls","le"),("le","lw"), ("rs","re"),("re","rw"),  # Arme
-    ("ls","rs"),                                         # Schultern
-    ("ls","lh"),("rs","rh"),("lh","rh"),                # Torso
-    ("lh","lk"),("lk","la"),("rh","rk"),("rk","ra"),   # Beine
+    ("ls","le"),("le","lw"),  ("rs","re"),("re","rw"),   # Arme
+    ("ls","rs"),                                           # Schultern
+    ("ls","lh"),("rs","rh"),  ("lh","rh"),                # Torso
+    ("lh","lk"),("lk","la"),  ("rh","rk"),("rk","ra"),   # Beine
 ]
 _KEY_JOINTS = {"ls","rs","le","re","lw","rw"}
 
 
-def draw_skeleton(frame, joints: dict, phase_color: tuple, show_debug: bool) -> None:
-    for a, b in _BONES:
-        pa, pb = joints.get(a), joints.get(b)
-        if pa and pb:
-            cv2.line(frame, pa, pb, COLOR_WHITE, 2, cv2.LINE_AA)
-    for name, pt in joints.items():
-        if pt is None: continue
-        is_key = name in _KEY_JOINTS
-        cv2.circle(frame, pt, 8 if is_key else 5,
-                   phase_color if is_key else COLOR_GREEN, -1, cv2.LINE_AA)
-        cv2.circle(frame, pt, 8 if is_key else 5, COLOR_WHITE, 1, cv2.LINE_AA)
-        if show_debug and is_key:
-            cv2.putText(frame, name, (pt[0]+9, pt[1]-9),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_WHITE, 1, cv2.LINE_AA)
+class Renderer:
+
+    @staticmethod
+    def skeleton(frame, joints: Joints, phase_color: tuple, show_labels: bool) -> None:
+        # Knochen
+        for a, b in _BONES:
+            pa, pb = joints.get(a), joints.get(b)
+            if pa and pb:
+                cv2.line(frame, pa, pb, (*C.WHITE[:3], 180), 2, cv2.LINE_AA)
+
+        # Gelenke
+        for name, pt in joints.items():
+            if pt is None:
+                continue
+            is_key = name in _KEY_JOINTS
+            r      = 9 if is_key else 5
+            color  = phase_color if is_key else C.GREEN
+            # Glow-Effekt: größerer halbtransparenter Kreis dahinter
+            if is_key:
+                overlay = frame.copy()
+                cv2.circle(overlay, pt, r + 5, color, -1, cv2.LINE_AA)
+                cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
+            cv2.circle(frame, pt, r, color, -1, cv2.LINE_AA)
+            cv2.circle(frame, pt, r, C.WHITE, 1, cv2.LINE_AA)
+            if show_labels and is_key:
+                cv2.putText(frame, name, (pt[0]+10, pt[1]-10),
+                            FONT, 0.38, C.WHITE, 1, cv2.LINE_AA)
+
+    @staticmethod
+    def body_line(frame, joints: Joints, deviation: float | None) -> None:
+        if deviation is None:
+            color = C.GREY
+        elif deviation < CFG.body_line_warn:
+            color = C.GREEN
+        elif deviation < CFG.body_line_error:
+            color = C.YELLOW
+        else:
+            color = C.RED
+        for s, h, a in [("ls","lh","la"), ("rs","rh","ra")]:
+            ps, ph, pa = joints.get(s), joints.get(h), joints.get(a)
+            if ps and ph and pa:
+                cv2.line(frame, ps, ph, color, 3, cv2.LINE_AA)
+                cv2.line(frame, ph, pa, color, 3, cv2.LINE_AA)
+
+    @staticmethod
+    def elbow_angles(frame, joints: Joints, la: float | None,
+                     ra: float | None, color: tuple) -> None:
+        for key, val in [("le", la), ("re", ra)]:
+            pt = joints.get(key)
+            if pt is None or val is None:
+                continue
+            # Hintergrund-Pill für bessere Lesbarkeit
+            text = f"{val:.0f}°"
+            (tw, th), _ = cv2.getTextSize(text, FONT_BOLD, 0.65, 2)
+            tx, ty = pt[0] + 14, pt[1] - 14
+            cv2.rectangle(frame, (tx-4, ty-th-2), (tx+tw+4, ty+4),
+                          (*C.DARK, 160), -1, cv2.LINE_AA)
+            cv2.putText(frame, text, (tx, ty), FONT_BOLD, 0.65, color, 2, cv2.LINE_AA)
+
+    @staticmethod
+    def angle_bar(frame, angle: float | None, phase_color: tuple,
+                  w: int, h: int) -> None:
+        """Schlanker vertikaler Balken rechts mit Schwellenwert-Markierungen."""
+        bx, bt, bb = w - 22, 55, h - 125
+        bh = bb - bt
+        bar_w = 10
+
+        # Hintergrund (abgerundet simuliert durch Rechteck)
+        cv2.rectangle(frame, (bx, bt), (bx + bar_w, bb), (40, 40, 40), -1, cv2.LINE_AA)
+
+        if angle is not None:
+            ratio = min(1.0, max(0.0, angle / 180.0))
+            fy    = bb - int(ratio * bh)
+            cv2.rectangle(frame, (bx, fy), (bx + bar_w, bb), phase_color, -1, cv2.LINE_AA)
+
+        # Schwellenwert-Linien
+        for thr, col, lbl in [
+            (CFG.down_threshold, C.DOWN,     f"{CFG.down_threshold:.0f}°"),
+            (CFG.up_threshold,   C.COOLDOWN, f"{CFG.up_threshold:.0f}°"),
+        ]:
+            y = bb - int((thr / 180.0) * bh)
+            cv2.line(frame, (bx - 6, y), (bx + bar_w + 6, y), col, 2, cv2.LINE_AA)
+            cv2.putText(frame, lbl, (bx - 38, y + 5),
+                        FONT, 0.36, col, 1, cv2.LINE_AA)
+
+    @staticmethod
+    def warnings(frame, msgs: list[str], w: int, y_start: int = 72) -> None:
+        for i, msg in enumerate(msgs):
+            y  = y_start + i * 34
+            cx = w // 2
+            (tw, th), _ = cv2.getTextSize(msg, FONT, 0.62, 2)
+            # Pill-Hintergrund
+            cv2.rectangle(frame,
+                          (cx - tw//2 - 10, y - th - 5),
+                          (cx + tw//2 + 10, y + 7),
+                          (0, 0, 160), -1, cv2.LINE_AA)
+            cv2.rectangle(frame,
+                          (cx - tw//2 - 10, y - th - 5),
+                          (cx + tw//2 + 10, y + 7),
+                          C.RED, 1, cv2.LINE_AA)
+            cv2.putText(frame, msg, (cx - tw//2, y),
+                        FONT, 0.62, C.WHITE, 2, cv2.LINE_AA)
+
+    @staticmethod
+    def hud(frame, analyser: PushUpAnalyser, angle: float | None,
+            w: int, h: int, show_debug: bool) -> None:
+        phase_color = PHASE_COLOR[analyser.phase.key]
+        phase_label = PHASE_LABEL[analyser.phase.key]
+
+        # ── Untere Leiste ──────────────────────────────────────────────────
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, h - 110), (w, h), C.DARK, -1)
+        cv2.addWeighted(overlay, 0.72, frame, 0.28, 0, frame)
+
+        # Trennlinie
+        cv2.line(frame, (0, h - 110), (w, h - 110), (50, 50, 50), 1)
+
+        # Rep-Zähler (groß, Mitte)
+        count_str = str(analyser.rep_count)
+        (cw, ch), _ = cv2.getTextSize(count_str, FONT_BOLD, 3.4, 6)
+        cv2.putText(frame, count_str, (w//2 - cw//2, h - 16),
+                    FONT_BOLD, 3.4, C.WHITE, 6, cv2.LINE_AA)
+
+        # Halbe Reps (rechts vom Zähler, klein)
+        if analyser.half_count > 0:
+            half_str = f"½ {analyser.half_count}"
+            cv2.putText(frame, half_str, (w//2 + cw//2 + 12, h - 40),
+                        FONT, 0.7, C.ORANGE, 2, cv2.LINE_AA)
+
+        # Stats links unten
+        cv2.putText(frame, f"Reps: {analyser.rep_count}",
+                    (14, h - 82), FONT, 0.5, C.GREY, 1, cv2.LINE_AA)
+        cv2.putText(frame, f"Halbe: {analyser.half_count}",
+                    (14, h - 60), FONT, 0.5, C.GREY, 1, cv2.LINE_AA)
+        if analyser.phase == Phase.DOWN and analyser._min_angle is not None:
+            cv2.putText(frame, f"Min: {analyser._min_angle:.0f}°",
+                        (14, h - 38), FONT, 0.5, C.YELLOW, 1, cv2.LINE_AA)
+
+        # Steuerung rechts unten
+        cv2.putText(frame, "R=Reset  D=Debug  F=Form  Q=Quit",
+                    (w - 290, h - 10), FONT, 0.42, (80, 80, 80), 1, cv2.LINE_AA)
+
+        # ── Obere Leiste ───────────────────────────────────────────────────
+        overlay2 = frame.copy()
+        cv2.rectangle(overlay2, (0, 0), (w, 52), C.DARK, -1)
+        cv2.addWeighted(overlay2, 0.65, frame, 0.35, 0, frame)
+        cv2.line(frame, (0, 52), (w, 52), (50, 50, 50), 1)
+
+        # Phase-Pill (oben links)
+        (lw_px, lh_px), _ = cv2.getTextSize(phase_label, FONT_BOLD, 0.82, 2)
+        pill_x, pill_y = 10, 8
+        cv2.rectangle(frame,
+                      (pill_x, pill_y),
+                      (pill_x + lw_px + 20, pill_y + lh_px + 14),
+                      phase_color, -1, cv2.LINE_AA)
+        cv2.putText(frame, phase_label,
+                    (pill_x + 10, pill_y + lh_px + 7),
+                    FONT_BOLD, 0.82, C.BLACK, 2, cv2.LINE_AA)
+
+        # Winkel (oben rechts)
+        if angle is not None:
+            angle_text = f"{angle:.0f}°"
+            (aw, ah), _ = cv2.getTextSize(angle_text, FONT_BOLD, 1.1, 2)
+            cv2.putText(frame, angle_text,
+                        (w - aw - 50, ah + 12),
+                        FONT_BOLD, 1.1, phase_color, 2, cv2.LINE_AA)
+            # Kleines Label darunter
+            cv2.putText(frame, "Ellbogen",
+                        (w - aw - 44, ah + 30),
+                        FONT, 0.38, C.GREY, 1, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, "Kein Arm",
+                        (w - 110, 36), FONT, 0.6, C.RED, 2, cv2.LINE_AA)
+
+        # DEBUG-Badge
+        if show_debug:
+            cv2.rectangle(frame, (w - 78, 8), (w - 8, 30), (40, 40, 40), -1, cv2.LINE_AA)
+            cv2.putText(frame, "DEBUG", (w - 72, 26),
+                        FONT, 0.45, C.YELLOW, 1, cv2.LINE_AA)
+
+        # Fortschrittsbalken unter Phase-Pill (zeigt Hysterese-Fortschritt)
+        if analyser._pending > 0:
+            progress = min(1.0, analyser._pending / CFG.hysteresis)
+            bar_w    = lw_px + 20
+            filled   = int(bar_w * progress)
+            cv2.rectangle(frame,
+                          (pill_x, pill_y + lh_px + 16),
+                          (pill_x + bar_w, pill_y + lh_px + 20),
+                          (60, 60, 60), -1)
+            cv2.rectangle(frame,
+                          (pill_x, pill_y + lh_px + 16),
+                          (pill_x + filled, pill_y + lh_px + 20),
+                          phase_color, -1)
 
 
-def draw_body_line(frame, joints: dict, deviation: float | None) -> None:
-    for s, h, a in [("ls","lh","la"),("rs","rh","ra")]:
-        ps, ph, pa = joints.get(s), joints.get(h), joints.get(a)
-        if not (ps and ph and pa): continue
-        color = (COLOR_GREY if deviation is None
-                 else COLOR_GREEN  if deviation < BODY_LINE_TOLERANCE_DEG
-                 else COLOR_YELLOW if deviation < BODY_LINE_TOLERANCE_DEG + 20
-                 else COLOR_RED)
-        cv2.line(frame, ps, ph, color, 3, cv2.LINE_AA)
-        cv2.line(frame, ph, pa, color, 3, cv2.LINE_AA)
-
-
-def draw_elbow_angles(frame, joints, left_angle, right_angle, phase_color) -> None:
-    for key, val in [("le", left_angle), ("re", right_angle)]:
-        pt = joints.get(key)
-        if pt and val is not None:
-            cv2.putText(frame, f"{val:.0f}°", (pt[0]+12, pt[1]-12),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, phase_color, 2, cv2.LINE_AA)
-
-
-def draw_angle_bar(frame, angle, phase_color, w, h) -> None:
-    bx, bt, bb = w-30, 60, h-130
-    bh = bb - bt
-    cv2.rectangle(frame, (bx, bt), (bx+18, bb), (50,50,50), -1)
-    if angle is not None:
-        fy = bb - int(min(1.0, max(0.0, angle/180.0)) * bh)
-        cv2.rectangle(frame, (bx, fy), (bx+18, bb), phase_color, -1)
-    for thr, col, lbl in [(DOWN_ANGLE_THRESHOLD, COLOR_YELLOW, f"{DOWN_ANGLE_THRESHOLD:.0f}"),
-                           (UP_ANGLE_THRESHOLD,   COLOR_GREEN,  f"{UP_ANGLE_THRESHOLD:.0f}")]:
-        y = bb - int((thr/180.0)*bh)
-        cv2.line(frame, (bx-5,y), (bx+23,y), col, 2)
-        cv2.putText(frame, lbl, (bx-42,y+5),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, col, 1, cv2.LINE_AA)
-
-
-def draw_form_warnings(frame, warnings: list[str], w: int) -> None:
-    for i, msg in enumerate(warnings):
-        y = 80 + i*32; cx = w//2
-        (tw, th), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
-        cv2.rectangle(frame, (cx-tw//2-8, y-th-4), (cx+tw//2+8, y+6), (0,0,180), -1, cv2.LINE_AA)
-        cv2.putText(frame, msg, (cx-tw//2, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, COLOR_WHITE, 2, cv2.LINE_AA)
-
-
-def draw_hud(frame, sm: PushUpStateMachine, fa: FormAnalyser,
-             angle, w, h, show_debug) -> None:
-    phase_color = PHASE_COLORS[sm.phase]
-    phase_label = PHASE_LABELS[sm.phase]
-
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, h-115), (w, h), COLOR_BLACK, -1)
-    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-
-    # Zähler
-    cs = str(sm.push_up_count)
-    (cw, _), _ = cv2.getTextSize(cs, cv2.FONT_HERSHEY_SIMPLEX, 3.2, 6)
-    cv2.putText(frame, cs, (w//2 - cw//2, h-18),
-                cv2.FONT_HERSHEY_SIMPLEX, 3.2, COLOR_WHITE, 6, cv2.LINE_AA)
-
-    # Phase-Pill
-    (lw_px, lh_px), _ = cv2.getTextSize(phase_label, cv2.FONT_HERSHEY_SIMPLEX, 0.85, 2)
-    cv2.rectangle(frame, (6,10), (lw_px+26, lh_px+26), phase_color, -1, cv2.LINE_AA)
-    cv2.putText(frame, phase_label, (16, lh_px+16),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.85, COLOR_BLACK, 2, cv2.LINE_AA)
-
-    # Winkel
-    if angle is not None:
-        cv2.putText(frame, f"Winkel: {angle:.0f}°", (w-210, 38),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_GREY, 2, cv2.LINE_AA)
-    else:
-        cv2.putText(frame, "Kein Arm erkannt", (w-240, 38),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, COLOR_RED, 2, cv2.LINE_AA)
-
-    # Stats
-    stats = [f"Reps: {sm.push_up_count}", f"Halbe: {fa.half_rep_count}"]
-    if sm.phase == "DOWN" and fa.min_elbow_angle_this_rep is not None:
-        stats.append(f"Min: {fa.min_elbow_angle_this_rep:.0f}°")
-    for i, line in enumerate(stats):
-        cv2.putText(frame, line, (12, h-90+i*28),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, COLOR_GREY, 1, cv2.LINE_AA)
-
-    cv2.putText(frame, "R=Reset  D=Debug  F=Form  Q=Quit", (12, h-8),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100,100,100), 1, cv2.LINE_AA)
-    if show_debug:
-        cv2.putText(frame, "DEBUG", (w-80, h-8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_YELLOW, 1, cv2.LINE_AA)
-
-
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # Hauptschleife
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    model_path = _ensure_model()
+    model_path = ensure_model()
 
-    base_options = mp_tasks.BaseOptions(model_asset_path=model_path)
-    options      = mp_vision.PoseLandmarkerOptions(
-        base_options=base_options,
+    options = mp_vision.PoseLandmarkerOptions(
+        base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
         running_mode=VisionTaskRunningMode.IMAGE,
         num_poses=1,
-        min_pose_detection_confidence=MIN_POSE_CONF,
-        min_pose_presence_confidence=MIN_POSE_CONF,
-        min_tracking_confidence=MIN_TRACKING_CONF,
+        min_pose_detection_confidence=CFG.pose_conf,
+        min_pose_presence_confidence=CFG.pose_conf,
+        min_tracking_confidence=CFG.track_conf,
         output_segmentation_masks=False,
     )
 
@@ -408,14 +602,13 @@ def main() -> None:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    sm = PushUpStateMachine()
-    fa = FormAnalyser()
+    analyser   = PushUpAnalyser()
     show_debug = True
     show_form  = True
 
-    print("Push-Up Debug Tool (MediaPipe Tasks API)")
-    print(f"  DOWN < {DOWN_ANGLE_THRESHOLD}°  |  UP > {UP_ANGLE_THRESHOLD}°")
-    print("  R=Reset  D=Debug  F=Form  Q=Quit")
+    print("Push-Up Debug Tool")
+    print(f"  DOWN < {CFG.down_threshold}°  |  UP > {CFG.up_threshold}°  |  Hysterese: {CFG.hysteresis} Frames")
+    print("  R=Reset  D=Debug  F=Form  Q=Quit\n")
 
     with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
         while True:
@@ -426,50 +619,64 @@ def main() -> None:
             frame = cv2.flip(frame, 1)
             h, w  = frame.shape[:2]
 
-            rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            # MediaPipe Pose Detection
+            mp_img = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
+            )
             result = landmarker.detect(mp_img)
 
-            elbow_angle_val: float | None = None
-            joints:          dict         = {}
-            body_deviation:  float | None = None
-            form_warnings:   list[str]    = []
+            elbow_angle: float | None = None
+            joints: Joints            = {}
+            all_warnings: list[str]   = []
 
             if result.pose_landmarks:
-                landmarks       = result.pose_landmarks[0]
-                joints          = extract_joints(landmarks, w, h)
-                left_angle      = angle_between(joints.get("ls"), joints.get("le"), joints.get("lw"))
-                right_angle     = angle_between(joints.get("rs"), joints.get("re"), joints.get("rw"))
-                elbow_angle_val = averaged(left_angle, right_angle)
-                body_deviation  = FormAnalyser._body_line_deviation(joints)
+                lms         = result.pose_landmarks[0]
+                joints      = extract_joints(lms, w, h)
+                left_angle  = angle_at(joints.get("ls"), joints.get("le"), joints.get("lw"))
+                right_angle = angle_at(joints.get("rs"), joints.get("re"), joints.get("rw"))
+                elbow_angle = best(left_angle, right_angle)
 
-                if sm.update(elbow_angle_val):
-                    print(f"  Rep #{sm.push_up_count}  |  Winkel: {elbow_angle_val:.1f}°")
+                # Analyse (State Machine + Formcheck in einem Schritt)
+                frame_warnings, rep_result = analyser.update(elbow_angle, joints)
+                all_warnings = frame_warnings
 
-                form_warnings = fa.update(joints, elbow_angle_val, sm.phase)
-                if form_warnings:
-                    print(f"  Formfehler: {', '.join(form_warnings)}")
+                if rep_result is not None:
+                    if rep_result.counted:
+                        w_str = f"  ✓ Rep #{analyser.rep_count}"
+                        if elbow_angle is not None:
+                            w_str += f"  |  Winkel: {elbow_angle:.1f}°"
+                        if rep_result.warnings:
+                            w_str += f"  |  {', '.join(rep_result.warnings)}"
+                        print(w_str)
+                        all_warnings += rep_result.warnings
+                    elif rep_result.half:
+                        print(f"  ½ Halbe Rep  |  {', '.join(rep_result.warnings)}")
+                        all_warnings += rep_result.warnings
 
-                phase_color = PHASE_COLORS[sm.phase]
+                # Zeichnen
+                phase_color = PHASE_COLOR[analyser.phase.key]
                 if show_form:
-                    draw_body_line(frame, joints, body_deviation)
-                draw_skeleton(frame, joints, phase_color, show_debug)
+                    dev = analyser.body_line_deviation(joints)
+                    Renderer.body_line(frame, joints, dev)
+                Renderer.skeleton(frame, joints, phase_color, show_debug)
                 if show_debug:
-                    draw_elbow_angles(frame, joints, left_angle, right_angle, phase_color)
+                    Renderer.elbow_angles(frame, joints, left_angle, right_angle, phase_color)
             else:
-                sm.update(None)
-                fa.update({}, None, sm.phase)
+                analyser.update(None, {})
 
-            draw_angle_bar(frame, elbow_angle_val, PHASE_COLORS[sm.phase], w, h)
-            if show_form and form_warnings:
-                draw_form_warnings(frame, form_warnings, w)
-            draw_hud(frame, sm, fa, elbow_angle_val, w, h, show_debug)
+            Renderer.angle_bar(frame, elbow_angle, PHASE_COLOR[analyser.phase.key], w, h)
+            if show_form and all_warnings:
+                Renderer.warnings(frame, all_warnings, w)
+            Renderer.hud(frame, analyser, elbow_angle, w, h, show_debug)
 
             cv2.imshow("PushUp Debug", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if   key == ord("q"): break
-            elif key == ord("r"): sm.reset(); fa.reset(); print("  Reset.")
+            elif key == ord("r"):
+                analyser.reset()
+                print("  Reset.")
             elif key == ord("d"):
                 show_debug = not show_debug
                 print(f"  Debug: {'AN' if show_debug else 'AUS'}")
