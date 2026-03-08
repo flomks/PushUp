@@ -30,13 +30,13 @@ enum EdgeCaseWarning: Equatable, Sendable, CustomStringConvertible {
     var userMessage: String {
         switch self {
         case .noPersonDetected:
-            return "Bitte positioniere dich im Kamerabild"
+            return "Please position yourself in the camera view"
         case .poorAngle:
-            return "Bitte Handy weiter weg stellen"
+            return "Please move the phone further away"
         case .poorLighting:
-            return "Bessere Beleuchtung fuer genauere Erkennung"
+            return "Improve lighting for better detection"
         case .multiplePersonsDetected:
-            return "Mehrere Personen erkannt – groesste wird getrackt"
+            return "Multiple people detected – tracking the closest person"
         }
     }
 
