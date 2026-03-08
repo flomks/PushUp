@@ -343,9 +343,16 @@ final class CameraManager: NSObject, ObservableObject {
 
         // --- Connection orientation & mirroring ---
         if let connection = videoOutput.connection(with: .video) {
-            // Rotate to portrait (90 degrees clockwise).
-            if connection.isVideoRotationAngleSupported(90) {
-                connection.videoRotationAngle = 90
+            // Rotate to portrait. `videoRotationAngle` is iOS 17+; fall back
+            // to `videoOrientation` on iOS 16.
+            if #available(iOS 17.0, *) {
+                if connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
+            } else {
+                if connection.isVideoOrientationSupported {
+                    connection.videoOrientation = .portrait
+                }
             }
             if position == .front,
                connection.isVideoMirroringSupported {
