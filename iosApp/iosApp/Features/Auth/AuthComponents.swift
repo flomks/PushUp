@@ -35,7 +35,7 @@ struct SocialSignInButton: View {
                 }
             )
         }
-        .buttonStyle(ScaleButtonStyle())
+        .buttonStyle(InstantPressButtonStyle())
         .accessibilityLabel(title)
     }
 }

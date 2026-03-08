@@ -224,6 +224,54 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    /// Initiates Google Sign-In.
+    ///
+    /// Replace the simulated delay with a real `GoogleSignIn` SDK call once
+    /// the OAuth client ID is configured in `Info.plist`.
+    func loginWithGoogle() async {
+        clearMessages()
+        isLoading = true
+        authState = .loading
+        do {
+            // TODO: Replace with real GoogleSignIn SDK call:
+            // let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
+            // let idToken = result.user.idToken?.tokenString ?? ""
+            // ... exchange idToken with backend
+            try await Task.sleep(nanoseconds: 1_500_000_000)
+            isLoading = false
+            authState = .authenticated
+        } catch {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.networkError(error.localizedDescription).errorDescription
+        }
+    }
+
+    /// Initiates Apple Sign-In.
+    ///
+    /// Replace the simulated delay with a real `ASAuthorizationAppleIDProvider`
+    /// request once the "Sign in with Apple" capability is enabled in Xcode.
+    func loginWithApple() async {
+        clearMessages()
+        isLoading = true
+        authState = .loading
+        do {
+            // TODO: Replace with real Apple Sign-In:
+            // let provider = ASAuthorizationAppleIDProvider()
+            // let request  = provider.createRequest()
+            // request.requestedScopes = [.fullName, .email]
+            // let result = try await ASAuthorizationController(authorizationRequests: [request]).performRequests()
+            // ... exchange credential with backend
+            try await Task.sleep(nanoseconds: 1_500_000_000)
+            isLoading = false
+            authState = .authenticated
+        } catch {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.networkError(error.localizedDescription).errorDescription
+        }
+    }
+
     /// Signs the current user out and returns to the unauthenticated state.
     func signOut() {
         authState = .unauthenticated

@@ -197,9 +197,9 @@ struct LoginView: View {
                 backgroundColor: AppColors.textPrimary,
                 foregroundColor: AppColors.backgroundPrimary
             ) {
-                // Apple Sign-In integration point
-                // In production: use ASAuthorizationAppleIDProvider
+                Task { await viewModel.loginWithApple() }
             }
+            .disabled(viewModel.isLoading)
 
             // Google Sign-In
             SocialSignInButton(
@@ -209,9 +209,9 @@ struct LoginView: View {
                 foregroundColor: AppColors.textPrimary,
                 hasBorder: true
             ) {
-                // Google Sign-In integration point
-                // In production: use GoogleSignIn SDK
+                Task { await viewModel.loginWithGoogle() }
             }
+            .disabled(viewModel.isLoading)
         }
     }
 
