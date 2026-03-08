@@ -30,13 +30,13 @@ enum EdgeCaseWarning: Equatable, Sendable, CustomStringConvertible {
     var userMessage: String {
         switch self {
         case .noPersonDetected:
-            return "Please position yourself in the camera view"
+            return "Bitte positioniere dich im Kamerabild"
         case .poorAngle:
-            return "Please move the phone further away"
+            return "Bitte Handy weiter weg stellen"
         case .poorLighting:
-            return "Improve lighting for better detection"
+            return "Bessere Beleuchtung fuer genauere Erkennung"
         case .multiplePersonsDetected:
-            return "Multiple people detected – tracking the closest person"
+            return "Mehrere Personen erkannt – groesste wird getrackt"
         }
     }
 
@@ -45,7 +45,7 @@ enum EdgeCaseWarning: Equatable, Sendable, CustomStringConvertible {
 
 // MARK: - EdgeCaseResult
 
-/// The output of a single `EdgeCaseHandler.evaluate(_:allObservations:)` call.
+/// The output of a single `EdgeCaseHandler.evaluate(_:allPoses:)` call.
 struct EdgeCaseResult: Sendable {
 
     /// The pose selected for push-up detection, or `nil` when no usable pose
@@ -225,15 +225,32 @@ final class EdgeCaseHandler {
     /// joints. When two poses have the same count, the one with the higher
     /// average confidence wins. This heuristic reliably selects the person
     /// closest to the camera (most joints visible, highest confidence).
+    /// Selects the "largest" pose from a non-empty array of candidates.
+    ///
+    /// - Precondition: `poses` must not be empty. In debug builds this is
+    ///   enforced by `assertionFailure`; in release builds the method returns
+    ///   the first element as a safe fallback.
     static func selectLargestPose(from poses: [BodyPose]) -> BodyPose {
-        precondition(!poses.isEmpty, "selectLargestPose requires at least one pose")
-        return poses.max { a, b in
+        guard let best = poses.max(by: { a, b in
             let countA = a.detectedJoints.count
             let countB = b.detectedJoints.count
             if countA != countB { return countA < countB }
             // Tie-break by average confidence.
             return averageConfidence(of: a) < averageConfidence(of: b)
-        }!
+        }) else {
+            // `max(by:)` returns nil only when the collection is empty.
+            // Callers always guard against empty arrays before calling this
+            // method, so this branch should never execute.
+            assertionFailure("selectLargestPose called with empty array")
+            // Return a minimal placeholder pose to avoid crashing in release.
+            let placeholder = Dictionary(
+                uniqueKeysWithValues: JointName.allCases.map { name in
+                    (name, Joint(name: name, position: .zero, confidence: 0))
+                }
+            )
+            return BodyPose(joints: placeholder, timestamp: 0)
+        }
+        return best
     }
 
     // MARK: - Private: Angle Check
@@ -284,8 +301,12 @@ final class EdgeCaseHandler {
     ///
     /// A warning is surfaced when its counter reaches `warningHysteresisFrameCount`.
     /// A warning is cleared when its absence counter reaches `warningClearanceFrameCount`.
+    /// Pre-computed array of all warning cases to avoid allocating a new array
+    /// on every frame in the hot path.
+    private static let allWarningCases = EdgeCaseWarning.allCases
+
     private func updateHysteresis(raw: Set<EdgeCaseWarning>) -> Set<EdgeCaseWarning> {
-        let allWarnings = EdgeCaseWarning.allCases
+        let allWarnings = Self.allWarningCases
 
         for warning in allWarnings {
             let isActive = raw.contains(warning)
@@ -314,13 +335,17 @@ final class EdgeCaseHandler {
 
     // MARK: - Private: Helpers
 
-    /// Returns the arithmetic mean confidence of all joints in the pose.
-    /// Returns 0 when the pose has no joints.
+    /// Returns the arithmetic mean confidence of all joints with non-zero
+    /// confidence in the pose. Returns 0 when no joints have positive confidence.
+    ///
+    /// Only joints with `confidence > 0` are included in the average. This
+    /// excludes placeholder joints that Vision did not attempt to detect,
+    /// giving a more accurate signal for lighting quality assessment.
     private static func averageConfidence(of pose: BodyPose) -> Float {
-        let joints = pose.joints.values
-        guard !joints.isEmpty else { return 0 }
-        let total = joints.reduce(Float(0)) { $0 + $1.confidence }
-        return total / Float(joints.count)
+        let detected = pose.joints.values.filter { $0.confidence > 0 }
+        guard !detected.isEmpty else { return 0 }
+        let total = detected.reduce(Float(0)) { $0 + $1.confidence }
+        return total / Float(detected.count)
     }
 
     /// Returns warnings sorted by severity (most actionable first).

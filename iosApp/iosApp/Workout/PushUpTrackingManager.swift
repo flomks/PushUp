@@ -121,7 +121,9 @@ final class PushUpTrackingManager: ObservableObject {
 
     /// Performance monitor: gates frame processing based on device tier and
     /// measured FPS. Also pauses processing when the app is backgrounded.
-    let performanceMonitor: PerformanceMonitor
+    /// Exposed as read-only for SwiftUI consumers that need to display FPS
+    /// or device tier information.
+    private(set) var performanceMonitor: PerformanceMonitor
 
     /// Strong references to the delegate bridges. `CameraManager.delegate`,
     /// `VisionPoseDetector.delegate`, and `PushUpDetector.delegate` are all
@@ -671,6 +673,11 @@ private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendabl
     private let pushUpDetector: PushUpDetector
     private weak var manager: PushUpTrackingManager?
 
+    /// Cached copy of the last forwarded warnings to avoid dispatching a
+    /// main-actor `Task` on every frame when warnings have not changed.
+    /// Only accessed from the video output queue (single-writer).
+    private var _lastWarnings: [EdgeCaseWarning] = []
+
     init(pushUpDetector: PushUpDetector, manager: PushUpTrackingManager) {
         self.pushUpDetector = pushUpDetector
         self.manager = manager
@@ -683,15 +690,13 @@ private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendabl
     ) {
         pushUpDetector.process(pose)
 
-        // Forward warnings to the manager on the main actor.
-        if !warnings.isEmpty {
-            Task { @MainActor [weak manager] in
-                manager?.handleWarnings(warnings)
-            }
-        } else {
-            Task { @MainActor [weak manager] in
-                manager?.handleWarnings([])
-            }
+        // Only dispatch to the main actor when warnings actually changed.
+        // At 30 FPS this avoids ~30 unnecessary Task allocations per second
+        // during normal operation when warnings are stable.
+        guard warnings != _lastWarnings else { return }
+        _lastWarnings = warnings
+        Task { @MainActor [weak manager] in
+            manager?.handleWarnings(warnings)
         }
     }
 }

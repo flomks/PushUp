@@ -24,16 +24,6 @@ protocol PoseDetectorDelegate: AnyObject, Sendable {
     )
 }
 
-// MARK: - PoseDetectorDelegate + Default Implementation
-
-extension PoseDetectorDelegate {
-    /// Backward-compatible default: ignores warnings.
-    /// Conformers that only care about the pose can omit the `warnings` parameter.
-    func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?) {
-        poseDetector(detector, didDetect: pose, warnings: [])
-    }
-}
-
 // MARK: - VisionPoseDetector
 
 /// Processes `CMSampleBuffer` video frames using `VNDetectHumanBodyPoseRequest`

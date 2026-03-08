@@ -8,10 +8,10 @@ import UIKit
 ///
 /// Tiers are based on the Apple Silicon generation:
 /// - **high**: A14 Bionic and newer (iPhone 12+). Targets 30 FPS.
-/// - **medium**: A13 Bionic (iPhone 11, SE 2nd gen). Targets ~20 FPS via
+/// - **medium**: A13 Bionic (iPhone 11, SE 2nd gen). Targets ~15 FPS via
 ///   every-other-frame skipping.
 /// - **low**: A12 Bionic and older (iPhone XS/XR, SE 1st gen). Targets
-///   ~15 FPS via every-third-frame processing.
+///   ~10 FPS via every-third-frame processing.
 enum DevicePerformanceTier: Equatable, Sendable {
 
     /// A14 Bionic (iPhone 12) and newer. Full 30 FPS pose detection.
@@ -64,7 +64,7 @@ enum DevicePerformanceTier: Equatable, Sendable {
 /// - Measures actual pose detection FPS using a sliding window of timestamps.
 /// - Dynamically increases the frame-skip interval when the measured FPS
 ///   drops significantly below the target (thermal throttling, heavy load).
-/// - Publishes `currentFPS`, `activeWarnings`, and `tier` as `@Published`
+/// - Publishes `currentFPS`, `isPaused`, and `tier` as `@Published`
 ///   properties for SwiftUI consumption.
 /// - Handles app-backgrounding: pauses frame processing when the app enters
 ///   the background and resumes when it returns to the foreground.
@@ -102,6 +102,22 @@ final class PerformanceMonitor: ObservableObject {
     /// `true` when the monitor has paused frame processing because the app
     /// is in the background.
     @Published private(set) var isPaused: Bool = false
+
+    // MARK: - Immutable Tier Copy (safe for nonisolated access)
+
+    /// Immutable copy of the detected tier, safe to read from any queue
+    /// without crossing the `@MainActor` isolation boundary.
+    /// Set once in `init` and never mutated. The `@Published tier` property
+    /// mirrors this value but is only safe to read on the main actor.
+    private let _detectedTier: DevicePerformanceTier
+
+    /// Immutable copy of the tier's frame skip interval, safe to read from
+    /// any queue without crossing the `@MainActor` isolation boundary.
+    /// Set once in `init` and never mutated.
+    private let _tierFrameSkipInterval: Int
+
+    /// Immutable copy of the tier's target FPS, safe to read from any queue.
+    private let _tierTargetFPS: Double
 
     // MARK: - Configuration
 
@@ -171,9 +187,14 @@ final class PerformanceMonitor: ObservableObject {
     /// Additional frames being skipped due to dynamic throttling.
     private var _additionalSkipFrames: Int = 0
 
-    /// Ring buffer of `CACurrentMediaTime()` timestamps for completed pose
+    /// Circular buffer of `CACurrentMediaTime()` timestamps for completed pose
     /// detections. Used to compute the rolling FPS average.
+    ///
+    /// Implemented as a fixed-capacity array with a write index to avoid the
+    /// O(n) cost of `Array.removeFirst()` in the hot path.
     private var _detectionTimestamps: [Double] = []
+    private var _timestampWriteIndex: Int = 0
+    private var _timestampCount: Int = 0
 
     /// Timestamp of the last FPS update published to the main queue.
     private var _lastFPSUpdateTime: Double = 0
@@ -198,6 +219,9 @@ final class PerformanceMonitor: ObservableObject {
         self.configuration = configuration
         let detectedTier = overrideTier ?? Self.detectDeviceTier()
         self.tier = detectedTier
+        self._detectedTier = detectedTier
+        self._tierFrameSkipInterval = detectedTier.frameSkipInterval
+        self._tierTargetFPS = Double(detectedTier.targetPoseDetectionFPS)
         self._effectiveSkipInterval = detectedTier.frameSkipInterval
         subscribeToAppLifecycle()
     }
@@ -236,15 +260,12 @@ final class PerformanceMonitor: ObservableObject {
         let now = CACurrentMediaTime()
 
         stateLock.lock()
-        // Maintain a sliding window of timestamps.
-        _detectionTimestamps.append(now)
-        if _detectionTimestamps.count > configuration.fpsMeasurementWindowSize {
-            _detectionTimestamps.removeFirst()
-        }
+        // Maintain a circular buffer of timestamps.
+        appendTimestamp(now)
 
         // Compute FPS from the window.
-        let fps = computeFPS(timestamps: _detectionTimestamps)
-        let targetFPS = Double(tier.targetPoseDetectionFPS)
+        let fps = computeFPSFromRingBuffer()
+        let targetFPS = _tierTargetFPS
         let shouldUpdateUI = now - _lastFPSUpdateTime >= 1.0
         if shouldUpdateUI { _lastFPSUpdateTime = now }
 
@@ -252,12 +273,12 @@ final class PerformanceMonitor: ObservableObject {
         if fps > 0 && fps < targetFPS * configuration.dynamicThrottleRatio {
             if _additionalSkipFrames < configuration.maxAdditionalSkipFrames {
                 _additionalSkipFrames += 1
-                _effectiveSkipInterval = tier.frameSkipInterval + _additionalSkipFrames
+                _effectiveSkipInterval = _tierFrameSkipInterval + _additionalSkipFrames
             }
         } else if fps >= targetFPS * configuration.dynamicRecoveryRatio {
             if _additionalSkipFrames > 0 {
                 _additionalSkipFrames -= 1
-                _effectiveSkipInterval = tier.frameSkipInterval + _additionalSkipFrames
+                _effectiveSkipInterval = _tierFrameSkipInterval + _additionalSkipFrames
             }
         }
 
@@ -276,8 +297,10 @@ final class PerformanceMonitor: ObservableObject {
         stateLock.lock()
         _frameCounter = 0
         _additionalSkipFrames = 0
-        _effectiveSkipInterval = tier.frameSkipInterval
-        _detectionTimestamps.removeAll()
+        _effectiveSkipInterval = _tierFrameSkipInterval
+        _detectionTimestamps.removeAll(keepingCapacity: true)
+        _timestampWriteIndex = 0
+        _timestampCount = 0
         _lastFPSUpdateTime = 0
         stateLock.unlock()
 
@@ -332,16 +355,38 @@ final class PerformanceMonitor: ObservableObject {
         #endif
     }
 
+    // MARK: - Private: Ring Buffer Helpers
+
+    /// Appends a timestamp to the circular buffer. O(1) amortised.
+    /// Must be called while holding `stateLock`.
+    private func appendTimestamp(_ value: Double) {
+        let capacity = configuration.fpsMeasurementWindowSize
+        if _detectionTimestamps.count < capacity {
+            _detectionTimestamps.append(value)
+        } else {
+            _detectionTimestamps[_timestampWriteIndex] = value
+        }
+        _timestampWriteIndex = (_timestampWriteIndex + 1) % capacity
+        _timestampCount = min(_timestampCount + 1, capacity)
+    }
+
     // MARK: - Private: FPS Computation
 
-    /// Computes the rolling FPS from a window of detection timestamps.
+    /// Computes the rolling FPS from the circular buffer of timestamps.
+    /// Must be called while holding `stateLock`.
     ///
     /// Returns 0 when fewer than 2 timestamps are available.
-    private func computeFPS(timestamps: [Double]) -> Double {
-        guard timestamps.count >= 2 else { return 0 }
-        let elapsed = timestamps.last! - timestamps.first!
+    private func computeFPSFromRingBuffer() -> Double {
+        guard _timestampCount >= 2 else { return 0 }
+        // Find the oldest and newest timestamps in the ring buffer.
+        let capacity = _detectionTimestamps.count
+        let oldestIndex = (_timestampWriteIndex + capacity - _timestampCount) % capacity
+        let newestIndex = (_timestampWriteIndex + capacity - 1) % capacity
+        let oldest = _detectionTimestamps[oldestIndex]
+        let newest = _detectionTimestamps[newestIndex]
+        let elapsed = newest - oldest
         guard elapsed > 0 else { return 0 }
-        return Double(timestamps.count - 1) / elapsed
+        return Double(_timestampCount - 1) / elapsed
     }
 
     // MARK: - Private: Device Tier Detection
@@ -440,10 +485,10 @@ extension PerformanceMonitor {
         stateLock.lock()
         defer { stateLock.unlock() }
         return Diagnostics(
-            tier: tier,
+            tier: _detectedTier,
             effectiveSkipInterval: _effectiveSkipInterval,
             additionalSkipFrames: _additionalSkipFrames,
-            measuredFPS: computeFPS(timestamps: _detectionTimestamps),
+            measuredFPS: computeFPSFromRingBuffer(),
             isPaused: _isPausedInternal
         )
     }
