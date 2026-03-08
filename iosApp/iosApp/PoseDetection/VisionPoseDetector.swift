@@ -16,7 +16,12 @@ protocol PoseDetectorDelegate: AnyObject, Sendable {
     /// - Parameters:
     ///   - detector: The detector that produced the result.
     ///   - pose: The detected `BodyPose`, or `nil` when no person was found.
-    func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?)
+    ///   - warnings: Active edge-case warnings for this frame (may be empty).
+    func poseDetector(
+        _ detector: VisionPoseDetector,
+        didDetect pose: BodyPose?,
+        warnings: [EdgeCaseWarning]
+    )
 }
 
 // MARK: - VisionPoseDetector
@@ -24,13 +29,23 @@ protocol PoseDetectorDelegate: AnyObject, Sendable {
 /// Processes `CMSampleBuffer` video frames using `VNDetectHumanBodyPoseRequest`
 /// and publishes `BodyPose` snapshots at up to 30 FPS.
 ///
+/// **Edge-case handling**
+/// All observations returned by Vision (potentially multiple people) are passed
+/// through an `EdgeCaseHandler` which:
+/// - Selects the largest/most-confident person when multiple are detected.
+/// - Emits `EdgeCaseWarning` values for no-person, poor angle, and poor lighting.
+/// - Applies hysteresis so warnings don't flicker on transient single-frame drops.
+///
+/// Active warnings are published via `activeWarnings` and delivered to the
+/// delegate alongside the selected pose.
+///
 /// **Threading model**
 /// - `process(_:)` is designed to be called from `CameraManager`'s
 ///   `videoOutputQueue` (`.userInteractive` QoS).
 /// - All Vision work runs synchronously on the calling queue so that the
 ///   result is available within the same frame budget.
 /// - `delegate` callbacks are delivered on the same queue as `process(_:)`.
-/// - The `@Published` `currentPose` property is always updated on the **main queue**.
+/// - The `@Published` properties are always updated on the **main queue**.
 ///
 /// **Performance**
 /// `VNDetectHumanBodyPoseRequest` is designed for real-time use and typically
@@ -58,6 +73,10 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
     /// in `deliverResult`. The `@unchecked Sendable` conformance is safe because
     /// all mutable state is protected by locks or confined to a single queue.
     @Published private(set) var currentPose: BodyPose?
+
+    /// Active edge-case warnings for the most recently processed frame.
+    /// Updated on the main queue alongside `currentPose`.
+    @Published private(set) var activeWarnings: [EdgeCaseWarning] = []
 
     // MARK: - Delegate (thread-safe)
 
@@ -113,9 +132,19 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
     /// Protected by `stateLock` to prevent data races.
     private var _frameCount: UInt64 = 0
 
+    /// Edge-case handler. Called on the video output queue; not thread-safe,
+    /// but that is fine because `process(_:)` is serialised by `_isProcessing`.
+    private let edgeCaseHandler: EdgeCaseHandler
+
     // MARK: - Init
 
-    init() {}
+    /// Creates a detector with the given edge-case handler configuration.
+    ///
+    /// - Parameter edgeCaseConfiguration: Thresholds for the `EdgeCaseHandler`.
+    ///   Defaults to `EdgeCaseHandler.Configuration.default`.
+    init(edgeCaseConfiguration: EdgeCaseHandler.Configuration = .default) {
+        self.edgeCaseHandler = EdgeCaseHandler(configuration: edgeCaseConfiguration)
+    }
 
     // MARK: - Public API
 
@@ -150,7 +179,8 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
 
         // Obtain the pixel buffer.
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-            deliverResult(nil)
+            let result = edgeCaseHandler.evaluate(nil, allPoses: [])
+            deliverResult(result.selectedPose, warnings: result.warnings)
             return
         }
 
@@ -184,28 +214,45 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
             }
             #endif
 
-            let pose = buildPose(from: request.results?.first, timestamp: timestamp)
-            deliverResult(pose)
+            // Build poses for ALL observations (multiple people in frame).
+            let observations = request.results ?? []
+            let allPoses = observations.map { buildPose(from: $0, timestamp: timestamp) }
+
+            // Primary pose (first observation) for backward compatibility.
+            let primaryPose = allPoses.first
+
+            // Apply edge-case logic: select the best pose, emit warnings.
+            let result = edgeCaseHandler.evaluate(primaryPose, allPoses: allPoses)
+
+            #if DEBUG
+            if !result.warnings.isEmpty && currentFrame % 30 == 0 {
+                print("[VisionPoseDetector] warnings: \(result.warnings.map(\.description).joined(separator: ", "))")
+            }
+            #endif
+
+            deliverResult(result.selectedPose, warnings: result.warnings)
 
         } catch {
             #if DEBUG
             print("[VisionPoseDetector] Vision error: \(error)")
             #endif
-            deliverResult(nil)
+            let result = edgeCaseHandler.evaluate(nil, allPoses: [])
+            deliverResult(result.selectedPose, warnings: result.warnings)
         }
+    }
+
+    /// Resets the edge-case handler state. Call when starting a new workout session.
+    func reset() {
+        edgeCaseHandler.reset()
     }
 
     // MARK: - Private Helpers
 
     /// Converts a `VNHumanBodyPoseObservation` into a `BodyPose`.
-    ///
-    /// Returns `nil` when `observation` is `nil` (no person detected).
     private func buildPose(
-        from observation: VNHumanBodyPoseObservation?,
+        from observation: VNHumanBodyPoseObservation,
         timestamp: Double
-    ) -> BodyPose? {
-        guard let observation else { return nil }
-
+    ) -> BodyPose {
         var joints: [JointName: Joint] = [:]
         joints.reserveCapacity(JointName.allCases.count)
 
@@ -233,16 +280,17 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
         return BodyPose(joints: joints, timestamp: timestamp)
     }
 
-    /// Delivers the result to both the delegate and the `@Published` property.
-    private func deliverResult(_ pose: BodyPose?) {
+    /// Delivers the result to both the delegate and the `@Published` properties.
+    private func deliverResult(_ pose: BodyPose?, warnings: [EdgeCaseWarning]) {
         // Capture a strong reference to the delegate for the duration of the
         // call. The lock-protected getter returns a strong optional; holding
         // it here prevents deallocation between the nil-check and the call.
         let currentDelegate = delegate
-        currentDelegate?.poseDetector(self, didDetect: pose)
+        currentDelegate?.poseDetector(self, didDetect: pose, warnings: warnings)
 
         DispatchQueue.main.async { [weak self] in
             self?.currentPose = pose
+            self?.activeWarnings = warnings
         }
     }
 }

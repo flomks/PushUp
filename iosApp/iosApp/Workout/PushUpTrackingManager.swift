@@ -35,7 +35,8 @@ enum TrackingError: LocalizedError, Equatable, Sendable {
 /// Connects the camera pipeline (Task 2.4) with the KMP business logic (Phase 1A).
 ///
 /// **Responsibilities**
-/// - Owns and wires `CameraManager`, `VisionPoseDetector`, and `PushUpDetector`.
+/// - Owns and wires `CameraManager`, `VisionPoseDetector`, `PushUpDetector`,
+///   and `PerformanceMonitor`.
 /// - On `startTracking()`: requests camera permission, starts the capture session,
 ///   and calls `StartWorkoutUseCase` (KMP) to create a new workout session.
 /// - On each detected push-up: calls `RecordPushUpUseCase` (KMP) with the
@@ -43,7 +44,22 @@ enum TrackingError: LocalizedError, Equatable, Sendable {
 /// - On `stopTracking()`: stops the camera, releases resources, and calls
 ///   `FinishWorkoutUseCase` (KMP) to finalise the session.
 /// - Publishes `currentCount`, `currentFormScore`, `isTracking`, `sessionDuration`,
-///   and `lastError` for SwiftUI consumers.
+///   `activeWarnings`, and `lastError` for SwiftUI consumers.
+///
+/// **Performance & Battery Optimisation**
+/// - `PerformanceMonitor` detects the device tier (iPhone 12+ / iPhone 11 / older)
+///   and gates each camera frame through `shouldProcessFrame()` before passing it
+///   to Vision. This reduces pose detection frequency on older devices to ~15 FPS
+///   (every 2nd frame) or ~10 FPS (every 3rd frame), saving CPU and battery.
+/// - Dynamic throttling further increases the skip interval when the measured FPS
+///   drops below the tier target (e.g. during thermal throttling).
+///
+/// **Auto-Stop on Background**
+/// - `CameraManager` already stops the `AVCaptureSession` when the app enters the
+///   background. `PerformanceMonitor` additionally pauses frame processing so that
+///   any frames delivered in the brief window before the session stops are ignored.
+/// - When the app returns to the foreground, `CameraManager` restarts the session
+///   and `PerformanceMonitor` resumes frame processing automatically.
 ///
 /// **Threading model**
 /// - All `@Published` properties and public methods are **main-actor isolated**.
@@ -93,11 +109,21 @@ final class PushUpTrackingManager: ObservableObject {
     /// Reset to `nil` at the start of each `startTracking()` call.
     @Published private(set) var lastError: TrackingError? = nil
 
+    /// Active edge-case warnings from the most recently processed frame.
+    /// Empty when conditions are good. Updated on the main queue.
+    @Published private(set) var activeWarnings: [EdgeCaseWarning] = []
+
     // MARK: - Private: Camera & Detection Pipeline
 
     private let cameraManager: CameraManager
     private let poseDetector: VisionPoseDetector
     private let pushUpDetector: PushUpDetector
+
+    /// Performance monitor: gates frame processing based on device tier and
+    /// measured FPS. Also pauses processing when the app is backgrounded.
+    /// Exposed as read-only for SwiftUI consumers that need to display FPS
+    /// or device tier information.
+    private(set) var performanceMonitor: PerformanceMonitor
 
     /// Strong references to the delegate bridges. `CameraManager.delegate`,
     /// `VisionPoseDetector.delegate`, and `PushUpDetector.delegate` are all
@@ -147,6 +173,7 @@ final class PushUpTrackingManager: ObservableObject {
     ///   - cameraManager: The camera manager to use. Defaults to a new instance.
     ///   - poseDetector: The Vision pose detector. Defaults to a new instance.
     ///   - pushUpDetector: The push-up detector. Defaults to a new instance.
+    ///   - performanceMonitor: The performance monitor. Defaults to a new instance.
     ///   - getOrCreateLocalUser: Use case for resolving the local user ID.
     ///   - startWorkout: Use case for starting a KMP workout session.
     ///   - recordPushUp: Use case for recording a single push-up rep.
@@ -155,6 +182,7 @@ final class PushUpTrackingManager: ObservableObject {
         cameraManager: CameraManager = CameraManager(),
         poseDetector: VisionPoseDetector = VisionPoseDetector(),
         pushUpDetector: PushUpDetector = PushUpDetector(),
+        performanceMonitor: PerformanceMonitor = PerformanceMonitor(),
         getOrCreateLocalUser: GetOrCreateLocalUserUseCase,
         startWorkout: StartWorkoutUseCase,
         recordPushUp: RecordPushUpUseCase,
@@ -163,6 +191,7 @@ final class PushUpTrackingManager: ObservableObject {
         self.cameraManager = cameraManager
         self.poseDetector = poseDetector
         self.pushUpDetector = pushUpDetector
+        self.performanceMonitor = performanceMonitor
         self.getOrCreateLocalUser = getOrCreateLocalUser
         self.startWorkout = startWorkout
         self.recordPushUp = recordPushUp
@@ -268,6 +297,7 @@ final class PushUpTrackingManager: ObservableObject {
         activeSessionId = nil
         stopSessionTimer()
         sessionDuration = 0
+        activeWarnings = []
 
         Task {
             await finishKMPWorkout(sessionId: sessionId)
@@ -277,21 +307,30 @@ final class PushUpTrackingManager: ObservableObject {
     // MARK: - Private: Pipeline Wiring
 
     /// Wires the delegate chain:
-    /// `CameraManager` -> `VisionPoseDetector` -> `PushUpDetector` -> `self`
+    /// `CameraManager` -> `PerformanceMonitorBridge` -> `VisionPoseDetector` -> `PushUpDetector` -> `self`
+    ///
+    /// The `PerformanceMonitorBridge` sits between the camera and the pose
+    /// detector. It calls `performanceMonitor.shouldProcessFrame()` on every
+    /// incoming frame and only forwards frames that should be processed.
     ///
     /// Creates new bridge objects and stores strong references to them. The
     /// bridges hold weak references back to the manager to prevent retain cycles.
-    /// The `PoseDetectorBridge` captures a direct reference to `pushUpDetector`
-    /// at creation time so it can call `process(_:)` on the video output queue
-    /// without crossing the main-actor isolation boundary.
     private func wireDetectionPipeline() {
-        // CameraManager delivers frames to VisionPoseDetector.
-        cameraManager.delegate = poseDetector
+        // CameraManager delivers frames to a PerformanceMonitorBridge that
+        // gates frames based on the device tier and measured FPS.
+        let perfBridge = PerformanceMonitorBridge(
+            monitor: performanceMonitor,
+            poseDetector: poseDetector
+        )
+        cameraManager.delegate = perfBridge
+        // Keep a strong reference so the bridge is not deallocated while
+        // the camera session is running.
+        _performanceMonitorBridge = perfBridge
 
         // VisionPoseDetector delivers poses to PushUpDetector via a bridge.
         // The bridge captures `pushUpDetector` directly to avoid accessing
         // a @MainActor-isolated property from the video output queue.
-        let poseBridge = PoseDetectorBridge(pushUpDetector: pushUpDetector)
+        let poseBridge = PoseDetectorBridge(pushUpDetector: pushUpDetector, manager: self)
         poseDetectorBridge = poseBridge
         poseDetector.delegate = poseBridge
 
@@ -301,14 +340,20 @@ final class PushUpTrackingManager: ObservableObject {
         pushUpDetector.delegate = pushUpBridge
     }
 
+    /// Strong reference to the performance monitor bridge (camera -> pose detector).
+    private var _performanceMonitorBridge: PerformanceMonitorBridge?
+
     // MARK: - Private: Detection State
 
     private func resetDetectionState() {
         pushUpDetector.reset()
+        poseDetector.reset()
+        performanceMonitor.reset()
         currentCount = 0
         currentFormScore = nil
         sessionDuration = 0
         lastPushUpTimestamp = nil
+        activeWarnings = []
     }
 
     // MARK: - Private: Camera Resources
@@ -323,6 +368,7 @@ final class PushUpTrackingManager: ObservableObject {
         poseDetector.delegate = nil
         pushUpDetector.delegate = nil
         // Release bridge objects.
+        _performanceMonitorBridge = nil
         poseDetectorBridge = nil
         pushUpDetectorBridge = nil
     }
@@ -349,6 +395,14 @@ final class PushUpTrackingManager: ObservableObject {
     private func stopSessionTimer() {
         sessionTimer?.invalidate()
         sessionTimer = nil
+    }
+
+    // MARK: - Private: Warning Updates
+
+    /// Called by `PoseDetectorBridge` when warnings change.
+    /// Main-actor isolated.
+    fileprivate func handleWarnings(_ warnings: [EdgeCaseWarning]) {
+        activeWarnings = warnings
     }
 
     // MARK: - Private: KMP Use Case Calls
@@ -575,13 +629,41 @@ private func withKMPSuspend<T>(
 
 // MARK: - Delegate Bridges
 
+/// Bridges `CameraManagerDelegate` callbacks (video output queue) to
+/// `VisionPoseDetector`, gating frames through `PerformanceMonitor`.
+///
+/// This bridge sits between `CameraManager` and `VisionPoseDetector`. For each
+/// incoming frame it:
+/// 1. Calls `monitor.shouldProcessFrame()` to decide whether to skip the frame.
+/// 2. If the frame should be processed, forwards it to `poseDetector.process(_:)`.
+/// 3. Calls `monitor.recordPoseDetectionCompleted()` after Vision returns.
+///
+/// `@unchecked Sendable` is safe because both `monitor` and `poseDetector` are
+/// immutable references to thread-safe objects.
+private final class PerformanceMonitorBridge: CameraManagerDelegate, @unchecked Sendable {
+
+    private let monitor: PerformanceMonitor
+    private let poseDetector: VisionPoseDetector
+
+    init(monitor: PerformanceMonitor, poseDetector: VisionPoseDetector) {
+        self.monitor = monitor
+        self.poseDetector = poseDetector
+    }
+
+    func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer) {
+        guard monitor.shouldProcessFrame() else { return }
+        poseDetector.process(sampleBuffer)
+        monitor.recordPoseDetectionCompleted()
+    }
+}
+
 /// Bridges `PoseDetectorDelegate` callbacks (video output queue) to
-/// `PushUpDetector`.
+/// `PushUpDetector` and forwards edge-case warnings to the manager.
 ///
 /// Captures a direct reference to the `PushUpDetector` at creation time so
 /// that `process(_:)` can be called on the video output queue without crossing
-/// the main-actor isolation boundary. The manager is not referenced at all,
-/// eliminating any actor-isolation concerns.
+/// the main-actor isolation boundary. The manager is held weakly to prevent
+/// retain cycles; warnings are dispatched to the main actor.
 ///
 /// `@unchecked Sendable` is safe because `pushUpDetector` is an immutable
 /// reference to a `final class` whose `process(_:)` method is designed for
@@ -589,13 +671,33 @@ private func withKMPSuspend<T>(
 private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendable {
 
     private let pushUpDetector: PushUpDetector
+    private weak var manager: PushUpTrackingManager?
 
-    init(pushUpDetector: PushUpDetector) {
+    /// Cached copy of the last forwarded warnings to avoid dispatching a
+    /// main-actor `Task` on every frame when warnings have not changed.
+    /// Only accessed from the video output queue (single-writer).
+    private var _lastWarnings: [EdgeCaseWarning] = []
+
+    init(pushUpDetector: PushUpDetector, manager: PushUpTrackingManager) {
         self.pushUpDetector = pushUpDetector
+        self.manager = manager
     }
 
-    func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?) {
+    func poseDetector(
+        _ detector: VisionPoseDetector,
+        didDetect pose: BodyPose?,
+        warnings: [EdgeCaseWarning]
+    ) {
         pushUpDetector.process(pose)
+
+        // Only dispatch to the main actor when warnings actually changed.
+        // At 30 FPS this avoids ~30 unnecessary Task allocations per second
+        // during normal operation when warnings are stable.
+        guard warnings != _lastWarnings else { return }
+        _lastWarnings = warnings
+        Task { @MainActor [weak manager] in
+            manager?.handleWarnings(warnings)
+        }
     }
 }
 

@@ -202,7 +202,11 @@ final class PushUpDemoViewModel: ObservableObject {
 private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendable {
     private weak var viewModel: PushUpDemoViewModel?
     init(viewModel: PushUpDemoViewModel) { self.viewModel = viewModel }
-    func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?) {
+    func poseDetector(
+        _ detector: VisionPoseDetector,
+        didDetect pose: BodyPose?,
+        warnings: [EdgeCaseWarning]
+    ) {
         viewModel?.didDetectPose(pose)
     }
 }
