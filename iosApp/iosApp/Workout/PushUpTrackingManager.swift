@@ -301,6 +301,60 @@ final class PushUpTrackingManager: ObservableObject {
         }
     }
 
+    // MARK: - Workout Screen Accessors
+
+    /// The preview layer for the camera feed. Read-only access for the
+    /// workout view to display the live camera preview.
+    var previewLayer: AVCaptureVideoPreviewLayer {
+        cameraManager.previewLayer
+    }
+
+    /// The current camera state. Published by `CameraManager`.
+    var cameraState: CameraState {
+        cameraManager.state
+    }
+
+    /// The current camera position (front/back).
+    var currentCameraPosition: CameraPosition {
+        cameraManager.currentPosition
+    }
+
+    /// Switches between front and back camera.
+    func switchCamera() {
+        cameraManager.switchCamera()
+    }
+
+    /// Starts the camera preview without starting the tracking pipeline.
+    /// Use this to show the camera feed in the idle state before the user
+    /// taps "Start".
+    func startCameraPreview(position: CameraPosition = .front) {
+        guard !isTracking else { return }
+        cameraManager.setupAndStart(position: position)
+    }
+
+    /// Stops the camera preview. Only effective when not tracking.
+    func stopCameraPreview() {
+        guard !isTracking else { return }
+        cameraManager.stopSession()
+    }
+
+    /// Publisher for camera state changes.
+    var cameraStatePublisher: Published<CameraState>.Publisher {
+        cameraManager.$state
+    }
+
+    /// Publisher for camera position changes.
+    var cameraPositionPublisher: Published<CameraPosition>.Publisher {
+        cameraManager.$currentPosition
+    }
+
+    /// Publisher for the most recently detected pose, updated on the main
+    /// queue by `VisionPoseDetector`. Safe to observe from SwiftUI views.
+    /// `nil` when no person is detected or tracking is not active.
+    var currentPosePublisher: Published<BodyPose?>.Publisher {
+        poseDetector.$currentPose
+    }
+
     // MARK: - Private: Pipeline Wiring
 
     /// Wires the delegate chain:

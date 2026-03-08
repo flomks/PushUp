@@ -94,8 +94,16 @@ struct MainTabView: View {
             .tag(Tab.dashboard)
             .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
 
+            // Workout tab -- real implementation (Task 3.6)
+            WorkoutView()
+                .tabItem {
+                    Label(Tab.workout.label, icon: Tab.workout.icon)
+                }
+                .tag(Tab.workout)
+                .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
+
             // Remaining tabs -- placeholders until their tasks are implemented
-            ForEach(Tab.allCases.filter { $0 != .dashboard }) { tab in
+            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout }) { tab in
                 NavigationStack {
                     TabPlaceholderView(tab: tab)
                 }
