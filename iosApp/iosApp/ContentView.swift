@@ -12,40 +12,38 @@ struct ContentView: View {
 
     @StateObject private var viewModel = PushUpDemoViewModel()
 
+    /// Toggles the skeleton/joint debug overlay on the camera feed.
+    @State private var showPoseOverlay: Bool = true
+
     /// Stable `@Sendable` closure stored in `@State` so it is created once
     /// and never re-allocated on subsequent `body` evaluations.
-    ///
-    /// A new closure reference on every render would trigger
-    /// `CameraContainerView.onChange(of: onSampleBuffer != nil)` each time,
-    /// causing unnecessary delegate re-attachment on the camera manager.
-    ///
-    /// Initialised to `nil`; set to a real closure in `onAppear` after
-    /// `viewModel` is fully initialised. The closure calls the `nonisolated`
-    /// `process(_:)` method, so it is safe to invoke from the video output
-    /// queue without crossing the main-actor isolation boundary.
     @State private var sampleBufferProcessor: (@Sendable (CMSampleBuffer) -> Void)?
 
     var body: some View {
         ZStack {
             // MARK: Camera feed (full screen)
             CameraContainerView(onSampleBuffer: sampleBufferProcessor)
+                .ignoresSafeArea()
+
+            // MARK: Skeleton overlay
+            PoseOverlayView(
+                pose: viewModel.currentPose,
+                isVisible: showPoseOverlay
+            )
             .ignoresSafeArea()
 
-            // MARK: Overlay
+            // MARK: HUD
             VStack {
-                // Top bar: phase indicator
-                phaseBar
+                // Top bar: phase + overlay toggle
+                topBar
 
                 Spacer()
 
-                // Bottom card: counter + angle
+                // Bottom card: counter + angle + warnings
                 bottomCard
             }
         }
         .onAppear {
-            // Create the stable processor closure once. Capturing viewModel
-            // strongly is safe: @StateObject is already retained by SwiftUI
-            // for the view's lifetime, and process(_:) is nonisolated.
             if sampleBufferProcessor == nil {
                 let vm = viewModel
                 sampleBufferProcessor = { buf in vm.process(buf) }
@@ -54,24 +52,53 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Top bar
 
-    private var phaseBar: some View {
+    private var topBar: some View {
         HStack {
+            // Phase pill
             Label(viewModel.phaseLabel, systemImage: viewModel.phaseIcon)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(.ultraThinMaterial, in: Capsule())
+
             Spacer()
+
+            // Skeleton overlay toggle
+            Button {
+                showPoseOverlay.toggle()
+            } label: {
+                Image(systemName: showPoseOverlay ? "figure.arms.open" : "figure.stand")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(showPoseOverlay ? Color.green : Color.white.opacity(0.6))
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .accessibilityLabel(showPoseOverlay ? "Skeleton overlay on" : "Skeleton overlay off")
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
     }
 
+    // MARK: - Bottom card
+
     private var bottomCard: some View {
         VStack(spacing: 8) {
+
+            // Warnings (poor angle, poor lighting, etc.)
+            if !viewModel.warnings.isEmpty {
+                VStack(spacing: 4) {
+                    ForEach(viewModel.warnings, id: \.self) { warning in
+                        Label(warning.userMessage, systemImage: warningIcon(for: warning))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.yellow)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
+
             // Push-up counter
             Text("\(viewModel.pushUpCount)")
                 .font(.system(size: 96, weight: .black, design: .rounded))
@@ -83,7 +110,7 @@ struct ContentView: View {
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.white.opacity(0.8))
 
-            // Elbow angle gauge
+            // Elbow angle gauge — only shown when a pose is detected
             if let angle = viewModel.currentAngle {
                 HStack(spacing: 6) {
                     Image(systemName: "angle")
@@ -93,6 +120,12 @@ struct ContentView: View {
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 .padding(.top, 4)
+            } else {
+                // No pose detected hint
+                Label("Kein Arm erkannt", systemImage: "eye.slash")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.top, 4)
             }
 
             // Reset button
@@ -115,6 +148,17 @@ struct ContentView: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 40)
     }
+
+    // MARK: - Helpers
+
+    private func warningIcon(for warning: EdgeCaseWarning) -> String {
+        switch warning {
+        case .noPersonDetected:      return "person.slash"
+        case .poorAngle:             return "arrow.left.and.right.square"
+        case .poorLighting:          return "sun.min"
+        case .multiplePersonsDetected: return "person.2"
+        }
+    }
 }
 
 // MARK: - PushUpDemoViewModel
@@ -129,6 +173,8 @@ final class PushUpDemoViewModel: ObservableObject {
     @Published private(set) var pushUpCount: Int = 0
     @Published private(set) var currentAngle: Double? = nil
     @Published private(set) var currentPhase: PushUpPhase = .idle
+    @Published private(set) var currentPose: BodyPose? = nil
+    @Published private(set) var warnings: [EdgeCaseWarning] = []
 
     private let poseDetector = VisionPoseDetector()
 
@@ -146,7 +192,6 @@ final class PushUpDemoViewModel: ObservableObject {
     /// Called from the video output queue (background thread).
     /// `nonisolated` so the `@Sendable` closure in `CameraContainerView`
     /// can call it directly without hopping to the main actor.
-    /// `poseDetector.process` is designed for background-queue use.
     nonisolated func process(_ sampleBuffer: CMSampleBuffer) {
         poseDetector.process(sampleBuffer)
     }
@@ -156,18 +201,22 @@ final class PushUpDemoViewModel: ObservableObject {
         pushUpCount = 0
         currentAngle = nil
         currentPhase = .idle
+        currentPose = nil
+        warnings = []
     }
 
     // Called from the video output queue via the bridge.
-    nonisolated func didDetectPose(_ pose: BodyPose?) {
+    nonisolated func didDetectPose(_ pose: BodyPose?, warnings: [EdgeCaseWarning]) {
         pushUpDetector.process(pose)
         let angle = pushUpDetector.currentElbowAngle
         let phase = pushUpDetector.currentPhase
         let count = pushUpDetector.pushUpCount
         Task { @MainActor in
+            self.currentPose  = pose
             self.currentAngle = angle
             self.currentPhase = phase
             self.pushUpCount  = count
+            self.warnings     = warnings
         }
     }
 
@@ -207,7 +256,7 @@ private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendabl
         didDetect pose: BodyPose?,
         warnings: [EdgeCaseWarning]
     ) {
-        viewModel?.didDetectPose(pose)
+        viewModel?.didDetectPose(pose, warnings: warnings)
     }
 }
 
