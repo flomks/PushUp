@@ -182,7 +182,7 @@ final class PushUpTrackingManager: ObservableObject {
         cameraManager: CameraManager = CameraManager(),
         poseDetector: VisionPoseDetector = VisionPoseDetector(),
         pushUpDetector: PushUpDetector = PushUpDetector(),
-        performanceMonitor: PerformanceMonitor = PerformanceMonitor(),
+        performanceMonitor: PerformanceMonitor,
         getOrCreateLocalUser: GetOrCreateLocalUserUseCase,
         startWorkout: StartWorkoutUseCase,
         recordPushUp: RecordPushUpUseCase,
@@ -203,8 +203,9 @@ final class PushUpTrackingManager: ObservableObject {
     /// Requires `KoinIOSKt.doInitKoin()` to have been called at app startup
     /// before this initialiser is invoked.
     convenience init() {
-        let helper = DIHelper.shared
+        let helper = DIHelper.companion.shared
         self.init(
+            performanceMonitor: PerformanceMonitor(),
             getOrCreateLocalUser: helper.getOrCreateLocalUserUseCase(),
             startWorkout: helper.startWorkoutUseCase(),
             recordPushUp: helper.recordPushUpUseCase(),
@@ -212,20 +213,16 @@ final class PushUpTrackingManager: ObservableObject {
         )
     }
 
-    /// `deinit` is `nonisolated` because ARC calls it from an arbitrary thread.
-    /// All mutable state that needs cleanup is handled synchronously in
-    /// `stopTracking()`. The timer reference is captured directly (not via
-    /// `self`) because `[weak self]` would always be `nil` inside `deinit`.
-    nonisolated deinit {
-        // Capture the timer reference directly. In `deinit`, `self` is the
-        // last owner, so no concurrent access is possible. The timer must be
-        // invalidated on the main thread (run loop requirement).
-        let timer = sessionTimer
-        if timer != nil {
-            DispatchQueue.main.async {
-                timer?.invalidate()
-            }
-        }
+    /// `deinit` of a `@MainActor`-isolated class runs on the main actor in
+    /// Swift 5.9+, so it is safe to access `sessionTimer` directly and
+    /// invalidate it without dispatching to another queue.
+    ///
+    /// `stopTracking()` always invalidates and nils the timer synchronously,
+    /// so this is a safety-net for callers that release the manager without
+    /// calling `stopTracking()` first.
+    deinit {
+        sessionTimer?.invalidate()
+        sessionTimer = nil
     }
 
     // MARK: - Public API
@@ -458,7 +455,7 @@ final class PushUpTrackingManager: ObservableObject {
     ///
     /// Called on the main actor by `PushUpDetectorBridge` after dispatching
     /// from the video output queue.
-    private func handlePushUpEvent(_ event: PushUpEvent) {
+    fileprivate func handlePushUpEvent(_ event: PushUpEvent) {
         guard let sessionId = activeSessionId else {
             // This can happen in the brief window between startTracking() and
             // startKMPWorkout() completing. Silently skip -- the push-up is
