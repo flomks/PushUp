@@ -83,7 +83,7 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// detector.delegate = self
 ///
 /// // Inside PoseDetectorDelegate:
-/// func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?) {
+/// func poseDetector(_ detector: VisionPoseDetector, didDetect pose: BodyPose?, warnings: [EdgeCaseWarning]) {
 ///     pushUpDetector.process(pose)
 /// }
 /// ```
