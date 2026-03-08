@@ -38,13 +38,9 @@ val iosModule = module {
     single { TokenStorage() }
 
     // Network connectivity monitor (NWPathMonitor, iOS 12+).
-    // The monitor is cancelled via onClose so the native resource is released
-    // cleanly when Koin is stopped (e.g. in unit tests or app teardown).
-    single<NetworkMonitor>(named(NETWORK_MONITOR)) {
-        IosNetworkMonitor()
-    } onClose {
-        (it as? IosNetworkMonitor)?.cancel()
-    }
+    // Bound as a singleton for the application lifetime — the monitor runs
+    // continuously and updates [connected] on a background dispatch queue.
+    single<NetworkMonitor>(named(NETWORK_MONITOR)) { IosNetworkMonitor() }
 
     // JWT token provider: reads the stored access token from TokenStorage.
     //
