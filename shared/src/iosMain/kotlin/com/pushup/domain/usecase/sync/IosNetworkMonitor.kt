@@ -50,8 +50,12 @@ class IosNetworkMonitor : NetworkMonitor {
      *
      * Defaults to `true` (optimistic) so that the first sync attempt is not
      * skipped before the monitor delivers its initial path update.
+     *
+     * Note: `@Volatile` is JVM-only and not available on Kotlin/Native.
+     * Thread-safety here is provided by the NWPathMonitor dispatch queue:
+     * all writes happen on the same serial background queue, and [isConnected]
+     * reads are a single Boolean load which is atomic on all Apple platforms.
      */
-    @Volatile
     private var connected: Boolean = true
 
     init {
@@ -73,15 +77,10 @@ class IosNetworkMonitor : NetworkMonitor {
      * After calling [cancel], [isConnected] will continue to return the last
      * cached value but will no longer be updated. This method is idempotent.
      *
-     * Call this when the monitor is no longer needed (e.g. in a Koin
-     * `onClose` block):
-     * ```kotlin
-     * single<NetworkMonitor>(named(NETWORK_MONITOR)) {
-     *     IosNetworkMonitor()
-     * } onClose {
-     *     (it as? IosNetworkMonitor)?.cancel()
-     * }
-     * ```
+     * The monitor is a Koin singleton and runs for the application lifetime,
+     * so [cancel] typically does not need to be called in production. It is
+     * provided for completeness and for use in tests that create the monitor
+     * directly.
      */
     fun cancel() {
         nw_path_monitor_cancel(monitor)
