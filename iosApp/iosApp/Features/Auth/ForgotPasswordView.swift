@@ -31,14 +31,14 @@ struct ForgotPasswordView: View {
         }
         .background(AppColors.backgroundPrimary.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("Passwort zuruecksetzen")
+        .navigationTitle("Reset Password")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             // Reset confirmation state when leaving the screen
             viewModel.showPasswordResetConfirmation = false
             viewModel.clearMessages()
         }
-        .alert("Fehler", isPresented: .init(
+        .alert("Error", isPresented: .init(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.clearMessages() } }
         )) {
@@ -57,12 +57,12 @@ struct ForgotPasswordView: View {
 
             // Description
             VStack(spacing: AppSpacing.sm) {
-                Text("Passwort vergessen?")
+                Text("Forgot your password?")
                     .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("Gib deine E-Mail-Adresse ein. Wir senden dir einen Link zum Zuruecksetzen deines Passworts.")
+                Text("Enter your email address and we will send you a link to reset your password.")
                     .font(AppTypography.body)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -73,8 +73,8 @@ struct ForgotPasswordView: View {
             Card(hasShadow: true) {
                 VStack(spacing: AppSpacing.md) {
                     AuthTextField(
-                        title: "E-Mail-Adresse",
-                        placeholder: "name@beispiel.de",
+                        title: "Email Address",
+                        placeholder: "name@example.com",
                         text: $viewModel.forgotPasswordEmail,
                         keyboardType: .emailAddress,
                         textContentType: .emailAddress,
@@ -89,7 +89,7 @@ struct ForgotPasswordView: View {
                     }
 
                     PrimaryButton(
-                        "Link senden",
+                        "Send Link",
                         icon: .paperplane,
                         isLoading: viewModel.isLoading
                     ) {
@@ -101,7 +101,7 @@ struct ForgotPasswordView: View {
             }
 
             // Back to login
-            Button("Zurueck zur Anmeldung") {
+            Button("Back to Sign In") {
                 dismiss()
             }
             .font(AppTypography.buttonSecondary)
@@ -118,7 +118,7 @@ struct ForgotPasswordView: View {
 
             // Success message
             VStack(spacing: AppSpacing.sm) {
-                Text("E-Mail gesendet!")
+                Text("Email sent!")
                     .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
                     .multilineTextAlignment(.center)
@@ -157,11 +157,11 @@ struct ForgotPasswordView: View {
                         .foregroundStyle(AppColors.info)
 
                     VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                        Text("Kein E-Mail erhalten?")
+                        Text("Didn't receive an email?")
                             .font(AppTypography.captionSemibold)
                             .foregroundStyle(AppColors.textPrimary)
 
-                        Text("Pruefe deinen Spam-Ordner oder warte einige Minuten. Der Link ist 24 Stunden gueltig.")
+                        Text("Check your spam folder or wait a few minutes. The link is valid for 24 hours.")
                             .font(AppTypography.caption1)
                             .foregroundStyle(AppColors.textSecondary)
                             .lineSpacing(3)
@@ -172,11 +172,11 @@ struct ForgotPasswordView: View {
 
             // Actions
             VStack(spacing: AppSpacing.sm) {
-                PrimaryButton("Zurueck zur Anmeldung") {
+                PrimaryButton("Back to Sign In") {
                     dismiss()
                 }
 
-                SecondaryButton("Erneut senden") {
+                SecondaryButton("Resend") {
                     viewModel.showPasswordResetConfirmation = false
                     viewModel.clearMessages()
                 }
@@ -222,9 +222,9 @@ struct ForgotPasswordView: View {
 
 #Preview("Forgot Password - Confirmation") {
     let vm = AuthViewModel()
-    vm.forgotPasswordEmail = "max@beispiel.de"
+    vm.forgotPasswordEmail = "max@example.com"
     vm.showPasswordResetConfirmation = true
-    vm.successMessage = "Wir haben dir eine E-Mail mit einem Link zum Zuruecksetzen deines Passworts gesendet."
+    vm.successMessage = "We have sent you an email with a link to reset your password."
     return NavigationStack {
         ForgotPasswordView(viewModel: vm)
     }

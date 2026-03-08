@@ -23,7 +23,7 @@ import SwiftUI
 /// - `.idle`: Shows a "Start" button over the camera preview.
 /// - `.active`: Shows the live counter, form score, timer, and controls.
 /// - `.confirmingStop`: Shows a confirmation alert over the active overlay.
-/// - `.finished`: Shows a summary card with the session results.
+/// - `.finished`: Shows the full `WorkoutSummaryView` completion screen (Task 3.7).
 ///
 /// **Acceptance criteria covered**
 /// - Camera preview full-screen (`ignoresSafeArea`)
@@ -87,15 +87,15 @@ struct WorkoutView: View {
             }
         }
         // Stop-confirmation alert
-        .alert("Workout beenden?", isPresented: isConfirmingStop) {
-            Button("Beenden", role: .destructive) {
+        .alert("End Workout?", isPresented: isConfirmingStop) {
+            Button("End", role: .destructive) {
                 viewModel.confirmStop()
             }
-            Button("Weiter", role: .cancel) {
+            Button("Continue", role: .cancel) {
                 viewModel.cancelStop()
             }
         } message: {
-            Text("Dein Fortschritt wird gespeichert.")
+            Text("Your progress will be saved.")
         }
     }
 
@@ -129,11 +129,11 @@ struct WorkoutView: View {
                         .foregroundStyle(.white)
                         .symbolRenderingMode(.hierarchical)
 
-                    Text("Workout starten")
+                    Text("Start Workout")
                         .font(AppTypography.roundedTitle)
                         .foregroundStyle(.white)
 
-                    Text("Positioniere dich seitlich zur Kamera")
+                    Text("Position yourself sideways to the camera")
                         .font(AppTypography.subheadline)
                         .foregroundStyle(.white.opacity(0.75))
                         .multilineTextAlignment(.center)
@@ -150,6 +150,7 @@ struct WorkoutView: View {
                             .font(.system(size: AppSpacing.iconSizeStandard, weight: .bold))
                         Text("Start")
                             .font(AppTypography.buttonPrimary)
+
                     }
                     .foregroundStyle(.black)
                     .frame(maxWidth: .infinity)
@@ -207,81 +208,26 @@ struct WorkoutView: View {
         }
     }
 
-    // MARK: - Finished Overlay
+    // MARK: - Finished Overlay (Task 3.7)
 
+    /// Full-screen workout completion screen.
+    ///
+    /// Replaces the previous inline summary card with the rich
+    /// `WorkoutSummaryView` that includes animated counters, confetti,
+    /// share functionality, and a "Zurueck zum Dashboard" button.
     private var finishedOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.75)
-                .ignoresSafeArea()
-
-            VStack(spacing: AppSpacing.lg) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(AppColors.success)
-
-                Text("Workout beendet!")
-                    .font(AppTypography.roundedTitle)
-                    .foregroundStyle(.white)
-
-                summaryCard
-
-                Button {
-                    viewModel.resetForNewWorkout()
-                } label: {
-                    HStack(spacing: AppSpacing.xs) {
-                        Image(icon: .arrowCounterclockwise)
-                            .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                        Text("Neues Workout")
-                            .font(AppTypography.buttonPrimary)
-                    }
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: AppSpacing.buttonHeightPrimary)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                }
-                .buttonStyle(ScaleButtonStyle())
-                .padding(.horizontal, AppSpacing.xl)
+        WorkoutSummaryView(
+            pushUpCount: viewModel.pushUpCount,
+            durationSeconds: Int(viewModel.sessionDuration),
+            earnedMinutes: viewModel.earnedMinutes,
+            qualityScore: viewModel.formScore,
+            comparisonPercent: viewModel.comparisonPercent,
+            isNewRecord: viewModel.isNewRecord,
+            onDashboard: {
+                viewModel.resetForNewWorkout()
             }
-            .padding(AppSpacing.xl)
-        }
-    }
-
-    // MARK: - Summary Card
-
-    private var summaryCard: some View {
-        HStack(spacing: 0) {
-            SummaryStatCell(
-                value: "\(viewModel.pushUpCount)",
-                label: "Push-Ups"
-            )
-
-            summaryDivider
-
-            SummaryStatCell(
-                value: WorkoutDurationFormatter.format(viewModel.sessionDuration),
-                label: "Zeit"
-            )
-
-            if let score = viewModel.formScore {
-                summaryDivider
-
-                SummaryStatCell(
-                    value: "\(Int(score * 100))%",
-                    label: "Form",
-                    valueColor: AppColors.formScoreColor(score)
-                )
-            }
-        }
-        .padding(AppSpacing.md)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .padding(.horizontal, AppSpacing.xl)
-    }
-
-    private var summaryDivider: some View {
-        Divider()
-            .frame(height: 40)
-            .background(.white.opacity(0.2))
+        )
+        .ignoresSafeArea()
     }
 
     // MARK: - Helpers
@@ -293,30 +239,6 @@ struct WorkoutView: View {
         )
     }
 
-}
-
-// MARK: - SummaryStatCell
-
-/// A single stat cell used in the workout summary card.
-private struct SummaryStatCell: View {
-
-    let value: String
-    let label: String
-    var valueColor: Color = .white
-
-    var body: some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Text(value)
-                .font(AppTypography.displayMedium)
-                .foregroundStyle(valueColor)
-
-            Text(label)
-                .font(AppTypography.captionSemibold)
-                .foregroundStyle(.white.opacity(0.65))
-                .tracking(1)
-        }
-        .frame(maxWidth: .infinity)
-    }
 }
 
 // MARK: - WorkoutCameraPreview

@@ -29,7 +29,7 @@ struct DailyStatsCard: View {
 
             // Section header
             HStack {
-                Label("Heute", icon: .calendarBadgeCheckmark)
+                Label("Today", icon: .calendarBadgeCheckmark)
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textPrimary)
 
@@ -62,7 +62,7 @@ struct DailyStatsCard: View {
             StatCard(
                 title: "Push-Ups",
                 value: "\(stats.pushUps)",
-                subtitle: "Heute",
+                subtitle: "Today",
                 icon: .figureStrengthTraining,
                 tint: AppColors.primary
             )
@@ -70,23 +70,23 @@ struct DailyStatsCard: View {
             StatCard(
                 title: "Sessions",
                 value: "\(stats.sessions)",
-                subtitle: "Einheiten",
+                subtitle: "Units",
                 icon: .timer,
                 tint: AppColors.secondary
             )
 
             StatCard(
-                title: "Verdient",
-                value: "\(stats.earnedMinutes) Min",
-                subtitle: "Zeitguthaben",
+                title: "Earned",
+                value: "\(stats.earnedMinutes) min",
+                subtitle: "Time Credit",
                 icon: .boltFill,
                 tint: AppColors.success
             )
 
             StatCard(
-                title: "Qualitaet",
+                title: "Quality",
                 value: String(format: "%.0f%%", stats.averageQuality * 100),
-                subtitle: "Durchschnitt",
+                subtitle: "Average",
                 icon: .starFill,
                 tint: AppColors.formScoreColor(stats.averageQuality)
             )
@@ -110,11 +110,11 @@ struct DailyStatsCard: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text("Noch kein Workout heute")
+                Text("No workout yet today")
                     .font(AppTypography.bodySemibold)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Starte ein Workout, um Zeitguthaben zu verdienen.")
+                Text("Start a workout to earn time credit.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -130,8 +130,8 @@ struct DailyStatsCard: View {
     /// created once per process rather than on every body evaluation.
     private static let todayDateString: String = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "d. MMM"
-        formatter.locale = Locale(identifier: "de_DE")
+        formatter.dateFormat = "MMM d"
+        formatter.locale = Locale(identifier: "en_US")
         return formatter.string(from: Date())
     }()
 }

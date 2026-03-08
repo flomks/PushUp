@@ -28,7 +28,7 @@ struct WeeklyChart: View {
 
             // Section header
             HStack {
-                Label("Diese Woche", icon: .chartBar)
+                Label("This Week", icon: .chartBar)
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textPrimary)
 

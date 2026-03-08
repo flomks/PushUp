@@ -21,10 +21,10 @@ private enum CreditLevel {
 
     var label: String {
         switch self {
-        case .full:   return "Gut gefuellt"
-        case .medium: return "Mittel"
-        case .low:    return "Niedrig"
-        case .empty:  return "Leer"
+        case .full:   return "Well stocked"
+        case .medium: return "Medium"
+        case .low:    return "Low"
+        case .empty:  return "Empty"
         }
     }
 
@@ -81,11 +81,11 @@ struct DashboardTimeCreditCard: View {
     private var headerRow: some View {
         HStack {
             VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text("Zeitguthaben")
+                Text("Time Credit")
                     .font(AppTypography.title3)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Verfuegbare Bildschirmzeit")
+                Text("Available Screen Time")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -139,7 +139,7 @@ struct DashboardTimeCreditCard: View {
                         .contentTransition(.numericText())
                         .animation(.easeInOut(duration: 0.4), value: availableSeconds)
 
-                    Text("verfuegbar")
+                    Text("available")
                         .font(AppTypography.caption1)
                         .foregroundStyle(AppColors.textSecondary)
                 }
@@ -155,14 +155,14 @@ struct DashboardTimeCreditCard: View {
                 .foregroundStyle(AppColors.success)
                 .font(.system(size: AppSpacing.iconSizeSmall))
 
-            Text("Gesamt verdient: \(formattedTotalEarned)")
+            Text("Total earned: \(formattedTotalEarned)")
                 .font(AppTypography.caption1)
                 .foregroundStyle(AppColors.textSecondary)
 
             Spacer()
 
             if totalEarnedSeconds > 0 {
-                Text(String(format: "%.0f%%", progressFraction * 100) + " verbleibend")
+                Text(String(format: "%.0f%%", progressFraction * 100) + " remaining")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }

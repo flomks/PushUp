@@ -45,7 +45,7 @@ struct WorkoutControls: View {
                 }
             }
             .buttonStyle(ScaleButtonStyle())
-            .accessibilityLabel("Workout stoppen")
+            .accessibilityLabel("Stop workout")
 
             Spacer()
 
@@ -62,7 +62,7 @@ struct WorkoutControls: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(ScaleButtonStyle())
-            .accessibilityLabel(showPoseOverlay ? "Pose-Overlay ausblenden" : "Pose-Overlay einblenden")
+            .accessibilityLabel(showPoseOverlay ? "Hide pose overlay" : "Show pose overlay")
 
             Spacer()
 
@@ -75,7 +75,7 @@ struct WorkoutControls: View {
                     .background(.ultraThinMaterial, in: Circle())
             }
             .buttonStyle(ScaleButtonStyle())
-            .accessibilityLabel("Kamera wechseln")
+            .accessibilityLabel("Switch camera")
         }
         .padding(.horizontal, AppSpacing.xl)
         .padding(.vertical, AppSpacing.md)
@@ -163,7 +163,7 @@ struct SoundToggleButton: View {
                 .background(.ultraThinMaterial, in: Circle())
         }
         .buttonStyle(ScaleButtonStyle())
-        .accessibilityLabel(isEnabled ? "Sound deaktivieren" : "Sound aktivieren")
+        .accessibilityLabel(isEnabled ? "Disable sound" : "Enable sound")
     }
 }
 

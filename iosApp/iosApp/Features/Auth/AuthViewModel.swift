@@ -16,21 +16,21 @@ enum AuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidEmail:
-            return "Bitte gib eine gueltige E-Mail-Adresse ein."
+            return "Please enter a valid email address."
         case .passwordTooShort:
-            return "Das Passwort muss mindestens 8 Zeichen lang sein."
+            return "Password must be at least 8 characters long."
         case .passwordsDoNotMatch:
-            return "Die Passwoerter stimmen nicht ueberein."
+            return "Passwords do not match."
         case .displayNameEmpty:
-            return "Bitte gib einen Anzeigenamen ein."
+            return "Please enter a display name."
         case .networkError(let msg):
-            return "Netzwerkfehler: \(msg)"
+            return "Network error: \(msg)"
         case .invalidCredentials:
-            return "E-Mail oder Passwort ist falsch."
+            return "Email or password is incorrect."
         case .emailAlreadyInUse:
-            return "Diese E-Mail-Adresse wird bereits verwendet."
+            return "This email address is already in use."
         case .unknown(let msg):
-            return "Ein Fehler ist aufgetreten: \(msg)"
+            return "An error occurred: \(msg)"
         }
     }
 }
@@ -115,45 +115,45 @@ final class AuthViewModel: ObservableObject {
 
     var loginEmailError: String? {
         guard !loginEmail.isEmpty else { return nil }
-        return isValidEmail(loginEmail) ? nil : "Ungueltige E-Mail-Adresse"
+        return isValidEmail(loginEmail) ? nil : "Invalid email address"
     }
 
     var loginPasswordError: String? {
         guard !loginPassword.isEmpty else { return nil }
         return loginPassword.count >= AuthValidation.minimumPasswordLength
             ? nil
-            : "Mindestens \(AuthValidation.minimumPasswordLength) Zeichen"
+            : "At least \(AuthValidation.minimumPasswordLength) characters"
     }
 
     var registerEmailError: String? {
         guard !registerEmail.isEmpty else { return nil }
-        return isValidEmail(registerEmail) ? nil : "Ungueltige E-Mail-Adresse"
+        return isValidEmail(registerEmail) ? nil : "Invalid email address"
     }
 
     var registerPasswordError: String? {
         guard !registerPassword.isEmpty else { return nil }
         return registerPassword.count >= AuthValidation.minimumPasswordLength
             ? nil
-            : "Mindestens \(AuthValidation.minimumPasswordLength) Zeichen"
+            : "At least \(AuthValidation.minimumPasswordLength) characters"
     }
 
     var registerConfirmPasswordError: String? {
         guard !registerConfirmPassword.isEmpty else { return nil }
         return registerPassword == registerConfirmPassword
             ? nil
-            : "Passwoerter stimmen nicht ueberein"
+            : "Passwords do not match"
     }
 
     var registerDisplayNameError: String? {
         guard !registerDisplayName.isEmpty else { return nil }
         return registerDisplayName.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "Anzeigename darf nicht leer sein"
+            ? "Display name cannot be empty"
             : nil
     }
 
     var forgotPasswordEmailError: String? {
         guard !forgotPasswordEmail.isEmpty else { return nil }
-        return isValidEmail(forgotPasswordEmail) ? nil : "Ungueltige E-Mail-Adresse"
+        return isValidEmail(forgotPasswordEmail) ? nil : "Invalid email address"
     }
 
     // MARK: - Actions
@@ -214,7 +214,7 @@ final class AuthViewModel: ObservableObject {
             try await Task.sleep(nanoseconds: 1_200_000_000)
             isLoading = false
             showPasswordResetConfirmation = true
-            successMessage = "Wir haben dir eine E-Mail mit einem Link zum Zuruecksetzen deines Passworts gesendet."
+            successMessage = "We have sent you an email with a link to reset your password."
         } catch let error as AuthError {
             isLoading = false
             errorMessage = error.errorDescription

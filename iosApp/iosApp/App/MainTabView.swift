@@ -47,11 +47,11 @@ enum Tab: Int, CaseIterable, Identifiable {
     /// until the real feature view replaces it.
     var placeholderDescription: String {
         switch self {
-        case .dashboard: return "Dein Zeitguthaben und die Tages-Statistiken erscheinen hier."
-        case .workout:   return "Starte hier ein Workout und zaehle deine Push-Ups in Echtzeit."
-        case .stats:     return "Taeglich, woechentlich und monatliche Statistiken erscheinen hier."
-        case .profile:   return "Dein Profil, Avatar und Account-Informationen erscheinen hier."
-        case .settings:  return "Push-Up-Rate, Benachrichtigungen und weitere Einstellungen erscheinen hier."
+        case .dashboard: return "Your time credit and daily statistics will appear here."
+        case .workout:   return "Start a workout here and count your push-ups in real time."
+        case .stats:     return "Daily, weekly, and monthly statistics will appear here."
+        case .profile:   return "Your profile, avatar, and account information will appear here."
+        case .settings:  return "Push-up rate, notifications, and other settings will appear here."
         }
     }
 

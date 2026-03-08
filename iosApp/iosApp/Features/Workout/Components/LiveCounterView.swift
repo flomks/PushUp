@@ -46,7 +46,7 @@ struct LiveCounterView: View {
                 .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(count) Push-Ups")
+        .accessibilityLabel("\(count) push-ups")
     }
 }
 

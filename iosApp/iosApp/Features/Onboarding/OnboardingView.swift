@@ -38,20 +38,20 @@ struct OnboardingView: View {
         OnboardingSlide(
             icon: .figureStrengthTraining,
             imageColor: AppColors.primary,
-            title: "Willkommen bei PushUp",
-            description: "Verdiene Bildschirmzeit durch echte Bewegung. Mach Push-Ups und erhalte Zeitguthaben fuer deine Lieblingsapps."
+            title: "Welcome to PushUp",
+            description: "Earn screen time through real movement. Do push-ups and receive time credit for your favourite apps."
         ),
         OnboardingSlide(
             icon: .cameraViewfinder,
             imageColor: AppColors.secondary,
-            title: "Kamera erkennt dich",
-            description: "Halte dein iPhone so, dass die Kamera deinen ganzen Koerper sieht. KI erkennt automatisch jeden Push-Up und bewertet deine Form."
+            title: "Camera detects you",
+            description: "Hold your iPhone so the camera can see your whole body. AI automatically detects every push-up and rates your form."
         ),
         OnboardingSlide(
             icon: .clockBadgeCheckmark,
             imageColor: AppColors.success,
-            title: "Zeitguthaben verdienen",
-            description: "Jeder Push-Up bringt dir Sekunden Bildschirmzeit. Je besser deine Form, desto mehr Zeit verdienst du. Fang jetzt an!"
+            title: "Earn time credit",
+            description: "Every push-up earns you seconds of screen time. The better your form, the more time you earn. Start now!"
         )
     ]
 
@@ -109,7 +109,7 @@ struct OnboardingView: View {
         HStack {
             Spacer()
             if currentPage < slides.count - 1 {
-                Button("Ueberspringen") {
+                Button("Skip") {
                     completeOnboarding()
                 }
                 .font(AppTypography.buttonSecondary)
@@ -175,7 +175,7 @@ struct OnboardingView: View {
 
             // Action button
             if currentPage < slides.count - 1 {
-                PrimaryButton("Weiter", icon: .arrowRight) {
+                PrimaryButton("Next", icon: .arrowRight) {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         currentPage += 1
                     }
@@ -186,7 +186,7 @@ struct OnboardingView: View {
                     }
                 }
             } else {
-                PrimaryButton("Loslegen", icon: .checkmark) {
+                PrimaryButton("Get Started", icon: .checkmark) {
                     completeOnboarding()
                 }
             }
