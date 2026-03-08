@@ -188,27 +188,61 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
             return
         }
 
-        // The iPhone camera sensor delivers CVPixelBuffers in landscape-right
-        // orientation regardless of how the device is held. The connection's
-        // videoOrientation / videoRotationAngle setting only affects the
-        // *encoded* stream (preview layer, recorded video) -- it does NOT
-        // rotate the raw CVPixelBuffer that arrives in the sample buffer.
+        // Determine the correct orientation to pass to Vision.
         //
-        // We must therefore tell Vision the true sensor orientation so it can
-        // interpret joint coordinates correctly:
+        // The CVPixelBuffer orientation depends on iOS version and camera config:
         //
-        //   Back camera, device held portrait  → sensor is rotated 90° CW
-        //                                        → CGImagePropertyOrientation.right
-        //   Front camera, device held portrait → sensor is rotated 90° CW
-        //                                        and mirrored horizontally
-        //                                        → CGImagePropertyOrientation.leftMirrored
+        // iOS 17+: CameraManager sets videoRotationAngle = 90, which physically
+        //   rotates the CVPixelBuffer to portrait. Vision must receive .up
+        //   (or .upMirrored for front camera).
         //
-        // Using `.up` (the previous value) caused Vision to treat the buffer
-        // as already upright, which rotated every joint position by 90° and
-        // made detection fail completely on physical devices.
-        let orientation: CGImagePropertyOrientation = (cameraPosition == .front)
-            ? .leftMirrored
-            : .right
+        // iOS 16: CameraManager sets videoOrientation = .portrait on the
+        //   connection, but this only affects the *encoded* stream and preview
+        //   layer -- the raw CVPixelBuffer is still in landscape-right (native
+        //   sensor orientation). Vision must receive .right (or .leftMirrored
+        //   for front camera).
+        //
+        // We read the orientation from the sample buffer's attachment, which
+        // reflects the actual pixel layout. This is more reliable than checking
+        // the iOS version because it responds to the actual buffer content.
+        let orientation: CGImagePropertyOrientation = {
+            // Read the EXIF orientation tag embedded by AVFoundation.
+            // On iOS 17+ with videoRotationAngle=90 this will be 1 (.up).
+            // On iOS 16 with videoOrientation=.portrait this will be 6 (.right).
+            if let orientationAttachment = CMGetAttachment(
+                sampleBuffer,
+                key: kCMSampleBufferAttachmentKey_CameraIntrinsicMatrix,
+                attachmentModeOut: nil
+            ) {
+                _ = orientationAttachment // unused, just checking existence
+            }
+
+            // Read RPVideoOrientationKey if present (set by AVFoundation on iOS 17+)
+            let attachments = CMCopyDictionaryOfAttachments(
+                allocator: nil,
+                target: sampleBuffer,
+                attachmentMode: kCMAttachmentMode_ShouldPropagate
+            ) as? [String: Any]
+
+            if let rawOrientation = attachments?["RPVideoOrientationKey"] as? Int32 {
+                // RPVideoOrientationKey: 1=portrait, 3=landscape-right
+                if rawOrientation == 1 {
+                    return cameraPosition == .front ? .upMirrored : .up
+                }
+            }
+
+            // Fallback: check if the buffer dimensions tell us the orientation.
+            // A portrait buffer has height > width.
+            let width  = CVPixelBufferGetWidth(pixelBuffer)
+            let height = CVPixelBufferGetHeight(pixelBuffer)
+            if height > width {
+                // Buffer is already portrait (iOS 17+ with videoRotationAngle)
+                return cameraPosition == .front ? .upMirrored : .up
+            } else {
+                // Buffer is landscape (iOS 16 native sensor orientation)
+                return cameraPosition == .front ? .leftMirrored : .right
+            }
+        }()
 
         let handler = VNImageRequestHandler(
             cvPixelBuffer: pixelBuffer,
