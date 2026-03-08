@@ -32,6 +32,10 @@ xcuserdata/
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 
+# Local Xcode configuration overrides (TEAM_ID, signing, etc.)
+# Copy iosApp/Configuration/Config.xcconfig and set your values here.
+iosApp/Configuration/Config.local.xcconfig
+
 # Node
 node_modules/
 
