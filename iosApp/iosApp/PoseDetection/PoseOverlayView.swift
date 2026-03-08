@@ -34,19 +34,26 @@ struct PoseOverlayView: View {
     // MARK: - Styling
 
     /// Radius of each joint dot in points.
-    var jointRadius: CGFloat = 6
+    var jointRadius: CGFloat = 7
 
     /// Width of skeleton connection lines in points.
     var lineWidth: CGFloat = 2.5
 
-    /// Colour used for joints that pass the confidence threshold.
-    var detectedJointColor: Color = .green
+    /// Colour for joints with high confidence (>= 0.5).
+    var highConfidenceColor: Color = .green
 
-    /// Colour used for joints below the confidence threshold.
-    var undetectedJointColor: Color = Color.yellow.opacity(0.4)
+    /// Colour for joints with medium confidence (0.1 – 0.5).
+    var lowConfidenceColor: Color = Color.yellow.opacity(0.75)
 
-    /// Colour used for skeleton connection lines.
+    /// Colour used for skeleton connection lines between detected joints.
     var lineColor: Color = Color.white.opacity(0.85)
+
+    /// Colour for lines where one or both joints have low confidence.
+    var dimLineColor: Color = Color.white.opacity(0.3)
+
+    /// Minimum confidence to draw a joint at all.
+    /// Set to 0.0 to draw everything Vision returns (like Python/MediaPipe).
+    var minimumDrawConfidence: Float = 0.05
 
     // MARK: - Body
 
@@ -70,12 +77,16 @@ struct PoseOverlayView: View {
         Canvas { context, _ in
             for (nameA, nameB) in BodyPose.skeletonConnections {
                 guard
-                    let jointA = pose[nameA], jointA.isDetected,
-                    let jointB = pose[nameB], jointB.isDetected
+                    let jointA = pose[nameA], jointA.confidence >= minimumDrawConfidence,
+                    let jointB = pose[nameB], jointB.confidence >= minimumDrawConfidence
                 else { continue }
 
                 let pointA = convert(jointA.position, to: size)
                 let pointB = convert(jointB.position, to: size)
+
+                // Dim the line if either joint has low confidence.
+                let bothDetected = jointA.isDetected && jointB.isDetected
+                let color = bothDetected ? lineColor : dimLineColor
 
                 var path = Path()
                 path.move(to: pointA)
@@ -83,7 +94,7 @@ struct PoseOverlayView: View {
 
                 context.stroke(
                     path,
-                    with: .color(lineColor),
+                    with: .color(color),
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
             }
@@ -96,22 +107,29 @@ struct PoseOverlayView: View {
     private func jointDots(pose: BodyPose, in size: CGSize) -> some View {
         Canvas { context, _ in
             for joint in pose.joints.values {
+                // Skip placeholder joints that Vision never returned
+                // (confidence == 0 and position == .zero).
+                guard joint.confidence >= minimumDrawConfidence else { continue }
+
                 let center = convert(joint.position, to: size)
+                let r = joint.isDetected ? jointRadius : jointRadius * 0.7
                 let rect = CGRect(
-                    x: center.x - jointRadius,
-                    y: center.y - jointRadius,
-                    width: jointRadius * 2,
-                    height: jointRadius * 2
+                    x: center.x - r,
+                    y: center.y - r,
+                    width: r * 2,
+                    height: r * 2
                 )
                 let circle = Path(ellipseIn: rect)
-                let color = joint.isDetected ? detectedJointColor : undetectedJointColor
+
+                // Green = high confidence, yellow = low confidence
+                let color = joint.isDetected ? highConfidenceColor : lowConfidenceColor
                 context.fill(circle, with: .color(color))
 
-                // White border for contrast against any background.
+                // White border for contrast.
                 context.stroke(
                     circle,
-                    with: .color(.white.opacity(0.6)),
-                    lineWidth: 1
+                    with: .color(.white.opacity(0.7)),
+                    lineWidth: 1.5
                 )
             }
         }

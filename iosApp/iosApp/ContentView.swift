@@ -367,13 +367,25 @@ final class PushUpDemoViewModel: ObservableObject {
         let posState  = pushUpDetector.positionState
         let smoothed  = pushUpDetector.smoothedPose
 
-        // Compute detection status
+        // Compute detection status from actual detection results.
+        // pose is non-nil even when poorAngle warning is active — EdgeCaseHandler
+        // still returns a selectedPose when a person is detected.
+        let hasPose  = pose != nil
+        let hasAngle = angle != nil
+        let isActive = phase == .down || phase == .cooldown
+
+        #if DEBUG
+        if framesProcessed % 30 == 0 {
+            print("[ViewModel] frame=\(framesProcessed) pose=\(hasPose) angle=\(String(describing: angle)) warnings=\(warnings.map(\.description))")
+        }
+        #endif
+
         let status: DetectionStatus
-        if pose == nil {
+        if !hasPose {
             status = .noPerson
-        } else if angle == nil {
+        } else if !hasAngle {
             status = .personNoArms
-        } else if phase == .down || phase == .cooldown {
+        } else if isActive {
             status = .active
         } else {
             status = .tracking
