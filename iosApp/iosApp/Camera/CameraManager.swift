@@ -81,6 +81,10 @@ final class CameraManager: NSObject, ObservableObject {
     @Published private(set) var state: CameraState = .idle
     @Published private(set) var currentPosition: CameraPosition = .back
 
+    /// Current zoom factor applied to the active capture device.
+    /// Always starts at 1.0 (fully zoomed out) and resets on camera switch.
+    @Published private(set) var currentZoomFactor: CGFloat = 1.0
+
     /// The preview layer backed by the capture session.
     /// Created once in `init`; never nil, never replaced.
     let previewLayer: AVCaptureVideoPreviewLayer
@@ -221,6 +225,7 @@ final class CameraManager: NSObject, ObservableObject {
                         self.updatePosition(position)
                         DispatchQueue.main.async {
                             self.currentPosition = position
+                            self.currentZoomFactor = 1.0
                             self.state = .running
                         }
                     } catch let error as CameraError {
@@ -274,13 +279,49 @@ final class CameraManager: NSObject, ObservableObject {
                     self.session.startRunning()
                 }
                 self.updatePosition(newPosition)
-                DispatchQueue.main.async { self.currentPosition = newPosition }
+                DispatchQueue.main.async {
+                    self.currentPosition = newPosition
+                    self.currentZoomFactor = 1.0
+                }
             } catch let error as CameraError {
                 DispatchQueue.main.async { self.state = .error(error) }
             } catch {
                 DispatchQueue.main.async { self.state = .error(.inputConfigurationFailed) }
             }
         }
+    }
+
+    // MARK: - Zoom
+
+    /// Sets the zoom factor on the active capture device.
+    ///
+    /// The value is clamped to `[1.0, device.activeFormat.videoMaxZoomFactor]`
+    /// so callers do not need to guard against out-of-range values.
+    /// This method is safe to call from any queue.
+    func setZoomFactor(_ factor: CGFloat) {
+        sessionQueue.async { [weak self] in
+            guard let self,
+                  let input = self.currentInput else { return }
+            let device = input.device
+            let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 10.0)
+            let clamped = max(1.0, min(factor, maxZoom))
+            do {
+                try device.lockForConfiguration()
+                device.videoZoomFactor = clamped
+                device.unlockForConfiguration()
+            } catch {
+                #if DEBUG
+                print("[CameraManager] Zoom configuration failed: \(error)")
+                #endif
+                return
+            }
+            DispatchQueue.main.async { self.currentZoomFactor = clamped }
+        }
+    }
+
+    /// Resets the zoom to 1.0x (fully zoomed out) on the active device.
+    func resetZoom() {
+        setZoomFactor(1.0)
     }
 
     // MARK: - Position Helpers (thread-safe)

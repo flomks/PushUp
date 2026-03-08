@@ -8,6 +8,8 @@ import UIKit
 ///
 /// The view attaches the manager's `previewLayer` to a backing `UIView` and
 /// keeps it sized to fill the available space on every layout pass.
+/// A `UIPinchGestureRecognizer` is installed so the user can pinch to zoom
+/// on both the front and back camera. Zoom always starts at 1.0x (fully out).
 ///
 /// **Usage**
 /// ```swift
@@ -24,16 +26,65 @@ struct CameraPreviewView: UIViewRepresentable {
 
     let cameraManager: CameraManager
 
+    func makeCoordinator() -> PinchCoordinator {
+        PinchCoordinator(cameraManager: cameraManager)
+    }
+
     func makeUIView(context: Context) -> PreviewUIView {
         let view = PreviewUIView()
         view.backgroundColor = .black
         view.setPreviewLayer(cameraManager.previewLayer)
+
+        // Install pinch gesture for zoom.
+        let pinch = UIPinchGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(PinchCoordinator.handlePinch(_:))
+        )
+        view.addGestureRecognizer(pinch)
+        view.isUserInteractionEnabled = true
+
         return view
     }
 
     func updateUIView(_ uiView: PreviewUIView, context: Context) {
         // The preview layer is permanently attached; frame updates happen in
         // `layoutSubviews`. Nothing to do here.
+    }
+}
+
+// MARK: - PinchCoordinator
+
+/// Handles `UIPinchGestureRecognizer` events and translates them into
+/// `CameraManager.setZoomFactor(_:)` calls.
+///
+/// The coordinator tracks the zoom factor at the start of each pinch gesture
+/// so that successive pinches accumulate correctly (i.e. starting a new pinch
+/// does not snap back to 1.0x).
+final class PinchCoordinator: NSObject {
+
+    private weak var cameraManager: CameraManager?
+    /// Zoom factor captured when the current pinch gesture began.
+    private var zoomAtGestureStart: CGFloat = 1.0
+
+    init(cameraManager: CameraManager) {
+        self.cameraManager = cameraManager
+    }
+
+    @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+        guard let manager = cameraManager else { return }
+
+        switch gesture.state {
+        case .began:
+            // Snapshot the current zoom so we can multiply the pinch scale on top.
+            zoomAtGestureStart = manager.currentZoomFactor
+
+        case .changed:
+            let newFactor = zoomAtGestureStart * gesture.scale
+            manager.setZoomFactor(newFactor)
+
+        default:
+            break
+        }
     }
 }
 
