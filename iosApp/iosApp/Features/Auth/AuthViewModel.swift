@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 // MARK: - AuthError
@@ -39,10 +38,21 @@ enum AuthError: LocalizedError {
 // MARK: - AuthState
 
 /// Represents the current authentication state of the app.
-enum AuthState {
+enum AuthState: Equatable {
     case unauthenticated
     case loading
     case authenticated
+}
+
+// MARK: - Validation Constants
+
+private enum AuthValidation {
+    /// Minimum password length enforced on login and registration.
+    static let minimumPasswordLength = 8
+
+    /// RFC 5322-inspired email pattern. Intentionally simple -- the real
+    /// validation happens server-side; this only prevents obviously wrong input.
+    static let emailPattern = #"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
 }
 
 // MARK: - AuthViewModel
@@ -80,17 +90,18 @@ final class AuthViewModel: ObservableObject {
     @Published var successMessage: String? = nil
     @Published var showPasswordResetConfirmation: Bool = false
 
-    // MARK: - Validation
+    // MARK: - Form Validation
 
     /// Returns `true` when the login form has valid, non-empty inputs.
     var isLoginFormValid: Bool {
-        isValidEmail(loginEmail) && loginPassword.count >= 8
+        isValidEmail(loginEmail)
+            && loginPassword.count >= AuthValidation.minimumPasswordLength
     }
 
     /// Returns `true` when the registration form passes all validation rules.
     var isRegisterFormValid: Bool {
         isValidEmail(registerEmail)
-            && registerPassword.count >= 8
+            && registerPassword.count >= AuthValidation.minimumPasswordLength
             && registerPassword == registerConfirmPassword
             && !registerDisplayName.trimmingCharacters(in: .whitespaces).isEmpty
     }
@@ -100,7 +111,7 @@ final class AuthViewModel: ObservableObject {
         isValidEmail(forgotPasswordEmail)
     }
 
-    // MARK: - Inline Validation Helpers (for real-time feedback)
+    // MARK: - Inline Validation (real-time field feedback)
 
     var loginEmailError: String? {
         guard !loginEmail.isEmpty else { return nil }
@@ -109,7 +120,9 @@ final class AuthViewModel: ObservableObject {
 
     var loginPasswordError: String? {
         guard !loginPassword.isEmpty else { return nil }
-        return loginPassword.count >= 8 ? nil : "Mindestens 8 Zeichen"
+        return loginPassword.count >= AuthValidation.minimumPasswordLength
+            ? nil
+            : "Mindestens \(AuthValidation.minimumPasswordLength) Zeichen"
     }
 
     var registerEmailError: String? {
@@ -119,12 +132,16 @@ final class AuthViewModel: ObservableObject {
 
     var registerPasswordError: String? {
         guard !registerPassword.isEmpty else { return nil }
-        return registerPassword.count >= 8 ? nil : "Mindestens 8 Zeichen"
+        return registerPassword.count >= AuthValidation.minimumPasswordLength
+            ? nil
+            : "Mindestens \(AuthValidation.minimumPasswordLength) Zeichen"
     }
 
     var registerConfirmPasswordError: String? {
         guard !registerConfirmPassword.isEmpty else { return nil }
-        return registerPassword == registerConfirmPassword ? nil : "Passwoerter stimmen nicht ueberein"
+        return registerPassword == registerConfirmPassword
+            ? nil
+            : "Passwoerter stimmen nicht ueberein"
     }
 
     var registerDisplayNameError: String? {
@@ -132,6 +149,11 @@ final class AuthViewModel: ObservableObject {
         return registerDisplayName.trimmingCharacters(in: .whitespaces).isEmpty
             ? "Anzeigename darf nicht leer sein"
             : nil
+    }
+
+    var forgotPasswordEmailError: String? {
+        guard !forgotPasswordEmail.isEmpty else { return nil }
+        return isValidEmail(forgotPasswordEmail) ? nil : "Ungueltige E-Mail-Adresse"
     }
 
     // MARK: - Actions
@@ -145,7 +167,6 @@ final class AuthViewModel: ObservableObject {
             authState = .loading
             // Simulate network call -- replace with real auth service call
             try await Task.sleep(nanoseconds: 1_500_000_000)
-            // Stub: treat any valid-format credentials as success
             isLoading = false
             authState = .authenticated
         } catch let error as AuthError {
@@ -165,15 +186,18 @@ final class AuthViewModel: ObservableObject {
         do {
             try validateRegistration()
             isLoading = true
+            authState = .loading
             // Simulate network call
             try await Task.sleep(nanoseconds: 1_800_000_000)
             isLoading = false
             authState = .authenticated
         } catch let error as AuthError {
             isLoading = false
+            authState = .unauthenticated
             errorMessage = error.errorDescription
         } catch {
             isLoading = false
+            authState = .unauthenticated
             errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
         }
     }
@@ -214,25 +238,33 @@ final class AuthViewModel: ObservableObject {
         successMessage = nil
     }
 
+    /// Validates an email address against the shared pattern.
+    /// Exposed for use by views that need inline validation without
+    /// duplicating the regex.
+    func isValidEmail(_ email: String) -> Bool {
+        email.range(of: AuthValidation.emailPattern, options: .regularExpression) != nil
+    }
+
     // MARK: - Private
 
     private func validateLogin() throws {
         guard isValidEmail(loginEmail) else { throw AuthError.invalidEmail }
-        guard loginPassword.count >= 8 else { throw AuthError.passwordTooShort }
+        guard loginPassword.count >= AuthValidation.minimumPasswordLength else {
+            throw AuthError.passwordTooShort
+        }
     }
 
     private func validateRegistration() throws {
         guard isValidEmail(registerEmail) else { throw AuthError.invalidEmail }
-        guard registerPassword.count >= 8 else { throw AuthError.passwordTooShort }
-        guard registerPassword == registerConfirmPassword else { throw AuthError.passwordsDoNotMatch }
+        guard registerPassword.count >= AuthValidation.minimumPasswordLength else {
+            throw AuthError.passwordTooShort
+        }
+        guard registerPassword == registerConfirmPassword else {
+            throw AuthError.passwordsDoNotMatch
+        }
         guard !registerDisplayName.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw AuthError.displayNameEmpty
         }
-    }
-
-    private func isValidEmail(_ email: String) -> Bool {
-        let pattern = #"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        return email.range(of: pattern, options: .regularExpression) != nil
     }
 
     private func clearAllFields() {

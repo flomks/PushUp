@@ -56,7 +56,7 @@ struct RootView: View {
                     }
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: authViewModel.authState == .authenticated)
+        .animation(.easeInOut(duration: 0.35), value: authViewModel.authState)
         .onAppear {
             if !hasSeenOnboarding {
                 showOnboarding = true

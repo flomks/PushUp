@@ -204,11 +204,10 @@ struct ForgotPasswordView: View {
         }
     }
 
+    /// Delegates to the ViewModel's centralised email validation to avoid
+    /// duplicating the regex pattern.
     private var forgotPasswordEmailError: String? {
-        guard !viewModel.forgotPasswordEmail.isEmpty else { return nil }
-        let pattern = #"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"#
-        let isValid = viewModel.forgotPasswordEmail.range(of: pattern, options: .regularExpression) != nil
-        return isValid ? nil : "Ungueltige E-Mail-Adresse"
+        viewModel.forgotPasswordEmailError
     }
 }
 

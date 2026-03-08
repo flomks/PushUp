@@ -210,7 +210,9 @@ struct OnboardingView: View {
     // MARK: - Actions
 
     private func completeOnboarding() {
-        UserDefaults.standard.set(true, forKey: "hasSeenOnboarding")
+        // Persistence is handled by the parent (RootView) via @AppStorage
+        // when onComplete fires. Do not write UserDefaults here to avoid
+        // dual-write inconsistency.
         onComplete()
     }
 }
