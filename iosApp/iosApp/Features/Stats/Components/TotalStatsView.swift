@@ -178,8 +178,7 @@ struct TotalStatsView: View {
                     value: "\(stats.bestSingleSession)",
                     subtitle: "Push-Ups",
                     icon: .figureStrengthTraining,
-                    tint: AppColors.primary,
-                    trend: .up(percentage: 0)
+                    tint: AppColors.primary
                 )
                 StatCard(
                     title: "Best Day",

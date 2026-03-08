@@ -312,8 +312,17 @@ final class StatsViewModel: ObservableObject {
             36, 48, 0
         ]
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        // Deterministic quality values per pattern index so the calendar
+        // does not re-randomise on every body evaluation.
+        let qualityPattern: [Double] = [
+            0.84, 0, 0.91, 0.78, 0.88, 0, 0,
+            0.76, 0.82, 0, 0.93, 0.80, 0, 0,
+            0.85, 0.73, 0.90, 0, 0.87, 0, 0,
+            0.89, 0, 0.81, 0.77, 0, 0, 0,
+            0.83, 0.86, 0
+        ]
+
+        let now = Date()
 
         return range.compactMap { dayOffset -> DayWorkoutData? in
             guard let date = calendar.date(
@@ -321,7 +330,7 @@ final class StatsViewModel: ObservableObject {
             ) else { return nil }
 
             // Don't show future days
-            if date > Date() { return nil }
+            if date > now { return nil }
 
             let patternIdx = (dayOffset - 1) % pushUpPattern.count
             let pushUps = pushUpPattern[patternIdx]
@@ -329,12 +338,12 @@ final class StatsViewModel: ObservableObject {
             let earned = pushUps / 3
 
             return DayWorkoutData(
-                id: formatter.string(from: date),
+                id: dayIdFormatter.string(from: date),
                 date: date,
                 pushUps: pushUps,
                 sessions: sessions,
                 earnedMinutes: earned,
-                averageQuality: pushUps > 0 ? Double.random(in: 0.72...0.95) : 0
+                averageQuality: qualityPattern[patternIdx]
             )
         }
     }
@@ -404,24 +413,46 @@ extension StatsViewModel {
 
     /// Formats a duration in seconds as "M:SS".
     static func formatDuration(_ seconds: Int) -> String {
-        let m = seconds / 60
-        let s = seconds % 60
+        let clamped = max(0, seconds)
+        let m = clamped / 60
+        let s = clamped % 60
         return String(format: "%d:%02d", m, s)
     }
 
+    // MARK: Cached DateFormatters
+
+    /// Cached formatter for "MMMM yyyy" (e.g. "March 2026").
+    /// `DateFormatter` is expensive to allocate -- reuse a single instance.
+    private static let monthYearFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM yyyy"
+        f.locale = Locale(identifier: "en_US")
+        return f
+    }()
+
+    /// Cached formatter for "MMM d" (e.g. "Mar 8").
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        f.locale = Locale(identifier: "en_US")
+        return f
+    }()
+
+    /// Cached formatter for "yyyy-MM-dd" used as calendar day IDs.
+    static let dayIdFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     /// Returns the display name for a month/year.
     static func monthYearString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter.string(from: date)
+        monthYearFormatter.string(from: date)
     }
 
     /// Returns a short date string like "Mar 8".
     static func shortDateString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter.string(from: date)
+        shortDateFormatter.string(from: date)
     }
 }

@@ -34,7 +34,7 @@ struct DailyCalendarView: View {
     // MARK: - Grid
 
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
-    private static let weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"]
+    private static let weekdayLabels = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
     var body: some View {
         VStack(spacing: AppSpacing.md) {
@@ -135,14 +135,22 @@ struct DailyCalendarView: View {
 
     // MARK: - Skeleton
 
+    /// Deterministic opacity pattern for skeleton cells.
+    /// Using `Double.random` inside `body` causes re-randomisation on every
+    /// SwiftUI evaluation, producing visual flicker.
+    private static let skeletonOpacities: [Double] = [
+        0.6, 0.4, 0.7, 0.5, 0.8, 0.45, 0.65,
+        0.55, 0.75, 0.4, 0.6, 0.5, 0.7, 0.45,
+        0.8, 0.55, 0.65, 0.4, 0.7, 0.5, 0.6,
+        0.75, 0.45, 0.8, 0.55, 0.65, 0.4, 0.7,
+        0.5, 0.6, 0.45, 0.75, 0.8, 0.55, 0.65,
+    ]
+
     @ViewBuilder
     private var calendarSkeleton: some View {
         LazyVGrid(columns: Self.columns, spacing: 6) {
-            ForEach(0..<35, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(AppColors.fill)
-                    .aspectRatio(1, contentMode: .fit)
-                    .opacity(Double.random(in: 0.4...0.8))
+            ForEach(0..<35, id: \.self) { idx in
+                SkeletonDayCell(opacity: Self.skeletonOpacities[idx])
             }
         }
     }
@@ -183,11 +191,12 @@ struct DailyCalendarView: View {
 
     private func buildCells(leadingBlanks: Int) -> [CalendarCell] {
         var cells: [CalendarCell] = []
-        for _ in 0..<leadingBlanks {
-            cells.append(CalendarCell(kind: .blank))
+        cells.reserveCapacity(leadingBlanks + days.count)
+        for idx in 0..<leadingBlanks {
+            cells.append(CalendarCell(id: "blank-\(idx)", kind: .blank))
         }
         for day in days {
-            cells.append(CalendarCell(kind: .day(day)))
+            cells.append(CalendarCell(id: day.id, kind: .day(day)))
         }
         return cells
     }
@@ -196,7 +205,8 @@ struct DailyCalendarView: View {
 // MARK: - CalendarCell
 
 private struct CalendarCell: Identifiable {
-    let id = UUID()
+    /// Stable identifier: "blank-<index>" for blanks, the day's id for real days.
+    let id: String
     enum Kind {
         case blank
         case day(DayWorkoutData)
@@ -267,6 +277,25 @@ private struct CalendarDayCell: View {
 
     private var intensityColor: Color {
         AppColors.success
+    }
+}
+
+// MARK: - SkeletonDayCell
+
+private struct SkeletonDayCell: View {
+    let opacity: Double
+    @State private var isAnimating = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(AppColors.fill)
+            .aspectRatio(1, contentMode: .fit)
+            .opacity(isAnimating ? opacity * 0.6 : opacity)
+            .animation(
+                .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                value: isAnimating
+            )
+            .onAppear { isAnimating = true }
     }
 }
 

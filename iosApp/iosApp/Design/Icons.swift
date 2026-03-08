@@ -67,12 +67,6 @@ enum AppIcon: String {
     case calendarBadgeCheckmark = "calendar.badge.checkmark"
     case arrowUpRight       = "arrow.up.right"
     case arrowDownRight     = "arrow.down.right"
-    case chartLineForeground = "chart.line.uptrend.xyaxis"
-    case trophyFill         = "trophy.fill"
-    case calendar           = "calendar"
-    case docText            = "doc.text"
-    case docTextFill        = "doc.text.fill"
-    case squareAndArrowUpFill = "square.and.arrow.up.fill"
 
     // MARK: - Actions
 

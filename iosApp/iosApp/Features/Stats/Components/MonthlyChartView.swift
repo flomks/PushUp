@@ -192,12 +192,12 @@ struct MonthlyChartView: View {
                         .foregroundStyle(AppColors.textSecondary)
 
                     HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xxs) {
-                        Text(comparison.isImprovement ? "+" : "")
+                        let prefix = comparison.isImprovement ? "+" : ""
+                        let changeColor = comparison.isImprovement ? AppColors.success : AppColors.error
+
+                        Text("\(prefix)\(comparison.changePercent)%")
                             .font(AppTypography.bodySemibold)
-                            .foregroundStyle(comparison.isImprovement ? AppColors.success : AppColors.error)
-                        + Text("\(comparison.changePercent)%")
-                            .font(AppTypography.bodySemibold)
-                            .foregroundStyle(comparison.isImprovement ? AppColors.success : AppColors.error)
+                            .foregroundStyle(changeColor)
 
                         Text(comparison.isImprovement ? "improvement" : "decrease")
                             .font(AppTypography.caption1)

@@ -284,9 +284,9 @@ struct StatsView: View {
     private func generateCSVContent() -> String {
         var lines = ["Date,Push-Ups,Sessions,Earned Minutes,Quality"]
         for day in viewModel.calendarDays where day.hasWorkout {
-            let dateStr = StatsViewModel.shortDateString(for: day.date)
-            let quality = String(format: "%.0f%%", day.averageQuality * 100)
-            lines.append("\(dateStr),\(day.pushUps),\(day.sessions),\(day.earnedMinutes),\(quality)")
+            // Use the stable ISO date id ("yyyy-MM-dd") for unambiguous CSV output.
+            let quality = String(format: "%.0f", day.averageQuality * 100)
+            lines.append("\(day.id),\(day.pushUps),\(day.sessions),\(day.earnedMinutes),\(quality)")
         }
         return lines.joined(separator: "\n")
     }
@@ -297,13 +297,36 @@ struct StatsView: View {
             .first,
               let rootVC = windowScene.windows.first?.rootViewController else { return }
 
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
+        // Use a unique temp file to avoid stale-cache issues with repeated exports.
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stats_export", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        let tempURL = tempDir.appendingPathComponent(filename)
+
+        do {
+            try content.write(to: tempURL, atomically: true, encoding: .utf8)
+        } catch {
+            // Surface the error to the user instead of silently failing.
+            viewModel.errorMessage = "Could not prepare export file."
+            return
+        }
 
         let activityVC = UIActivityViewController(
             activityItems: [tempURL],
             applicationActivities: nil
         )
+
+        // iPad requires a popover source; without this the app crashes on iPad.
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = rootVC.view
+            popover.sourceRect = CGRect(
+                x: rootVC.view.bounds.midX,
+                y: rootVC.view.bounds.midY,
+                width: 0, height: 0
+            )
+            popover.permittedArrowDirections = []
+        }
+
         rootVC.present(activityVC, animated: true)
     }
 }
