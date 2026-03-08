@@ -3,7 +3,7 @@ import CoreGraphics
 // MARK: - PushUpVariant
 
 /// The type of push-up being performed, classified by relative body position.
-enum PushUpVariant: String, Sendable {
+enum PushUpVariant: String, Sendable, Equatable {
     /// Not yet determined or person is not in push-up position.
     case unknown  = "?"
     /// Standard push-up: hands and feet at roughly the same height.
@@ -17,7 +17,7 @@ enum PushUpVariant: String, Sendable {
 // MARK: - PositionState
 
 /// The current body position classification for a single frame.
-struct PositionState: Sendable {
+struct PositionState: Sendable, Equatable {
     /// Whether the person's body is roughly horizontal (push-up position).
     var isHorizontal: Bool = false
     /// The detected push-up variant (only meaningful when `isHorizontal`).
