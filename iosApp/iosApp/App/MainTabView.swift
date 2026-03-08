@@ -84,7 +84,18 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ForEach(Tab.allCases) { tab in
+            // Dashboard tab -- real implementation (Task 3.5)
+            NavigationStack {
+                DashboardView(selectedTab: $selectedTab)
+            }
+            .tabItem {
+                Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
+            }
+            .tag(Tab.dashboard)
+            .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
+
+            // Remaining tabs -- placeholders until their tasks are implemented
+            ForEach(Tab.allCases.filter { $0 != .dashboard }) { tab in
                 NavigationStack {
                     TabPlaceholderView(tab: tab)
                 }
