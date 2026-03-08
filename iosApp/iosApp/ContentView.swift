@@ -187,9 +187,11 @@ final class PushUpDemoViewModel: ObservableObject {
     @Published private(set) var currentPose: BodyPose? = nil
     @Published private(set) var warnings: [EdgeCaseWarning] = []
 
-    /// The active camera lens. Set from ContentView whenever the position
-    /// changes. Used to pass the correct orientation to VisionPoseDetector.
-    var cameraPosition: CameraPosition = .back
+    /// The active camera lens. Set from ContentView (main actor) whenever the
+    /// position changes. Read from the video output queue inside process(_:).
+    /// nonisolated(unsafe) is correct: writes happen on the main actor before
+    /// any frame arrives, and a one-frame stale read causes no visible artefact.
+    nonisolated(unsafe) var cameraPosition: CameraPosition = .back
 
     private let poseDetector = VisionPoseDetector()
 
