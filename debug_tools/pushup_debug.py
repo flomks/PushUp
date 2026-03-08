@@ -47,12 +47,15 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTa
 # Modell
 # ─────────────────────────────────────────────────────────────────────────────
 
-_MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/"
-    "pose_landmarker/pose_landmarker_full/float16/latest/"
-    "pose_landmarker_full.task"
+# pose_landmarker_lite  -- ~3 MB,  schnellster Start, für Debug-Tool ausreichend
+# pose_landmarker_full  -- ~10 MB, genauer, langsamerer Start
+# pose_landmarker_heavy -- ~25 MB, genaueste, sehr langsamer Start
+_MODEL_NAME = "pose_landmarker_lite"
+_MODEL_URL  = (
+    f"https://storage.googleapis.com/mediapipe-models/"
+    f"pose_landmarker/{_MODEL_NAME}/float16/latest/{_MODEL_NAME}.task"
 )
-_MODEL_PATH = os.path.join(tempfile.gettempdir(), "pose_landmarker_full.task")
+_MODEL_PATH = os.path.join(tempfile.gettempdir(), f"{_MODEL_NAME}.task")
 
 
 def ensure_model() -> str:
@@ -882,11 +885,18 @@ class Renderer:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    import time
     model_path = ensure_model()
 
+    # VIDEO-Modus statt IMAGE:
+    #   - Modell wird sofort beim create_from_options() initialisiert → kein
+    #     Lag beim ersten Frame
+    #   - MediaPipe nutzt temporales Tracking zwischen Frames → genauer und
+    #     CPU-schonender als IMAGE (kein vollständiger Re-Detect jeden Frame)
+    #   - Erfordert monoton steigenden Timestamp in Millisekunden
     options = mp_vision.PoseLandmarkerOptions(
         base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
-        running_mode=VisionTaskRunningMode.IMAGE,
+        running_mode=VisionTaskRunningMode.VIDEO,
         num_poses=1,
         min_pose_detection_confidence=CFG.pose_conf,
         min_pose_presence_confidence=CFG.pose_conf,
@@ -909,8 +919,11 @@ def main() -> None:
     show_form   = True
 
     print("Push-Up Debug Tool")
+    print(f"  Modell: {_MODEL_NAME}")
     print(f"  DOWN < {CFG.down_threshold}°  |  UP > {CFG.up_threshold}°  |  Hysterese: {CFG.hysteresis} Frames")
     print("  R=Reset  D=Debug  F=Form  Q=Quit\n")
+
+    start_time = time.monotonic()   # Referenzzeitpunkt für Timestamps
 
     with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
         while True:
@@ -921,12 +934,15 @@ def main() -> None:
             frame = cv2.flip(frame, 1)
             h, w  = frame.shape[:2]
 
+            # Monoton steigender Timestamp in Millisekunden (VIDEO-Modus Pflicht)
+            timestamp_ms = int((time.monotonic() - start_time) * 1000)
+
             # MediaPipe Pose Detection
             mp_img = mp.Image(
                 image_format=mp.ImageFormat.SRGB,
                 data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB),
             )
-            result = landmarker.detect(mp_img)
+            result = landmarker.detect_for_video(mp_img, timestamp_ms)
 
             elbow_angle: float | None = None
             joints: Joints            = {}
