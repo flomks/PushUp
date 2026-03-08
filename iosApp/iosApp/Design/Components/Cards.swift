@@ -207,7 +207,7 @@ struct TimeCreditCard: View {
         Card(padding: AppSpacing.lg) {
             VStack(spacing: AppSpacing.md) {
 
-                Text("Zeitguthaben")
+                Text("Time Credit")
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textSecondary)
 
@@ -243,9 +243,9 @@ struct TimeCreditCard: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
 
-                            Text("verfuegbar")
-                                .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
+                    Text("available")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
                         }
                     }
                 }
@@ -256,7 +256,7 @@ struct TimeCreditCard: View {
                         .foregroundStyle(AppColors.success)
                         .font(.system(size: AppSpacing.iconSizeSmall))
 
-                    Text("Gesamt verdient: \(formattedTotalEarned)")
+                    Text("Total earned: \(formattedTotalEarned)")
                         .font(AppTypography.caption1)
                         .foregroundStyle(AppColors.textSecondary)
                 }
@@ -338,7 +338,7 @@ struct WorkoutSummaryCard: View {
                     metricItem(
                         icon: .clock,
                         value: formattedDuration,
-                        label: "Dauer",
+                        label: "Duration",
                         tint: AppColors.info
                     )
 
@@ -346,8 +346,8 @@ struct WorkoutSummaryCard: View {
 
                     metricItem(
                         icon: .boltFill,
-                        value: "+\(earnedSeconds / 60) Min",
-                        label: "Verdient",
+                        value: "+\(earnedSeconds / 60) min",
+                        label: "Earned",
                         tint: AppColors.success
                     )
 
@@ -356,7 +356,7 @@ struct WorkoutSummaryCard: View {
                     metricItem(
                         icon: .starFill,
                         value: String(format: "%.0f%%", qualityScore * 100),
-                        label: "Qualitaet",
+                        label: "Quality",
                         tint: AppColors.formScoreColor(qualityScore)
                     )
                 }
@@ -503,18 +503,18 @@ struct EmptyStateCard: View {
 
             EmptyStateCard(
                 icon: .figureStrengthTraining,
-                title: "Noch keine Workouts",
-                message: "Starte dein erstes Workout und verdiene Zeitguthaben!",
-                actionTitle: "Workout starten",
+                title: "No workouts yet",
+                message: "Start your first workout and earn time credit!",
+                actionTitle: "Start Workout",
                 action: {}
             )
 
             Card {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Label("Letzte Session", systemImage: AppIcon.clockArrowCirclepath.rawValue)
+                    Label("Last Session", systemImage: AppIcon.clockArrowCirclepath.rawValue)
                         .font(AppTypography.headline)
                         .foregroundStyle(AppColors.textPrimary)
-                    Text("42 Push-Ups in 8 Minuten")
+                    Text("42 Push-Ups in 8 minutes")
                         .font(AppTypography.body)
                         .foregroundStyle(AppColors.textSecondary)
                 }

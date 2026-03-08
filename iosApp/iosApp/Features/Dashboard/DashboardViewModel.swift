@@ -29,7 +29,7 @@ struct DashboardLastSession {
     let durationSeconds: Int
     let earnedSeconds: Int
     let qualityScore: Double
-    let relativeDate: String  // e.g. "Heute", "Gestern", "vor 3 Tagen"
+    let relativeDate: String  // e.g. "Today", "Yesterday", "3 days ago"
 }
 
 // MARK: - WeekdayHelper
@@ -39,8 +39,8 @@ struct DashboardLastSession {
 /// conversion across ViewModel and chart components.
 enum WeekdayHelper {
 
-    /// Day labels for the German locale, Monday through Sunday.
-    static let dayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    /// Day labels for the English locale, Monday through Sunday.
+    static let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
     /// Returns the 0-based weekday index (0 = Monday, 6 = Sunday) for today.
     static func todayIndex() -> Int {
@@ -104,7 +104,7 @@ final class DashboardViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        await fetchData(errorPrefix: "Daten konnten nicht geladen werden.")
+        await fetchData(errorPrefix: "Failed to load data.")
 
         isLoading = false
     }
@@ -116,7 +116,7 @@ final class DashboardViewModel: ObservableObject {
         isRefreshing = true
         errorMessage = nil
 
-        await fetchData(errorPrefix: "Aktualisierung fehlgeschlagen.")
+        await fetchData(errorPrefix: "Refresh failed.")
 
         isRefreshing = false
     }
@@ -188,7 +188,7 @@ final class DashboardViewModel: ObservableObject {
             durationSeconds: 7 * 60 + 23,
             earnedSeconds: 8 * 60 + 24,
             qualityScore: 0.84,
-            relativeDate: "Heute"
+            relativeDate: "Today"
         )
 
         hasEverWorkedOut = true

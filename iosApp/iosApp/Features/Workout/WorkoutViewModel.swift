@@ -20,7 +20,7 @@ enum WorkoutPhase: Equatable, Sendable {
 
 // MARK: - WorkoutViewModel
 
-/// Drives the Workout screen (Task 3.6).
+/// Drives the Workout screen (Tasks 3.6 and 3.7).
 ///
 /// Wraps `PushUpTrackingManager` and adds:
 /// - Idle-timer management (`UIApplication.isIdleTimerDisabled`)
@@ -29,6 +29,7 @@ enum WorkoutPhase: Equatable, Sendable {
 /// - Stop-confirmation flow
 /// - Pose-overlay toggle
 /// - Camera-flip forwarding
+/// - Summary data for the completion screen (earned minutes, personal record)
 ///
 /// **Design decisions**
 /// - The view model does **not** expose `PushUpTrackingManager` or any of its
@@ -36,6 +37,11 @@ enum WorkoutPhase: Equatable, Sendable {
 ///   on the tracking manager to preserve encapsulation.
 /// - `sessionDuration` is captured before calling `stopTracking()` because
 ///   the tracking manager resets its duration to 0 on stop.
+/// - Earned minutes are computed from push-up count using a simple formula:
+///   1 minute per 10 push-ups (minimum 1 minute for any completed session).
+/// - Personal record detection compares the current session's push-up count
+///   against the stored best. In the absence of a persistence layer the best
+///   is tracked in-memory for the app session.
 ///
 /// **Threading model**
 /// All `@Published` properties and public methods are **main-actor isolated**,
@@ -81,6 +87,16 @@ final class WorkoutViewModel: ObservableObject {
     /// main queue by `VisionPoseDetector`. `nil` when no person is detected.
     @Published private(set) var currentPose: BodyPose? = nil
 
+    // MARK: - Summary State (Task 3.7)
+
+    /// Whether the completed session is a new personal record.
+    @Published private(set) var isNewRecord: Bool = false
+
+    /// Percentage difference vs. the user's personal average push-up count.
+    /// Positive = above average, negative = below average.
+    /// `nil` when fewer than 2 sessions have been completed.
+    @Published private(set) var comparisonPercent: Int? = nil
+
     // MARK: - Internal: Tracking Manager
 
     /// The underlying tracking manager. Kept `private` to prevent the view
@@ -90,6 +106,15 @@ final class WorkoutViewModel: ObservableObject {
     // MARK: - Private
 
     private var cancellables = Set<AnyCancellable>()
+
+    /// Running total of all push-ups across sessions (for average calculation).
+    private var totalHistoricalPushUps: Int = 0
+
+    /// Number of completed sessions (for average calculation).
+    private var completedSessionCount: Int = 0
+
+    /// Personal best push-up count across all sessions.
+    private var personalBest: Int = 0
 
     /// Haptic feedback generator for push-up events.
     private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -140,8 +165,21 @@ final class WorkoutViewModel: ObservableObject {
         activeWarnings = []
         lastError = nil
         currentPose = nil
+        isNewRecord = false
+        comparisonPercent = nil
         // Restart the camera preview for the idle state.
         trackingManager.startCameraPreview(position: .front)
+    }
+
+    // MARK: - Public API: Summary (Task 3.7)
+
+    /// Time credit earned for the completed session in whole minutes.
+    ///
+    /// Formula: 1 minute per 10 push-ups, minimum 1 minute for any session
+    /// that has at least 1 push-up. Returns 0 for empty sessions.
+    var earnedMinutes: Int {
+        guard pushUpCount > 0 else { return 0 }
+        return max(1, pushUpCount / 10)
     }
 
     // MARK: - Public API: Camera
@@ -176,7 +214,44 @@ final class WorkoutViewModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
         // Restore the captured duration so the finished overlay shows it.
         sessionDuration = finalDuration
+
+        // Compute summary statistics for the completion screen (Task 3.7).
+        computeSummaryStats()
+
         phase = .finished
+    }
+
+    /// Computes personal-record and comparison statistics for the summary screen.
+    ///
+    /// Updates `isNewRecord` and `comparisonPercent` based on the session's
+    /// push-up count vs. historical data tracked in-memory.
+    private func computeSummaryStats() {
+        let count = pushUpCount
+
+        // Personal record check
+        if count > personalBest {
+            isNewRecord = personalBest > 0 // Only a "new record" if there was a previous best
+            personalBest = count
+        } else {
+            isNewRecord = false
+        }
+
+        // Comparison to personal average
+        if completedSessionCount > 0 {
+            let average = Double(totalHistoricalPushUps) / Double(completedSessionCount)
+            if average > 0 {
+                let diff = Double(count) - average
+                comparisonPercent = Int((diff / average * 100).rounded())
+            } else {
+                comparisonPercent = nil
+            }
+        } else {
+            comparisonPercent = nil
+        }
+
+        // Update historical data for future sessions
+        totalHistoricalPushUps += count
+        completedSessionCount += 1
     }
 
     // MARK: - Private: Binding

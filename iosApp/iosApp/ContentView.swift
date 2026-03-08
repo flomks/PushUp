@@ -132,7 +132,7 @@ struct ContentView: View {
 
             // Half-rep indicator
             if viewModel.halfRepCount > 0 {
-                Text("\(viewModel.halfRepCount) halbe")
+                Text("\(viewModel.halfRepCount) half reps")
                     .font(AppTypography.captionSemibold)
                     .foregroundStyle(AppColors.secondary)
             }
@@ -174,7 +174,7 @@ struct ContentView: View {
             .padding(.top, AppSpacing.xxs)
 
             if viewModel.currentAngle == nil {
-                Label("Kein Arm erkannt", systemImage: AppIcon.eyeSlash.rawValue)
+                Label("No arm detected", systemImage: AppIcon.eyeSlash.rawValue)
                     .font(AppTypography.caption1)
                     .foregroundStyle(.white.opacity(0.45))
             }
@@ -239,11 +239,11 @@ enum DetectionStatus: Equatable {
 
     var label: String {
         switch self {
-        case .initializing:  return "Starte Kamera..."
-        case .noPerson:      return "Keine Person erkannt"
-        case .personNoArms:  return "Arme nicht sichtbar"
-        case .tracking:      return "Bereit"
-        case .active:        return "Tracking aktiv"
+        case .initializing:  return "Starting camera..."
+        case .noPerson:      return "No person detected"
+        case .personNoArms:  return "Arms not visible"
+        case .tracking:      return "Ready"
+        case .active:        return "Tracking active"
         }
     }
 
@@ -409,9 +409,9 @@ final class PushUpDemoViewModel: ObservableObject {
 
     var phaseLabel: String {
         switch currentPhase {
-        case .idle:     return "Bereit"
-        case .down:     return "Runter"
-        case .cooldown: return "Hoch!"
+        case .idle:     return "Ready"
+        case .down:     return "Down"
+        case .cooldown: return "Up!"
         }
     }
 

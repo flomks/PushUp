@@ -339,25 +339,25 @@ struct InstantPressButtonStyle: ButtonStyle {
 
             Group {
                 Text("Primary Button").font(AppTypography.captionSemibold)
-                PrimaryButton("Workout starten", icon: .figureRun) {}
-                PrimaryButton("Laden...", isLoading: true) {}
-                PrimaryButton("Deaktiviert") {}.disabled(true)
+                PrimaryButton("Start Workout", icon: .figureRun) {}
+                PrimaryButton("Loading...", isLoading: true) {}
+                PrimaryButton("Disabled") {}.disabled(true)
             }
 
             Divider()
 
             Group {
                 Text("Secondary Button").font(AppTypography.captionSemibold)
-                SecondaryButton("Details anzeigen", icon: .infoCircle) {}
-                SecondaryButton("Laden...", isLoading: true) {}
-                SecondaryButton("Deaktiviert") {}.disabled(true)
+                SecondaryButton("Show Details", icon: .infoCircle) {}
+                SecondaryButton("Loading...", isLoading: true) {}
+                SecondaryButton("Disabled") {}.disabled(true)
             }
 
             Divider()
 
             Group {
                 Text("Destructive Button").font(AppTypography.captionSemibold)
-                DestructiveButton("Workout loeschen", icon: .trash) {}
+                DestructiveButton("Delete Workout", icon: .trash) {}
             }
 
             Divider()
@@ -366,7 +366,7 @@ struct InstantPressButtonStyle: ButtonStyle {
                 Text("Icon Buttons").font(AppTypography.captionSemibold)
                 HStack(spacing: AppSpacing.md) {
                     IconButton(.arrowCounterclockwise, label: "Reset") {}
-                    IconButton(.cameraRotate, label: "Kamera wechseln") {}
+                    IconButton(.cameraRotate, label: "Switch Camera") {}
                     IconButton(.figureArmsOpen, label: "Overlay") {}
                 }
             }
@@ -376,10 +376,10 @@ struct InstantPressButtonStyle: ButtonStyle {
             Group {
                 Text("Chip Buttons").font(AppTypography.captionSemibold)
                 HStack(spacing: AppSpacing.xs) {
-                    ChipButton("Heute", isSelected: true) {}
-                    ChipButton("Woche") {}
-                    ChipButton("Monat") {}
-                    ChipButton("Gesamt") {}
+                    ChipButton("Today", isSelected: true) {}
+                    ChipButton("Week") {}
+                    ChipButton("Month") {}
+                    ChipButton("All") {}
                 }
             }
         }

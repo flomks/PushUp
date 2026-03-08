@@ -49,9 +49,9 @@ struct RegisterView: View {
         }
         .background(AppColors.backgroundPrimary.ignoresSafeArea())
         .scrollDismissesKeyboard(.interactively)
-        .navigationTitle("Konto erstellen")
+        .navigationTitle("Create Account")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Fehler", isPresented: .init(
+        .alert("Error", isPresented: .init(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.clearMessages() } }
         )) {
@@ -84,11 +84,11 @@ struct RegisterView: View {
             .shadow(color: AppColors.secondary.opacity(0.3), radius: 12, x: 0, y: 6)
 
             VStack(spacing: AppSpacing.xxs) {
-                Text("Neues Konto")
+                Text("New Account")
                     .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Erstelle dein PushUp-Konto und starte durch")
+                Text("Create your PushUp account and get started")
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -105,8 +105,8 @@ struct RegisterView: View {
 
                 // Display name
                 AuthTextField(
-                    title: "Anzeigename",
-                    placeholder: "Wie sollen wir dich nennen?",
+                    title: "Display Name",
+                    placeholder: "What should we call you?",
                     text: $viewModel.registerDisplayName,
                     textContentType: .name,
                     errorMessage: viewModel.registerDisplayNameError,
@@ -119,8 +119,8 @@ struct RegisterView: View {
 
                 // Email
                 AuthTextField(
-                    title: "E-Mail",
-                    placeholder: "name@beispiel.de",
+                    title: "Email",
+                    placeholder: "name@example.com",
                     text: $viewModel.registerEmail,
                     keyboardType: .emailAddress,
                     textContentType: .emailAddress,
@@ -133,8 +133,8 @@ struct RegisterView: View {
 
                 // Password
                 AuthSecureField(
-                    title: "Passwort",
-                    placeholder: "Mindestens 8 Zeichen",
+                    title: "Password",
+                    placeholder: "At least 8 characters",
                     text: $viewModel.registerPassword,
                     showPassword: $showPassword,
                     errorMessage: viewModel.registerPasswordError
@@ -145,8 +145,8 @@ struct RegisterView: View {
 
                 // Confirm password
                 AuthSecureField(
-                    title: "Passwort bestaetigen",
-                    placeholder: "Passwort wiederholen",
+                    title: "Confirm Password",
+                    placeholder: "Repeat password",
                     text: $viewModel.registerConfirmPassword,
                     showPassword: $showConfirmPassword,
                     errorMessage: viewModel.registerConfirmPasswordError
@@ -165,7 +165,7 @@ struct RegisterView: View {
 
                 // Register button
                 PrimaryButton(
-                    "Konto erstellen",
+                    "Create Account",
                     icon: .checkmark,
                     isLoading: viewModel.isLoading
                 ) {
@@ -201,7 +201,7 @@ struct RegisterView: View {
     // MARK: - Terms Note
 
     private var termsNote: some View {
-        Text("Mit der Registrierung stimmst du unseren Nutzungsbedingungen und der Datenschutzrichtlinie zu.")
+        Text("By registering you agree to our Terms of Service and Privacy Policy.")
             .font(AppTypography.caption1)
             .foregroundStyle(AppColors.textTertiary)
             .multilineTextAlignment(.center)
@@ -211,11 +211,11 @@ struct RegisterView: View {
 
     private var loginLink: some View {
         HStack(spacing: AppSpacing.xxs) {
-            Text("Bereits ein Konto?")
+            Text("Already have an account?")
                 .font(AppTypography.subheadline)
                 .foregroundStyle(AppColors.textSecondary)
 
-            Button("Anmelden") {
+            Button("Sign In") {
                 dismiss()
             }
             .font(AppTypography.subheadlineSemibold)
@@ -240,13 +240,13 @@ struct RegisterView: View {
 
         switch score {
         case 0, 1:
-            return PasswordStrength(score: 1, label: "Schwach", color: AppColors.error)
+            return PasswordStrength(score: 1, label: "Weak", color: AppColors.error)
         case 2:
-            return PasswordStrength(score: 2, label: "Mittel", color: AppColors.warning)
+            return PasswordStrength(score: 2, label: "Fair", color: AppColors.warning)
         case 3:
-            return PasswordStrength(score: 3, label: "Stark", color: AppColors.success.opacity(0.7))
+            return PasswordStrength(score: 3, label: "Strong", color: AppColors.success.opacity(0.7))
         default:
-            return PasswordStrength(score: 4, label: "Sehr stark", color: AppColors.success)
+            return PasswordStrength(score: 4, label: "Very strong", color: AppColors.success)
         }
     }
 }

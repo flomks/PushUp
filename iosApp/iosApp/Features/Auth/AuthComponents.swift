@@ -151,7 +151,7 @@ struct AuthSecureField: View {
                         .foregroundStyle(AppColors.textTertiary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(showPassword ? "Passwort verbergen" : "Passwort anzeigen")
+                .accessibilityLabel(showPassword ? "Hide password" : "Show password")
             }
             .padding(.horizontal, AppSpacing.md)
             .frame(height: AppSpacing.buttonHeightPrimary)

@@ -67,15 +67,15 @@ struct FormScoreIndicator: View {
     }
 
     private var accessibilityDescription: String {
-        guard let score else { return "Form Score nicht verfuegbar" }
+        guard let score else { return "Form score not available" }
         let percentage = Int(score * 100)
         let quality: String
         switch score {
-        case 0.75...: quality = "gut"
-        case 0.50...: quality = "mittel"
-        default:      quality = "schlecht"
+        case 0.75...: quality = "good"
+        case 0.50...: quality = "fair"
+        default:      quality = "poor"
         }
-        return "Form Score \(percentage) Prozent, \(quality)"
+        return "Form score \(percentage) percent, \(quality)"
     }
 }
 

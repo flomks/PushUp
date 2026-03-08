@@ -40,8 +40,8 @@ struct DashboardView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar { refreshToolbarItem }
         .task { await viewModel.loadData() }
-        .alert("Fehler", isPresented: showError) {
-            Button("Erneut versuchen") {
+        .alert("Error", isPresented: showError) {
+            Button("Try Again") {
                 Task { await viewModel.loadData() }
             }
             Button("OK", role: .cancel) {}
@@ -103,7 +103,7 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
                     HStack {
-                        Label("Letzte Session", icon: .clockArrowCirclepath)
+                        Label("Last Session", icon: .clockArrowCirclepath)
                             .font(AppTypography.headline)
                             .foregroundStyle(AppColors.textPrimary)
 
@@ -143,7 +143,7 @@ struct DashboardView: View {
                 metricItem(
                     icon: .clock,
                     value: formatDuration(session.durationSeconds),
-                    label: "Dauer",
+                    label: "Duration",
                     tint: AppColors.info
                 )
 
@@ -151,8 +151,8 @@ struct DashboardView: View {
 
                 metricItem(
                     icon: .boltFill,
-                    value: "+\(session.earnedSeconds / 60) Min",
-                    label: "Verdient",
+                    value: "+\(session.earnedSeconds / 60) min",
+                    label: "Earned",
                     tint: AppColors.success
                 )
 
@@ -161,7 +161,7 @@ struct DashboardView: View {
                 metricItem(
                     icon: .starFill,
                     value: String(format: "%.0f%%", session.qualityScore * 100),
-                    label: "Qualitaet",
+                    label: "Quality",
                     tint: AppColors.formScoreColor(session.qualityScore)
                 )
             }
@@ -203,9 +203,9 @@ struct DashboardView: View {
     private var emptyStateSection: some View {
         EmptyStateCard(
             icon: .figureStrengthTraining,
-            title: "Starte dein erstes Workout!",
-            message: "Mach Push-Ups und verdiene Zeitguthaben fuer deine Bildschirmzeit.",
-            actionTitle: "Workout starten",
+            title: "Start your first workout!",
+            message: "Do push-ups and earn time credit for your screen time.",
+            actionTitle: "Start Workout",
             action: { selectedTab = .workout }
         )
     }
@@ -214,7 +214,7 @@ struct DashboardView: View {
 
     private var workoutStartButton: some View {
         PrimaryButton(
-            "Workout starten",
+            "Start Workout",
             icon: .figureStrengthTraining
         ) {
             selectedTab = .workout
@@ -230,7 +230,7 @@ struct DashboardView: View {
                 .tint(AppColors.primary)
                 .scaleEffect(1.4)
 
-            Text("Lade Dashboard...")
+            Text("Loading Dashboard...")
                 .font(AppTypography.subheadline)
                 .foregroundStyle(AppColors.textSecondary)
         }

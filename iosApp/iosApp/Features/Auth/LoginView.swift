@@ -59,7 +59,7 @@ struct LoginView: View {
             .navigationDestination(isPresented: $showRegister) {
                 RegisterView(viewModel: viewModel)
             }
-            .alert("Fehler", isPresented: .init(
+            .alert("Error", isPresented: .init(
                 get: { viewModel.errorMessage != nil },
                 set: { if !$0 { viewModel.clearMessages() } }
             )) {
@@ -94,11 +94,11 @@ struct LoginView: View {
             .shadow(color: AppColors.primary.opacity(0.3), radius: 16, x: 0, y: 8)
 
             VStack(spacing: AppSpacing.xs) {
-                Text("Willkommen zurueck")
+                Text("Welcome back")
                     .font(AppTypography.title1)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Melde dich an und verdiene Zeitguthaben")
+                Text("Sign in and earn time credit")
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -114,8 +114,8 @@ struct LoginView: View {
             VStack(spacing: AppSpacing.md) {
                 // Email field
                 AuthTextField(
-                    title: "E-Mail",
-                    placeholder: "name@beispiel.de",
+                    title: "Email",
+                    placeholder: "name@example.com",
                     text: $viewModel.loginEmail,
                     keyboardType: .emailAddress,
                     textContentType: .emailAddress,
@@ -128,8 +128,8 @@ struct LoginView: View {
 
                 // Password field
                 AuthSecureField(
-                    title: "Passwort",
-                    placeholder: "Mindestens 8 Zeichen",
+                    title: "Password",
+                    placeholder: "At least 8 characters",
                     text: $viewModel.loginPassword,
                     showPassword: $showPassword,
                     errorMessage: viewModel.loginPasswordError
@@ -144,7 +144,7 @@ struct LoginView: View {
                 // Forgot password link
                 HStack {
                     Spacer()
-                    Button("Passwort vergessen?") {
+                    Button("Forgot password?") {
                         showForgotPassword = true
                     }
                     .font(AppTypography.buttonSecondary)
@@ -154,7 +154,7 @@ struct LoginView: View {
 
                 // Login button
                 PrimaryButton(
-                    "Anmelden",
+                    "Sign In",
                     icon: .arrowRight,
                     isLoading: viewModel.isLoading
                 ) {
@@ -175,7 +175,7 @@ struct LoginView: View {
                 .fill(AppColors.separator)
                 .frame(height: 1)
 
-            Text("oder")
+            Text("or")
                 .font(AppTypography.caption1)
                 .foregroundStyle(AppColors.textTertiary)
                 .fixedSize()
@@ -192,7 +192,7 @@ struct LoginView: View {
         VStack(spacing: AppSpacing.sm) {
             // Apple Sign-In
             SocialSignInButton(
-                title: "Mit Apple anmelden",
+                title: "Sign in with Apple",
                 icon: .appleLogo,
                 backgroundColor: AppColors.textPrimary,
                 foregroundColor: AppColors.backgroundPrimary
@@ -203,7 +203,7 @@ struct LoginView: View {
 
             // Google Sign-In
             SocialSignInButton(
-                title: "Mit Google anmelden",
+                title: "Sign in with Google",
                 icon: .globe,
                 backgroundColor: AppColors.backgroundSecondary,
                 foregroundColor: AppColors.textPrimary,
@@ -219,11 +219,11 @@ struct LoginView: View {
 
     private var registerLink: some View {
         HStack(spacing: AppSpacing.xxs) {
-            Text("Noch kein Konto?")
+            Text("Don't have an account?")
                 .font(AppTypography.subheadline)
                 .foregroundStyle(AppColors.textSecondary)
 
-            Button("Registrieren") {
+            Button("Sign Up") {
                 showRegister = true
             }
             .font(AppTypography.subheadlineSemibold)
