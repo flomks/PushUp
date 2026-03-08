@@ -326,9 +326,17 @@ final class PushUpDemoViewModel: ObservableObject {
     /// `nonisolated` so the `@Sendable` closure in `CameraContainerView`
     /// can call it directly without hopping to the main actor.
     nonisolated func process(_ sampleBuffer: CMSampleBuffer) {
-        // Read cameraPosition without a main-actor hop. The value is a simple
-        // enum; a one-frame stale read causes no visible artefact.
         let position = cameraPosition
+        // Mark camera as running on first frame so the status indicator
+        // advances past "Starte Kamera..." even if pose detection is slow.
+        if framesProcessed == 0 {
+            Task { @MainActor in
+                if self.detectionStatus == .initializing {
+                    self.detectionStatus = .noPerson
+                }
+            }
+        }
+        framesProcessed += 1
         poseDetector.process(sampleBuffer, cameraPosition: position)
     }
 
@@ -343,6 +351,8 @@ final class PushUpDemoViewModel: ObservableObject {
         bodyLineDeviation = nil
         positionState = PositionState()
         smoothedPose = nil
+        // Keep detectionStatus as-is on reset -- don't go back to .initializing
+        // since the camera is already running.
     }
 
     // Called from the video output queue via the bridge.
