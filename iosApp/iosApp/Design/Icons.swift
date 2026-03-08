@@ -101,6 +101,14 @@ enum AppIcon: String {
     case clockBadgeCheckmark = "clock.badge.checkmark"
     case exclamationmarkCircleFill = "exclamationmark.circle.fill"
 
+    // MARK: - History
+
+    case clockFill          = "clock.fill"
+    case listBullet         = "list.bullet"
+    case listBulletClipboard = "list.bullet.clipboard"
+    case rectangleStack     = "rectangle.stack"
+    case rectangleStackFill = "rectangle.stack.fill"
+
     // MARK: - Misc
 
     case minus              = "minus"

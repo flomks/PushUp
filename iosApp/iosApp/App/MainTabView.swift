@@ -10,6 +10,7 @@ import SwiftUI
 enum Tab: Int, CaseIterable, Identifiable {
     case dashboard = 0
     case workout
+    case history
     case stats
     case profile
     case settings
@@ -25,6 +26,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return .houseFill
         case .workout:   return .figureStrengthTraining
+        case .history:   return .rectangleStackFill
         case .stats:     return .chartBarFill
         case .profile:   return .personFill
         case .settings:  return .gearshapeFill
@@ -37,6 +39,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Dashboard"
         case .workout:   return "Workout"
+        case .history:   return "History"
         case .stats:     return "Stats"
         case .profile:   return "Profile"
         case .settings:  return "Settings"
@@ -49,6 +52,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Your time credit and daily statistics will appear here."
         case .workout:   return "Start a workout here and count your push-ups in real time."
+        case .history:   return "All your past workouts will appear here."
         case .stats:     return "Daily, weekly, and monthly statistics will appear here."
         case .profile:   return "Your profile, avatar, and account information will appear here."
         case .settings:  return "Push-up rate, notifications, and other settings will appear here."
@@ -60,6 +64,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "tab_dashboard"
         case .workout:   return "tab_workout"
+        case .history:   return "tab_history"
         case .stats:     return "tab_stats"
         case .profile:   return "tab_profile"
         case .settings:  return "tab_settings"
@@ -102,6 +107,16 @@ struct MainTabView: View {
                 .tag(Tab.workout)
                 .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
+            // History tab -- real implementation (Task 3.9)
+            NavigationStack {
+                HistoryView()
+            }
+            .tabItem {
+                Label(Tab.history.label, icon: Tab.history.icon)
+            }
+            .tag(Tab.history)
+            .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
+
             // Stats tab -- real implementation (Task 3.8)
             NavigationStack {
                 StatsView()
@@ -113,7 +128,7 @@ struct MainTabView: View {
             .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
             // Remaining tabs -- placeholders until their tasks are implemented
-            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .stats }) { tab in
+            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .history && $0 != .stats }) { tab in
                 NavigationStack {
                     TabPlaceholderView(tab: tab)
                 }
