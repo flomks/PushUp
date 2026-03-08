@@ -20,14 +20,14 @@ enum Tab: Int, CaseIterable, Identifiable {
 
     // MARK: Display metadata
 
-    /// The SF Symbol name shown in the tab bar item.
-    var icon: String {
+    /// The type-safe SF Symbol shown in the tab bar item.
+    var icon: AppIcon {
         switch self {
-        case .dashboard: return "house.fill"
-        case .workout:   return "figure.strengthtraining.traditional"
-        case .stats:     return "chart.bar.fill"
-        case .profile:   return "person.fill"
-        case .settings:  return "gearshape.fill"
+        case .dashboard: return .houseFill
+        case .workout:   return .figureStrengthTraining
+        case .stats:     return .chartBarFill
+        case .profile:   return .personFill
+        case .settings:  return .gearshapeFill
         }
     }
 
@@ -89,13 +89,13 @@ struct MainTabView: View {
                     TabPlaceholderView(tab: tab)
                 }
                 .tabItem {
-                    Label(tab.label, systemImage: tab.icon)
+                    Label(tab.label, icon: tab.icon)
                 }
                 .tag(tab)
                 .accessibilityIdentifier(tab.accessibilityIdentifier)
             }
         }
-        .tint(AppColors.primaryInline)
+        .tint(AppColors.primary)
     }
 }
 
@@ -116,23 +116,23 @@ struct TabPlaceholderView: View {
 
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimaryInline
+            AppColors.backgroundPrimary
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.lg) {
-                Image(systemName: tab.icon)
+                Image(icon: tab.icon)
                     .font(.system(size: 72, weight: .semibold))
-                    .foregroundStyle(AppColors.primaryInline)
+                    .foregroundStyle(AppColors.primary)
                     .symbolRenderingMode(.hierarchical)
 
                 VStack(spacing: AppSpacing.xs) {
                     Text(tab.label)
                         .font(AppTypography.title1)
-                        .foregroundStyle(AppColors.textPrimaryInline)
+                        .foregroundStyle(AppColors.textPrimary)
 
                     Text(tab.placeholderDescription)
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondaryInline)
+                        .foregroundStyle(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, AppSpacing.xl)
                 }
