@@ -155,8 +155,12 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
     /// when `isEnabled == false` or when a previous frame is still being
     /// processed.
     ///
-    /// - Parameter sampleBuffer: A video frame delivered by `AVCaptureOutput`.
-    func process(_ sampleBuffer: CMSampleBuffer) {
+    /// - Parameters:
+    ///   - sampleBuffer: A video frame delivered by `AVCaptureOutput`.
+    ///   - cameraPosition: The active camera lens. Used to derive the correct
+    ///     `CGImagePropertyOrientation` for the raw sensor pixel buffer.
+    ///     Defaults to `.back` for backward compatibility.
+    func process(_ sampleBuffer: CMSampleBuffer, cameraPosition: CameraPosition = .back) {
         // Acquire lock to check both flags atomically, set isProcessing,
         // and increment frame counter under the same critical section.
         stateLock.lock()
@@ -184,12 +188,31 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
             return
         }
 
-        // Build a handler for this frame. The `.up` orientation ensures
-        // Vision interprets the buffer in the correct upright orientation
-        // (the camera output is already rotated to portrait by CameraManager).
+        // The iPhone camera sensor delivers CVPixelBuffers in landscape-right
+        // orientation regardless of how the device is held. The connection's
+        // videoOrientation / videoRotationAngle setting only affects the
+        // *encoded* stream (preview layer, recorded video) -- it does NOT
+        // rotate the raw CVPixelBuffer that arrives in the sample buffer.
+        //
+        // We must therefore tell Vision the true sensor orientation so it can
+        // interpret joint coordinates correctly:
+        //
+        //   Back camera, device held portrait  → sensor is rotated 90° CW
+        //                                        → CGImagePropertyOrientation.right
+        //   Front camera, device held portrait → sensor is rotated 90° CW
+        //                                        and mirrored horizontally
+        //                                        → CGImagePropertyOrientation.leftMirrored
+        //
+        // Using `.up` (the previous value) caused Vision to treat the buffer
+        // as already upright, which rotated every joint position by 90° and
+        // made detection fail completely on physical devices.
+        let orientation: CGImagePropertyOrientation = (cameraPosition == .front)
+            ? .leftMirrored
+            : .right
+
         let handler = VNImageRequestHandler(
             cvPixelBuffer: pixelBuffer,
-            orientation: .up,
+            orientation: orientation,
             options: [:]
         )
 
@@ -302,6 +325,6 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
 extension VisionPoseDetector: CameraManagerDelegate {
 
     func cameraManager(_ manager: CameraManager, didOutput sampleBuffer: CMSampleBuffer) {
-        process(sampleBuffer)
+        process(sampleBuffer, cameraPosition: manager.currentPosition)
     }
 }

@@ -15,15 +15,26 @@ struct ContentView: View {
     /// Toggles the skeleton/joint debug overlay on the camera feed.
     @State private var showPoseOverlay: Bool = true
 
-    /// Stable `@Sendable` closure stored in `@State` so it is created once
-    /// and never re-allocated on subsequent `body` evaluations.
-    @State private var sampleBufferProcessor: (@Sendable (CMSampleBuffer) -> Void)?
+    /// Tracks the active camera lens so Vision gets the correct pixel-buffer
+    /// orientation. Updated by CameraContainerView via its cameraManager.
+    @State private var cameraPosition: CameraPosition = .back
 
     var body: some View {
         ZStack {
             // MARK: Camera feed (full screen)
-            CameraContainerView(onSampleBuffer: sampleBufferProcessor)
-                .ignoresSafeArea()
+            CameraContainerView(
+                onSampleBuffer: { [weak viewModel] buf in
+                    // NOTE: cameraPosition is read on the video output queue.
+                    // @State is main-actor-isolated, but reading a simple enum
+                    // value here is safe: worst case we use a stale value for
+                    // one frame, which causes no visible artefact.
+                    viewModel?.process(buf)
+                },
+                onPositionChange: { newPosition in
+                    cameraPosition = newPosition
+                }
+            )
+            .ignoresSafeArea()
 
             // MARK: Skeleton overlay
             PoseOverlayView(
@@ -44,11 +55,11 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if sampleBufferProcessor == nil {
-                let vm = viewModel
-                sampleBufferProcessor = { buf in vm.process(buf) }
-            }
+            viewModel.cameraPosition = cameraPosition
             viewModel.reset()
+        }
+        .onChange(of: cameraPosition) { newPosition in
+            viewModel.cameraPosition = newPosition
         }
     }
 
@@ -176,6 +187,10 @@ final class PushUpDemoViewModel: ObservableObject {
     @Published private(set) var currentPose: BodyPose? = nil
     @Published private(set) var warnings: [EdgeCaseWarning] = []
 
+    /// The active camera lens. Set from ContentView whenever the position
+    /// changes. Used to pass the correct orientation to VisionPoseDetector.
+    var cameraPosition: CameraPosition = .back
+
     private let poseDetector = VisionPoseDetector()
 
     /// Accessed from the video output queue inside `didDetectPose` and from
@@ -193,7 +208,10 @@ final class PushUpDemoViewModel: ObservableObject {
     /// `nonisolated` so the `@Sendable` closure in `CameraContainerView`
     /// can call it directly without hopping to the main actor.
     nonisolated func process(_ sampleBuffer: CMSampleBuffer) {
-        poseDetector.process(sampleBuffer)
+        // Read cameraPosition without a main-actor hop. The value is a simple
+        // enum; a one-frame stale read causes no visible artefact.
+        let position = cameraPosition
+        poseDetector.process(sampleBuffer, cameraPosition: position)
     }
 
     func reset() {
