@@ -317,7 +317,9 @@ class PositionClassifier:
 
        Normale Push-Ups:  Schulter-Y ≈ Knöchel-Y  (beide auf Bodenhöhe)
        Decline (Füße ↑):  Knöchel-Y < Schulter-Y  (Füße höher = kleineres Y)
-       Incline (Hände ↑): Schulter-Y < Knöchel-Y  (Hände höher = kleineres Y)
+       Incline (Hände ↑): BEIDE Handgelenke höher als Schultern UND höher
+                          als Knöchel — Einzelprüfung, nicht Mittelwert,
+                          damit eine erhöhte Hand allein kein Incline auslöst.
 
        Warum NICHT Bild-Y für Variante:
        Bei seitlicher Kamera und normalen Push-Ups erscheinen die Knöchel
@@ -392,25 +394,52 @@ class PositionClassifier:
             self.state.variant = PushUpVariant.UNKNOWN
             return self.state
 
+        # World-Y aller relevanten Gelenke (einzeln, nicht gemittelt)
+        # damit wir beide Seiten unabhängig prüfen können.
+        def single_world_y(idx: int) -> float | None:
+            if world_lms is None:
+                return None
+            if norm_lms[idx].visibility < self.cfg.vis_min:
+                return None
+            return world_lms[idx].y
+
         shoulder_wy = world_y(LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER)
         ankle_wy    = world_y(LM.LEFT_ANKLE,    LM.RIGHT_ANKLE)
+        lw_wy       = single_world_y(LM.LEFT_WRIST)
+        rw_wy       = single_world_y(LM.RIGHT_WRIST)
 
         if shoulder_wy is None or ankle_wy is None:
-            # World-Landmarks nicht verfügbar → Normal als sicherer Fallback
             self.state.variant = PushUpVariant.NORMAL
             return self.state
 
-        # In World-Koordinaten: positives Y = tiefer (Richtung Boden).
-        # diff = ankle_wy - shoulder_wy
-        #   > +threshold  → Knöchel tiefer als Schulter → Füße unten → Incline
-        #   < -threshold  → Knöchel höher als Schulter  → Füße oben  → Decline
-        #   sonst         → Normal
-        diff = ankle_wy - shoulder_wy
+        # ── Decline: Füße erhöht ──────────────────────────────────────────
+        # Knöchel sind höher (kleineres World-Y) als Schultern.
+        # ankle_wy - shoulder_wy < -threshold
+        decline_diff = ankle_wy - shoulder_wy
 
-        if diff < -self.cfg.variant_threshold:
-            raw_variant = PushUpVariant.DECLINE   # Knöchel höher = Füße erhöht
-        elif diff > self.cfg.variant_threshold:
-            raw_variant = PushUpVariant.INCLINE   # Knöchel tiefer = Hände erhöht
+        # ── Incline: Hände erhöht ─────────────────────────────────────────
+        # Bedingung: BEIDE Handgelenke müssen höher sein als die Schultern.
+        # "Höher" = kleineres World-Y (positiv = Richtung Boden).
+        # Außerdem müssen die Handgelenke höher sein als die Knöchel
+        # (sonst wäre es einfach eine andere Körperhaltung).
+        #
+        # Einzelprüfung statt Mittelwert: wenn nur eine Hand erhöht ist,
+        # ist es kein Incline Push-Up.
+        incline_ok = False
+        if lw_wy is not None and rw_wy is not None:
+            # Beide Handgelenke müssen höher als Schultern sein
+            lw_above_shoulder = (shoulder_wy - lw_wy) > self.cfg.variant_threshold
+            rw_above_shoulder = (shoulder_wy - rw_wy) > self.cfg.variant_threshold
+            # Und höher als Knöchel (echte Erhöhung, nicht nur Körperhaltung)
+            lw_above_ankle    = (ankle_wy - lw_wy) > self.cfg.variant_threshold
+            rw_above_ankle    = (ankle_wy - rw_wy) > self.cfg.variant_threshold
+            incline_ok = (lw_above_shoulder and rw_above_shoulder
+                          and lw_above_ankle and rw_above_ankle)
+
+        if incline_ok:
+            raw_variant = PushUpVariant.INCLINE
+        elif decline_diff < -self.cfg.variant_threshold:
+            raw_variant = PushUpVariant.DECLINE
         else:
             raw_variant = PushUpVariant.NORMAL
 
