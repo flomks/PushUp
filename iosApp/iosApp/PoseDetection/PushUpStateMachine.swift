@@ -162,6 +162,14 @@ final class PushUpStateMachine {
     /// or last reset.
     private(set) var pushUpCount: Int = 0
 
+    /// Total number of half-reps (went DOWN but never fully extended back UP)
+    /// since the machine was created or last reset.
+    private(set) var halfRepCount: Int = 0
+
+    /// The minimum elbow angle observed during the current DOWN phase.
+    /// Reset when leaving DOWN. Used by the form analyser to evaluate depth.
+    private(set) var minAngleInDown: Double?
+
     // MARK: - Configuration
 
     /// The configuration used by this state machine instance. Read-only after
@@ -214,13 +222,23 @@ final class PushUpStateMachine {
         }
     }
 
+    /// Number of consecutive frames with no valid angle while in DOWN phase.
+    /// Used to detect when the person leaves the frame during a rep.
+    private var missingInDownCount: Int = 0
+
+    /// Maximum consecutive missing frames in DOWN before aborting as half-rep.
+    private let maxMissingInDown: Int = 15  // ~500 ms at 30 FPS
+
     /// Resets the state machine to its initial state without changing the
-    /// configuration. The push-up count is also reset.
+    /// configuration. The push-up count and half-rep count are also reset.
     func reset() {
         phase = .idle
         pushUpCount = 0
+        halfRepCount = 0
         pendingFrameCount = 0
         cooldownFramesRemaining = 0
+        minAngleInDown = nil
+        missingInDownCount = 0
     }
 
     // MARK: - Phase Handlers
@@ -236,6 +254,8 @@ final class PushUpStateMachine {
             if pendingFrameCount >= configuration.hysteresisFrameCount {
                 phase = .down
                 pendingFrameCount = 0
+                minAngleInDown = angle
+                missingInDownCount = 0
             }
         } else {
             pendingFrameCount = 0
@@ -245,9 +265,22 @@ final class PushUpStateMachine {
 
     private func handleDown(angle: Double?) -> Bool {
         guard let angle else {
-            // Missing pose: reset pending counter but stay in DOWN.
+            // Missing pose: count missing frames. If too many, abort as half-rep.
             pendingFrameCount = 0
+            missingInDownCount += 1
+            if missingInDownCount >= maxMissingInDown {
+                abortAsHalfRep()
+            }
             return false
+        }
+
+        missingInDownCount = 0
+
+        // Track minimum angle for depth evaluation
+        if let current = minAngleInDown {
+            minAngleInDown = min(current, angle)
+        } else {
+            minAngleInDown = angle
         }
 
         if angle > configuration.upAngleThreshold {
@@ -258,12 +291,22 @@ final class PushUpStateMachine {
                 phase = .cooldown
                 cooldownFramesRemaining = configuration.cooldownFrameCount
                 pendingFrameCount = 0
+                minAngleInDown = nil
                 return true
             }
         } else {
             pendingFrameCount = 0
         }
         return false
+    }
+
+    /// Aborts the current DOWN phase as a half-rep and returns to IDLE.
+    private func abortAsHalfRep() {
+        halfRepCount += 1
+        phase = .idle
+        pendingFrameCount = 0
+        minAngleInDown = nil
+        missingInDownCount = 0
     }
 
     /// Ticks down the cooldown counter. Uses `<= 0` instead of `== 0` as a

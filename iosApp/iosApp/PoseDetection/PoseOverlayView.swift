@@ -192,6 +192,8 @@ struct PoseOverlayContainerView: View {
                 .rightHip:      CGPoint(x: 0.58, y: 0.48),
                 .leftKnee:      CGPoint(x: 0.40, y: 0.30),
                 .rightKnee:     CGPoint(x: 0.60, y: 0.30),
+                .leftAnkle:     CGPoint(x: 0.38, y: 0.15),
+                .rightAnkle:    CGPoint(x: 0.62, y: 0.15),
             ]
             let position = positions[name] ?? CGPoint(x: 0.5, y: 0.5)
             return (name, Joint(name: name, position: position, confidence: 0.9))

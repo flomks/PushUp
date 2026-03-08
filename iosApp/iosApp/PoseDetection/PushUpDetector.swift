@@ -114,6 +114,9 @@ final class PushUpDetector {
     /// Total push-ups counted in the current session.
     var pushUpCount: Int { stateMachine.pushUpCount }
 
+    /// Total half-reps (went DOWN but never fully extended back UP).
+    var halfRepCount: Int { stateMachine.halfRepCount }
+
     /// The current phase of the push-up cycle.
     var currentPhase: PushUpPhase { stateMachine.phase }
 
@@ -121,10 +124,23 @@ final class PushUpDetector {
     /// was not detected. Useful for real-time UI feedback (e.g. an angle gauge).
     private(set) var currentElbowAngle: Double?
 
+    /// Body-line deviation in degrees (0 = perfectly straight, higher = worse).
+    /// Computed from the shoulder-hip-ankle angle. `nil` when insufficient
+    /// joints are detected.
+    private(set) var bodyLineDeviation: Double?
+
+    /// The current body position classification (horizontal + variant).
+    private(set) var positionState = PositionState()
+
     // MARK: - Private
 
     private let stateMachine: PushUpStateMachine
     private let formScorer: FormScorer
+    private let positionClassifier = PositionClassifier()
+    private let smoother = SkeletonSmoother()
+
+    /// The most recently smoothed pose (for rendering only).
+    private(set) var smoothedPose: BodyPose?
 
     // MARK: - Init
 
@@ -151,6 +167,7 @@ final class PushUpDetector {
     ///   person was detected. A `nil` pose advances the cooldown timer but
     ///   does not advance any pending-transition counter.
     func process(_ pose: BodyPose?) {
+        // ── Elbow angles ─────────────────────────────────────────────────
         let leftAngle  = Self.elbowAngle(
             shoulder: pose?.leftShoulder,
             elbow:    pose?.leftElbow,
@@ -164,9 +181,16 @@ final class PushUpDetector {
         let angle = FormScorer.averagedAngle(left: leftAngle, right: rightAngle)
         currentElbowAngle = angle
 
-        // Snapshot the phase BEFORE updating the state machine so that the
-        // frame that triggers the DOWN→COOLDOWN transition (the final UP frame)
-        // is correctly treated as a non-DOWN frame by the form scorer.
+        // ── Body-line deviation (shoulder-hip-ankle) ─────────────────────
+        bodyLineDeviation = Self.computeBodyLineDeviation(pose: pose)
+
+        // ── Position classification (horizontal + variant) ───────────────
+        positionState = positionClassifier.update(pose: pose)
+
+        // ── Skeleton smoothing (for rendering only) ──────────────────────
+        smoothedPose = smoother.smooth(pose)
+
+        // ── State machine ────────────────────────────────────────────────
         let isInDownPhase = stateMachine.phase == .down
         let counted = stateMachine.update(angle: angle)
 
@@ -178,11 +202,6 @@ final class PushUpDetector {
         )
 
         if counted {
-            // Safe unwrap: `stateMachine.update` only returns `true` from
-            // `handleDown`, which requires a non-nil, finite angle via its
-            // `guard let angle` statement. If this invariant is ever broken
-            // by a future refactor, the assertionFailure will fire in debug
-            // builds and the fallback prevents a production crash.
             guard let completionAngle = angle, let pose else {
                 assertionFailure(
                     "angle and pose must be non-nil when a push-up is counted"
@@ -197,8 +216,6 @@ final class PushUpDetector {
                 timestamp: pose.timestamp,
                 formScore: score
             )
-            // Capture a strong reference to the delegate for the duration of
-            // the call. The lock-protected getter returns a strong optional.
             let currentDelegate = delegate
             currentDelegate?.pushUpDetector(self, didCount: event)
         }
@@ -209,7 +226,12 @@ final class PushUpDetector {
     func reset() {
         stateMachine.reset()
         formScorer.reset()
+        positionClassifier.reset()
+        smoother.reset()
         currentElbowAngle = nil
+        bodyLineDeviation = nil
+        positionState = PositionState()
+        smoothedPose = nil
     }
 
     // MARK: - Angle Computation
@@ -248,6 +270,42 @@ final class PushUpDetector {
             vertex: elbow.position,
             b: wrist.position
         )
+    }
+
+    // MARK: - Body-Line Deviation
+
+    /// Computes the deviation of the shoulder-hip-ankle line from 180 degrees.
+    ///
+    /// A perfectly straight body (plank position) has a shoulder-hip-ankle
+    /// angle of 180 degrees. Sagging hips or piking reduces this angle.
+    /// Returns the absolute deviation in degrees, or `nil` when insufficient
+    /// joints are detected.
+    ///
+    /// Uses the best available side (left or right), or averages both.
+    static func computeBodyLineDeviation(pose: BodyPose?) -> Double? {
+        guard let pose else { return nil }
+
+        let leftAngle = angleBetween(
+            a: pose.leftShoulder?.isDetected == true ? pose.leftShoulder!.position : nil,
+            vertex: pose.leftHip?.isDetected == true ? pose.leftHip!.position : nil,
+            b: pose.leftAnkle?.isDetected == true ? pose.leftAnkle!.position : nil
+        )
+        let rightAngle = angleBetween(
+            a: pose.rightShoulder?.isDetected == true ? pose.rightShoulder!.position : nil,
+            vertex: pose.rightHip?.isDetected == true ? pose.rightHip!.position : nil,
+            b: pose.rightAnkle?.isDetected == true ? pose.rightAnkle!.position : nil
+        )
+
+        let avg = FormScorer.averagedAngle(left: leftAngle, right: rightAngle)
+        guard let avg else { return nil }
+        return abs(180.0 - avg)
+    }
+
+    /// Overload of `angleBetween` that accepts optional CGPoints.
+    /// Returns `nil` when any point is nil.
+    private static func angleBetween(a: CGPoint?, vertex: CGPoint?, b: CGPoint?) -> Double? {
+        guard let a, let vertex, let b else { return nil }
+        return angleBetween(a: a, vertex: vertex, b: b)
     }
 
     // MARK: - Geometry
