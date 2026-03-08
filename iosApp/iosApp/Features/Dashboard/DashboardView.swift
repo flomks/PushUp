@@ -16,6 +16,15 @@ struct DashboardView: View {
     /// button can switch tabs without pushing a new navigation destination.
     @Binding var selectedTab: Tab
 
+    /// Controls whether the error alert is presented. Derived from
+    /// `viewModel.errorMessage` and properly clears it on dismiss.
+    private var showError: Binding<Bool> {
+        Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.clearError() } }
+        )
+    }
+
     var body: some View {
         ZStack {
             AppColors.backgroundPrimary
@@ -31,13 +40,7 @@ struct DashboardView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar { refreshToolbarItem }
         .task { await viewModel.loadData() }
-        .alert(
-            "Fehler",
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { /* errors clear on next load */ } }
-            )
-        ) {
+        .alert("Fehler", isPresented: showError) {
             Button("Erneut versuchen") {
                 Task { await viewModel.loadData() }
             }
@@ -51,40 +54,36 @@ struct DashboardView: View {
 
     private var scrollContent: some View {
         ScrollView {
-            RefreshControl(isRefreshing: viewModel.isRefreshing)
-
             LazyVStack(spacing: AppSpacing.md) {
 
-                if viewModel.hasEverWorkedOut || !viewModel.isLoading {
-                    // 1. Time credit hero card
-                    DashboardTimeCreditCard(
-                        availableSeconds: viewModel.availableSeconds,
-                        totalEarnedSeconds: viewModel.totalEarnedSeconds,
-                        isLoading: viewModel.isLoading
-                    )
+                // 1. Time credit hero card
+                DashboardTimeCreditCard(
+                    availableSeconds: viewModel.availableSeconds,
+                    totalEarnedSeconds: viewModel.totalEarnedSeconds,
+                    isLoading: viewModel.isLoading
+                )
 
-                    // 2. Daily stats
-                    DailyStatsCard(
-                        stats: viewModel.dailyStats,
-                        isLoading: viewModel.isLoading
-                    )
+                // 2. Daily stats
+                DailyStatsCard(
+                    stats: viewModel.dailyStats,
+                    isLoading: viewModel.isLoading
+                )
 
-                    // 3. Weekly chart
-                    WeeklyChart(
-                        days: viewModel.weekDays,
-                        isLoading: viewModel.isLoading
-                    )
+                // 3. Weekly chart
+                WeeklyChart(
+                    days: viewModel.weekDays,
+                    isLoading: viewModel.isLoading
+                )
 
-                    // 4. Last session or empty state
-                    if viewModel.hasEverWorkedOut {
-                        lastSessionSection
-                    } else {
-                        emptyStateSection
-                    }
-
-                    // 5. "Workout starten" quick-action button
-                    workoutStartButton
+                // 4. Last session or empty state
+                if viewModel.hasEverWorkedOut {
+                    lastSessionSection
+                } else {
+                    emptyStateSection
                 }
+
+                // 5. "Workout starten" quick-action button
+                workoutStartButton
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, AppSpacing.sm)
@@ -100,35 +99,102 @@ struct DashboardView: View {
     @ViewBuilder
     private var lastSessionSection: some View {
         if let session = viewModel.lastSession {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Card {
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
-                HStack {
-                    Label("Letzte Session", icon: .clockArrowCirclepath)
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                    HStack {
+                        Label("Letzte Session", icon: .clockArrowCirclepath)
+                            .font(AppTypography.headline)
+                            .foregroundStyle(AppColors.textPrimary)
 
-                    Spacer()
+                        Spacer()
 
-                    Text(session.relativeDate)
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        Text(session.relativeDate)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+
+                    Divider()
+
+                    // Metrics row -- reuses the same layout pattern as
+                    // WorkoutSummaryCard but inline to avoid double-card nesting.
+                    lastSessionMetrics(session)
                 }
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.top, AppSpacing.md)
-
-                WorkoutSummaryCard(
-                    pushUpCount: session.pushUpCount,
-                    durationSeconds: session.durationSeconds,
-                    earnedSeconds: session.earnedSeconds,
-                    qualityScore: session.qualityScore
-                )
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.bottom, AppSpacing.md)
             }
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
         }
+    }
+
+    @ViewBuilder
+    private func lastSessionMetrics(_ session: DashboardLastSession) -> some View {
+        VStack(spacing: AppSpacing.sm) {
+            // Push-up count hero
+            VStack(spacing: AppSpacing.xxs) {
+                Text("\(session.pushUpCount)")
+                    .font(AppTypography.displayMedium)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Text("Push-Ups")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+
+            // Metrics row
+            HStack {
+                metricItem(
+                    icon: .clock,
+                    value: formatDuration(session.durationSeconds),
+                    label: "Dauer",
+                    tint: AppColors.info
+                )
+
+                Divider().frame(height: 36)
+
+                metricItem(
+                    icon: .boltFill,
+                    value: "+\(session.earnedSeconds / 60) Min",
+                    label: "Verdient",
+                    tint: AppColors.success
+                )
+
+                Divider().frame(height: 36)
+
+                metricItem(
+                    icon: .starFill,
+                    value: String(format: "%.0f%%", session.qualityScore * 100),
+                    label: "Qualitaet",
+                    tint: AppColors.formScoreColor(session.qualityScore)
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metricItem(
+        icon: AppIcon,
+        value: String,
+        label: String,
+        tint: Color
+    ) -> some View {
+        VStack(spacing: AppSpacing.xxs) {
+            Image(systemName: icon.rawValue)
+                .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                .foregroundStyle(tint)
+
+            Text(value)
+                .font(AppTypography.bodySemibold)
+                .foregroundStyle(AppColors.textPrimary)
+
+            Text(label)
+                .font(AppTypography.caption1)
+                .foregroundStyle(AppColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Empty State
@@ -181,19 +247,6 @@ struct DashboardView: View {
                     .tint(AppColors.primary)
             }
         }
-    }
-}
-
-// MARK: - RefreshControl
-
-/// Invisible spacer that triggers pull-to-refresh visual feedback.
-/// The actual refresh logic is handled by `.refreshable` on the ScrollView.
-private struct RefreshControl: View {
-    let isRefreshing: Bool
-
-    var body: some View {
-        Color.clear
-            .frame(height: 0)
     }
 }
 

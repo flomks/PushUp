@@ -1,14 +1,4 @@
-import SwiftUI
-
-// MARK: - DashboardLoadingState
-
-/// Represents the loading lifecycle for a single data source.
-enum DashboardLoadingState {
-    case idle
-    case loading
-    case loaded
-    case failed(String)
-}
+import Foundation
 
 // MARK: - DashboardDailyStats
 
@@ -40,6 +30,24 @@ struct DashboardLastSession {
     let earnedSeconds: Int
     let qualityScore: Double
     let relativeDate: String  // e.g. "Heute", "Gestern", "vor 3 Tagen"
+}
+
+// MARK: - WeekdayHelper
+
+/// Shared helper for Monday-based weekday index calculation.
+/// Avoids duplicating the Calendar.weekday -> 0-based Monday index
+/// conversion across ViewModel and chart components.
+enum WeekdayHelper {
+
+    /// Day labels for the German locale, Monday through Sunday.
+    static let dayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+    /// Returns the 0-based weekday index (0 = Monday, 6 = Sunday) for today.
+    static func todayIndex() -> Int {
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        // Calendar.weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+        return (weekday + 5) % 7
+    }
 }
 
 // MARK: - DashboardViewModel
@@ -78,7 +86,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var isLoading: Bool = false
 
     /// Non-nil when a load attempt failed.
-    @Published private(set) var errorMessage: String? = nil
+    @Published var errorMessage: String? = nil
 
     /// Whether a pull-to-refresh is currently in progress.
     @Published private(set) var isRefreshing: Bool = false
@@ -89,60 +97,68 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Loads all dashboard data. Called on first appear and after pull-to-refresh.
+    /// Loads all dashboard data. Called on first appear.
+    /// Skips if already loading or refreshing to prevent concurrent fetches.
     func loadData() async {
-        guard !isLoading else { return }
+        guard !isLoading, !isRefreshing else { return }
         isLoading = true
         errorMessage = nil
 
-        do {
-            // Simulate network / database latency
-            try await Task.sleep(nanoseconds: 800_000_000)
-            applyStubData()
-        } catch {
-            errorMessage = "Daten konnten nicht geladen werden."
-        }
+        await fetchData(errorPrefix: "Daten konnten nicht geladen werden.")
 
         isLoading = false
     }
 
     /// Triggered by pull-to-refresh. Reloads all data.
+    /// Skips if already loading or refreshing to prevent concurrent fetches.
     func refresh() async {
-        guard !isRefreshing else { return }
+        guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
         errorMessage = nil
 
-        do {
-            try await Task.sleep(nanoseconds: 600_000_000)
-            applyStubData()
-        } catch {
-            errorMessage = "Aktualisierung fehlgeschlagen."
-        }
+        await fetchData(errorPrefix: "Aktualisierung fehlgeschlagen.")
 
         isRefreshing = false
     }
 
+    /// Clears the current error message. Called when the user dismisses
+    /// the error alert.
+    func clearError() {
+        errorMessage = nil
+    }
+
     // MARK: - Private
 
+    /// Shared fetch logic used by both `loadData()` and `refresh()`.
+    private func fetchData(errorPrefix: String) async {
+        do {
+            // Simulate network / database latency.
+            // Replace with real KMP use-case invocations:
+            //
+            //   let credit = try await getTimeCreditUseCase(userId: currentUserId)
+            //   availableSeconds = Int(credit.availableSeconds)
+            //   totalEarnedSeconds = Int(credit.totalEarnedSeconds)
+            //
+            //   let today = LocalDate.today()
+            //   let daily = try await getDailyStatsUseCase(userId: currentUserId, date: today)
+            //   // map daily -> DashboardDailyStats
+            //
+            //   let weekly = try await getWeeklyStatsUseCase(userId: currentUserId, weekStartDate: weekStart)
+            //   // map weekly.dailyBreakdown -> [DashboardWeekDay]
+            try await Task.sleep(nanoseconds: 800_000_000)
+            applyStubData()
+        } catch is CancellationError {
+            // Task was cancelled (e.g. view disappeared) -- do not set error.
+        } catch {
+            errorMessage = errorPrefix
+        }
+    }
+
     /// Populates all published properties with realistic stub data.
-    ///
-    /// Replace this method body with real KMP use-case invocations:
-    /// ```swift
-    /// let credit = try await getTimeCreditUseCase(userId: currentUserId)
-    /// availableSeconds = Int(credit.availableSeconds)
-    /// totalEarnedSeconds = Int(credit.totalEarnedSeconds)
-    ///
-    /// let today = LocalDate.today()
-    /// let daily = try await getDailyStatsUseCase(userId: currentUserId, date: today)
-    /// // map daily -> DashboardDailyStats
-    ///
-    /// let weekly = try await getWeeklyStatsUseCase(userId: currentUserId, weekStartDate: weekStart)
-    /// // map weekly.dailyBreakdown -> [DashboardWeekDay]
-    /// ```
     private func applyStubData() {
         // Time credit
-        availableSeconds  = 5_400   // 1h 30m
-        totalEarnedSeconds = 9_000  // 2h 30m
+        availableSeconds   = 5_400   // 1h 30m
+        totalEarnedSeconds = 9_000   // 2h 30m
 
         // Today's stats
         dailyStats = DashboardDailyStats(
@@ -153,12 +169,11 @@ final class DashboardViewModel: ObservableObject {
             bestSession: 28
         )
 
-        // Weekly bar chart (Mon-Sun, today = index based on weekday)
-        let dayLabels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+        // Weekly bar chart (Mon-Sun)
         let pushUpValues = [35, 0, 52, 18, 42, 0, 0]
-        let todayIndex = todayWeekdayIndex()
+        let todayIndex = WeekdayHelper.todayIndex()
 
-        weekDays = dayLabels.enumerated().map { idx, label in
+        weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
             DashboardWeekDay(
                 id: idx,
                 label: label,
@@ -177,12 +192,5 @@ final class DashboardViewModel: ObservableObject {
         )
 
         hasEverWorkedOut = true
-    }
-
-    /// Returns the 0-based weekday index (0 = Monday, 6 = Sunday) for today.
-    private func todayWeekdayIndex() -> Int {
-        let weekday = Calendar.current.component(.weekday, from: Date())
-        // Calendar.weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
-        return (weekday + 5) % 7
     }
 }

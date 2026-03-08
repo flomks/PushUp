@@ -22,6 +22,8 @@ struct WeeklyChart: View {
     private let barMinHeight: CGFloat = 4
 
     var body: some View {
+        let total = days.map(\.pushUps).reduce(0, +)
+
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
             // Section header
@@ -32,7 +34,7 @@ struct WeeklyChart: View {
 
                 Spacer()
 
-                if !isLoading, let total = weekTotal, total > 0 {
+                if !isLoading, total > 0 {
                     Text("\(total) Push-Ups")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
@@ -41,7 +43,7 @@ struct WeeklyChart: View {
 
             if isLoading {
                 loadingSkeleton
-            } else if days.isEmpty || weekTotal == 0 {
+            } else if days.isEmpty || total == 0 {
                 emptyChartView
             } else {
                 chartBars
@@ -57,11 +59,13 @@ struct WeeklyChart: View {
 
     @ViewBuilder
     private var chartBars: some View {
+        let maxValue = days.map(\.pushUps).max() ?? 1
+
         HStack(alignment: .bottom, spacing: AppSpacing.xs) {
             ForEach(days) { day in
                 DayBar(
                     day: day,
-                    maxPushUps: maxPushUps,
+                    maxPushUps: maxValue,
                     barMaxHeight: barMaxHeight,
                     barMinHeight: barMinHeight
                 )
@@ -75,7 +79,10 @@ struct WeeklyChart: View {
     private var loadingSkeleton: some View {
         HStack(alignment: .bottom, spacing: AppSpacing.xs) {
             ForEach(0..<7, id: \.self) { idx in
-                SkeletonBar(heightFraction: skeletonHeights[idx % skeletonHeights.count])
+                SkeletonBar(
+                    heightFraction: Self.skeletonHeights[idx],
+                    barMaxHeight: barMaxHeight
+                )
             }
         }
         .frame(maxWidth: .infinity)
@@ -84,38 +91,27 @@ struct WeeklyChart: View {
 
     @ViewBuilder
     private var emptyChartView: some View {
-        VStack(spacing: AppSpacing.xs) {
-            // Show empty bars
-            HStack(alignment: .bottom, spacing: AppSpacing.xs) {
-                ForEach(days.isEmpty ? defaultEmptyDays : days) { day in
-                    EmptyDayBar(label: day.label, isToday: day.isToday)
-                }
+        HStack(alignment: .bottom, spacing: AppSpacing.xs) {
+            ForEach(days.isEmpty ? Self.defaultEmptyDays : days) { day in
+                EmptyDayBar(label: day.label, isToday: day.isToday)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, AppSpacing.xs)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, AppSpacing.xs)
     }
 
-    // MARK: - Helpers
+    // MARK: - Constants
 
-    private var maxPushUps: Int {
-        days.map(\.pushUps).max() ?? 1
-    }
+    private static let skeletonHeights: [CGFloat] = [0.6, 0.3, 0.8, 0.4, 0.7, 0.2, 0.5]
 
-    private var weekTotal: Int? {
-        guard !days.isEmpty else { return nil }
-        return days.map(\.pushUps).reduce(0, +)
-    }
-
-    private let skeletonHeights: [CGFloat] = [0.6, 0.3, 0.8, 0.4, 0.7, 0.2, 0.5]
-
-    private var defaultEmptyDays: [DashboardWeekDay] {
-        let labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-        let todayIdx = (Calendar.current.component(.weekday, from: Date()) + 5) % 7
-        return labels.enumerated().map { idx, label in
+    /// Pre-built empty days array using the shared `WeekdayHelper`.
+    /// Static to avoid recreating on every body evaluation.
+    private static let defaultEmptyDays: [DashboardWeekDay] = {
+        let todayIdx = WeekdayHelper.todayIndex()
+        return WeekdayHelper.dayLabels.enumerated().map { idx, label in
             DashboardWeekDay(id: idx, label: label, pushUps: 0, isToday: idx == todayIdx)
         }
-    }
+    }()
 }
 
 // MARK: - DayBar
@@ -141,7 +137,7 @@ private struct DayBar: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.xxs) {
-            // Push-up count label (only for today or if bar is tall enough)
+            // Push-up count label
             if day.isToday || day.pushUps > 0 {
                 Text(day.pushUps > 0 ? "\(day.pushUps)" : "")
                     .font(AppTypography.caption2)
@@ -222,6 +218,7 @@ private struct EmptyDayBar: View {
 private struct SkeletonBar: View {
 
     let heightFraction: CGFloat
+    let barMaxHeight: CGFloat
     @State private var isAnimating = false
 
     var body: some View {
@@ -230,7 +227,7 @@ private struct SkeletonBar: View {
 
             RoundedRectangle(cornerRadius: 4)
                 .fill(AppColors.fill)
-                .frame(height: 80 * heightFraction)
+                .frame(height: barMaxHeight * heightFraction)
                 .opacity(isAnimating ? 0.5 : 1.0)
                 .animation(
                     .easeInOut(duration: 0.9).repeatForever(autoreverses: true),

@@ -17,6 +17,13 @@ struct DailyStatsCard: View {
     let stats: DashboardDailyStats?
     let isLoading: Bool
 
+    /// Shared 2-column grid layout used by both the real stats and the
+    /// skeleton placeholder.
+    private static let gridColumns = [
+        GridItem(.flexible()),
+        GridItem(.flexible()),
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
@@ -28,7 +35,7 @@ struct DailyStatsCard: View {
 
                 Spacer()
 
-                Text(todayDateString)
+                Text(Self.todayDateString)
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -51,10 +58,7 @@ struct DailyStatsCard: View {
 
     @ViewBuilder
     private func statsGrid(_ stats: DashboardDailyStats) -> some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible()), GridItem(.flexible())],
-            spacing: AppSpacing.xs
-        ) {
+        LazyVGrid(columns: Self.gridColumns, spacing: AppSpacing.xs) {
             StatCard(
                 title: "Push-Ups",
                 value: "\(stats.pushUps)",
@@ -91,10 +95,7 @@ struct DailyStatsCard: View {
 
     @ViewBuilder
     private var loadingSkeleton: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible()), GridItem(.flexible())],
-            spacing: AppSpacing.xs
-        ) {
+        LazyVGrid(columns: Self.gridColumns, spacing: AppSpacing.xs) {
             ForEach(0..<4, id: \.self) { _ in
                 SkeletonStatCard()
             }
@@ -125,12 +126,14 @@ struct DailyStatsCard: View {
 
     // MARK: - Helpers
 
-    private var todayDateString: String {
+    /// Cached date string for today. Static so the `DateFormatter` is only
+    /// created once per process rather than on every body evaluation.
+    private static let todayDateString: String = {
         let formatter = DateFormatter()
         formatter.dateFormat = "d. MMM"
         formatter.locale = Locale(identifier: "de_DE")
         return formatter.string(from: Date())
-    }
+    }()
 }
 
 // MARK: - SkeletonStatCard
