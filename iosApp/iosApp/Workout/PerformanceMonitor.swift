@@ -73,6 +73,9 @@ enum DevicePerformanceTier: Equatable, Sendable {
 /// - `shouldProcessFrame()` is called from the video output queue.
 /// - All `@Published` properties are updated on the **main queue**.
 /// - Internal counters are protected by `NSLock` for safe cross-queue access.
+///   All mutable state accessed from `nonisolated` methods is marked
+///   `nonisolated(unsafe)` and must only be read/written while holding
+///   `stateLock`.
 ///
 /// **Usage**
 /// ```swift
@@ -172,32 +175,39 @@ final class PerformanceMonitor: ObservableObject {
     }
 
     // MARK: - Private State (protected by stateLock)
+    //
+    // All mutable properties below are accessed from `nonisolated` methods
+    // and are therefore marked `nonisolated(unsafe)`. They MUST only be
+    // read or written while `stateLock` is held.
 
     private let stateLock = NSLock()
     private let configuration: Configuration
 
     /// Monotonically increasing counter of camera frames received.
     /// Incremented on every `shouldProcessFrame()` call.
-    private var _frameCounter: UInt64 = 0
+    nonisolated(unsafe) private var _frameCounter: UInt64 = 0
 
     /// The effective frame-skip interval, which may be larger than
     /// `tier.frameSkipInterval` when dynamic throttling is active.
-    private var _effectiveSkipInterval: Int
+    nonisolated(unsafe) private var _effectiveSkipInterval: Int
 
     /// Additional frames being skipped due to dynamic throttling.
-    private var _additionalSkipFrames: Int = 0
+    nonisolated(unsafe) private var _additionalSkipFrames: Int = 0
 
     /// Circular buffer of `CACurrentMediaTime()` timestamps for completed pose
     /// detections. Used to compute the rolling FPS average.
     ///
     /// Implemented as a fixed-capacity array with a write index to avoid the
     /// O(n) cost of `Array.removeFirst()` in the hot path.
-    private var _detectionTimestamps: [Double] = []
-    private var _timestampWriteIndex: Int = 0
-    private var _timestampCount: Int = 0
+    nonisolated(unsafe) private var _detectionTimestamps: [Double] = []
+    nonisolated(unsafe) private var _timestampWriteIndex: Int = 0
+    nonisolated(unsafe) private var _timestampCount: Int = 0
 
     /// Timestamp of the last FPS update published to the main queue.
-    private var _lastFPSUpdateTime: Double = 0
+    nonisolated(unsafe) private var _lastFPSUpdateTime: Double = 0
+
+    /// Internal backing for `isPaused`, readable from any queue under `stateLock`.
+    nonisolated(unsafe) private var _isPausedInternal: Bool = false
 
     // MARK: - Background Observation
 
@@ -311,16 +321,18 @@ final class PerformanceMonitor: ObservableObject {
 
     // MARK: - Private: Background Handling
 
-    /// Internal backing for `isPaused`, readable from any queue under `stateLock`.
-    private var _isPausedInternal: Bool = false
-
     private func subscribeToAppLifecycle() {
+        // Both notifications are delivered on `.main` queue (queue: .main),
+        // so the closures run on the main thread. `MainActor.assumeIsolated`
+        // makes the actor isolation explicit for Swift 6 strict concurrency.
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleAppDidEnterBackground()
+            MainActor.assumeIsolated {
+                self?.handleAppDidEnterBackground()
+            }
         }
 
         foregroundObserver = NotificationCenter.default.addObserver(
@@ -328,7 +340,9 @@ final class PerformanceMonitor: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleAppWillEnterForeground()
+            MainActor.assumeIsolated {
+                self?.handleAppWillEnterForeground()
+            }
         }
     }
 
@@ -359,7 +373,7 @@ final class PerformanceMonitor: ObservableObject {
 
     /// Appends a timestamp to the circular buffer. O(1) amortised.
     /// Must be called while holding `stateLock`.
-    private func appendTimestamp(_ value: Double) {
+    nonisolated private func appendTimestamp(_ value: Double) {
         let capacity = configuration.fpsMeasurementWindowSize
         if _detectionTimestamps.count < capacity {
             _detectionTimestamps.append(value)
@@ -376,7 +390,7 @@ final class PerformanceMonitor: ObservableObject {
     /// Must be called while holding `stateLock`.
     ///
     /// Returns 0 when fewer than 2 timestamps are available.
-    private func computeFPSFromRingBuffer() -> Double {
+    nonisolated private func computeFPSFromRingBuffer() -> Double {
         guard _timestampCount >= 2 else { return 0 }
         // Find the oldest and newest timestamps in the ring buffer.
         let capacity = _detectionTimestamps.count
