@@ -40,8 +40,8 @@ struct RootView: View {
         Group {
             switch authViewModel.authState {
             case .authenticated:
-                // Post-login destination: the main tab bar.
-                // Task 3.6 will replace this with the full feature tab bar.
+                // Post-login destination: the full 5-tab main navigation
+                // implemented in Task 3.3 (MainTabView.swift).
                 MainTabView()
                     .transition(.opacity)
 
@@ -61,72 +61,6 @@ struct RootView: View {
             if !hasSeenOnboarding {
                 showOnboarding = true
             }
-        }
-    }
-}
-
-// MARK: - MainTabView
-
-/// Placeholder for the main tab bar introduced in Task 3.6.
-///
-/// Currently wraps the existing `ContentView` (workout demo) so the app
-/// remains fully functional after login. Replace the tabs with the real
-/// feature screens when Task 3.6 is implemented.
-struct MainTabView: View {
-
-    @State private var selectedTab: Int = 0
-
-    var body: some View {
-        TabView(selection: $selectedTab) {
-            // Workout tab (existing demo screen)
-            ContentView()
-                .tabItem {
-                    Label("Workout", icon: .figureStrengthTraining)
-                }
-                .tag(0)
-
-            // Dashboard placeholder
-            dashboardPlaceholder
-                .tabItem {
-                    Label("Dashboard", icon: .chartBarFill)
-                }
-                .tag(1)
-
-            // Profile placeholder
-            profilePlaceholder
-                .tabItem {
-                    Label("Profil", icon: .personFill)
-                }
-                .tag(2)
-        }
-        .tint(AppColors.primary)
-    }
-
-    // MARK: - Placeholder Tabs
-
-    private var dashboardPlaceholder: some View {
-        ZStack {
-            AppColors.backgroundPrimary.ignoresSafeArea()
-
-            EmptyStateCard(
-                icon: .chartBarFill,
-                title: "Dashboard",
-                message: "Deine Statistiken und Zeitguthaben erscheinen hier. (Task 3.5)"
-            )
-            .padding(AppSpacing.screenHorizontal)
-        }
-    }
-
-    private var profilePlaceholder: some View {
-        ZStack {
-            AppColors.backgroundPrimary.ignoresSafeArea()
-
-            EmptyStateCard(
-                icon: .personFill,
-                title: "Profil",
-                message: "Dein Profil und Einstellungen erscheinen hier. (Task 3.7)"
-            )
-            .padding(AppSpacing.screenHorizontal)
         }
     }
 }
