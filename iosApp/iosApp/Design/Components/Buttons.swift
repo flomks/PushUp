@@ -288,11 +288,45 @@ struct ChipButton: View {
 // MARK: - ScaleButtonStyle
 
 /// Subtle scale-down animation on press for consistent tactile feedback.
+///
+/// Uses a `DragGesture(minimumDistance: 0)` overlay so the press state is
+/// recognised immediately even when the button lives inside a `ScrollView`
+/// (which normally delays tap recognition by ~150 ms to distinguish taps
+/// from scroll gestures).
 struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeInOut(duration: 0.10), value: configuration.isPressed)
+            // Allow the button to receive the press immediately in scroll views
+            .contentShape(Rectangle())
+    }
+}
+
+// MARK: - InstantPressButtonStyle
+
+/// A wrapper that makes any button inside a `ScrollView` respond to presses
+/// without the system's built-in scroll-disambiguation delay.
+///
+/// Apply this to the outermost container of a button that lives in a scroll
+/// view when you need the scale / highlight feedback to appear instantly.
+struct InstantPressButtonStyle: ButtonStyle {
+    @State private var isPressed = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(isPressed ? 0.96 : 1.0)
+            .animation(.easeInOut(duration: 0.10), value: isPressed)
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !isPressed { isPressed = true }
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                    }
+            )
     }
 }
 
