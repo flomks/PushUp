@@ -10,14 +10,10 @@
 		762F76641E8CA1A01EE35518 /* PushUp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PushUp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001A1B2C3D4 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
-		CC0001AA0001AA0001AA0001 /* SkeletonSmoother.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SkeletonSmoother.swift; path = iosApp/PoseDetection/SkeletonSmoother.swift; sourceTree = "<group>"; };
-		CC0002AA0002AA0002AA0002 /* PositionClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PositionClassifier.swift; path = iosApp/PoseDetection/PositionClassifier.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXBuildFile section */
 		B1C2D3E4F5A60003B1C2D3E4 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */; };
-		CC0001BB0001BB0001BB0001 /* SkeletonSmoother.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0001AA0001AA0001AA0001 /* SkeletonSmoother.swift */; };
-		CC0002BB0002BB0002BB0002 /* PositionClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0002AA0002AA0002AA0002 /* PositionClassifier.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -250,8 +246,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CC0001BB0001BB0001BB0001 /* SkeletonSmoother.swift in Sources */,
-				CC0002BB0002BB0002BB0002 /* PositionClassifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
