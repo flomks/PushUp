@@ -2,70 +2,51 @@ import SwiftUI
 
 // MARK: - Card
 
-/// A general-purpose container card with a rounded rectangle background.
-///
-/// Use `Card` to group related content visually. It applies the standard
-/// card background, corner radius, and shadow from the design system.
+/// General-purpose container card with rounded background and shadow.
 ///
 /// Usage:
 /// ```swift
 /// Card {
 ///     VStack(alignment: .leading, spacing: AppSpacing.xs) {
-///         Text("Letzte Session")
-///             .font(AppTypography.headline)
-///         Text("42 Push-Ups in 8 Minuten")
-///             .font(AppTypography.body)
+///         Text("Letzte Session").font(AppTypography.headline)
+///         Text("42 Push-Ups in 8 Minuten").font(AppTypography.body)
 ///     }
 /// }
-///
-/// // With custom padding
-/// Card(padding: AppSpacing.lg) {
-///     Text("Mehr Platz")
-/// }
 /// ```
-public struct Card<Content: View>: View {
-
-    // MARK: Properties
+struct Card<Content: View>: View {
 
     private let padding: CGFloat
     private let cornerRadius: CGFloat
-    private let shadowEnabled: Bool
+    private let hasShadow: Bool
     private let content: Content
 
-    // MARK: Init
-
-    public init(
+    init(
         padding: CGFloat = AppSpacing.cardPadding,
         cornerRadius: CGFloat = AppSpacing.cornerRadiusCard,
-        shadowEnabled: Bool = true,
+        hasShadow: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding
         self.cornerRadius = cornerRadius
-        self.shadowEnabled = shadowEnabled
+        self.hasShadow = hasShadow
         self.content = content()
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         content
             .padding(padding)
-            .background(AppColors.backgroundSecondaryInline)
+            .background(AppColors.backgroundSecondary)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .shadow(
-                color: shadowEnabled ? Color.black.opacity(0.06) : .clear,
-                radius: 8,
-                x: 0,
-                y: 2
+                color: hasShadow ? Color.black.opacity(0.06) : .clear,
+                radius: 8, x: 0, y: 2
             )
     }
 }
 
 // MARK: - StatCard
 
-/// A compact card for displaying a single metric with a label, value, and
-/// optional icon and trend indicator.
+/// Compact card for a single metric with label, value, and optional trend.
 ///
 /// Usage:
 /// ```swift
@@ -73,24 +54,16 @@ public struct Card<Content: View>: View {
 ///     title: "Heute",
 ///     value: "42",
 ///     subtitle: "Push-Ups",
-///     icon: "figure.strengthtraining.traditional",
-///     tint: AppColors.primaryInline
-/// )
-///
-/// // With trend
-/// StatCard(
-///     title: "Woche",
-///     value: "287",
-///     subtitle: "Push-Ups",
-///     icon: "calendar.badge.checkmark",
+///     icon: .figureStrengthTraining,
+///     tint: AppColors.primary,
 ///     trend: .up(percentage: 12)
 /// )
 /// ```
-public struct StatCard: View {
+struct StatCard: View {
 
     // MARK: - Trend
 
-    public enum Trend {
+    enum Trend {
         case up(percentage: Int)
         case down(percentage: Int)
         case neutral
@@ -105,9 +78,9 @@ public struct StatCard: View {
 
         var color: Color {
             switch self {
-            case .up:      return AppColors.successInline
-            case .down:    return AppColors.errorInline
-            case .neutral: return AppColors.textSecondaryInline
+            case .up:      return AppColors.success
+            case .down:    return AppColors.error
+            case .neutral: return AppColors.textSecondary
             }
         }
 
@@ -125,18 +98,16 @@ public struct StatCard: View {
     private let title: String
     private let value: String
     private let subtitle: String?
-    private let icon: String?
+    private let icon: AppIcon?
     private let tint: Color
     private let trend: Trend?
 
-    // MARK: Init
-
-    public init(
+    init(
         title: String,
         value: String,
         subtitle: String? = nil,
-        icon: String? = nil,
-        tint: Color = AppColors.primaryInline,
+        icon: AppIcon? = nil,
+        tint: Color = AppColors.primary,
         trend: Trend? = nil
     ) {
         self.title = title
@@ -147,22 +118,20 @@ public struct StatCard: View {
         self.trend = trend
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
 
-            // Header row: icon + title + optional trend
+            // Header: icon + title + trend
             HStack(alignment: .center) {
                 if let icon {
-                    Image(systemName: icon)
+                    Image(systemName: icon.rawValue)
                         .font(.system(size: AppSpacing.iconSizeSmall, weight: .semibold))
                         .foregroundStyle(tint)
                 }
 
                 Text(title)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
+                    .foregroundStyle(AppColors.textSecondary)
 
                 Spacer()
 
@@ -171,27 +140,25 @@ public struct StatCard: View {
                 }
             }
 
-            // Value
+            // Value -- displayMedium (34pt) fits 2-column grids
             Text(value)
                 .font(AppTypography.displayMedium)
-                .foregroundStyle(AppColors.textPrimaryInline)
+                .foregroundStyle(AppColors.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.5)
 
             // Subtitle
             if let subtitle {
                 Text(subtitle)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
+                    .foregroundStyle(AppColors.textSecondary)
             }
         }
-        .statCardPadding()
-        .background(AppColors.backgroundSecondaryInline)
+        .padding(AppSpacing.statCardPadding)
+        .background(AppColors.backgroundSecondary)
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
         .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
     }
-
-    // MARK: Private
 
     @ViewBuilder
     private func trendBadge(_ trend: Trend) -> some View {
@@ -210,100 +177,88 @@ public struct StatCard: View {
 
 // MARK: - TimeCreditCard
 
-/// A prominent card for displaying the current time-credit balance.
-///
-/// Shows the available time in HH:MM:SS format with a circular progress ring.
+/// Prominent card displaying the current time-credit balance with a
+/// circular progress ring.
 ///
 /// Usage:
 /// ```swift
-/// TimeCreditCard(
-///     availableSeconds: 1800,
-///     totalEarnedSeconds: 3600,
-///     isLoading: false
-/// )
+/// TimeCreditCard(availableSeconds: 1800, totalEarnedSeconds: 3600)
 /// ```
-public struct TimeCreditCard: View {
-
-    // MARK: Properties
+struct TimeCreditCard: View {
 
     private let availableSeconds: Int
     private let totalEarnedSeconds: Int
     private let isLoading: Bool
 
-    // MARK: Init
+    private let ringSize: CGFloat = 160
+    private let ringLineWidth: CGFloat = 12
 
-    public init(
+    init(
         availableSeconds: Int,
         totalEarnedSeconds: Int,
         isLoading: Bool = false
     ) {
-        self.availableSeconds = availableSeconds
-        self.totalEarnedSeconds = totalEarnedSeconds
+        self.availableSeconds = max(0, availableSeconds)
+        self.totalEarnedSeconds = max(0, totalEarnedSeconds)
         self.isLoading = isLoading
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         Card(padding: AppSpacing.lg) {
             VStack(spacing: AppSpacing.md) {
 
-                // Title
                 Text("Zeitguthaben")
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textSecondaryInline)
+                    .foregroundStyle(AppColors.textSecondary)
 
                 // Progress ring + time display
                 ZStack {
-                    // Background ring
                     Circle()
-                        .stroke(AppColors.fillInline, lineWidth: 12)
-                        .frame(width: 160, height: 160)
+                        .stroke(AppColors.fill, lineWidth: ringLineWidth)
+                        .frame(width: ringSize, height: ringSize)
 
-                    // Progress ring
                     Circle()
                         .trim(from: 0, to: progressFraction)
                         .stroke(
                             LinearGradient(
-                                colors: [AppColors.primaryInline, AppColors.secondaryInline],
+                                colors: [AppColors.primary, AppColors.secondary],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
-                            style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                            style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round)
                         )
-                        .frame(width: 160, height: 160)
+                        .frame(width: ringSize, height: ringSize)
                         .rotationEffect(.degrees(-90))
                         .animation(.easeInOut(duration: 0.6), value: progressFraction)
 
-                    // Time label
                     if isLoading {
                         ProgressView()
                             .progressViewStyle(.circular)
-                            .tint(AppColors.primaryInline)
+                            .tint(AppColors.primary)
                     } else {
                         VStack(spacing: AppSpacing.xxs) {
                             Text(formattedTime)
                                 .font(AppTypography.monoDisplay)
-                                .foregroundStyle(AppColors.textPrimaryInline)
+                                .foregroundStyle(AppColors.textPrimary)
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .minimumScaleFactor(0.6)
 
                             Text("verfuegbar")
                                 .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondaryInline)
+                                .foregroundStyle(AppColors.textSecondary)
                         }
                     }
                 }
 
                 // Earned total
                 HStack(spacing: AppSpacing.xxs) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(AppColors.successInline)
+                    Image(systemName: AppIcon.checkmarkCircleFill.rawValue)
+                        .foregroundStyle(AppColors.success)
                         .font(.system(size: AppSpacing.iconSizeSmall))
 
                     Text("Gesamt verdient: \(formattedTotalEarned)")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondaryInline)
+                        .foregroundStyle(AppColors.textSecondary)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -314,14 +269,15 @@ public struct TimeCreditCard: View {
 
     private var progressFraction: CGFloat {
         guard totalEarnedSeconds > 0 else { return 0 }
-        return CGFloat(availableSeconds) / CGFloat(totalEarnedSeconds)
+        return min(1.0, CGFloat(availableSeconds) / CGFloat(totalEarnedSeconds))
     }
 
     private var formattedTime: String {
-        let hours   = availableSeconds / 3600
-        let minutes = (availableSeconds % 3600) / 60
-        let seconds = availableSeconds % 60
-        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        let clamped = max(0, availableSeconds)
+        let h = clamped / 3600
+        let m = (clamped % 3600) / 60
+        let s = clamped % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
     private var formattedTotalEarned: String {
@@ -332,29 +288,23 @@ public struct TimeCreditCard: View {
 
 // MARK: - WorkoutSummaryCard
 
-/// A card summarising a completed workout session.
+/// Card summarising a completed workout session.
 ///
 /// Usage:
 /// ```swift
 /// WorkoutSummaryCard(
-///     pushUpCount: 42,
-///     durationSeconds: 480,
-///     earnedSeconds: 252,
-///     qualityScore: 0.82
+///     pushUpCount: 42, durationSeconds: 480,
+///     earnedSeconds: 252, qualityScore: 0.82
 /// )
 /// ```
-public struct WorkoutSummaryCard: View {
-
-    // MARK: Properties
+struct WorkoutSummaryCard: View {
 
     private let pushUpCount: Int
     private let durationSeconds: Int
     private let earnedSeconds: Int
     private let qualityScore: Double
 
-    // MARK: Init
-
-    public init(
+    init(
         pushUpCount: Int,
         durationSeconds: Int,
         earnedSeconds: Int,
@@ -363,12 +313,10 @@ public struct WorkoutSummaryCard: View {
         self.pushUpCount = pushUpCount
         self.durationSeconds = durationSeconds
         self.earnedSeconds = earnedSeconds
-        self.qualityScore = qualityScore
+        self.qualityScore = min(1.0, max(0.0, qualityScore))
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         Card {
             VStack(spacing: AppSpacing.md) {
 
@@ -376,11 +324,11 @@ public struct WorkoutSummaryCard: View {
                 VStack(spacing: AppSpacing.xxs) {
                     Text("\(pushUpCount)")
                         .font(AppTypography.displayLarge)
-                        .foregroundStyle(AppColors.textPrimaryInline)
+                        .foregroundStyle(AppColors.textPrimary)
 
                     Text("Push-Ups")
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondaryInline)
+                        .foregroundStyle(AppColors.textSecondary)
                 }
 
                 Divider()
@@ -388,98 +336,88 @@ public struct WorkoutSummaryCard: View {
                 // Metrics row
                 HStack {
                     metricItem(
-                        icon: "clock",
+                        icon: .clock,
                         value: formattedDuration,
                         label: "Dauer",
-                        tint: AppColors.infoInline
+                        tint: AppColors.info
                     )
 
                     Divider().frame(height: 40)
 
                     metricItem(
-                        icon: "bolt.fill",
+                        icon: .boltFill,
                         value: "+\(earnedSeconds / 60) Min",
                         label: "Verdient",
-                        tint: AppColors.successInline
+                        tint: AppColors.success
                     )
 
                     Divider().frame(height: 40)
 
                     metricItem(
-                        icon: "star.fill",
+                        icon: .starFill,
                         value: String(format: "%.0f%%", qualityScore * 100),
                         label: "Qualitaet",
-                        tint: qualityColor
+                        tint: AppColors.formScoreColor(qualityScore)
                     )
                 }
             }
         }
     }
 
-    // MARK: Private
-
     @ViewBuilder
     private func metricItem(
-        icon: String,
+        icon: AppIcon,
         value: String,
         label: String,
         tint: Color
     ) -> some View {
         VStack(spacing: AppSpacing.xxs) {
-            Image(systemName: icon)
+            Image(systemName: icon.rawValue)
                 .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
                 .foregroundStyle(tint)
 
             Text(value)
                 .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimaryInline)
+                .foregroundStyle(AppColors.textPrimary)
 
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
+                .foregroundStyle(AppColors.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
 
     private var formattedDuration: String {
-        let minutes = durationSeconds / 60
-        let seconds = durationSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private var qualityColor: Color {
-        AppColors.formScoreColor(qualityScore)
+        let m = durationSeconds / 60
+        let s = durationSeconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 
 // MARK: - EmptyStateCard
 
-/// A card shown when a list or section has no data yet.
+/// Card shown when a list or section has no data.
 ///
 /// Usage:
 /// ```swift
 /// EmptyStateCard(
-///     icon: "figure.strengthtraining.traditional",
+///     icon: .figureStrengthTraining,
 ///     title: "Noch keine Workouts",
-///     message: "Starte dein erstes Workout und verdiene Zeitguthaben!",
+///     message: "Starte dein erstes Workout!",
 ///     actionTitle: "Workout starten",
 ///     action: { startWorkout() }
 /// )
 /// ```
-public struct EmptyStateCard: View {
+struct EmptyStateCard: View {
 
-    // MARK: Properties
-
-    private let icon: String
+    private let icon: AppIcon
     private let title: String
     private let message: String
     private let actionTitle: String?
     private let action: (() -> Void)?
 
-    // MARK: Init
-
-    public init(
-        icon: String,
+    init(
+        icon: AppIcon,
         title: String,
         message: String,
         actionTitle: String? = nil,
@@ -492,24 +430,22 @@ public struct EmptyStateCard: View {
         self.action = action
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         Card {
             VStack(spacing: AppSpacing.md) {
-                Image(systemName: icon)
+                Image(systemName: icon.rawValue)
                     .font(.system(size: AppSpacing.iconSizeXL, weight: .light))
-                    .foregroundStyle(AppColors.textTertiaryInline)
+                    .foregroundStyle(AppColors.textTertiary)
 
                 VStack(spacing: AppSpacing.xs) {
                     Text(title)
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimaryInline)
+                        .foregroundStyle(AppColors.textPrimary)
                         .multilineTextAlignment(.center)
 
                     Text(message)
                         .font(AppTypography.body)
-                        .foregroundStyle(AppColors.textSecondaryInline)
+                        .foregroundStyle(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
                 }
 
@@ -531,106 +467,62 @@ public struct EmptyStateCard: View {
     ScrollView {
         VStack(spacing: AppSpacing.md) {
 
-            Text("TimeCreditCard")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             TimeCreditCard(
                 availableSeconds: 1800,
                 totalEarnedSeconds: 3600
             )
-
-            Text("StatCards")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible())],
                 spacing: AppSpacing.sm
             ) {
                 StatCard(
-                    title: "Heute",
-                    value: "42",
-                    subtitle: "Push-Ups",
-                    icon: "figure.strengthtraining.traditional",
-                    tint: AppColors.primaryInline,
+                    title: "Heute", value: "42", subtitle: "Push-Ups",
+                    icon: .figureStrengthTraining, tint: AppColors.primary,
                     trend: .up(percentage: 12)
                 )
-
                 StatCard(
-                    title: "Woche",
-                    value: "287",
-                    subtitle: "Push-Ups",
-                    icon: "calendar.badge.checkmark",
-                    tint: AppColors.secondaryInline,
+                    title: "Woche", value: "287", subtitle: "Push-Ups",
+                    icon: .calendarBadgeCheckmark, tint: AppColors.secondary,
                     trend: .down(percentage: 5)
                 )
-
                 StatCard(
-                    title: "Qualitaet",
-                    value: "84%",
-                    subtitle: "Durchschnitt",
-                    icon: "star.fill",
-                    tint: AppColors.warningInline
+                    title: "Qualitaet", value: "84%", subtitle: "Durchschnitt",
+                    icon: .starFill, tint: AppColors.warning
                 )
-
                 StatCard(
-                    title: "Streak",
-                    value: "7",
-                    subtitle: "Tage",
-                    icon: "flame.fill",
-                    tint: AppColors.errorInline,
-                    trend: .neutral
+                    title: "Streak", value: "7", subtitle: "Tage",
+                    icon: .flameFill, tint: AppColors.error, trend: .neutral
                 )
             }
 
-            Text("WorkoutSummaryCard")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             WorkoutSummaryCard(
-                pushUpCount: 42,
-                durationSeconds: 480,
-                earnedSeconds: 252,
-                qualityScore: 0.82
+                pushUpCount: 42, durationSeconds: 480,
+                earnedSeconds: 252, qualityScore: 0.82
             )
 
-            Text("EmptyStateCard")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             EmptyStateCard(
-                icon: "figure.strengthtraining.traditional",
+                icon: .figureStrengthTraining,
                 title: "Noch keine Workouts",
                 message: "Starte dein erstes Workout und verdiene Zeitguthaben!",
                 actionTitle: "Workout starten",
                 action: {}
             )
 
-            Text("Generic Card")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondaryInline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             Card {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Label("Letzte Session", systemImage: "clock.arrow.circlepath")
+                    Label("Letzte Session", systemImage: AppIcon.clockArrowCirclepath.rawValue)
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimaryInline)
-
+                        .foregroundStyle(AppColors.textPrimary)
                     Text("42 Push-Ups in 8 Minuten")
                         .font(AppTypography.body)
-                        .foregroundStyle(AppColors.textSecondaryInline)
+                        .foregroundStyle(AppColors.textSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(AppSpacing.md)
     }
-    .background(AppColors.backgroundPrimaryInline)
+    .background(AppColors.backgroundPrimary)
 }
 #endif

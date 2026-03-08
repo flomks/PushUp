@@ -2,39 +2,28 @@ import SwiftUI
 
 // MARK: - PrimaryButton
 
-/// A full-width, high-emphasis button for the primary action on a screen.
+/// Full-width, high-emphasis button for the primary action on a screen.
 ///
 /// Usage:
 /// ```swift
-/// PrimaryButton("Workout starten", icon: "figure.run") {
+/// PrimaryButton("Workout starten", icon: .figureRun) {
 ///     viewModel.startWorkout()
 /// }
 ///
-/// // Disabled state
-/// PrimaryButton("Workout starten") {
-///     viewModel.startWorkout()
-/// }
-/// .disabled(true)
-///
-/// // Loading state
 /// PrimaryButton("Speichern", isLoading: true) {}
 /// ```
-public struct PrimaryButton: View {
-
-    // MARK: Properties
+struct PrimaryButton: View {
 
     private let title: String
-    private let icon: String?
+    private let icon: AppIcon?
     private let isLoading: Bool
     private let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
 
-    // MARK: Init
-
-    public init(
+    init(
         _ title: String,
-        icon: String? = nil,
+        icon: AppIcon? = nil,
         isLoading: Bool = false,
         action: @escaping () -> Void
     ) {
@@ -44,9 +33,7 @@ public struct PrimaryButton: View {
         self.action = action
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xs) {
                 if isLoading {
@@ -55,7 +42,7 @@ public struct PrimaryButton: View {
                         .tint(AppColors.textOnPrimary)
                         .scaleEffect(0.85)
                 } else if let icon {
-                    Image(systemName: icon)
+                    Image(systemName: icon.rawValue)
                         .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
                 }
 
@@ -65,66 +52,47 @@ public struct PrimaryButton: View {
             .foregroundStyle(AppColors.textOnPrimary)
             .frame(maxWidth: .infinity)
             .frame(height: AppSpacing.buttonHeightPrimary)
-            .background(backgroundGradient)
+            .background(
+                isEnabled
+                    ? AnyShapeStyle(
+                        LinearGradient(
+                            colors: [AppColors.primary, AppColors.primary.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    : AnyShapeStyle(AppColors.fill)
+            )
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
             .opacity(isEnabled ? 1.0 : 0.5)
         }
         .disabled(isLoading)
         .buttonStyle(ScaleButtonStyle())
-    }
-
-    // MARK: Private
-
-    private var backgroundGradient: some ShapeStyle {
-        if isEnabled {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [
-                        AppColors.primaryInline,
-                        AppColors.primaryInline.opacity(0.85)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        } else {
-            return AnyShapeStyle(AppColors.fillInline)
-        }
+        .accessibilityLabel(title)
     }
 }
 
 // MARK: - SecondaryButton
 
-/// A full-width, medium-emphasis button for secondary actions.
-///
-/// Renders as an outlined button with the primary color border and label.
+/// Full-width, medium-emphasis outlined button for secondary actions.
 ///
 /// Usage:
 /// ```swift
-/// SecondaryButton("Abbrechen") {
-///     dismiss()
-/// }
-///
-/// SecondaryButton("Details anzeigen", icon: "info.circle") {
-///     showDetails = true
-/// }
+/// SecondaryButton("Abbrechen") { dismiss() }
+/// SecondaryButton("Details", icon: .infoCircle) { showDetails = true }
 /// ```
-public struct SecondaryButton: View {
-
-    // MARK: Properties
+struct SecondaryButton: View {
 
     private let title: String
-    private let icon: String?
+    private let icon: AppIcon?
     private let isLoading: Bool
     private let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
 
-    // MARK: Init
-
-    public init(
+    init(
         _ title: String,
-        icon: String? = nil,
+        icon: AppIcon? = nil,
         isLoading: Bool = false,
         action: @escaping () -> Void
     ) {
@@ -134,61 +102,60 @@ public struct SecondaryButton: View {
         self.action = action
     }
 
-    // MARK: Body
-
-    public var body: some View {
+    var body: some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xs) {
                 if isLoading {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(AppColors.primaryInline)
+                        .tint(AppColors.primary)
                         .scaleEffect(0.85)
                 } else if let icon {
-                    Image(systemName: icon)
+                    Image(systemName: icon.rawValue)
                         .font(.system(size: AppSpacing.iconSizeStandard, weight: .medium))
                 }
 
                 Text(title)
                     .font(AppTypography.buttonSecondary)
             }
-            .foregroundStyle(isEnabled ? AppColors.primaryInline : AppColors.textTertiaryInline)
+            .foregroundStyle(isEnabled ? AppColors.primary : AppColors.textTertiary)
             .frame(maxWidth: .infinity)
             .frame(height: AppSpacing.buttonHeightSecondary)
-            .background(AppColors.backgroundSecondaryInline)
+            .background(AppColors.backgroundSecondary)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
             .overlay(
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
                     .strokeBorder(
-                        isEnabled ? AppColors.primaryInline : AppColors.separatorInline,
+                        isEnabled ? AppColors.primary : AppColors.separator,
                         lineWidth: 1.5
                     )
             )
         }
         .disabled(isLoading)
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel(title)
     }
 }
 
 // MARK: - DestructiveButton
 
-/// A full-width button for destructive / irreversible actions (e.g. delete, logout).
+/// Full-width button for destructive / irreversible actions.
 ///
 /// Usage:
 /// ```swift
-/// DestructiveButton("Workout loeschen") {
+/// DestructiveButton("Workout loeschen", icon: .trash) {
 ///     viewModel.deleteWorkout()
 /// }
 /// ```
-public struct DestructiveButton: View {
+struct DestructiveButton: View {
 
     private let title: String
-    private let icon: String?
+    private let icon: AppIcon?
     private let action: () -> Void
 
-    public init(
+    init(
         _ title: String,
-        icon: String? = nil,
+        icon: AppIcon? = nil,
         action: @escaping () -> Void
     ) {
         self.title = title
@@ -196,68 +163,64 @@ public struct DestructiveButton: View {
         self.action = action
     }
 
-    public var body: some View {
+    var body: some View {
         Button(role: .destructive, action: action) {
             HStack(spacing: AppSpacing.xs) {
                 if let icon {
-                    Image(systemName: icon)
+                    Image(systemName: icon.rawValue)
                         .font(.system(size: AppSpacing.iconSizeStandard, weight: .medium))
                 }
                 Text(title)
                     .font(AppTypography.buttonSecondary)
             }
-            .foregroundStyle(AppColors.errorInline)
+            .foregroundStyle(AppColors.error)
             .frame(maxWidth: .infinity)
             .frame(height: AppSpacing.buttonHeightSecondary)
-            .background(AppColors.errorInline.opacity(0.1))
+            .background(AppColors.error.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel(title)
     }
 }
 
 // MARK: - IconButton
 
-/// A compact, circular icon-only button.
+/// Compact, circular icon-only button with material background.
 ///
 /// Usage:
 /// ```swift
-/// IconButton("arrow.counterclockwise", accessibilityLabel: "Reset") {
+/// IconButton(.arrowCounterclockwise, label: "Reset") {
 ///     viewModel.reset()
 /// }
-///
-/// // With tint override
-/// IconButton("camera.rotate", tint: .white) {
-///     cameraManager.flipCamera()
-/// }
 /// ```
-public struct IconButton: View {
+struct IconButton: View {
 
-    private let systemName: String
-    private let accessibilityLabel: String
+    private let icon: AppIcon
+    private let label: String
     private let size: CGFloat
     private let tint: Color?
     private let action: () -> Void
 
-    public init(
-        _ systemName: String,
-        accessibilityLabel: String = "",
+    init(
+        _ icon: AppIcon,
+        label: String,
         size: CGFloat = AppSpacing.iconSizeMedium,
         tint: Color? = nil,
         action: @escaping () -> Void
     ) {
-        self.systemName = systemName
-        self.accessibilityLabel = accessibilityLabel
+        self.icon = icon
+        self.label = label
         self.size = size
         self.tint = tint
         self.action = action
     }
 
-    public var body: some View {
+    var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
+            Image(systemName: icon.rawValue)
                 .font(.system(size: size, weight: .semibold))
-                .foregroundStyle(tint ?? AppColors.primaryInline)
+                .foregroundStyle(tint ?? AppColors.primary)
                 .frame(
                     width: max(AppSpacing.minimumTapTarget, size + AppSpacing.md),
                     height: max(AppSpacing.minimumTapTarget, size + AppSpacing.md)
@@ -265,30 +228,30 @@ public struct IconButton: View {
                 .background(.ultraThinMaterial, in: Circle())
         }
         .buttonStyle(ScaleButtonStyle())
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(label)
     }
 }
 
 // MARK: - ChipButton
 
-/// A small, pill-shaped toggle chip used for filter selections.
+/// Small, pill-shaped toggle chip for filter selections.
 ///
 /// Usage:
 /// ```swift
-/// ChipButton("Diese Woche", isSelected: selectedFilter == .week) {
-///     selectedFilter = .week
+/// ChipButton("Diese Woche", isSelected: filter == .week) {
+///     filter = .week
 /// }
 /// ```
-public struct ChipButton: View {
+struct ChipButton: View {
 
     private let title: String
-    private let icon: String?
+    private let icon: AppIcon?
     private let isSelected: Bool
     private let action: () -> Void
 
-    public init(
+    init(
         _ title: String,
-        icon: String? = nil,
+        icon: AppIcon? = nil,
         isSelected: Bool = false,
         action: @escaping () -> Void
     ) {
@@ -298,34 +261,35 @@ public struct ChipButton: View {
         self.action = action
     }
 
-    public var body: some View {
+    var body: some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.xxs) {
                 if let icon {
-                    Image(systemName: icon)
+                    Image(systemName: icon.rawValue)
                         .font(.system(size: AppSpacing.iconSizeSmall, weight: .semibold))
                 }
                 Text(title)
                     .font(AppTypography.buttonSmall)
             }
-            .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.primaryInline)
+            .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.primary)
             .padding(.horizontal, AppSpacing.sm)
             .frame(height: AppSpacing.buttonHeightSmall)
             .background(
-                isSelected ? AppColors.primaryInline : AppColors.primaryInline.opacity(0.1),
+                isSelected ? AppColors.primary : AppColors.primary.opacity(0.1),
                 in: Capsule()
             )
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(title)
     }
 }
 
 // MARK: - ScaleButtonStyle
 
-/// A button style that applies a subtle scale-down animation on press.
-/// Used by all design-system buttons to provide consistent tactile feedback.
-public struct ScaleButtonStyle: ButtonStyle {
-    public func makeBody(configuration: Configuration) -> some View {
+/// Subtle scale-down animation on press for consistent tactile feedback.
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
@@ -340,12 +304,8 @@ public struct ScaleButtonStyle: ButtonStyle {
         VStack(spacing: AppSpacing.md) {
 
             Group {
-                Text("Primary Button")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                PrimaryButton("Workout starten", icon: "figure.run") {}
+                Text("Primary Button").font(AppTypography.captionSemibold)
+                PrimaryButton("Workout starten", icon: .figureRun) {}
                 PrimaryButton("Laden...", isLoading: true) {}
                 PrimaryButton("Deaktiviert") {}.disabled(true)
             }
@@ -353,12 +313,8 @@ public struct ScaleButtonStyle: ButtonStyle {
             Divider()
 
             Group {
-                Text("Secondary Button")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                SecondaryButton("Details anzeigen", icon: "info.circle") {}
+                Text("Secondary Button").font(AppTypography.captionSemibold)
+                SecondaryButton("Details anzeigen", icon: .infoCircle) {}
                 SecondaryButton("Laden...", isLoading: true) {}
                 SecondaryButton("Deaktiviert") {}.disabled(true)
             }
@@ -366,37 +322,25 @@ public struct ScaleButtonStyle: ButtonStyle {
             Divider()
 
             Group {
-                Text("Destructive Button")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                DestructiveButton("Workout loeschen", icon: "trash") {}
+                Text("Destructive Button").font(AppTypography.captionSemibold)
+                DestructiveButton("Workout loeschen", icon: .trash) {}
             }
 
             Divider()
 
             Group {
-                Text("Icon Buttons")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+                Text("Icon Buttons").font(AppTypography.captionSemibold)
                 HStack(spacing: AppSpacing.md) {
-                    IconButton("arrow.counterclockwise", accessibilityLabel: "Reset") {}
-                    IconButton("camera.rotate", accessibilityLabel: "Kamera wechseln") {}
-                    IconButton("figure.arms.open", accessibilityLabel: "Overlay") {}
+                    IconButton(.arrowCounterclockwise, label: "Reset") {}
+                    IconButton(.cameraRotate, label: "Kamera wechseln") {}
+                    IconButton(.figureArmsOpen, label: "Overlay") {}
                 }
             }
 
             Divider()
 
             Group {
-                Text("Chip Buttons")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondaryInline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+                Text("Chip Buttons").font(AppTypography.captionSemibold)
                 HStack(spacing: AppSpacing.xs) {
                     ChipButton("Heute", isSelected: true) {}
                     ChipButton("Woche") {}
@@ -407,6 +351,6 @@ public struct ScaleButtonStyle: ButtonStyle {
         }
         .padding(AppSpacing.md)
     }
-    .background(AppColors.backgroundPrimaryInline)
+    .background(AppColors.backgroundPrimary)
 }
 #endif
