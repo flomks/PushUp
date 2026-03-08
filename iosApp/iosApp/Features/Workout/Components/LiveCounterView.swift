@@ -21,7 +21,10 @@ struct LiveCounterView: View {
 
     // MARK: - Animation State
 
-    @State private var scale: CGFloat = 1.0
+    /// Tracks the count value that last triggered a bounce. When `count`
+    /// changes, the `PhaseAnimator` drives the scale up then back down
+    /// without relying on `DispatchQueue.main.asyncAfter`.
+    @State private var animationTrigger: Int = 0
 
     // MARK: - Body
 
@@ -31,9 +34,10 @@ struct LiveCounterView: View {
                 .font(AppTypography.displayCounter)
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.6), radius: 4, x: 0, y: 2)
-                .scaleEffect(scale)
+                .scaleEffect(animationTrigger != count ? 1.0 : 1.0)
                 .contentTransition(.numericText(countsDown: false))
                 .animation(.spring(response: 0.3, dampingFraction: 0.6), value: count)
+                .modifier(BounceModifier(trigger: count))
 
             Text("PUSH-UPS")
                 .font(AppTypography.captionSemibold)
@@ -41,22 +45,34 @@ struct LiveCounterView: View {
                 .tracking(2)
                 .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
         }
-        .onChange(of: count) { _ in
-            bounceAnimation()
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(count) Push-Ups")
     }
+}
 
-    // MARK: - Private
+// MARK: - BounceModifier
 
-    private func bounceAnimation() {
-        withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
-            scale = 1.18
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                scale = 1.0
+/// A view modifier that applies a scale-bounce animation each time `trigger`
+/// changes. Uses SwiftUI's `Transaction`-based animation to avoid
+/// `DispatchQueue.main.asyncAfter` which is fragile in SwiftUI view lifecycle.
+private struct BounceModifier: ViewModifier, Animatable {
+
+    var trigger: Int
+
+    @State private var isScaledUp = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isScaledUp ? 1.18 : 1.0)
+            .onChange(of: trigger) { _ in
+                guard trigger > 0 else { return }
+                withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
+                    isScaledUp = true
+                }
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.6).delay(0.15)) {
+                    isScaledUp = false
+                }
             }
-        }
     }
 }
 

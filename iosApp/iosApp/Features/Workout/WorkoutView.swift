@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 // MARK: - WorkoutView
@@ -6,22 +7,22 @@ import SwiftUI
 ///
 /// **Layout**
 /// ```
-/// ┌─────────────────────────────────┐
-/// │  [Camera Preview - full screen] │
-/// │                                 │
-/// │  [Warning Banner]    [Timer]    │  ← top HUD
-/// │                                 │
-/// │         [Push-Up Counter]       │  ← centre
-/// │         [Form Score]            │
-/// │                                 │
-/// │  [Stop] [Overlay] [CamFlip]     │  ← bottom controls
-/// └─────────────────────────────────┘
+/// +-----------------------------------+
+/// |  [Camera Preview - full screen]   |
+/// |                                   |
+/// |  [Warning Banner]    [Timer]      |  <- top HUD
+/// |                                   |
+/// |         [Push-Up Counter]         |  <- centre
+/// |         [Form Score]              |
+/// |                                   |
+/// |  [Stop] [Overlay] [CamFlip]       |  <- bottom controls
+/// +-----------------------------------+
 /// ```
 ///
 /// **States**
 /// - `.idle`: Shows a "Start" button over the camera preview.
 /// - `.active`: Shows the live counter, form score, timer, and controls.
-/// - `.confirmingStop`: Shows a confirmation alert.
+/// - `.confirmingStop`: Shows a confirmation alert over the active overlay.
 /// - `.finished`: Shows a summary card with the session results.
 ///
 /// **Acceptance criteria covered**
@@ -45,20 +46,18 @@ struct WorkoutView: View {
 
     var body: some View {
         ZStack {
-            // ── Camera Layer ──────────────────────────────────────────────
+            // -- Camera Layer (always present) --------------------------------
             cameraLayer
 
-            // ── Pose Overlay ──────────────────────────────────────────────
-            if viewModel.showPoseOverlay {
-                PoseOverlayView(
-                    pose: viewModel.trackingManager.pushUpDetector.smoothedPose,
-                    isVisible: viewModel.showPoseOverlay
-                )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-            }
+            // -- Pose Overlay (toggleable, non-interactive) -------------------
+            PoseOverlayView(
+                pose: viewModel.currentPose,
+                isVisible: viewModel.showPoseOverlay && viewModel.phase == .active
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
 
-            // ── HUD Layer (phase-dependent) ───────────────────────────────
+            // -- HUD Layer (phase-dependent) ----------------------------------
             switch viewModel.phase {
             case .idle:
                 idleOverlay
@@ -71,23 +70,20 @@ struct WorkoutView: View {
         .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
-            // Start the camera preview immediately so the user can see
-            // themselves before tapping "Start". The tracking pipeline
-            // (pose detection + push-up counting) only starts on "Start".
-            // Also restart the preview when returning to the tab after
-            // finishing a workout.
-            if viewModel.phase == .idle || viewModel.phase == .finished {
-                viewModel.cameraManager.setupAndStart(position: .front)
+            // Start the camera preview so the user can see themselves
+            // before tapping "Start". The tracking pipeline (pose detection
+            // + push-up counting) only starts when startWorkout() is called.
+            if viewModel.phase == .idle {
+                viewModel.startPreview()
             }
         }
         .onDisappear {
-            // Stop the camera when leaving the tab to release hardware.
-            // If a workout is active, stop tracking (saves the session).
-            switch viewModel.phase {
-            case .idle, .finished:
-                viewModel.cameraManager.stopSession()
-            case .active, .confirmingStop:
-                viewModel.confirmStop()
+            // Only stop the camera preview when idle or finished.
+            // If a workout is active, leave it running -- the user may
+            // have accidentally swiped to another tab. They must explicitly
+            // stop via the stop button + confirmation dialog.
+            if viewModel.phase == .idle || viewModel.phase == .finished {
+                viewModel.stopPreview()
             }
         }
         // Stop-confirmation alert
@@ -107,9 +103,9 @@ struct WorkoutView: View {
 
     @ViewBuilder
     private var cameraLayer: some View {
-        switch viewModel.cameraManager.state {
+        switch viewModel.cameraState {
         case .idle, .running, .stopped:
-            CameraPreviewView(cameraManager: viewModel.cameraManager)
+            WorkoutCameraPreview(previewLayer: viewModel.previewLayer)
                 .ignoresSafeArea()
         case .error(let error):
             CameraUnavailableView(error: error)
@@ -121,14 +117,12 @@ struct WorkoutView: View {
 
     private var idleOverlay: some View {
         ZStack {
-            // Dark scrim so the start button is readable over any background.
             Color.black.opacity(0.45)
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.xl) {
                 Spacer()
 
-                // App icon / branding
                 VStack(spacing: AppSpacing.sm) {
                     Image(icon: .figureStrengthTraining)
                         .font(.system(size: 72, weight: .semibold))
@@ -148,7 +142,6 @@ struct WorkoutView: View {
 
                 Spacer()
 
-                // Start button
                 Button {
                     viewModel.startWorkout()
                 } label: {
@@ -175,24 +168,20 @@ struct WorkoutView: View {
 
     private var activeOverlay: some View {
         VStack(spacing: 0) {
-            // ── Top HUD ───────────────────────────────────────────────────
             topHUD
                 .padding(.top, AppSpacing.xxl)
                 .padding(.horizontal, AppSpacing.md)
 
             Spacer()
 
-            // ── Centre: Counter + Form Score ──────────────────────────────
             VStack(spacing: AppSpacing.sm) {
                 LiveCounterView(count: viewModel.pushUpCount)
-
                 FormScoreIndicator(score: viewModel.formScore)
             }
             .padding(.bottom, AppSpacing.lg)
 
             Spacer()
 
-            // ── Bottom Controls ───────────────────────────────────────────
             WorkoutControls(
                 showPoseOverlay: $viewModel.showPoseOverlay,
                 onStop: { viewModel.requestStop() },
@@ -206,18 +195,13 @@ struct WorkoutView: View {
 
     private var topHUD: some View {
         HStack(alignment: .top) {
-            // Warning banner (left-aligned, fades in/out)
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                WarningBannerView(warnings: viewModel.activeWarnings)
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.activeWarnings)
-            }
+            WarningBannerView(warnings: viewModel.activeWarnings)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.activeWarnings)
 
             Spacer()
 
-            // Timer + sound toggle (right-aligned)
             VStack(alignment: .trailing, spacing: AppSpacing.xs) {
                 SessionTimerView(duration: viewModel.sessionDuration)
-
                 SoundToggleButton(isEnabled: $viewModel.soundEnabled)
             }
         }
@@ -231,7 +215,6 @@ struct WorkoutView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.lg) {
-                // Checkmark
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 72))
                     .foregroundStyle(AppColors.success)
@@ -240,28 +223,24 @@ struct WorkoutView: View {
                     .font(AppTypography.roundedTitle)
                     .foregroundStyle(.white)
 
-                // Summary card
                 summaryCard
 
-                // Action buttons
-                VStack(spacing: AppSpacing.sm) {
-                    Button {
-                        viewModel.resetForNewWorkout()
-                    } label: {
-                        HStack(spacing: AppSpacing.xs) {
-                            Image(icon: .arrowCounterclockwise)
-                                .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                            Text("Neues Workout")
-                                .font(AppTypography.buttonPrimary)
-                        }
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: AppSpacing.buttonHeightPrimary)
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                Button {
+                    viewModel.resetForNewWorkout()
+                } label: {
+                    HStack(spacing: AppSpacing.xs) {
+                        Image(icon: .arrowCounterclockwise)
+                            .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                        Text("Neues Workout")
+                            .font(AppTypography.buttonPrimary)
                     }
-                    .buttonStyle(ScaleButtonStyle())
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppSpacing.buttonHeightPrimary)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
                 }
+                .buttonStyle(ScaleButtonStyle())
                 .padding(.horizontal, AppSpacing.xl)
             }
             .padding(AppSpacing.xl)
@@ -272,26 +251,22 @@ struct WorkoutView: View {
 
     private var summaryCard: some View {
         HStack(spacing: 0) {
-            summaryStatCell(
+            SummaryStatCell(
                 value: "\(viewModel.pushUpCount)",
                 label: "Push-Ups"
             )
 
-            Divider()
-                .frame(height: 40)
-                .background(.white.opacity(0.2))
+            summaryDivider
 
-            summaryStatCell(
-                value: formattedDuration(viewModel.sessionDuration),
+            SummaryStatCell(
+                value: WorkoutDurationFormatter.format(viewModel.sessionDuration),
                 label: "Zeit"
             )
 
             if let score = viewModel.formScore {
-                Divider()
-                    .frame(height: 40)
-                    .background(.white.opacity(0.2))
+                summaryDivider
 
-                summaryStatCell(
+                SummaryStatCell(
                     value: "\(Int(score * 100))%",
                     label: "Form",
                     valueColor: AppColors.formScoreColor(score)
@@ -303,11 +278,33 @@ struct WorkoutView: View {
         .padding(.horizontal, AppSpacing.xl)
     }
 
-    private func summaryStatCell(
-        value: String,
-        label: String,
-        valueColor: Color = .white
-    ) -> some View {
+    private var summaryDivider: some View {
+        Divider()
+            .frame(height: 40)
+            .background(.white.opacity(0.2))
+    }
+
+    // MARK: - Helpers
+
+    private var isConfirmingStop: Binding<Bool> {
+        Binding(
+            get: { viewModel.phase == .confirmingStop },
+            set: { if !$0 { viewModel.cancelStop() } }
+        )
+    }
+
+}
+
+// MARK: - SummaryStatCell
+
+/// A single stat cell used in the workout summary card.
+private struct SummaryStatCell: View {
+
+    let value: String
+    let label: String
+    var valueColor: Color = .white
+
+    var body: some View {
         VStack(spacing: AppSpacing.xxs) {
             Text(value)
                 .font(AppTypography.displayMedium)
@@ -320,21 +317,29 @@ struct WorkoutView: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
 
-    // MARK: - Helpers
+// MARK: - WorkoutCameraPreview
 
-    private var isConfirmingStop: Binding<Bool> {
-        Binding(
-            get: { viewModel.phase == .confirmingStop },
-            set: { if !$0 { viewModel.cancelStop() } }
-        )
+/// A lightweight SwiftUI wrapper that displays the tracking manager's
+/// `AVCaptureVideoPreviewLayer` without exposing the `CameraManager`.
+///
+/// This avoids the need for `WorkoutView` to hold a reference to
+/// `CameraManager` directly.
+struct WorkoutCameraPreview: UIViewRepresentable {
+
+    let previewLayer: AVCaptureVideoPreviewLayer
+
+    func makeUIView(context: Context) -> PreviewUIView {
+        let view = PreviewUIView()
+        view.backgroundColor = .black
+        view.setPreviewLayer(previewLayer)
+        return view
     }
 
-    private func formattedDuration(_ duration: TimeInterval) -> String {
-        let total = Int(duration)
-        let minutes = total / 60
-        let seconds = total % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+    func updateUIView(_ uiView: PreviewUIView, context: Context) {
+        // The preview layer is permanently attached; frame updates happen
+        // in `layoutSubviews`. Nothing to do here.
     }
 }
 

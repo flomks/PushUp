@@ -9,8 +9,8 @@ import SwiftUI
 /// - **Pose overlay toggle** (centre): shows/hides the skeleton overlay.
 /// - **Camera flip button** (right): switches between front and back camera.
 ///
-/// All buttons use `IconButton` from the design system for consistent sizing
-/// and the `.ultraThinMaterial` background treatment.
+/// All buttons use `ScaleButtonStyle` and `.ultraThinMaterial` backgrounds
+/// for consistent visual treatment over the camera feed.
 ///
 /// **Usage**
 /// ```swift
@@ -109,10 +109,7 @@ struct SessionTimerView: View {
     }
 
     private var formattedDuration: String {
-        let total = Int(duration)
-        let minutes = total / 60
-        let seconds = total % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        WorkoutDurationFormatter.format(duration)
     }
 }
 
@@ -167,6 +164,20 @@ struct SoundToggleButton: View {
         }
         .buttonStyle(ScaleButtonStyle())
         .accessibilityLabel(isEnabled ? "Sound deaktivieren" : "Sound aktivieren")
+    }
+}
+
+// MARK: - WorkoutDurationFormatter
+
+/// Shared duration formatting for the workout screen.
+/// Formats a `TimeInterval` as `MM:SS`.
+enum WorkoutDurationFormatter {
+
+    static func format(_ duration: TimeInterval) -> String {
+        let total = max(0, Int(duration))
+        let minutes = total / 60
+        let seconds = total % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 

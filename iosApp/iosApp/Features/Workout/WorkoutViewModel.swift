@@ -1,4 +1,5 @@
 import AudioToolbox
+import AVFoundation
 import Combine
 import Foundation
 import UIKit
@@ -6,7 +7,7 @@ import UIKit
 // MARK: - WorkoutPhase
 
 /// The high-level state of the workout screen.
-enum WorkoutPhase: Equatable {
+enum WorkoutPhase: Equatable, Sendable {
     /// Waiting for the user to tap "Start".
     case idle
     /// Camera is running and push-ups are being counted.
@@ -29,6 +30,13 @@ enum WorkoutPhase: Equatable {
 /// - Pose-overlay toggle
 /// - Camera-flip forwarding
 ///
+/// **Design decisions**
+/// - The view model does **not** expose `PushUpTrackingManager` or any of its
+///   internal components directly. All access goes through scoped accessors
+///   on the tracking manager to preserve encapsulation.
+/// - `sessionDuration` is captured before calling `stopTracking()` because
+///   the tracking manager resets its duration to 0 on stop.
+///
 /// **Threading model**
 /// All `@Published` properties and public methods are **main-actor isolated**,
 /// matching `PushUpTrackingManager`.
@@ -47,7 +55,8 @@ final class WorkoutViewModel: ObservableObject {
     /// `nil` before the first push-up is counted.
     @Published private(set) var formScore: Double? = nil
 
-    /// Elapsed session time in seconds. `0` when not active.
+    /// Elapsed session time in seconds. Preserved after stop for the
+    /// finished overlay. Reset to `0` only on `resetForNewWorkout()`.
     @Published private(set) var sessionDuration: TimeInterval = 0
 
     /// Active edge-case warnings from the pose detector.
@@ -65,11 +74,18 @@ final class WorkoutViewModel: ObservableObject {
     /// The current camera position (front / back).
     @Published private(set) var cameraPosition: CameraPosition = .front
 
+    /// The current camera state (idle / running / stopped / error).
+    @Published private(set) var cameraState: CameraState = .idle
+
+    /// The most recently detected pose for the overlay. Updated on the
+    /// main queue by `VisionPoseDetector`. `nil` when no person is detected.
+    @Published private(set) var currentPose: BodyPose? = nil
+
     // MARK: - Internal: Tracking Manager
 
-    /// The underlying tracking manager. Exposed as `internal` so that
-    /// `WorkoutView` can access the camera manager for the preview layer.
-    let trackingManager: PushUpTrackingManager
+    /// The underlying tracking manager. Kept `private` to prevent the view
+    /// from reaching through to internal pipeline components.
+    private let trackingManager: PushUpTrackingManager
 
     // MARK: - Private
 
@@ -77,12 +93,6 @@ final class WorkoutViewModel: ObservableObject {
 
     /// Haptic feedback generator for push-up events.
     private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-
-    /// The camera manager owned by the tracking manager.
-    /// Exposed so `WorkoutView` can pass it to `CameraPreviewView`.
-    var cameraManager: CameraManager {
-        trackingManager.cameraManager
-    }
 
     // MARK: - Init
 
@@ -92,7 +102,7 @@ final class WorkoutViewModel: ObservableObject {
         prepareHaptics()
     }
 
-    // MARK: - Public API
+    // MARK: - Public API: Session Lifecycle
 
     /// Starts the workout session.
     func startWorkout() {
@@ -129,30 +139,58 @@ final class WorkoutViewModel: ObservableObject {
         sessionDuration = 0
         activeWarnings = []
         lastError = nil
+        currentPose = nil
         // Restart the camera preview for the idle state.
-        trackingManager.cameraManager.setupAndStart(position: .front)
+        trackingManager.startCameraPreview(position: .front)
     }
+
+    // MARK: - Public API: Camera
 
     /// Switches between front and back camera.
     func switchCamera() {
-        trackingManager.cameraManager.switchCamera()
+        trackingManager.switchCamera()
+    }
+
+    /// Starts the camera preview for the idle state.
+    /// Does nothing if tracking is already active.
+    func startPreview() {
+        trackingManager.startCameraPreview(position: .front)
+    }
+
+    /// Stops the camera preview. Only effective when not tracking.
+    func stopPreview() {
+        trackingManager.stopCameraPreview()
+    }
+
+    /// The preview layer for the camera feed.
+    var previewLayer: AVCaptureVideoPreviewLayer {
+        trackingManager.previewLayer
     }
 
     // MARK: - Private: Session Lifecycle
 
     private func endSession() {
+        // Capture the final duration BEFORE stopTracking() resets it to 0.
+        let finalDuration = trackingManager.sessionDuration
         trackingManager.stopTracking()
         UIApplication.shared.isIdleTimerDisabled = false
+        // Restore the captured duration so the finished overlay shows it.
+        sessionDuration = finalDuration
         phase = .finished
     }
 
     // MARK: - Private: Binding
 
+    /// Subscribes to all relevant publishers from the tracking manager.
+    ///
+    /// Both `PushUpTrackingManager` and `WorkoutViewModel` are `@MainActor`,
+    /// so `@Published` properties already emit on the main actor. No
+    /// `.receive(on:)` is needed. Using `sink` with `[weak self]` to avoid
+    /// retain cycles (unlike `assign(to:on:)` which retains `self`).
     private func bindTrackingManager() {
         let manager = trackingManager
 
         manager.$currentCount
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] count in
                 guard let self else { return }
                 let previous = self.pushUpCount
@@ -164,28 +202,40 @@ final class WorkoutViewModel: ObservableObject {
             .store(in: &cancellables)
 
         manager.$currentFormScore
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] score in self?.formScore = score }
+            .sink { [weak self] in self?.formScore = $0 }
             .store(in: &cancellables)
 
         manager.$sessionDuration
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] duration in self?.sessionDuration = duration }
+            .sink { [weak self] in
+                guard let self else { return }
+                // Only update while active; preserve final value after stop.
+                if self.phase == .active || self.phase == .confirmingStop {
+                    self.sessionDuration = $0
+                }
+            }
             .store(in: &cancellables)
 
         manager.$activeWarnings
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] warnings in self?.activeWarnings = warnings }
+            .sink { [weak self] in self?.activeWarnings = $0 }
             .store(in: &cancellables)
 
         manager.$lastError
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] error in self?.lastError = error }
+            .sink { [weak self] in self?.lastError = $0 }
             .store(in: &cancellables)
 
-        manager.cameraManager.$currentPosition
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] position in self?.cameraPosition = position }
+        manager.cameraPositionPublisher
+            .sink { [weak self] in self?.cameraPosition = $0 }
+            .store(in: &cancellables)
+
+        manager.cameraStatePublisher
+            .sink { [weak self] in self?.cameraState = $0 }
+            .store(in: &cancellables)
+
+        // Subscribe to the VisionPoseDetector's main-queue-published
+        // currentPose (thread-safe) for the overlay. This updates on
+        // every processed frame, not just on push-up events.
+        manager.currentPosePublisher
+            .sink { [weak self] in self?.currentPose = $0 }
             .store(in: &cancellables)
     }
 
@@ -206,15 +256,14 @@ final class WorkoutViewModel: ObservableObject {
 
     private func triggerHaptic() {
         impactFeedback.impactOccurred()
-        // Re-prepare so the next impact is ready immediately.
         impactFeedback.prepare()
     }
 
     // MARK: - Private: Audio
 
     private func playPushUpSound() {
-        // Use system sound "Tock" (ID 1104) -- a short, clean click
-        // that is available on all iOS devices without bundling an asset.
+        // System sound "Tock" (ID 1104) -- a short, clean click available
+        // on all iOS devices without bundling a custom audio asset.
         AudioServicesPlaySystemSound(1104)
     }
 }

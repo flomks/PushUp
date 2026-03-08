@@ -50,6 +50,8 @@ struct FormScoreIndicator: View {
         .padding(.vertical, AppSpacing.xs)
         .background(.ultraThinMaterial, in: Capsule())
         .animation(.easeInOut(duration: 0.3), value: score)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
     }
 
     // MARK: - Private Helpers
@@ -62,6 +64,18 @@ struct FormScoreIndicator: View {
     private var scoreText: String {
         guard let score else { return "---" }
         return "\(Int(score * 100))%"
+    }
+
+    private var accessibilityDescription: String {
+        guard let score else { return "Form Score nicht verfuegbar" }
+        let percentage = Int(score * 100)
+        let quality: String
+        switch score {
+        case 0.75...: quality = "gut"
+        case 0.50...: quality = "mittel"
+        default:      quality = "schlecht"
+        }
+        return "Form Score \(percentage) Prozent, \(quality)"
     }
 }
 
