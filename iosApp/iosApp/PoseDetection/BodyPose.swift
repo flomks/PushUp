@@ -5,8 +5,10 @@ import Vision
 
 /// The set of body joints extracted per frame.
 ///
-/// Covers all joints required for push-up detection (shoulders, elbows,
-/// wrists, hips) plus knees for future exercise support.
+/// Covers all joints required for push-up detection and form analysis:
+/// shoulders, elbows, wrists (arm angles), hips (torso alignment),
+/// knees and ankles (body-line deviation, horizontal detection, variant
+/// classification).
 enum JointName: String, CaseIterable, Hashable, Sendable {
     case leftShoulder
     case rightShoulder
@@ -18,6 +20,8 @@ enum JointName: String, CaseIterable, Hashable, Sendable {
     case rightHip
     case leftKnee
     case rightKnee
+    case leftAnkle
+    case rightAnkle
 
     /// The corresponding `VNHumanBodyPoseObservation.JointName` used when
     /// querying Vision results.
@@ -33,6 +37,8 @@ enum JointName: String, CaseIterable, Hashable, Sendable {
         case .rightHip:      return .rightHip
         case .leftKnee:      return .leftKnee
         case .rightKnee:     return .rightKnee
+        case .leftAnkle:     return .leftAnkle
+        case .rightAnkle:    return .rightAnkle
         }
     }
 }
@@ -115,6 +121,8 @@ struct BodyPose: Sendable {
     var rightHip:      Joint? { joints[.rightHip] }
     var leftKnee:      Joint? { joints[.leftKnee] }
     var rightKnee:     Joint? { joints[.rightKnee] }
+    var leftAnkle:     Joint? { joints[.leftAnkle] }
+    var rightAnkle:    Joint? { joints[.rightAnkle] }
 
     // MARK: - Helpers
 
@@ -156,5 +164,7 @@ extension BodyPose {
         // Legs
         (.leftHip,       .leftKnee),
         (.rightHip,      .rightKnee),
+        (.leftKnee,      .leftAnkle),
+        (.rightKnee,     .rightAnkle),
     ]
 }

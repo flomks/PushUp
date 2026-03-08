@@ -207,9 +207,14 @@ final class FormScorer {
 
         // --- Form sub-scores (all frames) ---
 
-        // Back alignment: requires at least one shoulder and one hip joint.
-        if let pose, let score = Self.backAlignmentScore(pose: pose, configuration: configuration) {
-            backAlignmentSamples.append(score)
+        // Back alignment: prefer shoulder-hip-ankle body-line deviation when
+        // ankles are available; fall back to shoulder-hip angle from horizontal.
+        if let pose {
+            if let score = Self.bodyLineScore(pose: pose, configuration: configuration) {
+                backAlignmentSamples.append(score)
+            } else if let score = Self.backAlignmentScore(pose: pose, configuration: configuration) {
+                backAlignmentSamples.append(score)
+            }
         }
 
         // Arm symmetry: requires both arms to be detected.
@@ -359,6 +364,25 @@ final class FormScorer {
 
         let angleFromHorizontal = abs(atan2(dy, dx) * (180.0 / .pi))
         return max(0.0, 1.0 - angleFromHorizontal / configuration.maxBackAngleDeviation)
+    }
+
+    // MARK: - Body-Line Score (Shoulder-Hip-Ankle)
+
+    /// Maps the shoulder-hip-ankle body-line deviation to a score in [0, 1].
+    ///
+    /// A perfectly straight body (180 degrees at the hip) scores 1.0.
+    /// Deviation reduces the score linearly to 0 at `maxBackAngleDeviation`.
+    ///
+    /// Returns `nil` when ankle joints are not detected (falls back to the
+    /// simpler `backAlignmentScore` in the caller).
+    static func bodyLineScore(
+        pose: BodyPose,
+        configuration: Configuration = .default
+    ) -> Double? {
+        guard let deviation = PushUpDetector.computeBodyLineDeviation(pose: pose) else {
+            return nil
+        }
+        return max(0.0, 1.0 - deviation / configuration.maxBackAngleDeviation)
     }
 
     // MARK: - Geometry Helpers
