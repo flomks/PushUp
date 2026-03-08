@@ -4,14 +4,21 @@ import SwiftUI
 
 /// Represents each tab in the main tab bar.
 ///
-/// The raw value is used as the accessibility identifier and for equality
-/// checks. The order of cases defines the visual order of tabs.
-enum Tab: Int, CaseIterable {
+/// The raw value defines the visual order of tabs. All display metadata
+/// (icon, label, description) is centralised here so that no other file
+/// needs to duplicate these strings.
+enum Tab: Int, CaseIterable, Identifiable {
     case dashboard = 0
     case workout
     case stats
     case profile
     case settings
+
+    // MARK: Identifiable
+
+    var id: Int { rawValue }
+
+    // MARK: Display metadata
 
     /// The SF Symbol name shown in the tab bar item.
     var icon: String {
@@ -24,7 +31,8 @@ enum Tab: Int, CaseIterable {
         }
     }
 
-    /// The localised label shown below the tab bar icon.
+    /// The localised label shown below the tab bar icon and in the
+    /// navigation bar title.
     var label: String {
         switch self {
         case .dashboard: return "Dashboard"
@@ -32,6 +40,29 @@ enum Tab: Int, CaseIterable {
         case .stats:     return "Stats"
         case .profile:   return "Profile"
         case .settings:  return "Settings"
+        }
+    }
+
+    /// A short placeholder description shown on the placeholder screen
+    /// until the real feature view replaces it.
+    var placeholderDescription: String {
+        switch self {
+        case .dashboard: return "Dein Zeitguthaben und die Tages-Statistiken erscheinen hier."
+        case .workout:   return "Starte hier ein Workout und zaehle deine Push-Ups in Echtzeit."
+        case .stats:     return "Taeglich, woechentlich und monatliche Statistiken erscheinen hier."
+        case .profile:   return "Dein Profil, Avatar und Account-Informationen erscheinen hier."
+        case .settings:  return "Push-Up-Rate, Benachrichtigungen und weitere Einstellungen erscheinen hier."
+        }
+    }
+
+    /// A stable string identifier used for UI tests and accessibility.
+    var accessibilityIdentifier: String {
+        switch self {
+        case .dashboard: return "tab_dashboard"
+        case .workout:   return "tab_workout"
+        case .stats:     return "tab_stats"
+        case .profile:   return "tab_profile"
+        case .settings:  return "tab_settings"
         }
     }
 }
@@ -53,129 +84,35 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ForEach(Tab.allCases, id: \.self) { tab in
+            ForEach(Tab.allCases) { tab in
                 NavigationStack {
-                    placeholderView(for: tab)
+                    TabPlaceholderView(tab: tab)
                 }
                 .tabItem {
                     Label(tab.label, systemImage: tab.icon)
                 }
                 .tag(tab)
+                .accessibilityIdentifier(tab.accessibilityIdentifier)
             }
         }
         .tint(AppColors.primaryInline)
     }
-
-    // MARK: - Placeholder routing
-
-    /// Returns the placeholder view for the given tab.
-    ///
-    /// Each placeholder will be replaced by the real screen implementation in
-    /// subsequent tasks (3.5 Dashboard, 3.6 Workout, 3.8 Stats, 3.10 Profile,
-    /// 3.11 Settings).
-    @ViewBuilder
-    private func placeholderView(for tab: Tab) -> some View {
-        switch tab {
-        case .dashboard: DashboardPlaceholderView()
-        case .workout:   WorkoutPlaceholderView()
-        case .stats:     StatsPlaceholderView()
-        case .profile:   ProfilePlaceholderView()
-        case .settings:  SettingsPlaceholderView()
-        }
-    }
 }
 
-// MARK: - Placeholder Views
+// MARK: - TabPlaceholderView
 
-// ---------------------------------------------------------------------------
-// Each placeholder follows the same visual pattern:
-//   - Full-screen background using AppColors
-//   - Centered SF Symbol icon (large, tinted)
-//   - Screen title in AppTypography.title1
-//   - Short description in AppTypography.subheadline
-//   - Navigation title set to the tab label
-//
-// This gives a consistent, recognisable shell that can be replaced screen by
-// screen without touching MainTabView.
-// ---------------------------------------------------------------------------
-
-/// Placeholder for the Dashboard screen (Task 3.5).
-struct DashboardPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreenView(
-            icon: "house.fill",
-            title: "Dashboard",
-            description: "Dein Zeitguthaben und die Tages-Statistiken erscheinen hier."
-        )
-        .navigationTitle("Dashboard")
-        .navigationBarTitleDisplayMode(.large)
-    }
-}
-
-/// Placeholder for the Workout screen (Task 3.6).
-struct WorkoutPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreenView(
-            icon: "figure.strengthtraining.traditional",
-            title: "Workout",
-            description: "Starte hier ein Workout und zaehle deine Push-Ups in Echtzeit."
-        )
-        .navigationTitle("Workout")
-        .navigationBarTitleDisplayMode(.large)
-    }
-}
-
-/// Placeholder for the Stats screen (Task 3.8).
-struct StatsPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreenView(
-            icon: "chart.bar.fill",
-            title: "Stats",
-            description: "Taeglich, woechentlich und monatliche Statistiken erscheinen hier."
-        )
-        .navigationTitle("Stats")
-        .navigationBarTitleDisplayMode(.large)
-    }
-}
-
-/// Placeholder for the Profile screen (Task 3.10).
-struct ProfilePlaceholderView: View {
-    var body: some View {
-        PlaceholderScreenView(
-            icon: "person.fill",
-            title: "Profile",
-            description: "Dein Profil, Avatar und Account-Informationen erscheinen hier."
-        )
-        .navigationTitle("Profile")
-        .navigationBarTitleDisplayMode(.large)
-    }
-}
-
-/// Placeholder for the Settings screen (Task 3.11).
-struct SettingsPlaceholderView: View {
-    var body: some View {
-        PlaceholderScreenView(
-            icon: "gearshape.fill",
-            title: "Settings",
-            description: "Push-Up-Rate, Benachrichtigungen und weitere Einstellungen erscheinen hier."
-        )
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.large)
-    }
-}
-
-// MARK: - PlaceholderScreenView
-
-/// Reusable full-screen placeholder used by all tab placeholder views.
+/// Placeholder screen displayed inside each tab until the real feature
+/// view is implemented.
 ///
-/// Displays a large SF Symbol, a title, and a short description centred on
-/// the screen. Uses the app's design system tokens so it already looks
-/// on-brand and adapts to Light / Dark Mode automatically.
-private struct PlaceholderScreenView: View {
+/// All display data (icon, title, description) is derived from the `Tab`
+/// enum so there is a single source of truth for tab metadata.
+///
+/// Replace individual cases in `MainTabView.body` with the real feature
+/// views as they are implemented (Task 3.5 Dashboard, Task 3.6 Workout,
+/// Task 3.8 Stats, Task 3.10 Profile, Task 3.11 Settings).
+struct TabPlaceholderView: View {
 
-    let icon: String
-    let title: String
-    let description: String
+    let tab: Tab
 
     var body: some View {
         ZStack {
@@ -183,17 +120,17 @@ private struct PlaceholderScreenView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppSpacing.lg) {
-                Image(systemName: icon)
+                Image(systemName: tab.icon)
                     .font(.system(size: 72, weight: .semibold))
                     .foregroundStyle(AppColors.primaryInline)
                     .symbolRenderingMode(.hierarchical)
 
                 VStack(spacing: AppSpacing.xs) {
-                    Text(title)
+                    Text(tab.label)
                         .font(AppTypography.title1)
                         .foregroundStyle(AppColors.textPrimaryInline)
 
-                    Text(description)
+                    Text(tab.placeholderDescription)
                         .font(AppTypography.subheadline)
                         .foregroundStyle(AppColors.textSecondaryInline)
                         .multilineTextAlignment(.center)
@@ -202,23 +139,43 @@ private struct PlaceholderScreenView: View {
             }
             .padding(AppSpacing.xl)
         }
+        .navigationTitle(tab.label)
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
 #Preview("MainTabView") {
     MainTabView()
 }
 
-#Preview("Dashboard Placeholder") {
+#Preview("Placeholder - Dashboard") {
     NavigationStack {
-        DashboardPlaceholderView()
+        TabPlaceholderView(tab: .dashboard)
     }
 }
 
-#Preview("Workout Placeholder") {
+#Preview("Placeholder - Workout") {
     NavigationStack {
-        WorkoutPlaceholderView()
+        TabPlaceholderView(tab: .workout)
+    }
+}
+
+#Preview("Placeholder - Stats") {
+    NavigationStack {
+        TabPlaceholderView(tab: .stats)
+    }
+}
+
+#Preview("Placeholder - Profile") {
+    NavigationStack {
+        TabPlaceholderView(tab: .profile)
+    }
+}
+
+#Preview("Placeholder - Settings") {
+    NavigationStack {
+        TabPlaceholderView(tab: .settings)
     }
 }
