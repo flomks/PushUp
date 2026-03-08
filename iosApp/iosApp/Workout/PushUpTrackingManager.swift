@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import shared
+import Shared
 
 // MARK: - TrackingError
 
