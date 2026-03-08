@@ -357,14 +357,6 @@ final class CameraManager: NSObject, ObservableObject {
         // commitConfiguration is always called, even on early throw.
         defer { session.commitConfiguration() }
 
-        // 720p is sufficient for VNDetectHumanBodyPoseRequest and reduces
-        // memory bandwidth / thermal load compared to `.high`.
-        if session.canSetSessionPreset(.hd1280x720) {
-            session.sessionPreset = .hd1280x720
-        } else if session.canSetSessionPreset(.high) {
-            session.sessionPreset = .high
-        }
-
         // --- Input ---
         session.inputs.forEach { session.removeInput($0) }
 
@@ -376,16 +368,33 @@ final class CameraManager: NSObject, ObservableObject {
         session.addInput(input)
         currentInput = input
 
+        // Virtual multi-lens devices (builtInTripleCamera, builtInDualWideCamera)
+        // need `.inputPriority` so the device controls its own format selection
+        // and exposes the full zoom range (0.5x ultra-wide through telephoto).
+        // Fixed presets like `.hd1280x720` lock the format and clamp
+        // minAvailableVideoZoomFactor to 1.0, preventing ultra-wide access.
+        let isVirtualDevice = !device.constituentDevices.isEmpty
+        if isVirtualDevice {
+            session.sessionPreset = .inputPriority
+            configureFormatForVirtualDevice(device: device, targetFPS: 30)
+        } else {
+            if session.canSetSessionPreset(.hd1280x720) {
+                session.sessionPreset = .hd1280x720
+            } else if session.canSetSessionPreset(.high) {
+                session.sessionPreset = .high
+            }
+            configureFrameRate(device: device, targetFPS: 30)
+        }
+
         // Publish the minimum zoom factor for this device so the UI can
         // allow pinching out to the ultra-wide lens on supported hardware.
-        // minAvailableVideoZoomFactor is 0.5 on triple/dual-wide back cameras
-        // and 1.0 on single-lens devices and the front camera.
         let minZoom = device.minAvailableVideoZoomFactor
+        #if DEBUG
+        let maxZoom = device.activeFormat.videoMaxZoomFactor
+        let switchFactors = device.virtualDeviceSwitchOverVideoZoomFactors
+        print("[CameraManager] Device: \(device.localizedName), virtual=\(isVirtualDevice), zoom range: \(minZoom)x..\(maxZoom)x, switchOver=\(switchFactors)")
+        #endif
         DispatchQueue.main.async { self.minZoomFactor = minZoom }
-
-        // Lock 30 FPS before committing so the preset and frame rate are
-        // applied atomically within the same beginConfiguration block.
-        configureFrameRate(device: device, targetFPS: 30)
 
         // --- Output ---
         session.outputs.forEach { session.removeOutput($0) }
@@ -460,6 +469,67 @@ final class CameraManager: NSObject, ObservableObject {
         } catch {
             #if DEBUG
             print("[CameraManager] Frame rate configuration failed: \(error)")
+            #endif
+        }
+    }
+
+    // MARK: - Virtual Device Format Selection
+
+    /// Selects an appropriate format for a virtual multi-lens device that
+    /// preserves the full zoom range (including ultra-wide at 0.5x) while
+    /// supporting the target frame rate.
+    ///
+    /// On virtual devices the format determines which constituent lenses are
+    /// accessible. We pick a format that:
+    /// 1. Supports the target FPS
+    /// 2. Has `videoMaxZoomFactor` >= 2.0 (ensures at least wide + ultra-wide)
+    /// 3. Prefers ~720p resolution to keep thermal/memory load low
+    ///
+    /// Falls back to `configureFrameRate` if no suitable format is found.
+    private func configureFormatForVirtualDevice(device: AVCaptureDevice, targetFPS: Int) {
+        let targetRate = Double(targetFPS)
+        let targetDuration = CMTime(value: 1, timescale: CMTimeScale(targetFPS))
+
+        // Filter formats that support the target frame rate.
+        let fpsFormats = device.formats.filter { format in
+            format.videoSupportedFrameRateRanges.contains {
+                $0.minFrameRate <= targetRate && targetRate <= $0.maxFrameRate
+            }
+        }
+
+        // Among those, prefer formats that expose a wide zoom range (multi-lens).
+        // Sort by: (1) zoom range descending, (2) resolution closest to 720p.
+        let targetPixels = 1280 * 720
+        let bestFormat = fpsFormats
+            .filter { $0.videoMaxZoomFactor > 1.5 }
+            .sorted { a, b in
+                let zoomA = a.videoMaxZoomFactor
+                let zoomB = b.videoMaxZoomFactor
+                if abs(zoomA - zoomB) > 1.0 { return zoomA > zoomB }
+                // Prefer resolution closest to 720p.
+                let dimA = a.formatDescription.dimensions
+                let dimB = b.formatDescription.dimensions
+                let pixA = Int(dimA.width) * Int(dimA.height)
+                let pixB = Int(dimB.width) * Int(dimB.height)
+                return abs(pixA - targetPixels) < abs(pixB - targetPixels)
+            }
+            .first
+
+        guard let format = bestFormat else {
+            // Fallback: use the standard frame rate configuration.
+            configureFrameRate(device: device, targetFPS: targetFPS)
+            return
+        }
+
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            device.activeFormat = format
+            device.activeVideoMinFrameDuration = targetDuration
+            device.activeVideoMaxFrameDuration = targetDuration
+        } catch {
+            #if DEBUG
+            print("[CameraManager] Virtual device format configuration failed: \(error)")
             #endif
         }
     }
