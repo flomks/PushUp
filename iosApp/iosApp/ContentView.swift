@@ -317,9 +317,21 @@ final class PushUpDemoViewModel: ObservableObject {
     /// running), so `nonisolated(unsafe)` is correct here.
     nonisolated(unsafe) private let pushUpDetector = PushUpDetector()
 
+    /// Strong references to the delegate bridges. Without these, the bridges
+    /// are immediately deallocated after init() because both
+    /// poseDetector.delegate and pushUpDetector.delegate are weak references.
+    /// When the bridges are deallocated, the delegates become nil and
+    /// didDetectPose / didCountPushUp are never called.
+    private var poseDetectorBridge: PoseDetectorBridge?
+    private var pushUpDetectorBridge: PushUpDetectorBridge?
+
     init() {
-        poseDetector.delegate = PoseDetectorBridge(viewModel: self)
-        pushUpDetector.delegate = PushUpDetectorBridge(viewModel: self)
+        let poseBridge = PoseDetectorBridge(viewModel: self)
+        let pushUpBridge = PushUpDetectorBridge(viewModel: self)
+        self.poseDetectorBridge = poseBridge
+        self.pushUpDetectorBridge = pushUpBridge
+        poseDetector.delegate = poseBridge
+        pushUpDetector.delegate = pushUpBridge
     }
 
     /// Called from the video output queue (background thread).
