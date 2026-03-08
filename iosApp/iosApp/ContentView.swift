@@ -24,10 +24,6 @@ struct ContentView: View {
             // MARK: Camera feed (full screen)
             CameraContainerView(
                 onSampleBuffer: { [weak viewModel] buf in
-                    // NOTE: cameraPosition is read on the video output queue.
-                    // @State is main-actor-isolated, but reading a simple enum
-                    // value here is safe: worst case we use a stale value for
-                    // one frame, which causes no visible artefact.
                     viewModel?.process(buf)
                 },
                 onPositionChange: { newPosition in
@@ -45,12 +41,8 @@ struct ContentView: View {
 
             // MARK: HUD
             VStack {
-                // Top bar: phase + overlay toggle
                 topBar
-
                 Spacer()
-
-                // Bottom card: counter + angle + warnings
                 bottomCard
             }
         }
@@ -66,14 +58,14 @@ struct ContentView: View {
     // MARK: - Top bar
 
     private var topBar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppSpacing.xs) {
             HStack {
                 // Phase pill
                 Label(viewModel.phaseLabel, systemImage: viewModel.phaseIcon)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppTypography.subheadlineSemibold)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, AppSpacing.sm + 2)
+                    .padding(.vertical, AppSpacing.xs)
                     .background(.ultraThinMaterial, in: Capsule())
 
                 Spacer()
@@ -82,106 +74,108 @@ struct ContentView: View {
                 Button {
                     showPoseOverlay.toggle()
                 } label: {
-                    Image(systemName: showPoseOverlay ? "figure.arms.open" : "figure.stand")
+                    Image(systemName: showPoseOverlay
+                          ? AppIcon.figureArmsOpen.rawValue
+                          : AppIcon.figureStand.rawValue)
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(showPoseOverlay ? Color.green : Color.white.opacity(0.6))
-                        .padding(10)
+                        .foregroundStyle(showPoseOverlay ? AppColors.success : .white.opacity(0.6))
+                        .padding(AppSpacing.xs + 2)
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .accessibilityLabel(showPoseOverlay ? "Skeleton overlay on" : "Skeleton overlay off")
             }
 
             // Status indicator
-            HStack(spacing: 6) {
+            HStack(spacing: AppSpacing.xxs + 2) {
                 Image(systemName: viewModel.detectionStatus.icon)
-                    .font(.caption2)
+                    .font(AppTypography.caption2)
                 Text(viewModel.detectionStatus.label)
                     .font(.caption2.weight(.medium))
             }
             .foregroundStyle(viewModel.detectionStatus.color)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, AppSpacing.sm)
             .padding(.vertical, 5)
             .background(.ultraThinMaterial, in: Capsule())
             .animation(.easeInOut(duration: 0.3), value: viewModel.detectionStatus)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.top, AppSpacing.screenHorizontal)
     }
 
     // MARK: - Bottom card
 
     private var bottomCard: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppSpacing.xs) {
 
             // Warnings (poor angle, poor lighting, etc.)
             if !viewModel.warnings.isEmpty {
-                VStack(spacing: 4) {
+                VStack(spacing: AppSpacing.xxs) {
                     ForEach(viewModel.warnings, id: \.self) { warning in
                         Label(warning.userMessage, systemImage: warningIcon(for: warning))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.yellow)
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.warning)
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, AppSpacing.xxs)
             }
 
             // Push-up counter
             Text("\(viewModel.pushUpCount)")
-                .font(.system(size: 96, weight: .black, design: .rounded))
+                .font(AppTypography.displayCounter)
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
                 .animation(.spring(duration: 0.3), value: viewModel.pushUpCount)
 
             Text("Push-Ups")
-                .font(.title3.weight(.medium))
+                .font(AppTypography.title3)
                 .foregroundStyle(.white.opacity(0.8))
 
             // Half-rep indicator
             if viewModel.halfRepCount > 0 {
                 Text("\(viewModel.halfRepCount) halbe")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(AppColors.secondary)
             }
 
             // Variant badge + body-line
-            HStack(spacing: 12) {
+            HStack(spacing: AppSpacing.sm) {
                 // Push-up variant
                 if viewModel.positionState.isHorizontal {
                     Text(viewModel.positionState.variant.rawValue)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, AppSpacing.xs + 2)
+                        .padding(.vertical, AppSpacing.xxs)
                         .background(variantColor, in: Capsule())
                 }
 
                 // Elbow angle
                 if let angle = viewModel.currentAngle {
-                    HStack(spacing: 4) {
-                        Image(systemName: "angle")
-                        Text(String(format: "%.0f°", angle))
+                    HStack(spacing: AppSpacing.xxs) {
+                        Image(systemName: AppIcon.angle.rawValue)
+                        Text(String(format: "%.0f\u{00B0}", angle))
                             .monospacedDigit()
                     }
-                    .font(.callout)
+                    .font(AppTypography.callout)
                     .foregroundStyle(.white.opacity(0.7))
                 }
 
                 // Body-line deviation
                 if let dev = viewModel.bodyLineDeviation {
-                    HStack(spacing: 4) {
-                        Image(systemName: "figure.stand")
-                        Text(String(format: "%.0f°", dev))
+                    HStack(spacing: AppSpacing.xxs) {
+                        Image(systemName: AppIcon.figureStand.rawValue)
+                        Text(String(format: "%.0f\u{00B0}", dev))
                             .monospacedDigit()
                     }
-                    .font(.callout)
+                    .font(AppTypography.callout)
                     .foregroundStyle(bodyLineColor(dev))
                 }
             }
-            .padding(.top, 4)
+            .padding(.top, AppSpacing.xxs)
 
             if viewModel.currentAngle == nil {
-                Label("Kein Arm erkannt", systemImage: "eye.slash")
-                    .font(.caption)
+                Label("Kein Arm erkannt", systemImage: AppIcon.eyeSlash.rawValue)
+                    .font(AppTypography.caption1)
                     .foregroundStyle(.white.opacity(0.45))
             }
 
@@ -189,46 +183,46 @@ struct ContentView: View {
             Button {
                 viewModel.reset()
             } label: {
-                Label("Reset", systemImage: "arrow.counterclockwise")
-                    .font(.subheadline.weight(.semibold))
+                Label("Reset", systemImage: AppIcon.arrowCounterclockwise.rawValue)
+                    .font(AppTypography.subheadlineSemibold)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, AppSpacing.lg - 4)
+                    .padding(.vertical, AppSpacing.xs + 2)
                     .background(.ultraThinMaterial, in: Capsule())
             }
-            .padding(.top, 8)
+            .padding(.top, AppSpacing.xs)
         }
-        .padding(.vertical, 28)
-        .padding(.horizontal, 32)
+        .padding(.vertical, AppSpacing.lg + 4)
+        .padding(.horizontal, AppSpacing.xl)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 40)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge + 4))
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.bottom, AppSpacing.xxl - 8)
     }
 
     // MARK: - Helpers
 
     private var variantColor: Color {
         switch viewModel.positionState.variant {
-        case .unknown: return .gray
-        case .normal:  return .green
-        case .decline: return .orange
-        case .incline: return .blue
+        case .unknown: return AppColors.textSecondary
+        case .normal:  return AppColors.success
+        case .decline: return AppColors.warning
+        case .incline: return AppColors.info
         }
     }
 
     private func bodyLineColor(_ deviation: Double) -> Color {
-        if deviation < 15 { return .green }
-        if deviation < 35 { return .yellow }
-        return .red
+        if deviation < 15 { return AppColors.success }
+        if deviation < 35 { return AppColors.warning }
+        return AppColors.error
     }
 
     private func warningIcon(for warning: EdgeCaseWarning) -> String {
         switch warning {
-        case .noPersonDetected:      return "person.slash"
-        case .poorAngle:             return "arrow.left.and.right.square"
-        case .poorLighting:          return "sun.min"
-        case .multiplePersonsDetected: return "person.2"
+        case .noPersonDetected:        return AppIcon.personSlash.rawValue
+        case .poorAngle:               return AppIcon.arrowLeftAndRightSquare.rawValue
+        case .poorLighting:            return AppIcon.sunMin.rawValue
+        case .multiplePersonsDetected: return AppIcon.person2.rawValue
         }
     }
 }
@@ -237,15 +231,10 @@ struct ContentView: View {
 
 /// Status of the detection pipeline, shown as a small indicator in the UI.
 enum DetectionStatus: Equatable {
-    /// App just started, camera not yet delivering frames.
     case initializing
-    /// Camera is running but no person detected yet.
     case noPerson
-    /// Person detected but arm joints not visible (wrong angle?).
     case personNoArms
-    /// Person detected with arm joints -- ready to track.
     case tracking
-    /// Actively counting (in DOWN or COOLDOWN phase).
     case active
 
     var label: String {
@@ -260,21 +249,21 @@ enum DetectionStatus: Equatable {
 
     var icon: String {
         switch self {
-        case .initializing:  return "camera"
-        case .noPerson:      return "person.slash"
-        case .personNoArms:  return "eye.slash"
-        case .tracking:      return "checkmark.circle"
-        case .active:        return "figure.run"
+        case .initializing:  return AppIcon.camera.rawValue
+        case .noPerson:      return AppIcon.personSlash.rawValue
+        case .personNoArms:  return AppIcon.eyeSlash.rawValue
+        case .tracking:      return AppIcon.checkmarkCircle.rawValue
+        case .active:        return AppIcon.figureRun.rawValue
         }
     }
 
     var color: Color {
         switch self {
-        case .initializing:  return .gray
-        case .noPerson:      return .red
-        case .personNoArms:  return .orange
-        case .tracking:      return .green
-        case .active:        return .green
+        case .initializing:  return AppColors.textSecondary
+        case .noPerson:      return AppColors.error
+        case .personNoArms:  return AppColors.warning
+        case .tracking:      return AppColors.success
+        case .active:        return AppColors.success
         }
     }
 }
@@ -339,8 +328,6 @@ final class PushUpDemoViewModel: ObservableObject {
     /// can call it directly without hopping to the main actor.
     nonisolated func process(_ sampleBuffer: CMSampleBuffer) {
         let position = cameraPosition
-        // Mark camera as running on first frame so the status indicator
-        // advances past "Starte Kamera..." even if pose detection is slow.
         if framesProcessed == 0 {
             Task { @MainActor in
                 if self.detectionStatus == .initializing {
@@ -363,8 +350,6 @@ final class PushUpDemoViewModel: ObservableObject {
         bodyLineDeviation = nil
         positionState = PositionState()
         smoothedPose = nil
-        // Keep detectionStatus as-is on reset -- don't go back to .initializing
-        // since the camera is already running.
     }
 
     // Called from the video output queue via the bridge.
@@ -379,9 +364,6 @@ final class PushUpDemoViewModel: ObservableObject {
         let posState  = pushUpDetector.positionState
         let smoothed  = pushUpDetector.smoothedPose
 
-        // Compute detection status from actual detection results.
-        // pose is non-nil even when poorAngle warning is active — EdgeCaseHandler
-        // still returns a selectedPose when a person is detected.
         let hasPose  = pose != nil
         let hasAngle = angle != nil
         let isActive = phase == .down || phase == .cooldown
@@ -435,9 +417,9 @@ final class PushUpDemoViewModel: ObservableObject {
 
     var phaseIcon: String {
         switch currentPhase {
-        case .idle:     return "figure.stand"
-        case .down:     return "arrow.down.circle.fill"
-        case .cooldown: return "checkmark.circle.fill"
+        case .idle:     return AppIcon.figureStand.rawValue
+        case .down:     return AppIcon.arrowDownCircleFill.rawValue
+        case .cooldown: return AppIcon.checkmarkCircleFill.rawValue
         }
     }
 }
