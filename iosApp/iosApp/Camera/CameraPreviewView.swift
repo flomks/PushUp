@@ -131,6 +131,10 @@ struct CameraContainerView: View {
     /// captured from the main-queue SwiftUI context.
     var onSampleBuffer: (@Sendable (CMSampleBuffer) -> Void)?
 
+    /// Called on the main queue whenever the active camera lens changes.
+    /// Use this to forward the current position to Vision for correct orientation.
+    var onPositionChange: ((CameraPosition) -> Void)?
+
     @StateObject private var cameraManager = CameraManager()
 
     /// Strong reference that keeps the delegate alive for the lifetime of this view.
@@ -145,6 +149,7 @@ struct CameraContainerView: View {
         .onAppear {
             attachDelegate()
             cameraManager.setupAndStart()
+            onPositionChange?(cameraManager.currentPosition)
         }
         .onDisappear {
             cameraManager.stopSession()
@@ -153,6 +158,9 @@ struct CameraContainerView: View {
         // The iOS 16-compatible single-param form works identically here.
         .onChange(of: onSampleBuffer != nil) { _ in
             attachDelegate()
+        }
+        .onChange(of: cameraManager.currentPosition) { newPosition in
+            onPositionChange?(newPosition)
         }
     }
 
