@@ -149,8 +149,9 @@ struct CameraContainerView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
-        .onChange(of: onSampleBuffer != nil) { _, _ in
-            // Re-attach whenever the closure presence changes.
+        // `onChange(of:initial:_:)` with two closure params is iOS 17+.
+        // The iOS 16-compatible single-param form works identically here.
+        .onChange(of: onSampleBuffer != nil) { _ in
             attachDelegate()
         }
     }
