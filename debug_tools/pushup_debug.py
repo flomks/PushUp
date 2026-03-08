@@ -956,33 +956,134 @@ class Renderer:
 # Hauptschleife
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _draw_loading(frame, message: str, progress: float) -> None:
+    """Zeichnet einen einfachen Ladebildschirm auf einen schwarzen Frame."""
+    h, w = frame.shape[:2]
+    frame[:] = (18, 18, 18)
+
+    # Titel
+    title = "PushUp Debug Tool"
+    (tw, th), _ = cv2.getTextSize(title, FONT_BOLD, 1.0, 2)
+    cv2.putText(frame, title, (w // 2 - tw // 2, h // 2 - 60),
+                FONT_BOLD, 1.0, C.WHITE, 2, cv2.LINE_AA)
+
+    # Status-Nachricht
+    (mw, mh), _ = cv2.getTextSize(message, FONT, 0.65, 1)
+    cv2.putText(frame, message, (w // 2 - mw // 2, h // 2),
+                FONT, 0.65, C.GREY, 1, cv2.LINE_AA)
+
+    # Fortschrittsbalken
+    bar_w  = 320
+    bar_h  = 6
+    bar_x  = w // 2 - bar_w // 2
+    bar_y  = h // 2 + 30
+    cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h),
+                  (50, 50, 50), -1, cv2.LINE_AA)
+    filled = int(bar_w * min(1.0, max(0.0, progress)))
+    if filled > 0:
+        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + filled, bar_y + bar_h),
+                      C.GREEN, -1, cv2.LINE_AA)
+
+
 def main() -> None:
     import time
+    import threading
+
+    # ── Ladebildschirm sofort zeigen ─────────────────────────────────────
+    # Fenster öffnen bevor irgendwas geladen wird — der User sieht sofort
+    # dass etwas passiert.
+    loading_frame = cv2.UMat(cv2.Mat(  # type: ignore[call-overload]
+        720, 1280, cv2.CV_8UC3
+    )) if False else __import__("numpy").zeros((720, 1280, 3), dtype=__import__("numpy").uint8)
+
+    cv2.namedWindow("PushUp Debug", cv2.WINDOW_NORMAL)
+    _draw_loading(loading_frame, "Starte...", 0.0)
+    cv2.imshow("PushUp Debug", loading_frame)
+    cv2.waitKey(1)
+
+    # ── Modell sicherstellen (Download falls nötig) ───────────────────────
+    _draw_loading(loading_frame, f"Lade Modell: {_MODEL_NAME} ...", 0.1)
+    cv2.imshow("PushUp Debug", loading_frame)
+    cv2.waitKey(1)
+
     model_path = ensure_model()
 
-    # VIDEO-Modus statt IMAGE:
-    #   - Modell wird sofort beim create_from_options() initialisiert → kein
-    #     Lag beim ersten Frame
-    #   - MediaPipe nutzt temporales Tracking zwischen Frames → genauer und
-    #     CPU-schonender als IMAGE (kein vollständiger Re-Detect jeden Frame)
-    #   - Erfordert monoton steigenden Timestamp in Millisekunden
-    options = mp_vision.PoseLandmarkerOptions(
-        base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
-        running_mode=VisionTaskRunningMode.VIDEO,
-        num_poses=1,
-        min_pose_detection_confidence=CFG.pose_conf,
-        min_pose_presence_confidence=CFG.pose_conf,
-        min_tracking_confidence=CFG.track_conf,
-        output_segmentation_masks=False,
-    )
+    # ── Kamera + MediaPipe parallel initialisieren ────────────────────────
+    # Beide Operationen blockieren 1-3 Sekunden. Parallel gestartet halbiert
+    # sich die Wartezeit auf das langsamere der beiden.
+    cap_result:       list = [None]
+    landmarker_result: list = [None]
+    error_result:     list = [None]
 
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("ERROR: Webcam nicht gefunden. Versuche VideoCapture(1).")
+    def init_camera() -> None:
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            error_result[0] = "Webcam nicht gefunden. Versuche VideoCapture(1)."
+            return
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap_result[0] = cap
+
+    def init_landmarker() -> None:
+        try:
+            options = mp_vision.PoseLandmarkerOptions(
+                base_options=mp_tasks.BaseOptions(model_asset_path=model_path),
+                running_mode=VisionTaskRunningMode.VIDEO,
+                num_poses=1,
+                min_pose_detection_confidence=CFG.pose_conf,
+                min_pose_presence_confidence=CFG.pose_conf,
+                min_tracking_confidence=CFG.track_conf,
+                output_segmentation_masks=False,
+            )
+            landmarker_result[0] = mp_vision.PoseLandmarker.create_from_options(options)
+        except Exception as e:
+            error_result[0] = str(e)
+
+    t_cam  = threading.Thread(target=init_camera,     daemon=True)
+    t_mp   = threading.Thread(target=init_landmarker, daemon=True)
+    t_cam.start()
+    t_mp.start()
+
+    # Ladebalken animieren während gewartet wird
+    t_start = time.monotonic()
+    dots    = 0
+    while t_cam.is_alive() or t_mp.is_alive():
+        elapsed  = time.monotonic() - t_start
+        cam_done = not t_cam.is_alive()
+        mp_done  = not t_mp.is_alive()
+        progress = (0.5 if cam_done else 0.0) + (0.5 if mp_done else 0.0)
+        # Simuliere Fortschritt innerhalb jedes Schritts
+        if not cam_done:
+            progress += min(0.45, elapsed / 4.0) * 0.5
+        if not mp_done:
+            progress += min(0.45, elapsed / 4.0) * 0.5
+
+        dots = (dots + 1) % 4
+        status = f"Initialisiere{'.' * dots}"
+        if cam_done and not mp_done:
+            status = f"Lade Pose-Modell{'.' * dots}"
+        elif mp_done and not cam_done:
+            status = f"Öffne Kamera{'.' * dots}"
+
+        _draw_loading(loading_frame, status, progress)
+        cv2.imshow("PushUp Debug", loading_frame)
+        if cv2.waitKey(120) & 0xFF == ord("q"):
+            sys.exit(0)
+
+    t_cam.join()
+    t_mp.join()
+
+    if error_result[0]:
+        print(f"ERROR: {error_result[0]}")
         sys.exit(1)
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap        = cap_result[0]
+    landmarker = landmarker_result[0]
+
+    # Bereit-Meldung kurz anzeigen
+    _draw_loading(loading_frame, "Bereit!", 1.0)
+    cv2.imshow("PushUp Debug", loading_frame)
+    cv2.waitKey(300)
 
     analyser    = PushUpAnalyser()
     smoother    = SkeletonSmoother()
@@ -995,9 +1096,10 @@ def main() -> None:
     print(f"  DOWN < {CFG.down_threshold}°  |  UP > {CFG.up_threshold}°  |  Hysterese: {CFG.hysteresis} Frames")
     print("  R=Reset  D=Debug  F=Form  Q=Quit\n")
 
-    start_time = time.monotonic()   # Referenzzeitpunkt für Timestamps
+    start_time = time.monotonic()
 
-    with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
+    # Hauptschleife — landmarker ist bereits initialisiert
+    try:
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -1091,8 +1193,10 @@ def main() -> None:
                 show_form = not show_form
                 print(f"  Formcheck: {'AN' if show_form else 'AUS'}")
 
-    cap.release()
-    cv2.destroyAllWindows()
+    finally:
+        landmarker.close()
+        cap.release()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
