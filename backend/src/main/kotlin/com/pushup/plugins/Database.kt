@@ -43,6 +43,7 @@ enum class FriendshipStatus {
 object Users : Table("users") {
     val id          = uuid("id")
     val email       = text("email")
+    val username    = text("username").nullable()
     val displayName = text("display_name").nullable()
     val avatarUrl   = text("avatar_url").nullable()
     val createdAt   = timestampWithTimeZone("created_at")
