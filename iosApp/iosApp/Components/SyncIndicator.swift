@@ -71,7 +71,7 @@ struct SyncIndicator: View {
             handleStateChange(syncService.syncState)
         }
         // Update animation state on subsequent state transitions.
-        .onChange(of: syncService.syncState) { newState in
+        .onChange(of: syncService.syncState) { _, newState in
             handleStateChange(newState)
         }
     }
