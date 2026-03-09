@@ -102,6 +102,52 @@ object Friendships : Table("friendships") {
 
 
 /**
+ * Kotlin representation of the `public.notification_type` PostgreSQL enum.
+ *
+ * Values:
+ *   FRIEND_REQUEST  -- a user sent a friend request to the recipient
+ *   FRIEND_ACCEPTED -- the recipient accepted a friend request
+ */
+enum class NotificationType {
+    FRIEND_REQUEST,
+    FRIEND_ACCEPTED,
+    ;
+
+    /** Returns the snake_case string stored in the database enum column. */
+    fun toDbValue(): String = name.lowercase()
+
+    companion object {
+        /** Parses a database enum string (case-insensitive) back to [NotificationType]. */
+        fun fromDbValue(value: String): NotificationType =
+            entries.first { it.name.equals(value, ignoreCase = true) }
+    }
+}
+
+/**
+ * Mirrors the public.notifications table in Supabase.
+ *
+ * One row per in-app notification delivered to a user.
+ * Notifications are soft-deleted by marking them as read (isRead = true).
+ *
+ * The [type] column is stored as the PostgreSQL `notification_type` enum.
+ * Exposed reads it as a plain [String]; use [NotificationType.fromDbValue] to
+ * convert to the Kotlin enum and [NotificationType.toDbValue] to write it back.
+ */
+object Notifications : Table("notifications") {
+    val id        = uuid("id")
+    val userId    = uuid("user_id").references(Users.id)
+    val type      = varchar("type", 32)
+    val actorId   = uuid("actor_id").references(Users.id).nullable()
+    val payload   = text("payload")
+    val isRead    = bool("is_read")
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+
+/**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
  *
