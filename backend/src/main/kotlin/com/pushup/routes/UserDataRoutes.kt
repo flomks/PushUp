@@ -5,6 +5,7 @@ import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.UserDataService
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.log
 import io.ktor.server.auth.authenticate
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -59,20 +60,30 @@ fun Route.userDataRoutes(
                     return@get
                 }
 
-                val data = userDataService.getUserData(userId)
-                if (data == null) {
+                try {
+                    val data = userDataService.getUserData(userId)
+                    if (data == null) {
+                        call.respond(
+                            HttpStatusCode.NotFound,
+                            ErrorResponse(
+                                error   = "user_not_found",
+                                message = "No user profile found for the authenticated user. " +
+                                          "Ensure the Supabase auth trigger has run.",
+                            ),
+                        )
+                        return@get
+                    }
+                    call.respond(HttpStatusCode.OK, data)
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get user data for $userId", e)
                     call.respond(
-                        HttpStatusCode.NotFound,
+                        HttpStatusCode.InternalServerError,
                         ErrorResponse(
-                            error   = "user_not_found",
-                            message = "No user profile found for the authenticated user. " +
-                                      "Ensure the Supabase auth trigger has run.",
+                            error   = "internal_server_error",
+                            message = "Failed to retrieve user data",
                         ),
                     )
-                    return@get
                 }
-
-                call.respond(HttpStatusCode.OK, data)
             }
         }
     }

@@ -6,6 +6,7 @@ import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.Users
 import com.pushup.plugins.authenticatedUserId
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.log
 import io.ktor.server.auth.authenticate
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -67,37 +68,48 @@ fun Route.userRoutes(databaseReady: Boolean = true) {
                     return@get
                 }
 
-                // newSuspendedTransaction suspends the coroutine instead of
-                // blocking a thread, keeping Ktor's event loop healthy.
-                val userRow = newSuspendedTransaction {
-                    Users.selectAll()
-                        .where { Users.id eq userId }
-                        .singleOrNull()
-                }
+                try {
+                    // newSuspendedTransaction suspends the coroutine instead of
+                    // blocking a thread, keeping Ktor's event loop healthy.
+                    val userRow = newSuspendedTransaction {
+                        Users.selectAll()
+                            .where { Users.id eq userId }
+                            .singleOrNull()
+                    }
 
-                if (userRow == null) {
+                    if (userRow == null) {
+                        call.respond(
+                            HttpStatusCode.NotFound,
+                            ErrorResponse(
+                                error   = "user_not_found",
+                                message = "No user profile found for the authenticated user. " +
+                                          "Ensure the Supabase auth trigger has run.",
+                            ),
+                        )
+                        return@get
+                    }
+
                     call.respond(
-                        HttpStatusCode.NotFound,
-                        ErrorResponse(
-                            error   = "user_not_found",
-                            message = "No user profile found for the authenticated user. " +
-                                      "Ensure the Supabase auth trigger has run.",
+                        HttpStatusCode.OK,
+                        UserResponse(
+                            id          = userRow[Users.id].toString(),
+                            email       = userRow[Users.email],
+                            displayName = userRow[Users.displayName],
+                            avatarUrl   = userRow[Users.avatarUrl],
+                            createdAt   = userRow[Users.createdAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                            updatedAt   = userRow[Users.updatedAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                         ),
                     )
-                    return@get
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get user profile for $userId", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error   = "internal_server_error",
+                            message = "Failed to retrieve user profile",
+                        ),
+                    )
                 }
-
-                call.respond(
-                    HttpStatusCode.OK,
-                    UserResponse(
-                        id          = userRow[Users.id].toString(),
-                        email       = userRow[Users.email],
-                        displayName = userRow[Users.displayName],
-                        avatarUrl   = userRow[Users.avatarUrl],
-                        createdAt   = userRow[Users.createdAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                        updatedAt   = userRow[Users.updatedAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                    ),
-                )
             }
         }
     }
