@@ -436,7 +436,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     /// Clears the app badge count. Call when the user opens the app.
     func clearBadge() {
-        UIApplication.shared.applicationIconBadgeNumber = 0
+        UNUserNotificationCenter.current().setBadgeCount(0)
     }
 
     // MARK: - Private Helpers

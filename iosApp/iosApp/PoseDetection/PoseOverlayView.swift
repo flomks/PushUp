@@ -171,7 +171,7 @@ struct PoseOverlayContainerView: View {
                 // The detector is captured implicitly from the view's @StateObject.
                 // SwiftUI keeps it alive for the view's lifetime. The camera stops
                 // in `onDisappear` before the view is torn down.
-                detector.process(sampleBuffer)
+                Task { @MainActor in detector.process(sampleBuffer) }
             }
 
             PoseOverlayView(
