@@ -180,66 +180,48 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Attempts to sign in with email and password via Supabase Auth.
     func login() async {
         clearMessages()
-        do {
-            try validateLogin()
-            isLoading = true
-            authState = .loading
-            let useCase = DIHelper.shared.loginWithEmailUseCase()
-            _ = try await useCase.invoke(
-                email: loginEmail.trimmingCharacters(in: .whitespaces),
-                password: loginPassword
-            )
-            isLoading = false
+        guard isLoginFormValid else {
+            if !isValidEmail(loginEmail) { errorMessage = AuthError.invalidEmail.errorDescription }
+            else { errorMessage = AuthError.passwordTooShort.errorDescription }
+            return
+        }
+        isLoading = true
+        authState = .loading
+        let result = await DIHelper.shared.safeLoginWithEmail(
+            email: loginEmail.trimmingCharacters(in: .whitespaces),
+            password: loginPassword
+        )
+        isLoading = false
+        if result.isSuccess {
             authState = .authenticated
-        } catch let error as AuthException {
-            isLoading = false
+        } else {
             authState = .unauthenticated
-            errorMessage = mapAuthException(error)
-        } catch let error as KotlinThrowable {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = mapKotlinThrowable(error)
-        } catch let error as AuthError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = error.errorDescription
-        } catch {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = "Login failed: \(error.localizedDescription)"
+            errorMessage = result.errorMessage ?? "Login failed."
         }
     }
 
     /// Attempts to create a new account via Supabase Auth.
     func register() async {
         clearMessages()
-        do {
-            try validateRegistration()
-            isLoading = true
-            authState = .loading
-            let useCase = DIHelper.shared.registerWithEmailUseCase()
-            _ = try await useCase.invoke(
-                email: registerEmail.trimmingCharacters(in: .whitespaces),
-                password: registerPassword
-            )
-            isLoading = false
+        guard isRegisterFormValid else {
+            if !isValidEmail(registerEmail) { errorMessage = AuthError.invalidEmail.errorDescription }
+            else if registerPassword.count < AuthValidation.minimumPasswordLength { errorMessage = AuthError.passwordTooShort.errorDescription }
+            else if registerPassword != registerConfirmPassword { errorMessage = AuthError.passwordsDoNotMatch.errorDescription }
+            else { errorMessage = AuthError.displayNameEmpty.errorDescription }
+            return
+        }
+        isLoading = true
+        authState = .loading
+        let result = await DIHelper.shared.safeRegisterWithEmail(
+            email: registerEmail.trimmingCharacters(in: .whitespaces),
+            password: registerPassword
+        )
+        isLoading = false
+        if result.isSuccess {
             authState = .authenticated
-        } catch let error as AuthException {
-            isLoading = false
+        } else {
             authState = .unauthenticated
-            errorMessage = mapAuthException(error)
-        } catch let error as KotlinThrowable {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = mapKotlinThrowable(error)
-        } catch let error as AuthError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = error.errorDescription
-        } catch {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = "Registration failed: \(error.localizedDescription)"
+            errorMessage = result.errorMessage ?? "Registration failed."
         }
     }
 
@@ -284,28 +266,21 @@ final class AuthViewModel: NSObject, ObservableObject {
                   let idToken = String(data: tokenData, encoding: .utf8) else {
                 throw AuthError.unknown("Apple did not return an identity token.")
             }
-            let useCase = DIHelper.shared.loginWithAppleUseCase()
-            _ = try await useCase.invoke(idToken: idToken)
+            let result = await DIHelper.shared.safeLoginWithApple(idToken: idToken)
             isLoading = false
-            authState = .authenticated
+            if result.isSuccess {
+                authState = .authenticated
+            } else {
+                authState = .unauthenticated
+                errorMessage = result.errorMessage ?? "Apple Sign-In failed."
+            }
         } catch let error as ASAuthorizationError where error.code == .canceled {
             isLoading = false
             authState = .unauthenticated
-            // User cancelled — do not show an error message.
-        } catch let error as AuthException {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = mapAuthException(error)
-        } catch let error as AuthError {
-            isLoading = false
-            authState = .unauthenticated
-            if error.errorDescription != nil {
-                errorMessage = error.errorDescription
-            }
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Apple Sign-In failed: \(error.localizedDescription)"
         }
     }
 
@@ -338,28 +313,21 @@ final class AuthViewModel: NSObject, ObservableObject {
                 throw AuthError.unknown("Invalid Supabase URL configuration.")
             }
             let callbackURL = try await openWebAuthSession(url: authURL, callbackScheme: bundleID)
-            try await handleOAuthCallback(url: callbackURL)
+            let result = try await handleOAuthCallback(url: callbackURL)
             isLoading = false
-            authState = .authenticated
+            if result.isSuccess {
+                authState = .authenticated
+            } else {
+                authState = .unauthenticated
+                errorMessage = result.errorMessage ?? "Google Sign-In failed."
+            }
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             isLoading = false
             authState = .unauthenticated
-        } catch let error as AuthException {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = mapAuthException(error)
-        } catch let error as KotlinThrowable {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = mapKotlinThrowable(error)
-        } catch let error as AuthError {
-            isLoading = false
-            authState = .unauthenticated
-            if let desc = error.errorDescription { errorMessage = desc }
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
         }
     }
 
@@ -368,8 +336,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Signs the current user out and returns to the unauthenticated state.
     func signOut() {
         Task {
-            let useCase = DIHelper.shared.logoutUseCase()
-            try? await useCase.invoke(clearLocalData: false)
+            await DIHelper.shared.safeLogout()
         }
         authState = .unauthenticated
         clearAllFields()
@@ -379,24 +346,13 @@ final class AuthViewModel: NSObject, ObservableObject {
     // MARK: - Session Restore
 
     /// Checks whether a valid Supabase token exists and restores the session.
-    ///
-    /// Reads the stored token from the Keychain via TokenStorage.
-    /// Only authenticates if a real token is present — never based on
-    /// a local DB user alone (which could be a stale entry from a
-    /// previous session that was not properly cleared).
     func restoreSession() async {
-        // TokenStorage.load() returns nil if no token is stored in the Keychain.
-        // We access it via the KMP TokenStorage through a dedicated use case.
-        // getCurrentUser() internally checks tokenStorage first in AuthRepositoryImpl,
-        // so if no token exists it returns nil even if a DB user exists.
-        let useCase = DIHelper.shared.getCurrentUserUseCase()
-        guard let _ = try? await useCase.invoke() else {
-            // No token or no user — ensure we are in unauthenticated state
-            // and clear any stale DB user that might exist without a token.
+        let result = await DIHelper.shared.safeGetCurrentUser()
+        if result.isSuccess {
+            authState = .authenticated
+        } else {
             authState = .unauthenticated
-            return
         }
-        authState = .authenticated
     }
 
     // MARK: - Helpers
@@ -412,53 +368,6 @@ final class AuthViewModel: NSObject, ObservableObject {
     }
 
     // MARK: - Private
-
-    /// Maps a KMP AuthException to a user-facing error message.
-    ///
-    /// Kotlin/Native sealed class subclasses are not reliably accessible as
-    /// distinct Swift types. We identify the subclass by its Swift class name
-    /// (via String(describing:)) which Kotlin/Native always exports.
-    private func mapAuthException(_ error: AuthException) -> String {
-        let typeName = String(describing: type(of: error))
-        let msg = error.message ?? ""
-
-        switch typeName {
-        case _ where typeName.contains("InvalidCredentials"):
-            return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
-        case _ where typeName.contains("EmailAlreadyInUse"):
-            return AuthError.emailAlreadyInUse.errorDescription ?? "Email already in use."
-        case _ where typeName.contains("WeakPassword"):
-            return "Password is too weak. Please choose a stronger password."
-        case _ where typeName.contains("InvalidEmail"):
-            return AuthError.invalidEmail.errorDescription ?? "Invalid email."
-        case _ where typeName.contains("SessionExpired"):
-            return "Your session has expired. Please sign in again."
-        case _ where typeName.contains("NotAuthenticated"):
-            return "Not authenticated. Please sign in."
-        case _ where typeName.contains("NetworkError"):
-            return AuthError.networkError(msg.isEmpty ? "Connection failed" : msg).errorDescription ?? "Network error."
-        case _ where typeName.contains("ServerError"):
-            return "Server error. Please try again."
-        default:
-            return msg.isEmpty ? "An unknown error occurred." : msg
-        }
-    }
-
-    /// Maps any KotlinThrowable (Kotlin exceptions that are not AuthException)
-    /// to a user-facing error message. Prevents crashes from unhandled Kotlin errors.
-    private func mapKotlinThrowable(_ error: KotlinThrowable) -> String {
-        let msg = (error.message ?? String(describing: type(of: error))).lowercased()
-        if msg.contains("invalidcredentials") || msg.contains("invalid credentials") {
-            return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
-        }
-        if msg.contains("networkerror") || msg.contains("connect") || msg.contains("timeout") {
-            return "Network error. Please check your connection."
-        }
-        if msg.contains("email confirmation") || msg.contains("confirm your email") {
-            return "Please confirm your email address before signing in."
-        }
-        return "An error occurred. Please try again."
-    }
 
     private func validateLogin() throws {
         guard isValidEmail(loginEmail) else { throw AuthError.invalidEmail }
@@ -555,7 +464,9 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Supports both flows:
     /// - **PKCE**: `?code=<pkce_code>` in query string -> exchange via KMP
     /// - **Implicit**: `#access_token=...&refresh_token=...` in fragment -> store directly
-    private func handleOAuthCallback(url: URL) async throws {
+    ///
+    /// Returns AuthResult — never throws Kotlin exceptions.
+    private func handleOAuthCallback(url: URL) async throws -> AuthResult {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
 
@@ -567,8 +478,7 @@ final class AuthViewModel: NSObject, ObservableObject {
 
         // Try PKCE flow first: ?code=...
         if let code = queryItems.first(where: { $0.name == "code" })?.value, !code.isEmpty {
-            _ = try await DIHelper.shared.loginWithGoogleOAuthCode(code: code)
-            return
+            return await DIHelper.shared.safeLoginWithGoogleOAuthCode(code: code)
         }
 
         // Try Implicit flow: #access_token=...&refresh_token=...
@@ -601,14 +511,13 @@ final class AuthViewModel: NSObject, ObservableObject {
                 throw AuthError.unknown("Could not extract user ID from token.")
             }
 
-            _ = try await DIHelper.shared.loginWithImplicitTokens(
+            return await DIHelper.shared.safeLoginWithImplicitTokens(
                 accessToken: accessToken,
                 refreshToken: refreshToken,
                 userId: userId,
                 userEmail: userEmail,
                 expiresIn: expiresIn
             )
-            return
         }
 
         throw AuthError.unknown("OAuth callback contained neither a code nor tokens.")

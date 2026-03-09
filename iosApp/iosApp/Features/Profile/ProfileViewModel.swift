@@ -201,18 +201,15 @@ final class ProfileViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        do {
-            let useCase = DIHelper.shared.getCurrentUserUseCase()
-            if let user = try? await useCase.invoke() {
-                applyUserData(user)
-            } else {
-                // No user in local DB yet — show empty state.
-                displayName = ""
-                savedDisplayName = ""
-                email = ""
-                memberSinceText = ""
-                stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
-            }
+        let result = await DIHelper.shared.safeGetCurrentUser()
+        if let user = result.user {
+            applyUserData(user)
+        } else {
+            displayName = ""
+            savedDisplayName = ""
+            email = ""
+            memberSinceText = ""
+            stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
         }
 
         isLoading = false
@@ -338,8 +335,7 @@ final class ProfileViewModel: ObservableObject {
     /// login screen.
     func signOut() {
         Task {
-            let useCase = DIHelper.shared.logoutUseCase()
-            try? await useCase.invoke(clearLocalData: false)
+            await DIHelper.shared.safeLogout()
         }
         NotificationCenter.default.post(name: .userDidSignOut, object: nil)
     }
