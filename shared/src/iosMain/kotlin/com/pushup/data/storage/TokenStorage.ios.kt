@@ -2,6 +2,7 @@ package com.pushup.data.storage
 
 import com.pushup.domain.model.AuthToken
 import kotlinx.cinterop.BetaInteropApi
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
@@ -27,9 +28,6 @@ import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
-import platform.Security.SecItemUpdate
-import platform.Security.errSecDuplicateItem
-import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlock
@@ -59,9 +57,9 @@ import platform.Security.kSecValueData
  *
  * The correct approach is to build query dictionaries using the CoreFoundation
  * `CFDictionaryCreateMutable` / `CFDictionarySetValue` API, which accepts
- * `COpaquePointer` values directly. All values (including Kotlin Strings and
- * NSData) are bridged via `CFBridgingRetain` before being inserted, and the
- * retained references are released immediately after insertion.
+ * `COpaquePointer` values directly. Security constants (which are already CF
+ * pointers) are passed directly via [cfSetCF], while Kotlin/ObjC objects
+ * (Strings, NSData) are bridged via `CFBridgingRetain` in [cfSetObj].
  *
  * ## Error handling
  * [save] throws [IllegalStateException] if the Keychain write fails.
@@ -72,10 +70,14 @@ actual class TokenStorage {
     /**
      * Persists [token] to the Keychain as a JSON-encoded generic password item.
      *
-     * Uses an update-then-add strategy:
-     * 1. Attempt `SecItemUpdate` on the existing item.
-     * 2. If the item does not exist (`errSecItemNotFound`), add it with `SecItemAdd`.
-     * 3. Any other non-success status throws [IllegalStateException].
+     * Uses a delete-then-add strategy:
+     * 1. Delete any existing item (ignore `errSecItemNotFound`).
+     * 2. Add the new item with `SecItemAdd`.
+     *
+     * This avoids the `SecItemUpdate` pitfall where the update attributes
+     * dictionary must not contain primary-key fields, and where passing CF
+     * Security constants through `CFBridgingRetain` can produce invalid
+     * references (OSStatus -50 / `errSecParam`).
      *
      * @throws IllegalStateException if the Keychain write fails.
      */
@@ -86,58 +88,40 @@ actual class TokenStorage {
         val data: NSData = nsJson.dataUsingEncoding(NSUTF8StringEncoding)
             ?: error("TokenStorage.save: UTF-8 encoding of token JSON failed")
 
-        // Build the base query identifying the existing item.
-        val updateQuery = newCFDict()
-        cfSet(updateQuery, kSecClass, kSecClassGenericPassword)
-        cfSet(updateQuery, kSecAttrService, SERVICE)
-        cfSet(updateQuery, kSecAttrAccount, ACCOUNT)
+        // 1. Delete any existing item (ignore "not found").
+        val deleteQuery = newCFDict()
+        cfSetCF(deleteQuery, kSecClass, kSecClassGenericPassword)
+        cfSetObj(deleteQuery, kSecAttrService, SERVICE)
+        cfSetObj(deleteQuery, kSecAttrAccount, ACCOUNT)
+        SecItemDelete(deleteQuery)
+        // No need to check status -- errSecItemNotFound is fine.
 
-        // Build the attributes dict with the new value.
-        val updateAttributes = newCFDict()
-        cfSet(updateAttributes, kSecValueData, data)
+        // 2. Add the new item.
+        val addQuery = newCFDict()
+        cfSetCF(addQuery, kSecClass, kSecClassGenericPassword)
+        cfSetObj(addQuery, kSecAttrService, SERVICE)
+        cfSetObj(addQuery, kSecAttrAccount, ACCOUNT)
+        cfSetCF(addQuery, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
+        cfSetObj(addQuery, kSecValueData, data)
 
-        val updateStatus = SecItemUpdate(updateQuery, updateAttributes)
-        CFBridgingRelease(updateQuery)
-        CFBridgingRelease(updateAttributes)
+        val addStatus = SecItemAdd(addQuery, null)
 
-        when (updateStatus) {
-            errSecSuccess -> return
-
-            errSecItemNotFound -> {
-                // Item does not exist yet -- add it.
-                val addQuery = newCFDict()
-                cfSet(addQuery, kSecClass, kSecClassGenericPassword)
-                cfSet(addQuery, kSecAttrService, SERVICE)
-                cfSet(addQuery, kSecAttrAccount, ACCOUNT)
-                cfSet(addQuery, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlock)
-                cfSet(addQuery, kSecValueData, data)
-
-                val addStatus = SecItemAdd(addQuery, null)
-                CFBridgingRelease(addQuery)
-
-                // errSecDuplicateItem can occur in a race where another thread added
-                // the item between our update attempt and this add. Treat it as success.
-                check(addStatus == errSecSuccess || addStatus == errSecDuplicateItem) {
-                    "TokenStorage.save: SecItemAdd failed with OSStatus $addStatus"
-                }
-            }
-
-            else -> error("TokenStorage.save: SecItemUpdate failed with OSStatus $updateStatus")
+        check(addStatus == errSecSuccess) {
+            "TokenStorage.save: SecItemAdd failed with OSStatus $addStatus"
         }
     }
 
     /** Returns the stored [AuthToken], or `null` if none is present or parsing fails. */
     actual fun load(): AuthToken? = memScoped {
         val query = newCFDict()
-        cfSet(query, kSecClass, kSecClassGenericPassword)
-        cfSet(query, kSecAttrService, SERVICE)
-        cfSet(query, kSecAttrAccount, ACCOUNT)
-        cfSet(query, kSecReturnData, kCFBooleanTrue)
-        cfSet(query, kSecMatchLimit, kSecMatchLimitOne)
+        cfSetCF(query, kSecClass, kSecClassGenericPassword)
+        cfSetObj(query, kSecAttrService, SERVICE)
+        cfSetObj(query, kSecAttrAccount, ACCOUNT)
+        cfSetCF(query, kSecReturnData, kCFBooleanTrue)
+        cfSetCF(query, kSecMatchLimit, kSecMatchLimitOne)
 
         val result = alloc<CFTypeRefVar>()
         val status = SecItemCopyMatching(query, result.ptr)
-        CFBridgingRelease(query)
 
         if (status != errSecSuccess) return null
 
@@ -153,11 +137,10 @@ actual class TokenStorage {
     /** Removes the stored token from the Keychain. */
     actual fun clear() {
         val query = newCFDict()
-        cfSet(query, kSecClass, kSecClassGenericPassword)
-        cfSet(query, kSecAttrService, SERVICE)
-        cfSet(query, kSecAttrAccount, ACCOUNT)
+        cfSetCF(query, kSecClass, kSecClassGenericPassword)
+        cfSetObj(query, kSecAttrService, SERVICE)
+        cfSetObj(query, kSecAttrAccount, ACCOUNT)
         SecItemDelete(query)
-        CFBridgingRelease(query)
         // Ignore the return value: errSecItemNotFound is expected when no token is stored.
     }
 
@@ -177,18 +160,32 @@ actual class TokenStorage {
     )!!
 
     /**
-     * Inserts [value] into [dict] under [key] using CF bridging.
+     * Inserts a **CF-typed** [value] into [dict] under a **CF-typed** [key].
      *
-     * Both [key] and [value] are bridged to CF-retained references via
-     * [CFBridgingRetain] and released immediately after the insertion.
-     * This is safe because [CFDictionarySetValue] retains both key and value
-     * internally (via the `kCFTypeDictionaryKeyCallBacks` retain callback).
+     * Use this overload for Security framework constants (e.g. `kSecClass`,
+     * `kSecClassGenericPassword`, `kSecAttrAccessible`, `kCFBooleanTrue`,
+     * `kSecMatchLimit`, `kSecMatchLimitOne`, `kSecReturnData`) which are
+     * already `CFTypeRef` pointers. Passing them through `CFBridgingRetain`
+     * is incorrect because they are not Objective-C objects and the bridge
+     * can produce invalid references (OSStatus -50 / `errSecParam`).
      */
-    private fun cfSet(dict: CFMutableDictionaryRef, key: Any?, value: Any?) {
-        val cfKey = CFBridgingRetain(key)
+    private fun cfSetCF(dict: CFMutableDictionaryRef, key: COpaquePointer?, value: COpaquePointer?) {
+        CFDictionarySetValue(dict, key, value)
+    }
+
+    /**
+     * Inserts a **Kotlin / Objective-C** [value] into [dict] under a
+     * **CF-typed** [key].
+     *
+     * The [key] is a Security framework constant (`CFStringRef`) and is used
+     * directly. The [value] is a Kotlin `String` or `NSData` that must be
+     * bridged to a CF reference via [CFBridgingRetain]. The retained reference
+     * is released immediately after insertion because [CFDictionarySetValue]
+     * retains both key and value internally.
+     */
+    private fun cfSetObj(dict: CFMutableDictionaryRef, key: COpaquePointer?, value: Any?) {
         val cfValue = CFBridgingRetain(value)
-        CFDictionarySetValue(dict, cfKey, cfValue)
-        CFBridgingRelease(cfKey)
+        CFDictionarySetValue(dict, key, cfValue)
         CFBridgingRelease(cfValue)
     }
 
