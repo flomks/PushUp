@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 // MARK: - StatsTab
 
@@ -23,7 +24,6 @@ enum StatsTab: Int, CaseIterable, Identifiable {
 
 // MARK: - DayWorkoutData
 
-/// Represents a single calendar day's workout data.
 struct DayWorkoutData: Identifiable {
     let id: String          // "yyyy-MM-dd"
     let date: Date
@@ -37,10 +37,9 @@ struct DayWorkoutData: Identifiable {
 
 // MARK: - WeeklyBarData
 
-/// A single bar entry for the weekly bar chart.
 struct WeeklyBarData: Identifiable {
     let id: Int             // 0 = Mon ... 6 = Sun
-    let label: String       // "Mon", "Tue", ...
+    let label: String
     let date: Date
     let pushUps: Int
     let sessions: Int
@@ -50,10 +49,9 @@ struct WeeklyBarData: Identifiable {
 
 // MARK: - MonthlyWeekData
 
-/// Aggregated data for one week within a month, used in the line chart.
 struct MonthlyWeekData: Identifiable {
-    let id: Int             // week index within the month (0-based)
-    let label: String       // "W1", "W2", ...
+    let id: Int
+    let label: String
     let weekStart: Date
     let totalPushUps: Int
     let totalSessions: Int
@@ -62,7 +60,6 @@ struct MonthlyWeekData: Identifiable {
 
 // MARK: - TotalStatsData
 
-/// Lifetime aggregate statistics.
 struct TotalStatsData {
     let totalPushUps: Int
     let totalSessions: Int
@@ -71,16 +68,15 @@ struct TotalStatsData {
     let currentStreakDays: Int
     let averagePushUpsPerSession: Double
     let averageSessionDurationSeconds: Int
-    let bestSingleSession: Int          // push-ups in one session
-    let bestDay: Int                    // push-ups in one day
-    let bestWeek: Int                   // push-ups in one week
-    let activeDays: Int                 // days with at least one workout
+    let bestSingleSession: Int
+    let bestDay: Int
+    let bestWeek: Int
+    let activeDays: Int
     let averageQuality: Double
 }
 
 // MARK: - MonthComparison
 
-/// Comparison between the current and previous month.
 struct MonthComparison {
     let currentMonthPushUps: Int
     let previousMonthPushUps: Int
@@ -98,84 +94,48 @@ struct MonthComparison {
 
 /// Manages all data and state for the Stats screen.
 ///
-/// Data is currently simulated with realistic stub values so the UI can be
-/// built and previewed without a live backend. Replace the `loadData()`
-/// implementation with real KMP use-case calls:
-///   - GetDailyStatsUseCase
-///   - GetWeeklyStatsUseCase
-///   - GetMonthlyStatsUseCase
-/// once the shared module is linked into the iOS target.
+/// Fetches data from the local SQLite database via KMP's `DataBridge`.
+/// Data is loaded once on first appear and refreshed on pull-to-refresh.
+/// Because the stats use cases aggregate from the local DB, they always
+/// reflect the latest completed workouts without requiring a cloud sync.
 @MainActor
 final class StatsViewModel: ObservableObject {
 
     // MARK: - Published State
 
-    /// Currently selected time-range tab.
     @Published var selectedTab: StatsTab = .daily
-
-    /// The month currently displayed in the calendar (daily tab).
     @Published var displayedMonth: Date = Date()
-
-    /// The day selected in the calendar for detail view.
     @Published var selectedDay: DayWorkoutData? = nil
-
-    /// Whether the day detail sheet is presented.
     @Published var showDayDetail: Bool = false
 
-    // MARK: Daily
-
-    /// All days in the currently displayed calendar month.
+    // Daily
     @Published private(set) var calendarDays: [DayWorkoutData] = []
 
-    // MARK: Weekly
-
-    /// Per-day data for the current week (Mon-Sun).
+    // Weekly
     @Published private(set) var weeklyBars: [WeeklyBarData] = []
-
-    /// Total push-ups this week.
     @Published private(set) var weeklyTotalPushUps: Int = 0
-
-    /// Average push-ups per active day this week.
     @Published private(set) var weeklyAveragePushUps: Double = 0
-
-    /// Total sessions this week.
     @Published private(set) var weeklyTotalSessions: Int = 0
-
-    /// Total earned minutes this week.
     @Published private(set) var weeklyEarnedMinutes: Int = 0
 
-    // MARK: Monthly
-
-    /// Per-week aggregated data for the current month.
+    // Monthly
     @Published private(set) var monthlyWeeks: [MonthlyWeekData] = []
-
-    /// Month-over-month comparison.
     @Published private(set) var monthComparison: MonthComparison? = nil
-
-    /// Total push-ups this month.
     @Published private(set) var monthlyTotalPushUps: Int = 0
-
-    /// Total sessions this month.
     @Published private(set) var monthlyTotalSessions: Int = 0
-
-    /// Total earned minutes this month.
     @Published private(set) var monthlyEarnedMinutes: Int = 0
 
-    // MARK: Total
-
-    /// Lifetime aggregate statistics.
+    // Total
     @Published private(set) var totalStats: TotalStatsData? = nil
 
-    // MARK: Loading / Error
-
-    /// Overall loading state for the initial fetch.
+    // Loading / Error
     @Published private(set) var isLoading: Bool = false
-
-    /// Whether a pull-to-refresh is currently in progress.
     @Published private(set) var isRefreshing: Bool = false
-
-    /// Non-nil when a load attempt failed.
     @Published var errorMessage: String? = nil
+
+    // MARK: - Private
+
+    private var currentUserId: String?
 
     // MARK: - Init
 
@@ -188,7 +148,7 @@ final class StatsViewModel: ObservableObject {
         guard !isLoading, !isRefreshing else { return }
         isLoading = true
         errorMessage = nil
-        await fetchData(errorPrefix: "Failed to load stats.")
+        await fetchAllStats()
         isLoading = false
     }
 
@@ -197,16 +157,12 @@ final class StatsViewModel: ObservableObject {
         guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
         errorMessage = nil
-        await fetchData(errorPrefix: "Refresh failed.")
+        await fetchAllStats()
         isRefreshing = false
     }
 
-    /// Clears the current error message.
-    func clearError() {
-        errorMessage = nil
-    }
+    func clearError() { errorMessage = nil }
 
-    /// Navigates to the previous month in the calendar view.
     func previousMonth() {
         displayedMonth = Calendar.current.date(
             byAdding: .month, value: -1, to: displayedMonth
@@ -214,7 +170,6 @@ final class StatsViewModel: ObservableObject {
         Task { await loadCalendarDays() }
     }
 
-    /// Navigates to the next month in the calendar view.
     func nextMonth() {
         displayedMonth = Calendar.current.date(
             byAdding: .month, value: 1, to: displayedMonth
@@ -222,27 +177,162 @@ final class StatsViewModel: ObservableObject {
         Task { await loadCalendarDays() }
     }
 
-    /// Selects a day in the calendar and shows the detail sheet.
     func selectDay(_ day: DayWorkoutData) {
         guard day.hasWorkout else { return }
         selectedDay = day
         showDayDetail = true
     }
 
-    // MARK: - Private
+    // MARK: - Private: Fetch
 
-    private func fetchData(errorPrefix: String) async {
-        // TODO: Replace with real KMP use-case calls once stats use cases are wired up.
-        // For now show empty state — no mock data.
-        applyEmptyState()
+    private func fetchAllStats() async {
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            applyEmptyState()
+            return
+        }
+        let userId = user.id
+        currentUserId = userId
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.loadWeeklyStats(userId: userId) }
+            group.addTask { await self.loadTotalStats(userId: userId) }
+            group.addTask { await self.loadCalendarDays() }
+        }
     }
+
+    // MARK: - Private: Weekly
+
+    private func loadWeeklyStats(userId: String) async {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayIndex = WeekdayHelper.todayIndex()
+        let daysFromMonday = todayIndex
+        guard let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: today) else { return }
+
+        let isoFormatter = Self.isoDateFormatter
+        let weekStartStr = isoFormatter.string(from: monday)
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DataBridge.shared.fetchWeeklyStats(userId: userId, weekStart: weekStartStr) { [weak self] result in
+                guard let self else { continuation.resume(); return }
+                Task { @MainActor in
+                    self.applyWeeklyStats(result: result, monday: monday, todayIndex: todayIndex)
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func applyWeeklyStats(result: WeeklyStatsResult, monday: Date, todayIndex: Int) {
+        let calendar = Calendar.current
+        let labels = WeekdayHelper.dayLabels
+
+        weeklyBars = labels.enumerated().map { idx, label in
+            let dayDate = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
+            let daily = idx < result.dailyBreakdown.count ? result.dailyBreakdown[idx] : nil
+            return WeeklyBarData(
+                id: idx,
+                label: label,
+                date: dayDate,
+                pushUps: Int(daily?.totalPushUps ?? 0),
+                sessions: Int(daily?.totalSessions ?? 0),
+                earnedMinutes: Int((daily?.totalEarnedSeconds ?? 0) / 60),
+                isToday: idx == todayIndex
+            )
+        }
+
+        weeklyTotalPushUps   = Int(result.totalPushUps)
+        weeklyTotalSessions  = Int(result.totalSessions)
+        weeklyEarnedMinutes  = Int(result.totalEarnedSeconds / 60)
+        weeklyAveragePushUps = result.totalSessions > 0
+            ? Double(result.totalPushUps) / Double(result.totalSessions)
+            : 0
+    }
+
+    // MARK: - Private: Total
+
+    private func loadTotalStats(userId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DataBridge.shared.fetchTotalStats(userId: userId) { [weak self] result in
+                guard let self else { continuation.resume(); return }
+                Task { @MainActor in
+                    if result.totalSessions > 0 {
+                        self.totalStats = TotalStatsData(
+                            totalPushUps: Int(result.totalPushUps),
+                            totalSessions: Int(result.totalSessions),
+                            totalEarnedMinutes: Int(result.totalEarnedSeconds / 60),
+                            longestStreakDays: Int(result.longestStreakDays),
+                            currentStreakDays: Int(result.currentStreakDays),
+                            averagePushUpsPerSession: result.averagePushUpsPerSession,
+                            averageSessionDurationSeconds: 0,
+                            bestSingleSession: Int(result.bestSession),
+                            bestDay: 0,
+                            bestWeek: 0,
+                            activeDays: 0,
+                            averageQuality: result.averageQuality
+                        )
+                    } else {
+                        self.totalStats = nil
+                    }
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    // MARK: - Private: Calendar Days
 
     private func loadCalendarDays() async {
-        // In production: call GetDailyStatsUseCase for the displayed month.
-        calendarDays = Self.makeCalendarDays(for: displayedMonth)
+        guard let userId = currentUserId else {
+            calendarDays = []
+            return
+        }
+
+        let calendar = Calendar.current
+        let year  = calendar.component(.year,  from: displayedMonth)
+        let month = calendar.component(.month, from: displayedMonth)
+
+        guard let firstDay = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+              let range    = calendar.range(of: .day, in: .month, for: firstDay) else {
+            calendarDays = []
+            return
+        }
+
+        var days: [DayWorkoutData] = []
+        let isoFormatter = Self.isoDateFormatter
+
+        await withTaskGroup(of: DayWorkoutData?.self) { group in
+            for day in range {
+                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
+                let dateStr = isoFormatter.string(from: date)
+                let capturedDate = date
+
+                group.addTask {
+                    await withCheckedContinuation { (cont: CheckedContinuation<DayWorkoutData?, Never>) in
+                        DataBridge.shared.fetchDailyStats(userId: userId, date: dateStr) { result in
+                            let data = DayWorkoutData(
+                                id: dateStr,
+                                date: capturedDate,
+                                pushUps: Int(result.totalPushUps),
+                                sessions: Int(result.totalSessions),
+                                earnedMinutes: Int(result.totalEarnedSeconds / 60),
+                                averageQuality: result.averageQuality
+                            )
+                            cont.resume(returning: data)
+                        }
+                    }
+                }
+            }
+
+            for await result in group {
+                if let data = result { days.append(data) }
+            }
+        }
+
+        calendarDays = days.sorted { $0.date < $1.date }
     }
 
-    // MARK: - Stub Data
+    // MARK: - Private: Empty State
 
     private func applyEmptyState() {
         calendarDays         = []
@@ -259,44 +349,17 @@ final class StatsViewModel: ObservableObject {
         totalStats           = nil
     }
 
-    // MARK: - Empty State Factories
-
-    private static func makeCalendarDays(for month: Date) -> [DayWorkoutData] {
-        // Returns empty array — real data comes from the backend.
-        return []
-    }
-
-    private static func makeWeeklyBars() -> [WeeklyBarData] {
-        let calendar = Calendar.current
-        let today = Date()
-        let todayWeekday = calendar.component(.weekday, from: today)
-        // Calendar.weekday: 1=Sun, 2=Mon...7=Sat -> 0-based Mon index
-        let todayIndex = (todayWeekday + 5) % 7
-
-        let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-        // Find Monday of current week
-        let daysFromMonday = todayIndex
-        guard let monday = calendar.date(
-            byAdding: .day, value: -daysFromMonday, to: today
-        ) else { return [] }
-
-        return labels.enumerated().map { idx, label in
-            let date = calendar.date(byAdding: .day, value: idx, to: monday) ?? today
-            return WeeklyBarData(
-                id: idx,
-                label: label,
-                date: date,
-                pushUps: 0,
-                sessions: 0,
-                earnedMinutes: 0,
-                isToday: idx == todayIndex
-            )
-        }
-    }
-
     private static func makeEmptyWeeklyBars() -> [WeeklyBarData] {
-        return makeWeeklyBars()
+        let calendar   = Calendar.current
+        let today      = Date()
+        let todayIndex = WeekdayHelper.todayIndex()
+        let daysFromMonday = todayIndex
+        guard let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: today) else { return [] }
+
+        return WeekdayHelper.dayLabels.enumerated().map { idx, label in
+            let date = calendar.date(byAdding: .day, value: idx, to: monday) ?? today
+            return WeeklyBarData(id: idx, label: label, date: date, pushUps: 0, sessions: 0, earnedMinutes: 0, isToday: idx == todayIndex)
+        }
     }
 }
 
@@ -304,7 +367,6 @@ final class StatsViewModel: ObservableObject {
 
 extension StatsViewModel {
 
-    /// Formats a duration in seconds as "M:SS".
     static func formatDuration(_ seconds: Int) -> String {
         let clamped = max(0, seconds)
         let m = clamped / 60
@@ -312,10 +374,6 @@ extension StatsViewModel {
         return String(format: "%d:%02d", m, s)
     }
 
-    // MARK: Cached DateFormatters
-
-    /// Cached formatter for "MMMM yyyy" (e.g. "March 2026").
-    /// `DateFormatter` is expensive to allocate -- reuse a single instance.
     private static let monthYearFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMMM yyyy"
@@ -323,7 +381,6 @@ extension StatsViewModel {
         return f
     }()
 
-    /// Cached formatter for "MMM d" (e.g. "Mar 8").
     private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM d"
@@ -331,7 +388,6 @@ extension StatsViewModel {
         return f
     }()
 
-    /// Cached formatter for "yyyy-MM-dd" used as calendar day IDs.
     static let dayIdFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -339,12 +395,17 @@ extension StatsViewModel {
         return f
     }()
 
-    /// Returns the display name for a month/year.
+    static let isoDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
     static func monthYearString(for date: Date) -> String {
         monthYearFormatter.string(from: date)
     }
 
-    /// Returns a short date string like "Mar 8".
     static func shortDateString(for date: Date) -> String {
         shortDateFormatter.string(from: date)
     }

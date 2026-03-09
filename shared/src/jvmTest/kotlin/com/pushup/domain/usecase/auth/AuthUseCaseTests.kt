@@ -715,6 +715,11 @@ class FakeSupabaseAuthClient : AuthClient {
         return idTokenToken ?: defaultToken
     }
 
+    override suspend fun exchangeOAuthCode(code: String): AuthToken {
+        idTokenError?.let { throw it }
+        return idTokenToken ?: defaultToken
+    }
+
     override suspend fun refreshToken(refreshToken: String): AuthToken {
         refreshError?.let { throw it }
         return refreshedToken ?: defaultToken

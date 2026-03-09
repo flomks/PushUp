@@ -226,6 +226,12 @@ class WorkoutSessionRepositoryImpl(
     /**
      * Launches a fire-and-forget coroutine that uploads [session] to Supabase.
      *
+     * Only **completed** sessions (where [WorkoutSession.endedAt] is not null) are
+     * uploaded. An in-progress session (endedAt == null) is intentionally skipped
+     * here -- it will be synced automatically once [finishSession] is called and
+     * sets the end timestamp. This prevents incomplete "ghost" rows from appearing
+     * in the remote database.
+     *
      * Failures are silently swallowed -- the session remains [SyncStatus.PENDING]
      * in the local DB and will be retried by [SyncWorkoutsUseCase] on the next
      * sync cycle.
@@ -233,6 +239,10 @@ class WorkoutSessionRepositoryImpl(
     private fun triggerBackgroundSync(session: WorkoutSession) {
         val api = cloudSyncApi ?: return
         val monitor = networkMonitor ?: return
+
+        // Do not upload sessions that have not been finished yet.
+        // The session will be synced when finishSession() is called.
+        if (session.endedAt == null) return
 
         syncScope.launch {
             try {

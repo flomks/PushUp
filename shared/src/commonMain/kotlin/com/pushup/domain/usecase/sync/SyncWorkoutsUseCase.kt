@@ -79,6 +79,14 @@ class SyncWorkoutsUseCase(
         var failed = 0
 
         for (session in unsynced) {
+            // Skip sessions that have not been finished yet (endedAt == null).
+            // An in-progress session should not be pushed to the remote database
+            // because it would create an incomplete "ghost" row. It will be synced
+            // automatically once FinishWorkoutUseCase sets the end timestamp.
+            if (session.endedAt == null) {
+                skipped++
+                continue
+            }
             when (uploadWithRetry(session)) {
                 UploadOutcome.SYNCED  -> synced++
                 UploadOutcome.SKIPPED -> skipped++

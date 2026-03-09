@@ -39,11 +39,8 @@ struct DashboardView: View {
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { refreshToolbarItem }
-        .task { await viewModel.loadData() }
+        .task { await viewModel.startObserving() }
         .alert("Error", isPresented: showError) {
-            Button("Try Again") {
-                Task { await viewModel.loadData() }
-            }
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")

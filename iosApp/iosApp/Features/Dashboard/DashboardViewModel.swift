@@ -1,4 +1,5 @@
 import Foundation
+import Shared
 
 // MARK: - DashboardDailyStats
 
@@ -35,17 +36,12 @@ struct DashboardLastSession {
 // MARK: - WeekdayHelper
 
 /// Shared helper for Monday-based weekday index calculation.
-/// Avoids duplicating the Calendar.weekday -> 0-based Monday index
-/// conversion across ViewModel and chart components.
 enum WeekdayHelper {
 
-    /// Day labels for the English locale, Monday through Sunday.
     static let dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-    /// Returns the 0-based weekday index (0 = Monday, 6 = Sunday) for today.
     static func todayIndex() -> Int {
         let weekday = Calendar.current.component(.weekday, from: Date())
-        // Calendar.weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
         return (weekday + 5) % 7
     }
 }
@@ -54,106 +50,182 @@ enum WeekdayHelper {
 
 /// Manages all data and state for the Dashboard screen.
 ///
-/// Data is currently simulated with realistic stub values so the UI can be
-/// built and previewed without a live backend. Replace the `loadData()`
-/// implementation with real KMP use-case calls (GetTimeCreditUseCase,
-/// GetDailyStatsUseCase, GetWeeklyStatsUseCase) once the shared module
-/// is linked into the iOS target.
+/// Observes the local SQLite database via two KMP Flows:
+/// - `DataBridge.observeSessions` — emits on every workout change
+/// - `DataBridge.observeTimeCredit` — emits on every credit change
+///
+/// Both Flows emit immediately with the current value and again whenever
+/// the underlying data changes, so the dashboard is always up to date
+/// without requiring a manual refresh.
 @MainActor
 final class DashboardViewModel: ObservableObject {
 
     // MARK: - Published State
 
-    /// Available time credit in seconds.
     @Published private(set) var availableSeconds: Int = 0
-
-    /// Total ever-earned time credit in seconds (used for ring progress).
     @Published private(set) var totalEarnedSeconds: Int = 0
-
-    /// Today's aggregated workout statistics.
     @Published private(set) var dailyStats: DashboardDailyStats? = nil
-
-    /// Per-day push-up counts for the last 7 days (Mon-Sun of current week).
     @Published private(set) var weekDays: [DashboardWeekDay] = []
-
-    /// The most recently completed workout session, if any.
     @Published private(set) var lastSession: DashboardLastSession? = nil
-
-    /// Whether any data has ever been loaded (controls empty-state display).
     @Published private(set) var hasEverWorkedOut: Bool = false
-
-    /// Overall loading state for the initial fetch.
     @Published private(set) var isLoading: Bool = false
-
-    /// Non-nil when a load attempt failed.
     @Published var errorMessage: String? = nil
-
-    /// Whether a pull-to-refresh is currently in progress.
     @Published private(set) var isRefreshing: Bool = false
-
-    // MARK: - Init
-
-    init() {}
-
-    // MARK: - Actions
-
-    /// Loads all dashboard data. Called on first appear.
-    /// Skips if already loading or refreshing to prevent concurrent fetches.
-    func loadData() async {
-        guard !isLoading, !isRefreshing else { return }
-        isLoading = true
-        errorMessage = nil
-
-        await fetchData(errorPrefix: "Failed to load data.")
-
-        isLoading = false
-    }
-
-    /// Triggered by pull-to-refresh. Reloads all data.
-    /// Skips if already loading or refreshing to prevent concurrent fetches.
-    func refresh() async {
-        guard !isRefreshing, !isLoading else { return }
-        isRefreshing = true
-        errorMessage = nil
-
-        await fetchData(errorPrefix: "Refresh failed.")
-
-        isRefreshing = false
-    }
-
-    /// Clears the current error message. Called when the user dismisses
-    /// the error alert.
-    func clearError() {
-        errorMessage = nil
-    }
 
     // MARK: - Private
 
-    /// Shared fetch logic used by both `loadData()` and `refresh()`.
-    private func fetchData(errorPrefix: String) async {
-        // TODO: Replace with real KMP use-case calls once
-        // GetTimeCreditUseCase / GetDailyStatsUseCase are wired up.
-        // For now show an empty state — no mock data.
+    private var sessionObservationJob: Kotlinx_coroutines_coreJob?
+    private var creditObservationJob: Kotlinx_coroutines_coreJob?
+
+    // MARK: - Init
+
+    init() {
         applyEmptyState()
     }
 
-    /// Resets all published properties to their empty/zero state.
-    /// Shown until real data is loaded from the backend.
+    deinit {
+        sessionObservationJob?.cancel(cause: nil)
+        creditObservationJob?.cancel(cause: nil)
+    }
+
+    // MARK: - Actions
+
+    /// Starts observing the local database. Call once on first appear.
+    func startObserving() async {
+        guard sessionObservationJob == nil else { return }
+        isLoading = true
+
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            isLoading = false
+            applyEmptyState()
+            return
+        }
+        let userId = user.id
+
+        // Observe time credit — updates availableSeconds and totalEarnedSeconds
+        creditObservationJob = DataBridge.shared.observeTimeCredit(userId: userId) { [weak self] credit in
+            guard let self else { return }
+            self.availableSeconds   = Int(credit?.availableSeconds ?? 0)
+            self.totalEarnedSeconds = Int(credit?.totalEarnedSeconds ?? 0)
+        }
+
+        // Observe sessions — rebuilds daily stats, weekly chart, and last session
+        sessionObservationJob = DataBridge.shared.observeSessions(userId: userId) { [weak self] sessions in
+            guard let self else { return }
+            self.isLoading = false
+            self.isRefreshing = false
+            self.rebuildDashboard(from: sessions)
+        }
+    }
+
+    /// Pull-to-refresh — data is already live via Flows, just show the indicator briefly.
+    func refresh() async {
+        guard !isRefreshing, !isLoading else { return }
+        isRefreshing = true
+        try? await Task.sleep(for: .milliseconds(500))
+        isRefreshing = false
+    }
+
+    func clearError() { errorMessage = nil }
+
+    // MARK: - Private: Dashboard Computation
+
+    /// Rebuilds all dashboard properties from the current list of KMP sessions.
+    private func rebuildDashboard(from kmpSessions: [Shared.WorkoutSession]) {
+        // Only completed sessions
+        let completed = kmpSessions.filter { $0.endedAt != nil }
+        hasEverWorkedOut = !completed.isEmpty
+
+        guard !completed.isEmpty else {
+            applyEmptyState()
+            return
+        }
+
+        let calendar = Calendar.current
+        let today    = calendar.startOfDay(for: Date())
+
+        // --- Today's stats ---
+        let todaySessions = completed.filter { session in
+            let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            return calendar.startOfDay(for: startDate) == today
+        }
+
+        let todayPushUps   = todaySessions.reduce(0) { $0 + Int($1.pushUpCount) }
+        let todayEarned    = todaySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+        let todayQuality   = todaySessions.isEmpty ? 0.0
+            : todaySessions.reduce(0.0) { $0 + Double($1.quality) } / Double(todaySessions.count)
+        let todayBest      = todaySessions.map { Int($0.pushUpCount) }.max() ?? 0
+
+        dailyStats = DashboardDailyStats(
+            pushUps: todayPushUps,
+            sessions: todaySessions.count,
+            earnedMinutes: todayEarned / 60,
+            averageQuality: todayQuality,
+            bestSession: todayBest
+        )
+
+        // --- Weekly chart (Mon–Sun of current week) ---
+        let todayIndex = WeekdayHelper.todayIndex()
+        let daysFromMonday = todayIndex
+        let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: today) ?? today
+
+        weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
+            let dayStart = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
+            let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+
+            let dayPushUps = completed.filter { session in
+                let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return startDate >= dayStart && startDate < dayEnd
+            }.reduce(0) { $0 + Int($1.pushUpCount) }
+
+            return DashboardWeekDay(
+                id: idx,
+                label: label,
+                pushUps: dayPushUps,
+                isToday: idx == todayIndex
+            )
+        }
+
+        // --- Last session ---
+        if let latest = completed.first {
+            let startDate = Date(timeIntervalSince1970: Double(latest.startedAt.epochSeconds))
+            let endDate   = latest.endedAt.map { Date(timeIntervalSince1970: Double($0.epochSeconds)) }
+            let duration  = endDate.map { Int($0.timeIntervalSince(startDate)) } ?? 0
+
+            let dayStart = calendar.startOfDay(for: startDate)
+            let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+            let relativeDate: String
+            if dayStart == today {
+                relativeDate = "Today"
+            } else if dayStart == yesterday {
+                relativeDate = "Yesterday"
+            } else {
+                let days = calendar.dateComponents([.day], from: dayStart, to: today).day ?? 0
+                relativeDate = "\(days) days ago"
+            }
+
+            lastSession = DashboardLastSession(
+                pushUpCount: Int(latest.pushUpCount),
+                durationSeconds: duration,
+                earnedSeconds: Int(latest.earnedTimeCreditSeconds),
+                qualityScore: Double(latest.quality),
+                relativeDate: relativeDate
+            )
+        } else {
+            lastSession = nil
+        }
+    }
+
+    // MARK: - Private: Empty State
+
     private func applyEmptyState() {
-        availableSeconds   = 0
-        totalEarnedSeconds = 0
-        dailyStats         = nil
-        lastSession        = nil
-        hasEverWorkedOut   = false
+        dailyStats   = nil
+        lastSession  = nil
+        hasEverWorkedOut = false
 
         let todayIndex = WeekdayHelper.todayIndex()
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
-            DashboardWeekDay(
-                id: idx,
-                label: label,
-                pushUps: 0,
-                isToday: idx == todayIndex
-            )
+            DashboardWeekDay(id: idx, label: label, pushUps: 0, isToday: idx == todayIndex)
         }
     }
 }

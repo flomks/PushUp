@@ -2,8 +2,10 @@ package com.pushup.plugins
 
 import com.pushup.models.HealthResponse
 import com.pushup.routes.statsRoutes
+import com.pushup.routes.userDataRoutes
 import com.pushup.routes.userRoutes
 import com.pushup.service.StatsService
+import com.pushup.service.UserDataService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.response.respond
@@ -12,6 +14,7 @@ import io.ktor.server.routing.routing
 
 fun Application.configureRouting(
     statsService: StatsService = StatsService(),
+    userDataService: UserDataService = UserDataService(statsService),
     databaseReady: Boolean = true,
 ) {
     routing {
@@ -21,5 +24,6 @@ fun Application.configureRouting(
 
         userRoutes(databaseReady = databaseReady)
         statsRoutes(statsService)
+        userDataRoutes(userDataService, databaseReady = databaseReady)
     }
 }
