@@ -183,10 +183,14 @@ final class SettingsViewModel: ObservableObject {
     // MARK: - Notification Settings
 
     /// Whether daily reminder notifications are enabled.
+    ///
+    /// The `didSet` observer schedules or cancels notifications. A guard
+    /// prevents the observer from firing during `init()` (where the property
+    /// is assigned before the view model is fully initialised).
     @Published var notificationsEnabled: Bool {
         didSet {
+            guard isInitialised else { return }
             UserDefaults.standard.set(notificationsEnabled, forKey: SettingsKeys.notificationsEnabled)
-            // Schedule or cancel all notifications when the master toggle changes.
             Task {
                 if notificationsEnabled {
                     await NotificationManager.shared.enableAllNotifications(
@@ -194,7 +198,7 @@ final class SettingsViewModel: ObservableObject {
                         minute: notificationMinute
                     )
                 } else {
-                    NotificationManager.shared.disableAllNotifications()
+                    NotificationManager.shared.disableAllScheduledNotifications()
                 }
             }
         }
@@ -205,16 +209,9 @@ final class SettingsViewModel: ObservableObject {
         didSet {
             let clamped = notificationHour.clamped(to: SettingsValidation.notificationHourRange)
             if notificationHour != clamped { notificationHour = clamped; return }
+            guard isInitialised else { return }
             UserDefaults.standard.set(notificationHour, forKey: SettingsKeys.notificationHour)
-            // Reschedule the daily reminder when the time changes.
-            if notificationsEnabled {
-                Task {
-                    await NotificationManager.shared.rescheduleDailyReminder(
-                        hour: notificationHour,
-                        minute: notificationMinute
-                    )
-                }
-            }
+            scheduleReminderReschedule()
         }
     }
 
@@ -223,16 +220,30 @@ final class SettingsViewModel: ObservableObject {
         didSet {
             let clamped = notificationMinute.clamped(to: SettingsValidation.notificationMinuteRange)
             if notificationMinute != clamped { notificationMinute = clamped; return }
+            guard isInitialised else { return }
             UserDefaults.standard.set(notificationMinute, forKey: SettingsKeys.notificationMinute)
-            // Reschedule the daily reminder when the time changes.
-            if notificationsEnabled {
-                Task {
-                    await NotificationManager.shared.rescheduleDailyReminder(
-                        hour: notificationHour,
-                        minute: notificationMinute
-                    )
-                }
-            }
+            scheduleReminderReschedule()
+        }
+    }
+
+    /// Debounced reschedule: when the user changes the time via the DatePicker,
+    /// both `notificationHour` and `notificationMinute` are set in quick
+    /// succession. This coalesces the two `didSet` calls into a single
+    /// reschedule by dispatching to the next run-loop iteration.
+    private var pendingRescheduleTask: Task<Void, Never>?
+
+    private func scheduleReminderReschedule() {
+        guard notificationsEnabled else { return }
+        pendingRescheduleTask?.cancel()
+        pendingRescheduleTask = Task {
+            // Yield to the next run-loop iteration so both hour and minute
+            // are updated before we reschedule.
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms debounce
+            guard !Task.isCancelled else { return }
+            await NotificationManager.shared.rescheduleDailyReminder(
+                hour: notificationHour,
+                minute: notificationMinute
+            )
         }
     }
 
@@ -270,6 +281,10 @@ final class SettingsViewModel: ObservableObject {
 
     /// Non-nil when an operation produced an error.
     @Published var errorMessage: String? = nil
+
+    /// Guard flag that prevents `didSet` observers from firing during `init()`.
+    /// Set to `true` at the very end of `init()`.
+    private var isInitialised: Bool = false
 
     // MARK: - Derived
 
@@ -348,6 +363,9 @@ final class SettingsViewModel: ObservableObject {
 
         _appearanceModeRaw = defaults.string(forKey: SettingsKeys.appearanceMode)
             ?? AppearanceMode.system.rawValue
+
+        // Mark initialisation complete so didSet observers start firing.
+        isInitialised = true
     }
 
     // MARK: - Actions
@@ -387,20 +405,28 @@ final class SettingsViewModel: ObservableObject {
     /// Handles the notifications toggle being flipped by the user.
     ///
     /// When enabling:
+    ///   - If permission is `.authorized`, sets the flag and schedules
+    ///     notifications immediately.
     ///   - If permission is `.notDetermined`, requests it (the `notificationsEnabled`
     ///     didSet fires after the system dialog resolves).
-    ///   - If permission is already `.authorized`, sets the flag and schedules
-    ///     notifications immediately.
-    ///   - If permission is `.denied`, opens iOS Settings.
+    ///   - If permission is `.denied`, opens iOS Settings and does NOT toggle
+    ///     the switch (the user must grant permission in Settings first).
     ///
-    /// When disabling: cancels all pending notifications.
+    /// When disabling: cancels all scheduled notifications.
     func handleNotificationsToggle(_ enabled: Bool) async {
         if enabled {
-            if notificationAuthorizationStatus == .authorized {
-                // Permission already granted -- just enable and schedule.
+            switch notificationAuthorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                // Permission already granted -- enable and schedule.
                 notificationsEnabled = true
-            } else {
-                // Will request permission; didSet fires on result.
+            case .denied:
+                // Cannot enable -- open iOS Settings so the user can grant
+                // permission manually. Do NOT flip the toggle.
+                openSystemSettings()
+            case .notDetermined:
+                // Request permission; the didSet fires when the result arrives.
+                await requestNotificationPermission()
+            @unknown default:
                 await requestNotificationPermission()
             }
         } else {

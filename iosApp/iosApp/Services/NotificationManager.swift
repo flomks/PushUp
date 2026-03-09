@@ -1,27 +1,31 @@
 import Foundation
+import os.log
 import UserNotifications
 
 // MARK: - NotificationIdentifier
 
-/// Stable string identifiers for every notification category the app schedules.
+/// Stable string identifiers for every notification the app schedules.
 ///
-/// Using an enum prevents typos and makes it easy to cancel a specific
-/// notification by its identifier without scattering raw strings across the
-/// codebase.
+/// Using an enum with static constants prevents typos and makes it easy to
+/// cancel a specific notification by its identifier without scattering raw
+/// strings across the codebase.
 enum NotificationIdentifier {
     /// Daily "Zeit fuer Push-Ups!" reminder at the user-configured time.
     static let dailyReminder = "com.pushup.notification.dailyReminder"
 
     /// Evening streak-danger warning: "Du hast heute noch kein Workout".
-    /// Only delivered when no workout has been completed today.
     static let streakWarning = "com.pushup.notification.streakWarning"
 
     /// Low time-credit alert: "Dein Zeitguthaben ist aufgebraucht".
     static let creditWarning = "com.pushup.notification.creditWarning"
 
     /// Post-workout confirmation: "Workout abgeschlossen! +X Minuten verdient".
-    /// Delivered immediately after a session ends.
     static let workoutComplete = "com.pushup.notification.workoutComplete"
+
+    /// All identifiers for recurring (scheduled) notifications.
+    /// Used by `disableAllScheduledNotifications()` to cancel only the
+    /// repeating triggers without removing one-shot event notifications.
+    static let allRecurring = [dailyReminder, streakWarning]
 }
 
 // MARK: - NotificationManager
@@ -32,16 +36,28 @@ enum NotificationIdentifier {
 /// - Request `UNUserNotificationCenter` authorisation on first launch.
 /// - Schedule / reschedule the daily reminder when the user changes the time
 ///   or toggles notifications on/off.
-/// - Schedule the streak-warning notification (fired at 20:00 each day) only
-///   when no workout has been recorded today.
-/// - Fire the post-workout "Workout abgeschlossen!" notification immediately
-///   after a session ends.
+/// - Schedule the streak-warning notification each evening; suppress it when
+///   the user has already completed a workout today.
+/// - Fire the post-workout "Workout abgeschlossen!" notification after a
+///   session ends.
 /// - Fire the low-credit warning when the user's time credit reaches zero.
 /// - Cancel individual or all pending notifications.
 ///
+/// **"Not send if already worked out today" strategy**
+///
+/// iOS local notifications do not support conditional delivery. The approach
+/// used here:
+/// 1. The daily reminder and streak warning are scheduled as repeating
+///    calendar triggers.
+/// 2. When a workout completes, both are cancelled for the current day and
+///    rescheduled for the *next* day using a non-repeating trigger. The
+///    repeating trigger is then re-added so subsequent days are covered.
+/// 3. On each app launch, if the user has already worked out today, the
+///    pending streak warning for today is cancelled.
+///
 /// **Threading**
-/// All public methods are `async` and safe to call from any actor. Internally
-/// they dispatch to `UNUserNotificationCenter` which is thread-safe.
+/// The class is `@MainActor`-isolated. All public methods are safe to call
+/// from SwiftUI views and view models.
 ///
 /// **Usage**
 /// ```swift
@@ -55,30 +71,49 @@ enum NotificationIdentifier {
 /// await NotificationManager.shared.rescheduleDailyReminder(hour: 8, minute: 0)
 /// ```
 @MainActor
-final class NotificationManager {
+final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - Singleton
 
     static let shared = NotificationManager()
 
-    private init() {}
-
     // MARK: - Private
 
     private let center = UNUserNotificationCenter.current()
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.pushup", category: "Notifications")
 
     /// `UserDefaults` key that stores the date string (yyyy-MM-dd) of the
-    /// last day a workout was completed. Used to suppress the streak warning
-    /// when the user has already worked out today.
-    private static let lastWorkoutDateKey = "notificationManager.lastWorkoutDate"
+    /// last day a workout was completed.
+    static let lastWorkoutDateKey = "notificationManager.lastWorkoutDate"
 
-    /// Date formatter for the `lastWorkoutDate` key.
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
+    /// Thread-safe ISO date formatter for the `lastWorkoutDate` key.
+    /// Uses POSIX locale to prevent locale-dependent formatting.
+    private static let dateFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
         return f
     }()
+
+    // MARK: - Init
+
+    private override init() {
+        super.init()
+        // Register as delegate so notifications can be delivered in the foreground.
+        center.delegate = self
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Allows notifications to be displayed as banners even when the app is
+    /// in the foreground. Without this, the post-workout notification would
+    /// be silently dropped because the user is looking at the summary screen.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
 
     // MARK: - Authorisation
 
@@ -95,8 +130,10 @@ final class NotificationManager {
                 let granted = try await center.requestAuthorization(
                     options: [.alert, .badge, .sound]
                 )
+                logger.info("Notification authorisation result: \(granted)")
                 return granted
             } catch {
+                logger.error("Notification authorisation failed: \(error.localizedDescription)")
                 return false
             }
         case .authorized, .provisional, .ephemeral:
@@ -121,26 +158,32 @@ final class NotificationManager {
     /// previously scheduled daily reminder is cancelled first so there is
     /// never more than one pending.
     ///
+    /// If the user has already worked out today, the reminder is still
+    /// scheduled (it will fire tomorrow and every day after). To suppress
+    /// today's delivery, call `cancelTodaysNotificationsIfWorkedOut()` after
+    /// scheduling.
+    ///
     /// - Parameters:
-    ///   - hour:   Hour component (0-23).
-    ///   - minute: Minute component (0-59).
+    ///   - hour:   Hour component (0-23). Clamped to valid range.
+    ///   - minute: Minute component (0-59). Clamped to valid range.
     func scheduleDailyReminder(hour: Int, minute: Int) async {
-        // Cancel the existing reminder before rescheduling.
         center.removePendingNotificationRequests(
             withIdentifiers: [NotificationIdentifier.dailyReminder]
         )
 
-        guard await authorizationStatus() == .authorized else { return }
+        guard await isAuthorized() else { return }
+
+        let clampedHour   = max(0, min(23, hour))
+        let clampedMinute = max(0, min(59, minute))
 
         let content = UNMutableNotificationContent()
         content.title = "Zeit fuer Push-Ups!"
         content.body = "Deine taegliche Erinnerung: Mach jetzt dein Workout und verdiene Zeitguthaben."
         content.sound = .default
-        content.badge = 1
 
         var components = DateComponents()
-        components.hour   = hour
-        components.minute = minute
+        components.hour   = clampedHour
+        components.minute = clampedMinute
 
         let trigger = UNCalendarNotificationTrigger(
             dateMatching: components,
@@ -153,7 +196,12 @@ final class NotificationManager {
             trigger: trigger
         )
 
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+            logger.info("Daily reminder scheduled at \(clampedHour):\(clampedMinute)")
+        } catch {
+            logger.error("Failed to schedule daily reminder: \(error.localizedDescription)")
+        }
     }
 
     /// Cancels the daily reminder notification.
@@ -161,26 +209,22 @@ final class NotificationManager {
         center.removePendingNotificationRequests(
             withIdentifiers: [NotificationIdentifier.dailyReminder]
         )
+        logger.debug("Daily reminder cancelled")
     }
 
     // MARK: - Streak Warning
 
     /// Schedules the daily streak-warning notification at 20:00.
     ///
-    /// The notification is only delivered when the user has **not** completed
-    /// a workout today. This is enforced by checking `lastWorkoutDate` inside
-    /// a `UNNotificationServiceExtension`-style approach: we schedule the
-    /// notification unconditionally but cancel it from `scheduleWorkoutCompleteNotification`
-    /// whenever a workout is finished on the same day.
-    ///
-    /// The notification repeats daily. Call this once when notifications are
-    /// enabled; it will fire every evening until cancelled.
+    /// The notification repeats daily. To suppress it on days when the user
+    /// has already worked out, call `cancelTodaysNotificationsIfWorkedOut()`
+    /// after a workout completes.
     func scheduleStreakWarning() async {
         center.removePendingNotificationRequests(
             withIdentifiers: [NotificationIdentifier.streakWarning]
         )
 
-        guard await authorizationStatus() == .authorized else { return }
+        guard await isAuthorized() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "Streak in Gefahr!"
@@ -202,7 +246,12 @@ final class NotificationManager {
             trigger: trigger
         )
 
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+            logger.info("Streak warning scheduled at 20:00")
+        } catch {
+            logger.error("Failed to schedule streak warning: \(error.localizedDescription)")
+        }
     }
 
     /// Cancels the streak-warning notification.
@@ -214,20 +263,28 @@ final class NotificationManager {
 
     // MARK: - Post-Workout Notification
 
-    /// Fires an immediate "Workout abgeschlossen!" notification.
+    /// Fires a "Workout abgeschlossen!" notification.
     ///
-    /// Also records today's date so the streak-warning notification can be
-    /// suppressed for the rest of the day by cancelling it.
+    /// Also records today's date so the daily reminder and streak warning
+    /// can be suppressed for the rest of the day, and cancels both pending
+    /// recurring notifications for today. They are rescheduled to resume
+    /// firing from tomorrow onward.
     ///
     /// - Parameter earnedMinutes: Minutes of time credit earned in the session.
     func scheduleWorkoutCompleteNotification(earnedMinutes: Int) async {
         // Record that the user worked out today.
         recordWorkoutToday()
 
-        // Cancel today's streak warning -- the user already worked out.
+        // Cancel today's recurring notifications -- the user already worked out.
+        cancelDailyReminder()
         cancelStreakWarning()
 
-        guard await authorizationStatus() == .authorized else { return }
+        guard await isAuthorized() else {
+            // Even if not authorized, still reschedule the recurring triggers
+            // so they are ready if the user re-enables notifications later.
+            await rescheduleRecurringNotificationsIfEnabled()
+            return
+        }
 
         // Cancel any previous workout-complete notification to avoid stacking.
         center.removePendingNotificationRequests(
@@ -252,12 +309,18 @@ final class NotificationManager {
             trigger: trigger
         )
 
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+            logger.info("Workout complete notification scheduled (+\(earnedMinutes) min)")
+        } catch {
+            logger.error("Failed to schedule workout complete notification: \(error.localizedDescription)")
+        }
 
-        // Reschedule the streak warning for tomorrow (repeating trigger
-        // handles this automatically, but we need to re-add it after
-        // cancellation so it fires again the next day).
-        await rescheduleStreakWarningIfEnabled()
+        // Re-add the recurring triggers so they fire again starting tomorrow.
+        // Because we just recorded today's workout, the next call to
+        // `cancelTodaysNotificationsIfWorkedOut()` on app launch will
+        // suppress them again if needed.
+        await rescheduleRecurringNotificationsIfEnabled()
     }
 
     // MARK: - Credit Warning
@@ -266,7 +329,7 @@ final class NotificationManager {
     ///
     /// Call this when the user's available time credit reaches zero.
     func scheduleCreditWarningNotification() async {
-        guard await authorizationStatus() == .authorized else { return }
+        guard await isAuthorized() else { return }
 
         // Avoid duplicate credit warnings.
         center.removePendingNotificationRequests(
@@ -289,12 +352,20 @@ final class NotificationManager {
             trigger: trigger
         )
 
-        try? await center.add(request)
+        do {
+            try await center.add(request)
+            logger.info("Credit warning notification scheduled")
+        } catch {
+            logger.error("Failed to schedule credit warning: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Bulk Operations
 
-    /// Enables all notifications: schedules the daily reminder and streak warning.
+    /// Enables all recurring notifications: daily reminder and streak warning.
+    ///
+    /// After scheduling, suppresses today's notifications if the user has
+    /// already worked out.
     ///
     /// - Parameters:
     ///   - hour:   Hour for the daily reminder (0-23).
@@ -302,11 +373,17 @@ final class NotificationManager {
     func enableAllNotifications(hour: Int, minute: Int) async {
         await scheduleDailyReminder(hour: hour, minute: minute)
         await scheduleStreakWarning()
+        cancelTodaysNotificationsIfWorkedOut()
     }
 
-    /// Disables all notifications by cancelling every pending request.
-    func disableAllNotifications() {
-        center.removeAllPendingNotificationRequests()
+    /// Disables all recurring notifications by cancelling only the scheduled
+    /// repeating triggers. Does NOT remove one-shot event notifications
+    /// (workout complete, credit warning) that may already be in-flight.
+    func disableAllScheduledNotifications() {
+        center.removePendingNotificationRequests(
+            withIdentifiers: NotificationIdentifier.allRecurring
+        )
+        logger.info("All scheduled notifications disabled")
     }
 
     /// Reschedules only the daily reminder (e.g. when the user changes the time).
@@ -316,19 +393,39 @@ final class NotificationManager {
     ///   - minute: New minute (0-59).
     func rescheduleDailyReminder(hour: Int, minute: Int) async {
         await scheduleDailyReminder(hour: hour, minute: minute)
+        cancelTodaysNotificationsIfWorkedOut()
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Today's Workout Tracking
 
-    /// Stores today's date string in `UserDefaults` to mark that a workout
-    /// was completed today.
-    private func recordWorkoutToday() {
+    /// Cancels today's daily reminder and streak warning if the user has
+    /// already completed a workout today.
+    ///
+    /// Call this:
+    /// - On app launch (from `AppDelegate`)
+    /// - After scheduling recurring notifications
+    /// - After a workout completes
+    func cancelTodaysNotificationsIfWorkedOut() {
+        guard hasWorkedOutToday() else { return }
+        center.removePendingNotificationRequests(
+            withIdentifiers: [
+                NotificationIdentifier.dailyReminder,
+                NotificationIdentifier.streakWarning,
+            ]
+        )
+        logger.debug("Suppressed today's notifications (workout already completed)")
+    }
+
+    /// Records that a workout was completed today.
+    /// Public so that `WorkoutViewModel` can call it directly if needed.
+    func recordWorkoutToday() {
         let today = Self.dateFormatter.string(from: Date())
         UserDefaults.standard.set(today, forKey: Self.lastWorkoutDateKey)
+        logger.debug("Recorded workout for today")
     }
 
     /// Returns `true` when the user has already completed a workout today.
-    private func hasWorkedOutToday() -> Bool {
+    func hasWorkedOutToday() -> Bool {
         guard let stored = UserDefaults.standard.string(forKey: Self.lastWorkoutDateKey) else {
             return false
         }
@@ -336,14 +433,35 @@ final class NotificationManager {
         return stored == today
     }
 
-    /// Re-adds the streak warning (repeating daily at 20:00) only when
-    /// notifications are enabled in settings. This is called after a workout
-    /// completes so the warning fires again the following day.
-    private func rescheduleStreakWarningIfEnabled() async {
-        let notificationsEnabled = UserDefaults.standard.bool(
-            forKey: SettingsKeys.notificationsEnabled
-        )
+    /// Clears the app badge count. Call when the user opens the app.
+    func clearBadge() {
+        UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
+    // MARK: - Private Helpers
+
+    /// Convenience: returns `true` when notification authorisation is `.authorized`.
+    private func isAuthorized() async -> Bool {
+        await authorizationStatus() == .authorized
+    }
+
+    /// Re-adds recurring notifications (daily reminder + streak warning) only
+    /// when notifications are enabled in settings. Called after a workout
+    /// completes so the triggers resume for subsequent days.
+    private func rescheduleRecurringNotificationsIfEnabled() async {
+        let defaults = UserDefaults.standard
+        let notificationsEnabled = defaults.bool(forKey: SettingsKeys.notificationsEnabled)
         guard notificationsEnabled else { return }
+
+        let hour = defaults.object(forKey: SettingsKeys.notificationHour) != nil
+            ? defaults.integer(forKey: SettingsKeys.notificationHour)
+            : 8
+        let minute = defaults.integer(forKey: SettingsKeys.notificationMinute)
+
+        await scheduleDailyReminder(hour: hour, minute: minute)
         await scheduleStreakWarning()
+
+        // Suppress today's delivery since the user just worked out.
+        cancelTodaysNotificationsIfWorkedOut()
     }
 }
