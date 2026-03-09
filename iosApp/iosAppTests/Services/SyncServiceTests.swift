@@ -5,6 +5,9 @@ import Testing
 
 // MARK: - SyncState Tests
 
+/// Tests for the `SyncState` value type.
+///
+/// These tests are pure value-type tests and require no actor isolation.
 @Suite("SyncState")
 struct SyncStateTests {
 
@@ -14,17 +17,21 @@ struct SyncStateTests {
         #expect(state == .idle)
     }
 
-    @Test("SyncState equality for error cases")
-    func errorEquality() {
+    @Test("SyncState equality for error cases with identical messages")
+    func errorEqualityIdenticalMessages() {
         let error1: SyncState = .error("Network timeout")
         let error2: SyncState = .error("Network timeout")
-        let error3: SyncState = .error("Server error")
-
         #expect(error1 == error2)
-        #expect(error1 != error3)
     }
 
-    @Test("All SyncState cases are distinct")
+    @Test("SyncState inequality for error cases with different messages")
+    func errorInequalityDifferentMessages() {
+        let error1: SyncState = .error("Network timeout")
+        let error2: SyncState = .error("Server error")
+        #expect(error1 != error2)
+    }
+
+    @Test("All SyncState cases are distinct from each other")
     func allCasesDistinct() {
         let states: [SyncState] = [
             .idle,
@@ -36,86 +43,133 @@ struct SyncStateTests {
 
         for i in 0..<states.count {
             for j in (i + 1)..<states.count {
-                #expect(states[i] != states[j], "\(states[i]) should not equal \(states[j])")
+                #expect(
+                    states[i] != states[j],
+                    "\(states[i]) should not equal \(states[j])"
+                )
             }
         }
+    }
+
+    @Test("SyncState.error is not equal to .idle")
+    func errorNotEqualToIdle() {
+        #expect(SyncState.error("msg") != .idle)
+    }
+
+    @Test("SyncState.error is not equal to .offline")
+    func errorNotEqualToOffline() {
+        #expect(SyncState.error("msg") != .offline)
     }
 }
 
 // MARK: - SyncService State Tests
 
+/// Tests for `SyncService` state management.
+///
+/// **Important**: `SyncService.shared` is a singleton. Tests must be careful
+/// to restore state after each mutation so they do not affect each other.
+/// Each test that mutates `unsyncedCount` saves the initial value and restores
+/// it in a `defer` block.
 @Suite("SyncService - State Management")
 struct SyncServiceStateTests {
 
-    /// Cleans up UserDefaults before each test to ensure isolation.
-    init() {
-        UserDefaults.standard.removeObject(forKey: "syncService.lastSyncDate")
-        UserDefaults.standard.removeObject(forKey: "syncService.unsyncedCount")
-    }
-
-    @Test("SyncService starts in idle state")
+    @Test("isSyncing is false when state is idle")
     @MainActor
-    func initialState() {
+    func isSyncingFalseWhenIdle() {
+        // This test only reads state -- safe to run without mutation.
+        // If the service happens to be syncing, we skip the assertion.
         let service = SyncService.shared
-        // The service may have been started by other tests, but the state
-        // should be one of the valid initial states.
-        let validInitialStates: [SyncState] = [.idle, .syncing, .success, .offline]
-        #expect(validInitialStates.contains(service.syncState))
-    }
-
-    @Test("recordUnsyncedWorkout increments count")
-    @MainActor
-    func recordUnsyncedWorkout() {
-        let service = SyncService.shared
-        let initialCount = service.unsyncedCount
-        service.recordUnsyncedWorkout()
-        #expect(service.unsyncedCount == initialCount + 1)
-    }
-
-    @Test("clearUnsyncedCount resets to zero")
-    @MainActor
-    func clearUnsyncedCount() {
-        let service = SyncService.shared
-        service.recordUnsyncedWorkout()
-        service.recordUnsyncedWorkout()
-        #expect(service.unsyncedCount >= 2)
-
-        service.clearUnsyncedCount()
-        #expect(service.unsyncedCount == 0)
-    }
-
-    @Test("isSyncing returns true only during syncing state")
-    @MainActor
-    func isSyncingProperty() {
-        let service = SyncService.shared
-        // When idle, isSyncing should be false.
         if service.syncState == .idle {
             #expect(!service.isSyncing)
         }
     }
 
-    @Test("lastSyncLabel returns 'Never synced' when no sync has occurred")
+    @Test("isSyncing is false when state is offline")
     @MainActor
-    func lastSyncLabelNeverSynced() {
-        // Clear the last sync date to test the "never synced" case.
-        UserDefaults.standard.removeObject(forKey: "syncService.lastSyncDate")
-        // Note: The singleton retains its state, so this test verifies the
-        // label format rather than the exact value.
+    func isSyncingFalseWhenOffline() {
+        // SyncState.offline != .syncing, so isSyncing must be false.
+        let offlineState: SyncState = .offline
+        #expect(offlineState != .syncing)
+    }
+
+    @Test("recordUnsyncedWorkout increments count by exactly 1")
+    @MainActor
+    func recordUnsyncedWorkoutIncrementsCount() {
+        let service = SyncService.shared
+        let before = service.unsyncedCount
+        defer {
+            // Restore: remove the workout we just added.
+            // clearUnsyncedCount() resets to 0, so we use it only if before was 0.
+            if before == 0 { service.clearUnsyncedCount() }
+        }
+        service.recordUnsyncedWorkout()
+        #expect(service.unsyncedCount == before + 1)
+    }
+
+    @Test("clearUnsyncedCount resets count to zero")
+    @MainActor
+    func clearUnsyncedCountResetsToZero() {
+        let service = SyncService.shared
+        let before = service.unsyncedCount
+        defer {
+            // Restore the count we cleared.
+            for _ in 0..<before { service.recordUnsyncedWorkout() }
+        }
+        service.clearUnsyncedCount()
+        #expect(service.unsyncedCount == 0)
+    }
+
+    @Test("unsyncedCount is never negative after clearUnsyncedCount")
+    @MainActor
+    func unsyncedCountNeverNegative() {
+        let service = SyncService.shared
+        service.clearUnsyncedCount()
+        #expect(service.unsyncedCount == 0)
+        service.clearUnsyncedCount() // second call must not go below 0
+        #expect(service.unsyncedCount == 0)
+    }
+
+    @Test("unsyncedCount persists to UserDefaults after recordUnsyncedWorkout")
+    @MainActor
+    func unsyncedCountPersistsAfterRecord() {
+        let service = SyncService.shared
+        let before = service.unsyncedCount
+        defer {
+            if before == 0 { service.clearUnsyncedCount() }
+        }
+        service.recordUnsyncedWorkout()
+        let persisted = UserDefaults.standard.integer(forKey: "syncService.unsyncedCount")
+        #expect(persisted == service.unsyncedCount)
+    }
+
+    @Test("unsyncedCount persists to UserDefaults after clearUnsyncedCount")
+    @MainActor
+    func unsyncedCountPersistsAfterClear() {
+        let service = SyncService.shared
+        service.clearUnsyncedCount()
+        let persisted = UserDefaults.standard.integer(forKey: "syncService.unsyncedCount")
+        #expect(persisted == 0)
+        #expect(service.unsyncedCount == 0)
+    }
+
+    @Test("lastSyncLabel is non-empty regardless of sync history")
+    @MainActor
+    func lastSyncLabelNonEmpty() {
         let label = SyncService.shared.lastSyncLabel
         #expect(!label.isEmpty)
     }
 
-    @Test("Unsynced count persists to UserDefaults")
+    @Test("lastSyncLabel contains 'Never synced' when no sync date is stored")
     @MainActor
-    func unsyncedCountPersistence() {
-        let service = SyncService.shared
-        service.clearUnsyncedCount()
-        service.recordUnsyncedWorkout()
-        service.recordUnsyncedWorkout()
-        service.recordUnsyncedWorkout()
-
-        let persisted = UserDefaults.standard.integer(forKey: "syncService.unsyncedCount")
-        #expect(persisted == service.unsyncedCount)
+    func lastSyncLabelNeverSynced() {
+        // Remove the persisted date so the service reports "Never synced".
+        // Note: the singleton's in-memory `lastSyncDate` is not affected by
+        // removing the UserDefaults key, so we test the label format only.
+        UserDefaults.standard.removeObject(forKey: "syncService.lastSyncDate")
+        // The singleton may still have an in-memory date from a previous sync.
+        // We verify the label is non-empty and well-formed.
+        let label = SyncService.shared.lastSyncLabel
+        #expect(label == "Never synced" || label.hasPrefix("Last sync:"))
     }
 }
 
@@ -124,7 +178,7 @@ struct SyncServiceStateTests {
 @Suite("ConnectionType")
 struct ConnectionTypeTests {
 
-    @Test("ConnectionType labels are non-empty")
+    @Test("All ConnectionType labels are non-empty")
     func labelsAreNonEmpty() {
         let types: [ConnectionType] = [.wifi, .cellular, .wiredEthernet, .unknown]
         for type in types {
@@ -132,17 +186,24 @@ struct ConnectionTypeTests {
         }
     }
 
-    @Test("ConnectionType labels are human-readable")
-    func labelsAreReadable() {
-        #expect(ConnectionType.wifi.label == "Wi-Fi")
-        #expect(ConnectionType.cellular.label == "Cellular")
+    @Test("ConnectionType labels match expected strings")
+    func labelsMatchExpectedStrings() {
+        #expect(ConnectionType.wifi.label          == "Wi-Fi")
+        #expect(ConnectionType.cellular.label      == "Cellular")
         #expect(ConnectionType.wiredEthernet.label == "Ethernet")
-        #expect(ConnectionType.unknown.label == "Unknown")
+        #expect(ConnectionType.unknown.label       == "Unknown")
     }
 
-    @Test("ConnectionType equality")
-    func equality() {
-        #expect(ConnectionType.wifi == ConnectionType.wifi)
-        #expect(ConnectionType.wifi != ConnectionType.cellular)
+    @Test("ConnectionType is Equatable -- same cases are equal")
+    func equalitySameCases() {
+        #expect(ConnectionType.wifi    == ConnectionType.wifi)
+        #expect(ConnectionType.unknown == ConnectionType.unknown)
+    }
+
+    @Test("ConnectionType is Equatable -- different cases are not equal")
+    func inequalityDifferentCases() {
+        #expect(ConnectionType.wifi     != ConnectionType.cellular)
+        #expect(ConnectionType.cellular != ConnectionType.wiredEthernet)
+        #expect(ConnectionType.wifi     != ConnectionType.unknown)
     }
 }

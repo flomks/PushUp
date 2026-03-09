@@ -12,13 +12,14 @@ import SwiftUI
 /// `.preferredColorScheme()` so it affects the entire app.
 ///
 /// **Sections**
-/// 1. Time Credit -- push-ups/min stepper, quality multiplier, daily limit
-/// 2. Camera -- front/back preference, pose overlay toggle
-/// 3. Notifications -- enable toggle, daily reminder time picker
-/// 4. Feedback -- haptic feedback, sound effects
-/// 5. Appearance -- system / light / dark mode picker
-/// 6. Info -- time-credit formula explanation
-/// 7. About -- version, build, privacy, terms, support links
+/// 1. Data Sync -- sync status, unsynced count badge, manual sync button (Task 3.14)
+/// 2. Time Credit -- push-ups/min stepper, quality multiplier, daily limit
+/// 3. Camera -- front/back preference, pose overlay toggle
+/// 4. Notifications -- enable toggle, daily reminder time picker
+/// 5. Feedback -- haptic feedback, sound effects
+/// 6. Appearance -- system / light / dark mode picker
+/// 7. Info -- time-credit formula explanation
+/// 8. About -- version, build, privacy, terms, support links
 struct SettingsView: View {
 
     @StateObject private var viewModel = SettingsViewModel()

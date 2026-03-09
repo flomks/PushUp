@@ -10,13 +10,19 @@ import SwiftUI
 /// | `.idle`     | Cloud icon (subtle)           | None            | No    |
 /// | `.syncing`  | Rotating arrows               | Continuous spin | No    |
 /// | `.success`  | Checkmark circle (green)      | Scale pop       | No    |
-/// | `.error`    | Exclamation triangle (red)    | Shake           | No    |
+/// | `.error`    | Exclamation triangle (red)    | None            | No    |
 /// | `.offline`  | Wi-Fi slash (gray)            | None            | No    |
 ///
 /// When `unsyncedCount > 0`, a red badge is overlaid on the icon showing the
 /// number of workouts waiting to be synced (e.g. "3").
 ///
 /// Tapping the indicator triggers a manual sync via `SyncService.syncNow()`.
+///
+/// **Animation note**
+/// The rotation animation is driven by `isRotating` which is set in both
+/// `.onAppear` (for the initial render) and `.onChange` (for subsequent state
+/// changes). Without the `.onAppear` call, the animation would never start if
+/// the view is first rendered while the state is already `.syncing`.
 ///
 /// **Usage**
 /// Place in a toolbar:
@@ -29,7 +35,7 @@ import SwiftUI
 /// ```
 struct SyncIndicator: View {
 
-    @ObservedObject private var syncService = SyncService.shared
+    @ObservedObject private var syncService    = SyncService.shared
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
 
     /// Controls the continuous rotation animation for the syncing state.
@@ -48,7 +54,8 @@ struct SyncIndicator: View {
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
 
-                // Unsynced count badge
+                // Unsynced count badge -- hidden while actively syncing to
+                // avoid visual clutter alongside the spinning icon.
                 if syncService.unsyncedCount > 0 && syncService.syncState != .syncing {
                     unsyncedBadge
                 }
@@ -58,6 +65,12 @@ struct SyncIndicator: View {
         .disabled(syncService.isSyncing)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Double tap to sync now")
+        // Seed animation state on first render so the rotation starts
+        // immediately if the view appears while already syncing.
+        .onAppear {
+            handleStateChange(syncService.syncState)
+        }
+        // Update animation state on subsequent state transitions.
         .onChange(of: syncService.syncState) { newState in
             handleStateChange(newState)
         }
@@ -85,7 +98,10 @@ struct SyncIndicator: View {
             Image(icon: .checkmarkCircleFill)
                 .foregroundStyle(AppColors.success)
                 .scaleEffect(showSuccessScale ? 1.2 : 1.0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.5), value: showSuccessScale)
+                .animation(
+                    .spring(response: 0.3, dampingFraction: 0.5),
+                    value: showSuccessScale
+                )
 
         case .error:
             Image(icon: .exclamationmarkTriangle)
@@ -113,22 +129,29 @@ struct SyncIndicator: View {
 
     // MARK: - State Change Handler
 
+    /// Updates local animation state in response to a `SyncState` change.
+    ///
+    /// Called from both `.onAppear` and `.onChange` so that the animation
+    /// is correctly seeded on first render and on all subsequent transitions.
     private func handleStateChange(_ state: SyncState) {
         switch state {
         case .syncing:
-            isRotating = true
             showSuccessScale = false
+            // Only start the rotation if it is not already running.
+            // Setting `isRotating = true` when it is already `true` would
+            // restart the animation from 0 degrees.
+            if !isRotating { isRotating = true }
 
         case .success:
             isRotating = false
             showSuccessScale = true
-            // Reset scale after animation completes.
+            // Reset scale after the spring animation settles (~0.5 s).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 showSuccessScale = false
             }
 
         case .idle, .error, .offline:
-            isRotating = false
+            isRotating      = false
             showSuccessScale = false
         }
     }

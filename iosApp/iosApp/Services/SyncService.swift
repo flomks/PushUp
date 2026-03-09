@@ -18,7 +18,11 @@ enum SyncState: Equatable {
     /// Transitions back to `.idle` after a brief display period.
     case success
 
-    /// The last sync failed. The associated message describes the error.
+    /// The last sync failed.
+    ///
+    /// The associated value is a **user-facing** message (not a raw
+    /// `localizedDescription`) so that internal error details are never
+    /// surfaced directly in the UI.
     case error(String)
 
     /// The device is offline. Data will be synced when connectivity returns.
@@ -57,6 +61,7 @@ enum SyncState: Equatable {
 ///
 /// **Lifecycle**
 /// Created as a singleton (`SyncService.shared`) and started in `AppDelegate`.
+/// `start()` is idempotent -- calling it more than once is safe.
 @MainActor
 final class SyncService: ObservableObject {
 
@@ -70,7 +75,7 @@ final class SyncService: ObservableObject {
     @Published private(set) var syncState: SyncState = .idle
 
     /// Number of workouts that have not yet been synced to the cloud.
-    /// Displayed as a badge in the navigation bar and Settings screen.
+    /// Always >= 0. Displayed as a badge in the navigation bar and Settings.
     @Published private(set) var unsyncedCount: Int = 0
 
     /// The date of the last successful sync, or `nil` if no sync has completed.
@@ -87,26 +92,41 @@ final class SyncService: ObservableObject {
         category: "SyncService"
     )
 
+    /// Guard flag: prevents `start()` from being called more than once.
+    private var isStarted: Bool = false
+
     /// Timer for periodic background sync.
     private var periodicSyncTimer: Timer?
 
     /// Interval between periodic sync attempts (15 minutes).
     private static let periodicSyncInterval: TimeInterval = 15 * 60
 
-    /// Duration to show the success state before returning to idle.
-    private static let successDisplayDuration: UInt64 = 2_000_000_000 // 2 seconds
+    /// Duration to show the success state before returning to idle (nanoseconds).
+    private static let successDisplayDuration: UInt64 = 2_000_000_000 // 2 s
+
+    /// Duration to show the error state before returning to idle (nanoseconds).
+    private static let errorDisplayDuration: UInt64 = 3_000_000_000 // 3 s
 
     // MARK: - UserDefaults Keys
 
-    private static let lastSyncDateKey = "syncService.lastSyncDate"
+    private static let lastSyncDateKey  = "syncService.lastSyncDate"
     private static let unsyncedCountKey = "syncService.unsyncedCount"
+
+    // MARK: - Shared Formatter
+
+    /// Reused across all `lastSyncLabel` reads to avoid repeated allocations.
+    private static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
 
     // MARK: - Init
 
     private init() {
         // Restore persisted state.
-        lastSyncDate = UserDefaults.standard.object(forKey: Self.lastSyncDateKey) as? Date
-        unsyncedCount = UserDefaults.standard.integer(forKey: Self.unsyncedCountKey)
+        lastSyncDate  = UserDefaults.standard.object(forKey: Self.lastSyncDateKey) as? Date
+        unsyncedCount = max(0, UserDefaults.standard.integer(forKey: Self.unsyncedCountKey))
     }
 
     // MARK: - Public API
@@ -115,7 +135,14 @@ final class SyncService: ObservableObject {
     /// begins periodic background sync.
     ///
     /// Call this once from `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
+    /// Subsequent calls are no-ops (idempotent).
     func start() {
+        guard !isStarted else {
+            logger.debug("SyncService.start() called more than once -- ignoring.")
+            return
+        }
+        isStarted = true
+
         // Wire up automatic sync on network reconnect.
         NetworkMonitor.shared.onReconnect = { [weak self] in
             Task { @MainActor [weak self] in
@@ -124,7 +151,7 @@ final class SyncService: ObservableObject {
             }
         }
 
-        // Update offline state based on current connectivity.
+        // Reflect current connectivity immediately.
         updateOfflineState()
 
         // Start periodic background sync.
@@ -162,22 +189,23 @@ final class SyncService: ObservableObject {
         logger.info("Starting sync operation...")
 
         do {
-            // ---------------------------------------------------------------
+            // -------------------------------------------------------------------
             // KMP SyncManager integration point.
             //
             // When Supabase credentials are configured, replace the simulation
-            // below with:
+            // below with real KMP calls, e.g.:
             //
             //   let syncManager = DIHelper.shared.syncManager()
             //   let result = try await withCheckedThrowingContinuation { cont in
             //       syncManager.syncAll { result, error in
             //           if let error { cont.resume(throwing: error) }
-            //           else { cont.resume(returning: result) }
+            //           else { cont.resume(returning: result!) }
             //       }
             //   }
+            //   if !result.isFullSuccess { throw SyncError.partialFailure }
             //
             // For now, simulate a sync operation with a short delay.
-            // ---------------------------------------------------------------
+            // -------------------------------------------------------------------
             try await Task.sleep(nanoseconds: 1_500_000_000)
 
             // Simulate successful sync: clear unsynced count.
@@ -197,14 +225,19 @@ final class SyncService: ObservableObject {
             }
 
         } catch is CancellationError {
+            // Task was cancelled (e.g. app backgrounded). Reset quietly.
             syncState = .idle
             logger.debug("Sync cancelled.")
         } catch {
-            syncState = .error(error.localizedDescription)
-            logger.error("Sync failed: \(error.localizedDescription)")
+            // Map the internal error to a generic user-facing message so that
+            // raw `localizedDescription` strings (which may contain technical
+            // details or even sensitive path information) are never shown in UI.
+            let userMessage = "Sync failed. Please try again."
+            syncState = .error(userMessage)
+            logger.error("Sync failed: \(error.localizedDescription, privacy: .private)")
 
             // Return to idle after displaying the error briefly.
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
             if case .error = syncState {
                 syncState = .idle
             }
@@ -237,10 +270,8 @@ final class SyncService: ObservableObject {
         guard let date = lastSyncDate else {
             return "Never synced"
         }
-
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return "Last sync: \(formatter.localizedString(for: date, relativeTo: Date()))"
+        let relative = Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
+        return "Last sync: \(relative)"
     }
 
     // MARK: - Private Methods
@@ -255,17 +286,24 @@ final class SyncService: ObservableObject {
         }
     }
 
-    /// Starts a repeating timer that triggers `syncNow()` at regular intervals.
+    /// Starts a repeating timer on the main run loop that triggers `syncNow()`
+    /// at regular intervals.
+    ///
+    /// The timer is explicitly added to `RunLoop.main` in `.common` mode so
+    /// that it fires even while the user is scrolling (which would otherwise
+    /// pause the default `.default` mode timer).
     private func startPeriodicSync() {
         periodicSyncTimer?.invalidate()
-        periodicSyncTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.periodicSyncInterval,
+        let timer = Timer(
+            timeInterval: Self.periodicSyncInterval,
             repeats: true
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.syncNow()
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        periodicSyncTimer = timer
         logger.debug("Periodic sync timer started (interval: \(Self.periodicSyncInterval)s).")
     }
 
