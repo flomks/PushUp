@@ -19,14 +19,11 @@ struct AuthServiceResult {
 
 // MARK: - AuthService
 
-/// Swift-side wrapper around KMP auth use cases.
+/// Swift-side wrapper around KMP auth operations.
 ///
-/// All methods are safe — they NEVER throw. Kotlin exceptions are caught
-/// here in Swift and mapped to user-friendly error messages.
-///
-/// KMP suspend functions are exported as completionHandler-based callbacks:
-///   func invoke(..., completionHandler: @escaping (T?, Error?) -> Void)
-/// We bridge them to async/await using withKMPAuthSuspend().
+/// Uses SafeAuthBridge (Kotlin object) which catches ALL exceptions in Kotlin
+/// and returns SafeAuthResult. This prevents Kotlin exceptions from crashing
+/// the iOS app when they cross the Kotlin/Swift boundary.
 @MainActor
 final class AuthService {
 
@@ -36,52 +33,44 @@ final class AuthService {
     // MARK: - Email / Password
 
     func loginWithEmail(email: String, password: String) async -> AuthServiceResult {
-        await safeCall {
-            try await withKMPAuthSuspend { handler in
-                DIHelper.shared.loginWithEmailUseCase().invoke(
-                    email: email,
-                    password: password,
-                    completionHandler: handler
-                )
-            }
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeLoginWithEmail(
+                email: email,
+                password: password,
+                completionHandler: handler
+            )
         }
     }
 
     func registerWithEmail(email: String, password: String) async -> AuthServiceResult {
-        await safeCall {
-            try await withKMPAuthSuspend { handler in
-                DIHelper.shared.registerWithEmailUseCase().invoke(
-                    email: email,
-                    password: password,
-                    completionHandler: handler
-                )
-            }
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeRegisterWithEmail(
+                email: email,
+                password: password,
+                completionHandler: handler
+            )
         }
     }
 
     // MARK: - Apple
 
     func loginWithApple(idToken: String) async -> AuthServiceResult {
-        await safeCall {
-            try await withKMPAuthSuspend { handler in
-                DIHelper.shared.loginWithAppleUseCase().invoke(
-                    idToken: idToken,
-                    completionHandler: handler
-                )
-            }
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeLoginWithApple(
+                idToken: idToken,
+                completionHandler: handler
+            )
         }
     }
 
-    // MARK: - Google
+    // MARK: - Google (PKCE)
 
     func loginWithGoogleOAuthCode(code: String) async -> AuthServiceResult {
-        await safeCall {
-            try await withKMPAuthSuspend { handler in
-                DIHelper.shared.loginWithGoogleUseCase().invokeWithOAuthCode(
-                    code: code,
-                    completionHandler: handler
-                )
-            }
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeLoginWithGoogleOAuthCode(
+                code: code,
+                completionHandler: handler
+            )
         }
     }
 
@@ -94,128 +83,82 @@ final class AuthService {
         userEmail: String?,
         expiresIn: Int64
     ) async -> AuthServiceResult {
-        // DIHelper.storeImplicitSession is a regular (non-suspend) Kotlin function —
-        // directly callable from Swift without a completionHandler bridge.
-        // It stores the token in the Keychain and upserts the user in the local DB.
-        guard DIHelper.shared.storeImplicitSession(
+        // storeImplicitSession is a regular (non-suspend) Kotlin function.
+        // Returns empty string on success, error message on failure.
+        let storeError = DIHelper.shared.storeImplicitSession(
             accessToken: accessToken,
             refreshToken: refreshToken,
             userId: userId,
             userEmail: userEmail,
             expiresIn: expiresIn
-        ) else {
-            return .failure("Failed to store session. Please try again.")
+        )
+        guard storeError.isEmpty else {
+            return .failure("Failed to store session: \(storeError)")
         }
-        // Token stored successfully — fetch the user from the local DB
-        if let user = await getCurrentUser() {
-            return .success(user)
-        }
-        // DB upsert may still be in-flight; return a minimal user object
-        let email = userEmail ?? "\(userId)@social.local"
-        let displayName = email.components(separatedBy: "@").first ?? "User"
-        // We can't construct a KMP User directly in Swift without Instant.
-        // Instead, re-fetch after a brief delay to let the coroutine complete.
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        if let user = await getCurrentUser() {
-            return .success(user)
-        }
-        return .failure("Session stored but user profile not yet available. Please restart the app.")
+        // Token stored — errorMessage nil signals success
+        return AuthServiceResult(user: nil, errorMessage: nil)
     }
 
     // MARK: - Session
 
     func getCurrentUser() async -> User? {
-        do {
-            return try await withKMPAuthSuspend { handler in
-                DIHelper.shared.getCurrentUserUseCase().invoke(completionHandler: handler)
-            }
-        } catch {
-            return nil
+        let result = await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeGetCurrentUser(completionHandler: handler)
         }
+        return result.user
     }
 
     func logout() async {
-        // LogoutUseCase.invoke returns Unit (Void in Swift).
-        // We use a simple semaphore bridge since withKMPAuthSuspend expects a non-Void return.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DIHelper.shared.logoutUseCase().invoke(clearLocalData: true) { error in
-                // Ignore errors — best-effort logout
-                continuation.resume()
-            }
+        _ = await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeLogout(completionHandler: handler)
         }
     }
 
     // MARK: - Private
 
-    private func safeCall(_ block: () async throws -> User) async -> AuthServiceResult {
+    /// Bridges a SafeAuthBridge completionHandler call to async/await.
+    ///
+    /// SafeAuthBridge methods NEVER throw — they always return SafeAuthResult.
+    /// The completionHandler signature is: (SafeAuthResult?, Error?) -> Void
+    /// Since SafeAuthBridge catches all exceptions, error is always nil.
+    private func callSafeBridge(
+        _ call: @escaping (@escaping (SafeAuthResult?, Error?) -> Void) -> Void
+    ) async -> AuthServiceResult {
         do {
-            let user = try await block()
-            return .success(user)
-        } catch let error as AuthException {
-            return .failure(mapAuthException(error))
-        } catch let error as KotlinThrowable {
-            return .failure(mapKotlinError(error))
-        } catch {
-            return .failure(mapSwiftError(error))
-        }
-    }
-
-    private func mapAuthException(_ error: AuthException) -> String {
-        let typeName = String(describing: type(of: error)).lowercased()
-        let msg = error.message ?? ""
-        if typeName.contains("invalidcredentials") { return "Email or password is incorrect." }
-        if typeName.contains("emailalreadyinuse") { return "This email address is already in use." }
-        if typeName.contains("weakpassword") { return "Password is too weak." }
-        if typeName.contains("invalidemail") { return "Please enter a valid email address." }
-        if typeName.contains("sessionexpired") { return "Your session has expired. Please sign in again." }
-        if typeName.contains("networkerror") { return "Network error. Please check your connection." }
-        if typeName.contains("servererror") { return "Server error. Please try again." }
-        return msg.isEmpty ? "Authentication failed." : msg
-    }
-
-    private func mapKotlinError(_ error: KotlinThrowable) -> String {
-        let msg = (error.message ?? "").lowercased()
-        if msg.contains("invalid") && msg.contains("credential") { return "Email or password is incorrect." }
-        if msg.contains("network") || msg.contains("connect") { return "Network error. Please check your connection." }
-        if msg.contains("email") && msg.contains("confirm") { return "Please confirm your email address first." }
-        return "An error occurred. Please try again."
-    }
-
-    private func mapSwiftError(_ error: Error) -> String {
-        let msg = error.localizedDescription.lowercased()
-        if msg.contains("network") || msg.contains("connect") { return "Network error. Please check your connection." }
-        return "An error occurred. Please try again."
-    }
-}
-
-// MARK: - KMP Suspend Bridge
-
-/// Bridges a KMP completionHandler-based callback to Swift async/await.
-///
-/// KMP suspend functions are exported to Swift as:
-///   func invoke(..., completionHandler: @escaping (T?, Error?) -> Void)
-private func withKMPAuthSuspend<T>(
-    _ body: @escaping (@escaping (T?, Error?) -> Void) -> Void
-) async throws -> T {
-    try await withCheckedThrowingContinuation { continuation in
-        let lock = NSLock()
-        var hasResumed = false
-        body { result, error in
-            lock.lock()
-            guard !hasResumed else { lock.unlock(); return }
-            hasResumed = true
-            lock.unlock()
-            if let error = error {
-                continuation.resume(throwing: error)
-            } else if let result = result {
-                continuation.resume(returning: result)
-            } else {
-                continuation.resume(throwing: NSError(
-                    domain: "AuthService",
-                    code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "KMP returned nil without error"]
-                ))
+            let kmpResult: SafeAuthResult = try await withCheckedThrowingContinuation { continuation in
+                let lock = NSLock()
+                var hasResumed = false
+                call { result, error in
+                    lock.lock()
+                    guard !hasResumed else { lock.unlock(); return }
+                    hasResumed = true
+                    lock.unlock()
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                    } else if let result = result {
+                        continuation.resume(returning: result)
+                    } else {
+                        continuation.resume(throwing: NSError(
+                            domain: "AuthService",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
+                        ))
+                    }
+                }
             }
+            // Map SafeAuthResult -> AuthServiceResult
+            if let user = kmpResult.user {
+                return .success(user)
+            } else if let errorMsg = kmpResult.errorMessage {
+                return .failure(errorMsg)
+            } else {
+                // No user and no error — e.g. getCurrentUser when not logged in
+                return AuthServiceResult(user: nil, errorMessage: nil)
+            }
+        } catch {
+            // This should never happen since SafeAuthBridge catches all exceptions.
+            // But just in case:
+            return .failure("An unexpected error occurred: \(error.localizedDescription)")
         }
     }
 }
