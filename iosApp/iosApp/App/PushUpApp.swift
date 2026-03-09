@@ -91,6 +91,10 @@ struct RootView: View {
             }
         }
         .task {
+            // Attempt to restore an existing Supabase session so the user
+            // does not have to log in again after restarting the app.
+            await authViewModel.restoreSession()
+
             // Dismiss the splash overlay after a brief moment to allow the
             // first SwiftUI render pass to complete. Using structured
             // concurrency so the timer is automatically cancelled if the
@@ -100,6 +104,11 @@ struct RootView: View {
             withAnimation(.easeOut(duration: 0.4)) {
                 showSplash = false
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            // ProfileViewModel posts this notification when the user signs out
+            // or deletes their account. Transition back to the auth flow.
+            authViewModel.signOut()
         }
     }
 }

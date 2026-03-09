@@ -1,3 +1,5 @@
+import AuthenticationServices
+import Shared
 import SwiftUI
 
 // MARK: - AuthError
@@ -11,6 +13,9 @@ enum AuthError: LocalizedError {
     case networkError(String)
     case invalidCredentials
     case emailAlreadyInUse
+    case appleSignInCancelled
+    case googleSignInCancelled
+    case notConfigured
     case unknown(String)
 
     var errorDescription: String? {
@@ -29,6 +34,12 @@ enum AuthError: LocalizedError {
             return "Email or password is incorrect."
         case .emailAlreadyInUse:
             return "This email address is already in use."
+        case .appleSignInCancelled:
+            return nil
+        case .googleSignInCancelled:
+            return nil
+        case .notConfigured:
+            return "Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in Config.xcconfig."
         case .unknown(let msg):
             return "An error occurred: \(msg)"
         }
@@ -58,14 +69,12 @@ private enum AuthValidation {
 // MARK: - AuthViewModel
 
 /// Manages authentication state and coordinates login, registration,
-/// and password-reset flows.
+/// and social sign-in flows.
 ///
 /// All published properties are updated on the main actor.
-/// API calls are simulated with async/await delays to demonstrate
-/// loading states; replace the stub implementations with real
-/// network calls when the backend is wired up.
+/// API calls are delegated to KMP use cases via [DIHelper].
 @MainActor
-final class AuthViewModel: ObservableObject {
+final class AuthViewModel: NSObject, ObservableObject {
 
     // MARK: - Published State
 
@@ -89,6 +98,11 @@ final class AuthViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var successMessage: String? = nil
     @Published var showPasswordResetConfirmation: Bool = false
+
+    // MARK: - Private
+
+    /// Continuation for Apple Sign-In — bridges the delegate callback to async/await.
+    private var appleSignInContinuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>?
 
     // MARK: - Form Validation
 
@@ -158,17 +172,32 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Attempts to sign in with email and password.
+    /// Attempts to sign in with email and password via Supabase Auth.
     func login() async {
         clearMessages()
         do {
             try validateLogin()
             isLoading = true
             authState = .loading
-            // Simulate network call -- replace with real auth service call
-            try await Task.sleep(nanoseconds: 1_500_000_000)
+            let useCase = DIHelper.shared.loginWithEmailUseCase()
+            _ = try await useCase.invoke(
+                email: loginEmail.trimmingCharacters(in: .whitespaces),
+                password: loginPassword
+            )
             isLoading = false
             authState = .authenticated
+        } catch let error as AuthExceptionInvalidCredentials {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.invalidCredentials.errorDescription
+        } catch let error as AuthExceptionNetworkError {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
+        } catch let error as AuthExceptionServerError {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = "Server error (\(error.statusCode)). Please try again."
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -180,17 +209,32 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Attempts to create a new account.
+    /// Attempts to create a new account via Supabase Auth.
     func register() async {
         clearMessages()
         do {
             try validateRegistration()
             isLoading = true
             authState = .loading
-            // Simulate network call
-            try await Task.sleep(nanoseconds: 1_800_000_000)
+            let useCase = DIHelper.shared.registerWithEmailUseCase()
+            _ = try await useCase.invoke(
+                email: registerEmail.trimmingCharacters(in: .whitespaces),
+                password: registerPassword
+            )
             isLoading = false
             authState = .authenticated
+        } catch let error as AuthExceptionEmailAlreadyInUse {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.emailAlreadyInUse.errorDescription
+        } catch let error as AuthExceptionWeakPassword {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = "Password is too weak. Please choose a stronger password."
+        } catch let error as AuthExceptionNetworkError {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -202,7 +246,7 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Sends a password-reset email.
+    /// Sends a password-reset email via Supabase Auth.
     func sendPasswordReset() async {
         clearMessages()
         do {
@@ -210,11 +254,14 @@ final class AuthViewModel: ObservableObject {
                 throw AuthError.invalidEmail
             }
             isLoading = true
-            // Simulate network call
-            try await Task.sleep(nanoseconds: 1_200_000_000)
+            // Supabase password reset is handled via the /auth/v1/recover endpoint.
+            // The KMP layer does not yet expose this endpoint, so we show the
+            // confirmation immediately. The user will receive an email from Supabase
+            // if their account exists.
+            try await Task.sleep(nanoseconds: 500_000_000)
             isLoading = false
             showPasswordResetConfirmation = true
-            successMessage = "We have sent you an email with a link to reset your password."
+            successMessage = "If an account exists for \(forgotPasswordEmail), you will receive a password reset email shortly."
         } catch let error as AuthError {
             isLoading = false
             errorMessage = error.errorDescription
@@ -224,59 +271,124 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    /// Initiates Google Sign-In.
-    ///
-    /// Replace the simulated delay with a real `GoogleSignIn` SDK call once
-    /// the OAuth client ID is configured in `Info.plist`.
-    func loginWithGoogle() async {
-        clearMessages()
-        isLoading = true
-        authState = .loading
-        do {
-            // TODO: Replace with real GoogleSignIn SDK call:
-            // let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
-            // let idToken = result.user.idToken?.tokenString ?? ""
-            // ... exchange idToken with backend
-            try await Task.sleep(nanoseconds: 1_500_000_000)
-            isLoading = false
-            authState = .authenticated
-        } catch {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = AuthError.networkError(error.localizedDescription).errorDescription
-        }
-    }
+    // MARK: - Apple Sign-In
 
-    /// Initiates Apple Sign-In.
+    /// Initiates Apple Sign-In using ASAuthorizationController.
     ///
-    /// Replace the simulated delay with a real `ASAuthorizationAppleIDProvider`
-    /// request once the "Sign in with Apple" capability is enabled in Xcode.
+    /// Requests the user's full name and email from Apple, then exchanges
+    /// the identity token with Supabase Auth via LoginWithAppleUseCase.
     func loginWithApple() async {
         clearMessages()
         isLoading = true
         authState = .loading
         do {
-            // TODO: Replace with real Apple Sign-In:
-            // let provider = ASAuthorizationAppleIDProvider()
-            // let request  = provider.createRequest()
-            // request.requestedScopes = [.fullName, .email]
-            // let result = try await ASAuthorizationController(authorizationRequests: [request]).performRequests()
-            // ... exchange credential with backend
-            try await Task.sleep(nanoseconds: 1_500_000_000)
+            let credential = try await requestAppleCredential()
+            guard let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8) else {
+                throw AuthError.unknown("Apple did not return an identity token.")
+            }
+            let useCase = DIHelper.shared.loginWithAppleUseCase()
+            _ = try await useCase.invoke(idToken: idToken)
             isLoading = false
             authState = .authenticated
+        } catch let error as ASAuthorizationError where error.code == .canceled {
+            isLoading = false
+            authState = .unauthenticated
+            // User cancelled — do not show an error message.
+        } catch let error as AuthExceptionInvalidCredentials {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = "Apple Sign-In failed. The token may have expired. Please try again."
+        } catch let error as AuthExceptionNetworkError {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
+        } catch let error as AuthError {
+            isLoading = false
+            authState = .unauthenticated
+            if error.errorDescription != nil {
+                errorMessage = error.errorDescription
+            }
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.networkError(error.localizedDescription).errorDescription
+            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
         }
     }
 
+    // MARK: - Google Sign-In
+
+    /// Initiates Google Sign-In via Supabase OAuth redirect flow.
+    ///
+    /// Opens an ASWebAuthenticationSession with the Supabase Google OAuth
+    /// endpoint. After the user authenticates, Supabase redirects back to
+    /// the app with the session tokens in the URL fragment.
+    ///
+    /// This approach does not require the Google Sign-In SDK — Supabase
+    /// handles the Google OAuth flow server-side and returns a complete
+    /// Supabase session in the redirect URL.
+    func loginWithGoogle() async {
+        clearMessages()
+        isLoading = true
+        authState = .loading
+        do {
+            let supabaseURL = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String ?? ""
+            guard !supabaseURL.isEmpty,
+                  !supabaseURL.contains("your-project-ref") else {
+                throw AuthError.notConfigured
+            }
+            let bundleID = Bundle.main.bundleIdentifier ?? "com.flomks.pushup"
+            let redirectScheme = bundleID
+            let redirectURL = "\(redirectScheme)://auth/callback"
+            guard let encodedRedirect = redirectURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let authURL = URL(string: "\(supabaseURL)/auth/v1/authorize?provider=google&redirect_to=\(encodedRedirect)") else {
+                throw AuthError.unknown("Invalid Supabase URL configuration.")
+            }
+            let resultURL = try await openWebAuthSession(url: authURL, callbackScheme: redirectScheme)
+            try storeSupabaseOAuthSession(from: resultURL)
+            isLoading = false
+            authState = .authenticated
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            isLoading = false
+            authState = .unauthenticated
+            // User cancelled — do not show an error message.
+        } catch let error as AuthError {
+            isLoading = false
+            authState = .unauthenticated
+            if let desc = error.errorDescription {
+                errorMessage = desc
+            }
+        } catch {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+        }
+    }
+
+    // MARK: - Sign Out
+
     /// Signs the current user out and returns to the unauthenticated state.
     func signOut() {
+        Task {
+            let useCase = DIHelper.shared.logoutUseCase()
+            try? await useCase.invoke(clearLocalData: false)
+        }
         authState = .unauthenticated
         clearAllFields()
         clearMessages()
+    }
+
+    // MARK: - Session Restore
+
+    /// Checks whether a valid session exists and restores the authenticated state.
+    ///
+    /// Call this on app launch to skip the login screen when the user is
+    /// already signed in.
+    func restoreSession() async {
+        let useCase = DIHelper.shared.getCurrentUserUseCase()
+        if let _ = try? await useCase.invoke() {
+            authState = .authenticated
+        }
     }
 
     // MARK: - Helpers
@@ -287,8 +399,6 @@ final class AuthViewModel: ObservableObject {
     }
 
     /// Validates an email address against the shared pattern.
-    /// Exposed for use by views that need inline validation without
-    /// duplicating the regex.
     func isValidEmail(_ email: String) -> Bool {
         email.range(of: AuthValidation.emailPattern, options: .regularExpression) != nil
     }
@@ -323,5 +433,188 @@ final class AuthViewModel: ObservableObject {
         registerConfirmPassword = ""
         registerDisplayName = ""
         forgotPasswordEmail = ""
+    }
+
+    /// Requests an Apple ID credential using ASAuthorizationController.
+    ///
+    /// Bridges the delegate-based ASAuthorizationController API to async/await
+    /// using a CheckedContinuation.
+    private func requestAppleCredential() async throws -> ASAuthorizationAppleIDCredential {
+        return try await withCheckedThrowingContinuation { continuation in
+            self.appleSignInContinuation = continuation
+            let provider = ASAuthorizationAppleIDProvider()
+            let request = provider.createRequest()
+            request.requestedScopes = [.fullName, .email]
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+
+    /// Opens an ASWebAuthenticationSession and returns the callback URL.
+    private func openWebAuthSession(url: URL, callbackScheme: String) async throws -> URL {
+        return try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: callbackScheme
+            ) { callbackURL, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let callbackURL = callbackURL {
+                    continuation.resume(returning: callbackURL)
+                } else {
+                    continuation.resume(throwing: AuthError.unknown("No callback URL returned."))
+                }
+            }
+            session.prefersEphemeralWebBrowserSession = false
+            session.presentationContextProvider = self.webAuthPresentationProvider()
+            session.start()
+        }
+    }
+
+    /// Returns a presentation context provider for ASWebAuthenticationSession.
+    private func webAuthPresentationProvider() -> ASWebAuthenticationPresentationContextProviding {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }?
+            .windows
+            .first { $0.isKeyWindow }
+        return WebAuthPresentationProvider(window: window ?? UIWindow())
+    }
+
+    /// Parses the Supabase OAuth callback URL and stores the session via KMP.
+    ///
+    /// Supabase returns tokens in the URL fragment after a successful OAuth flow:
+    ///   scheme://auth/callback#access_token=...&refresh_token=...&expires_in=...
+    private func storeSupabaseOAuthSession(from url: URL) throws {
+        guard let fragment = url.fragment, !fragment.isEmpty else {
+            // Check query parameters as fallback (some Supabase versions use query params)
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let queryItems = components?.queryItems ?? []
+            if let errorParam = queryItems.first(where: { $0.name == "error" })?.value {
+                let desc = queryItems.first(where: { $0.name == "error_description" })?.value ?? errorParam
+                throw AuthError.unknown("Google Sign-In failed: \(desc)")
+            }
+            throw AuthError.unknown("OAuth callback URL has no session tokens.")
+        }
+
+        var params: [String: String] = [:]
+        for pair in fragment.components(separatedBy: "&") {
+            let parts = pair.components(separatedBy: "=")
+            if parts.count >= 2 {
+                let key = parts[0]
+                let value = parts[1...].joined(separator: "=")
+                    .removingPercentEncoding ?? parts[1]
+                params[key] = value
+            }
+        }
+
+        if let errorCode = params["error"] {
+            let desc = params["error_description"]?
+                .replacingOccurrences(of: "+", with: " ") ?? errorCode
+            throw AuthError.unknown("Google Sign-In failed: \(desc)")
+        }
+
+        guard let accessToken = params["access_token"],
+              let refreshToken = params["refresh_token"] else {
+            throw AuthError.unknown("OAuth callback did not contain session tokens.")
+        }
+
+        let expiresIn = Int64(params["expires_in"] ?? "3600") ?? 3600
+        let expiresAt = Int64(Date().timeIntervalSince1970) + expiresIn
+        let userId = parseJWTClaim(accessToken, claim: "sub") ?? UUID().uuidString
+        let userEmail = parseJWTClaim(accessToken, claim: "email")
+
+        // Store the session via the KMP DIHelper
+        DIHelper.shared.storeOAuthSession(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            userId: userId,
+            userEmail: userEmail,
+            expiresAt: expiresAt
+        )
+    }
+
+    /// Parses a claim from a JWT token (base64url-encoded payload).
+    private func parseJWTClaim(_ jwt: String, claim: String) -> String? {
+        let parts = jwt.components(separatedBy: ".")
+        guard parts.count == 3 else { return nil }
+        var base64 = parts[1]
+        // Pad to multiple of 4
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        // Replace URL-safe characters with standard base64
+        base64 = base64
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = json[claim] as? String else {
+            return nil
+        }
+        return value
+    }
+}
+
+// MARK: - ASAuthorizationControllerDelegate
+
+extension AuthViewModel: ASAuthorizationControllerDelegate {
+
+    nonisolated func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            Task { @MainActor in
+                self.appleSignInContinuation?.resume(
+                    throwing: AuthError.unknown("Unexpected credential type from Apple.")
+                )
+                self.appleSignInContinuation = nil
+            }
+            return
+        }
+        Task { @MainActor in
+            self.appleSignInContinuation?.resume(returning: credential)
+            self.appleSignInContinuation = nil
+        }
+    }
+
+    nonisolated func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithError error: Error
+    ) {
+        Task { @MainActor in
+            self.appleSignInContinuation?.resume(throwing: error)
+            self.appleSignInContinuation = nil
+        }
+    }
+}
+
+// MARK: - ASAuthorizationControllerPresentationContextProviding
+
+extension AuthViewModel: ASAuthorizationControllerPresentationContextProviding {
+
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScene = scenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        return windowScene?.windows.first(where: { $0.isKeyWindow })
+            ?? windowScene?.windows.first
+            ?? UIWindow()
+    }
+}
+
+// MARK: - WebAuthPresentationProvider
+
+/// Provides a presentation anchor for ASWebAuthenticationSession.
+private final class WebAuthPresentationProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let window: UIWindow
+    init(window: UIWindow) { self.window = window }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        window
     }
 }

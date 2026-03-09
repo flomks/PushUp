@@ -1,9 +1,23 @@
 package com.pushup.di
 
+import com.pushup.data.storage.TokenStorage
+import com.pushup.domain.model.AuthToken
+import com.pushup.domain.model.User
+import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
+import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
+import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
+import com.pushup.domain.usecase.auth.LoginWithEmailUseCase
+import com.pushup.domain.usecase.auth.LoginWithGoogleUseCase
+import com.pushup.domain.usecase.auth.LogoutUseCase
+import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.datetime.Clock
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 
@@ -52,6 +66,99 @@ class DIHelper private constructor() : KoinComponent {
      * Returns a new [FinishWorkoutUseCase] instance from Koin.
      */
     fun finishWorkoutUseCase(): FinishWorkoutUseCase = get()
+
+    // =========================================================================
+    // Auth use cases
+    // =========================================================================
+
+    /**
+     * Returns a new [LoginWithEmailUseCase] instance from Koin.
+     */
+    fun loginWithEmailUseCase(): LoginWithEmailUseCase = get()
+
+    /**
+     * Returns a new [RegisterWithEmailUseCase] instance from Koin.
+     */
+    fun registerWithEmailUseCase(): RegisterWithEmailUseCase = get()
+
+    /**
+     * Returns a new [LoginWithAppleUseCase] instance from Koin.
+     *
+     * Pass the `identityToken` string from `ASAuthorizationAppleIDCredential`.
+     */
+    fun loginWithAppleUseCase(): LoginWithAppleUseCase = get()
+
+    /**
+     * Returns a new [LoginWithGoogleUseCase] instance from Koin.
+     *
+     * Pass the `idToken` string from the Google Sign-In credential.
+     */
+    fun loginWithGoogleUseCase(): LoginWithGoogleUseCase = get()
+
+    /**
+     * Returns a new [LogoutUseCase] instance from Koin.
+     */
+    fun logoutUseCase(): LogoutUseCase = get()
+
+    /**
+     * Returns a new [GetCurrentUserUseCase] instance from Koin.
+     */
+    fun getCurrentUserUseCase(): GetCurrentUserUseCase = get()
+
+    // =========================================================================
+    // OAuth session storage (for Supabase OAuth redirect flow)
+    // =========================================================================
+
+    /**
+     * Stores a Supabase OAuth session directly in secure token storage.
+     *
+     * Used after the Google OAuth redirect flow, where Supabase has already
+     * authenticated the user server-side and returned a complete session
+     * (access_token + refresh_token) in the redirect URL fragment.
+     *
+     * Also upserts a [User] record in the local database so the app can
+     * display the user's profile immediately without a separate API call.
+     *
+     * @param accessToken  The Supabase JWT access token.
+     * @param refreshToken The Supabase refresh token.
+     * @param userId       The Supabase user ID (from the JWT `sub` claim).
+     * @param userEmail    The user's email address (from the JWT `email` claim), or null.
+     * @param expiresAt    Unix epoch seconds at which the access token expires.
+     */
+    fun storeOAuthSession(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresAt: Long,
+    ) {
+        val token = AuthToken(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            userId = userId,
+            userEmail = userEmail,
+            expiresAt = expiresAt,
+        )
+        val storage = get<TokenStorage>()
+        storage.save(token)
+
+        // Upsert a local user record so the app can display the profile
+        val now = Clock.System.now()
+        val email = userEmail?.takeIf { it.isNotBlank() } ?: "$userId@social.local"
+        val displayName = email.substringBefore('@').ifBlank { "User" }
+        val user = User(
+            id = userId,
+            email = email,
+            displayName = displayName,
+            createdAt = now,
+            lastSyncedAt = now,
+        )
+        val userRepository = get<UserRepository>()
+        // Fire-and-forget: upsert runs on the DB dispatcher inside the repository
+        GlobalScope.launch(Dispatchers.Default) {
+            runCatching { userRepository.upsertUser(user) }
+        }
+    }
 
     companion object {
         /**
