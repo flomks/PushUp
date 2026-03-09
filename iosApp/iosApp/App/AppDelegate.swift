@@ -26,6 +26,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             await setupNotifications()
         }
 
+        // Start the sync service: wires up network reconnect handling and
+        // periodic background sync. Must run after Koin is initialised.
+        Task { @MainActor in
+            SyncService.shared.start()
+        }
+
         return true
     }
 

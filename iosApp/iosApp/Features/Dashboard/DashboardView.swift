@@ -247,6 +247,10 @@ struct DashboardView: View {
                     .tint(AppColors.primary)
             }
         }
+
+        // Sync status indicator (Task 3.14) -- shows sync state and
+        // unsynced workout count badge in the navigation bar.
+        SyncIndicatorToolbarItem()
     }
 }
 
