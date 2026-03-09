@@ -191,35 +191,14 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
         // Determine the correct orientation to pass to Vision.
         //
         // CameraManager applies two transforms to the video output connection:
-        //   1. Rotation to portrait (videoRotationAngle=90 on iOS 17+,
-        //      videoOrientation=.portrait on iOS 16)
+        //   1. Rotation to portrait via videoRotationAngle=90 (iOS 17+)
         //   2. Horizontal mirroring for the front camera (isVideoMirrored=true)
         //
-        // On iOS 17+, videoRotationAngle physically rotates the CVPixelBuffer
-        // to portrait AND isVideoMirrored physically mirrors the pixels.
-        // The buffer we receive is already portrait and already mirrored.
-        // Vision must receive .up (NOT .upMirrored — the buffer is pre-mirrored).
-        //
-        // On iOS 16, videoOrientation=.portrait does NOT rotate the raw buffer
-        // (only the preview layer). But isVideoMirrored DOES mirror the pixels.
-        // The buffer is landscape-right and pre-mirrored for front camera.
-        // Vision must receive .right (NOT .leftMirrored — already mirrored).
-        //
-        // In both cases: the front camera buffer is already mirrored by
-        // AVFoundation, so we must NOT tell Vision to mirror again.
-        let orientation: CGImagePropertyOrientation = {
-            let width  = CVPixelBufferGetWidth(pixelBuffer)
-            let height = CVPixelBufferGetHeight(pixelBuffer)
-            if height > width {
-                // Portrait buffer (iOS 17+ with videoRotationAngle=90)
-                // Already mirrored for front camera → always .up
-                return .up
-            } else {
-                // Landscape buffer (iOS 16 native sensor orientation)
-                // Already mirrored for front camera → always .right
-                return .right
-            }
-        }()
+        // videoRotationAngle physically rotates the CVPixelBuffer to portrait
+        // AND isVideoMirrored physically mirrors the pixels. The buffer we
+        // receive is already portrait and already mirrored for front camera.
+        // Vision must receive .up (NOT .upMirrored -- the buffer is pre-mirrored).
+        let orientation: CGImagePropertyOrientation = .up
 
         let handler = VNImageRequestHandler(
             cvPixelBuffer: pixelBuffer,
