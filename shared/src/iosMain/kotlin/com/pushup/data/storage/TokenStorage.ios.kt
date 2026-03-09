@@ -94,7 +94,7 @@ actual class TokenStorage {
 
         // Build the attributes dict with the new value.
         val updateAttributes = newCFDict()
-        cfSet(updateQuery, kSecValueData, data)
+        cfSet(updateAttributes, kSecValueData, data)
 
         val updateStatus = SecItemUpdate(updateQuery, updateAttributes)
         CFBridgingRelease(updateQuery)
