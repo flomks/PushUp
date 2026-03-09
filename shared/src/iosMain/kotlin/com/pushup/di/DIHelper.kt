@@ -1,5 +1,6 @@
 package com.pushup.di
 
+import com.pushup.domain.model.User
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
@@ -41,4 +42,14 @@ object DIHelper : KoinComponent {
     fun loginWithGoogleUseCase(): LoginWithGoogleUseCase = get()
     fun logoutUseCase(): LogoutUseCase = get()
     fun getCurrentUserUseCase(): GetCurrentUserUseCase = get()
+
+    /**
+     * Exchanges a Supabase PKCE OAuth code for a session.
+     *
+     * Exposed as a top-level suspend function on DIHelper so Swift can call it
+     * directly via the KMP async bridge, avoiding the need to call a non-operator
+     * method on LoginWithGoogleUseCase (which Kotlin/Native exports differently).
+     */
+    suspend fun loginWithGoogleOAuthCode(code: String): User =
+        get<LoginWithGoogleUseCase>().invokeWithOAuthCode(code)
 }
