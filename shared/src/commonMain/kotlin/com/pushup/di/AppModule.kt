@@ -44,6 +44,9 @@ import com.pushup.domain.usecase.auth.LogoutUseCase
 import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.FriendshipApiClient
+import com.pushup.data.repository.FriendshipRepositoryImpl
+import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
 import com.pushup.domain.usecase.sync.SyncManager
@@ -170,6 +173,10 @@ val repositoryModule: Module = module {
             clock = get(),
             dispatcher = get(named(DB_DISPATCHER)),
         )
+    }
+
+    single<FriendshipRepository> {
+        FriendshipRepositoryImpl(apiClient = get())
     }
 }
 
@@ -379,6 +386,16 @@ val apiModule: Module = module {
             tokenProvider = { tokenProvider.getToken() },
         )
     }
+
+    // Friendship / user-search API client
+    single {
+        val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        FriendshipApiClient(
+            httpClient = get(),
+            backendBaseUrl = get(named(BACKEND_BASE_URL)),
+            tokenProvider = { tokenProvider.getToken() },
+        )
+    }
 }
 
 /**
@@ -400,3 +417,5 @@ val sharedModules: List<Module> = listOf(
     useCaseModule,
     apiModule,
 )
+
+
