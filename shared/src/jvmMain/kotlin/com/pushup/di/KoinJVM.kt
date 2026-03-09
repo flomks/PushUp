@@ -4,6 +4,7 @@ import com.flomks.pushup.db.DatabaseDriverFactory
 import com.flomks.pushup.db.JvmDatabaseDriverFactory
 import com.pushup.data.storage.TokenStorage
 import org.koin.core.context.startKoin
+import org.koin.core.module.Module
 import org.koin.dsl.module
 
 /**
@@ -37,9 +38,12 @@ val jvmModule = module {
  *     }
  * }
  * ```
+ *
+ * @param extraModules Additional Koin modules to load (e.g. presentation-layer
+ *   ViewModel modules from the composeApp layer).
  */
-fun initKoin() {
+fun initKoin(vararg extraModules: Module) {
     startKoin {
-        modules(jvmModule + sharedModules)
+        modules(listOf(jvmModule) + sharedModules + extraModules.toList())
     }
 }

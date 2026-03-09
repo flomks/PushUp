@@ -8,6 +8,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
+import org.koin.core.module.Module
 import org.koin.dsl.module
 
 /**
@@ -50,10 +51,10 @@ val androidModule = module {
  *   warnings during development. Set to `false` (or `BuildConfig.DEBUG`) in
  *   production to suppress verbose output.
  */
-fun initKoin(context: Context, isDebug: Boolean = false) {
+fun initKoin(context: Context, isDebug: Boolean = false, vararg extraModules: Module) {
     startKoin {
         androidLogger(if (isDebug) Level.DEBUG else Level.ERROR)
         androidContext(context)
-        modules(androidModule + sharedModules)
+        modules(listOf(androidModule) + sharedModules + extraModules.toList())
     }
 }
