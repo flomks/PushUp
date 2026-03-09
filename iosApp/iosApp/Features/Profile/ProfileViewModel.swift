@@ -189,9 +189,16 @@ final class ProfileViewModel: ObservableObject {
     /// Cancellable handle for the success-message auto-dismiss task.
     private var successDismissTask: Task<Void, Never>?
 
-    // MARK: - Init
+    /// KMP Flow observation job for live session updates.
+    private var sessionObservationJob: Kotlinx_coroutines_coreJob?
+
+    // MARK: - Init / Deinit
 
     init() {}
+
+    deinit {
+        sessionObservationJob?.cancel(cause: nil)
+    }
 
     // MARK: - Actions
 
@@ -203,6 +210,7 @@ final class ProfileViewModel: ObservableObject {
 
         if let user = await AuthService.shared.getCurrentUser() {
             applyUserData(user)
+            startObservingStats(userId: user.id)
         } else {
             displayName = ""
             savedDisplayName = ""
@@ -442,14 +450,28 @@ final class ProfileViewModel: ObservableObject {
         formatter.timeStyle = .none
         memberSinceText = formatter.string(from: joinDate)
 
-        // Stats are loaded separately (workout history, time credits).
-        // Show zero until the stats use cases are wired up.
+        // Stats will be populated by the session observation Flow.
+        // Show zero initially until the first emission arrives.
         if stats == nil {
             stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
         }
+    }
 
-        // avatarImage stays nil to show the initials fallback by default.
-        // Load from avatarURL via AsyncImage when avatar upload is implemented.
+    /// Starts observing workout sessions to compute live profile statistics.
+    private func startObservingStats(userId: String) {
+        guard sessionObservationJob == nil else { return }
+
+        sessionObservationJob = DataBridge.shared.observeSessions(userId: userId) { [weak self] sessions in
+            guard let self else { return }
+            let completed = sessions.filter { $0.endedAt != nil }
+            let totalPushUps = completed.reduce(0) { $0 + Int($1.pushUpCount) }
+            let totalEarned  = completed.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            self.stats = ProfileStats(
+                totalPushUps: totalPushUps,
+                totalWorkouts: completed.count,
+                totalEarnedMinutes: totalEarned / 60
+            )
+        }
     }
 }
 

@@ -3,7 +3,6 @@ import Shared
 
 // MARK: - StatsTab
 
-/// The four time-range tabs available on the Stats screen.
 enum StatsTab: Int, CaseIterable, Identifiable {
     case daily   = 0
     case weekly  = 1
@@ -38,7 +37,7 @@ struct DayWorkoutData: Identifiable {
 // MARK: - WeeklyBarData
 
 struct WeeklyBarData: Identifiable {
-    let id: Int             // 0 = Mon ... 6 = Sun
+    let id: Int
     let label: String
     let date: Date
     let pushUps: Int
@@ -94,10 +93,10 @@ struct MonthComparison {
 
 /// Manages all data and state for the Stats screen.
 ///
-/// Fetches data from the local SQLite database via KMP's `DataBridge`.
-/// Data is loaded once on first appear and refreshed on pull-to-refresh.
-/// Because the stats use cases aggregate from the local DB, they always
-/// reflect the latest completed workouts without requiring a cloud sync.
+/// Observes the local SQLite database via `DataBridge.observeSessions`.
+/// All stats are computed in-memory from the session list, which is instant.
+/// No per-day API calls are made -- the Flow emits the full session list and
+/// this ViewModel aggregates it into daily/weekly/monthly/total views.
 @MainActor
 final class StatsViewModel: ObservableObject {
 
@@ -135,29 +134,43 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private var currentUserId: String?
+    private var allSessions: [Shared.WorkoutSession] = []
+    private var observationJob: Kotlinx_coroutines_coreJob?
 
-    // MARK: - Init
+    // MARK: - Init / Deinit
 
     init() {}
 
-    // MARK: - Actions
-
-    /// Loads all stats data. Called on first appear.
-    func loadData() async {
-        guard !isLoading, !isRefreshing else { return }
-        isLoading = true
-        errorMessage = nil
-        await fetchAllStats()
-        isLoading = false
+    deinit {
+        observationJob?.cancel(cause: nil)
     }
 
-    /// Triggered by pull-to-refresh.
+    // MARK: - Actions
+
+    func loadData() async {
+        guard observationJob == nil else { return }
+        isLoading = true
+        errorMessage = nil
+
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            isLoading = false
+            applyEmptyState()
+            return
+        }
+
+        observationJob = DataBridge.shared.observeSessions(userId: user.id) { [weak self] sessions in
+            guard let self else { return }
+            self.allSessions = sessions.filter { $0.endedAt != nil }
+            self.rebuildAllStats()
+            self.isLoading = false
+            self.isRefreshing = false
+        }
+    }
+
     func refresh() async {
         guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
-        errorMessage = nil
-        await fetchAllStats()
+        try? await Task.sleep(for: .milliseconds(500))
         isRefreshing = false
     }
 
@@ -167,14 +180,16 @@ final class StatsViewModel: ObservableObject {
         displayedMonth = Calendar.current.date(
             byAdding: .month, value: -1, to: displayedMonth
         ) ?? displayedMonth
-        Task { await loadCalendarDays() }
+        rebuildCalendarDays()
+        rebuildMonthlyStats()
     }
 
     func nextMonth() {
         displayedMonth = Calendar.current.date(
             byAdding: .month, value: 1, to: displayedMonth
         ) ?? displayedMonth
-        Task { await loadCalendarDays() }
+        rebuildCalendarDays()
+        rebuildMonthlyStats()
     }
 
     func selectDay(_ day: DayWorkoutData) {
@@ -183,111 +198,18 @@ final class StatsViewModel: ObservableObject {
         showDayDetail = true
     }
 
-    // MARK: - Private: Fetch
+    // MARK: - Private: Rebuild All
 
-    private func fetchAllStats() async {
-        guard let user = await AuthService.shared.getCurrentUser() else {
-            applyEmptyState()
-            return
-        }
-        let userId = user.id
-        currentUserId = userId
-
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.loadWeeklyStats(userId: userId) }
-            group.addTask { await self.loadTotalStats(userId: userId) }
-            group.addTask { await self.loadCalendarDays() }
-        }
-    }
-
-    // MARK: - Private: Weekly
-
-    private func loadWeeklyStats(userId: String) async {
-        let calendar = Calendar.current
-        let today = Date()
-        let todayIndex = WeekdayHelper.todayIndex()
-        let daysFromMonday = todayIndex
-        guard let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: today) else { return }
-
-        let isoFormatter = Self.isoDateFormatter
-        let weekStartStr = isoFormatter.string(from: monday)
-
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DataBridge.shared.fetchWeeklyStats(userId: userId, weekStart: weekStartStr) { [weak self] result in
-                guard let self else { continuation.resume(); return }
-                Task { @MainActor in
-                    self.applyWeeklyStats(result: result, monday: monday, todayIndex: todayIndex)
-                    continuation.resume()
-                }
-            }
-        }
-    }
-
-    private func applyWeeklyStats(result: WeeklyStatsResult, monday: Date, todayIndex: Int) {
-        let calendar = Calendar.current
-        let labels = WeekdayHelper.dayLabels
-
-        weeklyBars = labels.enumerated().map { idx, label in
-            let dayDate = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
-            let daily = idx < result.dailyBreakdown.count ? result.dailyBreakdown[idx] : nil
-            return WeeklyBarData(
-                id: idx,
-                label: label,
-                date: dayDate,
-                pushUps: Int(daily?.totalPushUps ?? 0),
-                sessions: Int(daily?.totalSessions ?? 0),
-                earnedMinutes: Int((daily?.totalEarnedSeconds ?? 0) / 60),
-                isToday: idx == todayIndex
-            )
-        }
-
-        weeklyTotalPushUps   = Int(result.totalPushUps)
-        weeklyTotalSessions  = Int(result.totalSessions)
-        weeklyEarnedMinutes  = Int(result.totalEarnedSeconds / 60)
-        weeklyAveragePushUps = result.totalSessions > 0
-            ? Double(result.totalPushUps) / Double(result.totalSessions)
-            : 0
-    }
-
-    // MARK: - Private: Total
-
-    private func loadTotalStats(userId: String) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DataBridge.shared.fetchTotalStats(userId: userId) { [weak self] result in
-                guard let self else { continuation.resume(); return }
-                Task { @MainActor in
-                    if result.totalSessions > 0 {
-                        self.totalStats = TotalStatsData(
-                            totalPushUps: Int(result.totalPushUps),
-                            totalSessions: Int(result.totalSessions),
-                            totalEarnedMinutes: Int(result.totalEarnedSeconds / 60),
-                            longestStreakDays: Int(result.longestStreakDays),
-                            currentStreakDays: Int(result.currentStreakDays),
-                            averagePushUpsPerSession: result.averagePushUpsPerSession,
-                            averageSessionDurationSeconds: 0,
-                            bestSingleSession: Int(result.bestSession),
-                            bestDay: 0,
-                            bestWeek: 0,
-                            activeDays: 0,
-                            averageQuality: result.averageQuality
-                        )
-                    } else {
-                        self.totalStats = nil
-                    }
-                    continuation.resume()
-                }
-            }
-        }
+    private func rebuildAllStats() {
+        rebuildCalendarDays()
+        rebuildWeeklyStats()
+        rebuildMonthlyStats()
+        rebuildTotalStats()
     }
 
     // MARK: - Private: Calendar Days
 
-    private func loadCalendarDays() async {
-        guard let userId = currentUserId else {
-            calendarDays = []
-            return
-        }
-
+    private func rebuildCalendarDays() {
         let calendar = Calendar.current
         let year  = calendar.component(.year,  from: displayedMonth)
         let month = calendar.component(.month, from: displayedMonth)
@@ -298,41 +220,204 @@ final class StatsViewModel: ObservableObject {
             return
         }
 
-        var days: [DayWorkoutData] = []
-        let isoFormatter = Self.isoDateFormatter
+        let sessionsByDay = groupSessionsByDayKey(allSessions)
 
-        await withTaskGroup(of: DayWorkoutData?.self) { group in
-            for day in range {
-                guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
-                let dateStr = isoFormatter.string(from: date)
-                let capturedDate = date
+        calendarDays = range.compactMap { day -> DayWorkoutData? in
+            guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+            let key = Self.isoDateFormatter.string(from: date)
+            let daySessions = sessionsByDay[key] ?? []
+            let pushUps = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
+            let earned  = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            let quality = daySessions.isEmpty ? 0.0
+                : daySessions.reduce(0.0) { $0 + Double($1.quality) } / Double(daySessions.count)
+            return DayWorkoutData(
+                id: key, date: date, pushUps: pushUps,
+                sessions: daySessions.count, earnedMinutes: earned / 60,
+                averageQuality: quality
+            )
+        }
+    }
 
-                group.addTask {
-                    await withCheckedContinuation { (cont: CheckedContinuation<DayWorkoutData?, Never>) in
-                        DataBridge.shared.fetchDailyStats(userId: userId, date: dateStr) { result in
-                            let data = DayWorkoutData(
-                                id: dateStr,
-                                date: capturedDate,
-                                pushUps: Int(result.totalPushUps),
-                                sessions: Int(result.totalSessions),
-                                earnedMinutes: Int(result.totalEarnedSeconds / 60),
-                                averageQuality: result.averageQuality
-                            )
-                            cont.resume(returning: data)
-                        }
+    // MARK: - Private: Weekly Stats
+
+    private func rebuildWeeklyStats() {
+        let calendar = Calendar.current
+        let today = Date()
+        let todayIndex = WeekdayHelper.todayIndex()
+        guard let monday = calendar.date(byAdding: .day, value: -todayIndex, to: calendar.startOfDay(for: today)) else {
+            weeklyBars = Self.makeEmptyWeeklyBars()
+            return
+        }
+
+        let sessionsByDay = groupSessionsByDayKey(allSessions)
+        var totalPU = 0, totalSess = 0, totalEarned = 0
+
+        weeklyBars = WeekdayHelper.dayLabels.enumerated().map { idx, label in
+            let dayDate = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
+            let key = Self.isoDateFormatter.string(from: dayDate)
+            let daySessions = sessionsByDay[key] ?? []
+            let pu = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
+            let earned = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            totalPU += pu
+            totalSess += daySessions.count
+            totalEarned += earned
+            return WeeklyBarData(
+                id: idx, label: label, date: dayDate,
+                pushUps: pu, sessions: daySessions.count,
+                earnedMinutes: earned / 60, isToday: idx == todayIndex
+            )
+        }
+
+        weeklyTotalPushUps   = totalPU
+        weeklyTotalSessions  = totalSess
+        weeklyEarnedMinutes  = totalEarned / 60
+        weeklyAveragePushUps = totalSess > 0 ? Double(totalPU) / Double(totalSess) : 0
+    }
+
+    // MARK: - Private: Monthly Stats
+
+    private func rebuildMonthlyStats() {
+        let calendar = Calendar.current
+        let year  = calendar.component(.year,  from: displayedMonth)
+        let month = calendar.component(.month, from: displayedMonth)
+
+        guard let firstDay = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
+              let range    = calendar.range(of: .day, in: .month, for: firstDay) else {
+            monthlyWeeks = []; monthlyTotalPushUps = 0; monthlyTotalSessions = 0; monthlyEarnedMinutes = 0
+            return
+        }
+
+        let sessionsByDay = groupSessionsByDayKey(allSessions)
+        var weekMap: [Int: (pushUps: Int, sessions: Int, earned: Int)] = [:]
+        var totalPU = 0, totalSess = 0, totalEarned = 0
+
+        for day in range {
+            guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
+            let weekOfMonth = calendar.component(.weekOfMonth, from: date)
+            let key = Self.isoDateFormatter.string(from: date)
+            let daySessions = sessionsByDay[key] ?? []
+            let pu = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
+            let earned = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            totalPU += pu; totalSess += daySessions.count; totalEarned += earned
+            var w = weekMap[weekOfMonth] ?? (0, 0, 0)
+            w.pushUps += pu; w.sessions += daySessions.count; w.earned += earned
+            weekMap[weekOfMonth] = w
+        }
+
+        monthlyWeeks = weekMap.sorted { $0.key < $1.key }.map { weekNum, data in
+            let weekStart = calendar.date(from: DateComponents(year: year, month: month, day: (weekNum - 1) * 7 + 1)) ?? firstDay
+            return MonthlyWeekData(
+                id: weekNum, label: "W\(weekNum)", weekStart: weekStart,
+                totalPushUps: data.pushUps, totalSessions: data.sessions,
+                totalEarnedMinutes: data.earned / 60
+            )
+        }
+
+        monthlyTotalPushUps  = totalPU
+        monthlyTotalSessions = totalSess
+        monthlyEarnedMinutes = totalEarned / 60
+
+        // Month comparison
+        let prevMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+        let prevYear  = calendar.component(.year,  from: prevMonth)
+        let prevMo    = calendar.component(.month, from: prevMonth)
+        let prevPU = allSessions.filter { session in
+            let d = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            return calendar.component(.year, from: d) == prevYear && calendar.component(.month, from: d) == prevMo
+        }.reduce(0) { $0 + Int($1.pushUpCount) }
+
+        monthComparison = MonthComparison(currentMonthPushUps: totalPU, previousMonthPushUps: prevPU)
+    }
+
+    // MARK: - Private: Total Stats
+
+    private func rebuildTotalStats() {
+        guard !allSessions.isEmpty else { totalStats = nil; return }
+
+        let totalPU   = allSessions.reduce(0) { $0 + Int($1.pushUpCount) }
+        let totalSess = allSessions.count
+        let totalEarned = allSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+        let bestSession = allSessions.map { Int($0.pushUpCount) }.max() ?? 0
+        let avgQuality  = allSessions.reduce(0.0) { $0 + Double($1.quality) } / Double(totalSess)
+        let avgPU       = Double(totalPU) / Double(totalSess)
+
+        let calendar = Calendar.current
+        let sessionsByDay = groupSessionsByDayKey(allSessions)
+
+        let activeDays = sessionsByDay.count
+        let bestDay = sessionsByDay.values.map { sessions in
+            sessions.reduce(0) { $0 + Int($1.pushUpCount) }
+        }.max() ?? 0
+
+        // Streak calculation
+        let sortedDayKeys = sessionsByDay.keys.sorted()
+        let today = Self.isoDateFormatter.string(from: Date())
+        let yesterday = Self.isoDateFormatter.string(from: calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+
+        var currentStreak = 0
+        var longestStreak = 0
+        var runLength = 1
+
+        if !sortedDayKeys.isEmpty {
+            for i in 1..<sortedDayKeys.count {
+                if let prev = Self.isoDateFormatter.date(from: sortedDayKeys[i-1]),
+                   let curr = Self.isoDateFormatter.date(from: sortedDayKeys[i]),
+                   let expected = calendar.date(byAdding: .day, value: 1, to: prev),
+                   calendar.isDate(curr, inSameDayAs: expected) {
+                    runLength += 1
+                    longestStreak = max(longestStreak, runLength)
+                } else {
+                    runLength = 1
+                }
+            }
+            longestStreak = max(longestStreak, runLength)
+
+            let lastKey = sortedDayKeys.last!
+            if lastKey == today || lastKey == yesterday {
+                currentStreak = 1
+                for i in stride(from: sortedDayKeys.count - 1, through: 1, by: -1) {
+                    if let curr = Self.isoDateFormatter.date(from: sortedDayKeys[i]),
+                       let prev = Self.isoDateFormatter.date(from: sortedDayKeys[i-1]),
+                       let expected = calendar.date(byAdding: .day, value: -1, to: curr),
+                       calendar.isDate(prev, inSameDayAs: expected) {
+                        currentStreak += 1
+                    } else {
+                        break
                     }
                 }
             }
-
-            for await result in group {
-                if let data = result { days.append(data) }
-            }
         }
 
-        calendarDays = days.sorted { $0.date < $1.date }
+        let totalDuration = allSessions.reduce(0) { total, session in
+            guard let endedAt = session.endedAt else { return total }
+            return total + Int(endedAt.epochSeconds - session.startedAt.epochSeconds)
+        }
+        let avgDuration = totalSess > 0 ? totalDuration / totalSess : 0
+
+        totalStats = TotalStatsData(
+            totalPushUps: totalPU,
+            totalSessions: totalSess,
+            totalEarnedMinutes: totalEarned / 60,
+            longestStreakDays: longestStreak,
+            currentStreakDays: currentStreak,
+            averagePushUpsPerSession: avgPU,
+            averageSessionDurationSeconds: avgDuration,
+            bestSingleSession: bestSession,
+            bestDay: bestDay,
+            bestWeek: 0,
+            activeDays: activeDays,
+            averageQuality: avgQuality
+        )
     }
 
-    // MARK: - Private: Empty State
+    // MARK: - Private: Helpers
+
+    private func groupSessionsByDayKey(_ sessions: [Shared.WorkoutSession]) -> [String: [Shared.WorkoutSession]] {
+        Dictionary(grouping: sessions) { session in
+            let d = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            return Self.isoDateFormatter.string(from: d)
+        }
+    }
 
     private func applyEmptyState() {
         calendarDays         = []
@@ -353,8 +438,7 @@ final class StatsViewModel: ObservableObject {
         let calendar   = Calendar.current
         let today      = Date()
         let todayIndex = WeekdayHelper.todayIndex()
-        let daysFromMonday = todayIndex
-        guard let monday = calendar.date(byAdding: .day, value: -daysFromMonday, to: today) else { return [] }
+        guard let monday = calendar.date(byAdding: .day, value: -todayIndex, to: calendar.startOfDay(for: today)) else { return [] }
 
         return WeekdayHelper.dayLabels.enumerated().map { idx, label in
             let date = calendar.date(byAdding: .day, value: idx, to: monday) ?? today
