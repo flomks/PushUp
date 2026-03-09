@@ -90,9 +90,36 @@ val iosModule = module {
 }
 
 /**
+ * Initialises Koin for the iOS application with optional extra modules.
+ *
+ * Prefer calling the no-argument [initKoin] overload from Swift, which maps
+ * to `KoinIOSKt.doInitKoin()` with no parameters. Use this overload only
+ * when you need to inject additional test or debug modules alongside the
+ * standard iOS and shared modules.
+ *
+ * **Note on `vararg` and Swift interop:** Kotlin `vararg` parameters are
+ * exposed to Swift as `KotlinArray<T>`, which is a required (non-optional)
+ * parameter. Calling this overload from Swift therefore requires an explicit
+ * array argument. The no-argument [initKoin] overload below avoids this
+ * friction for the common case.
+ *
+ * @param extraModules Additional Koin modules to load alongside [iosModule]
+ *   and [sharedModules]. Useful for injecting test doubles or feature flags.
+ */
+fun initKoin(vararg extraModules: Module) {
+    startKoin {
+        modules(listOf(iosModule) + sharedModules + extraModules.toList())
+    }
+}
+
+/**
  * Initialises Koin for the iOS application.
  *
- * Call this function from `AppDelegate.application(_:didFinishLaunchingWithOptions:)`
+ * This is the primary entry point for Swift callers. It maps to
+ * `KoinIOSKt.doInitKoin()` in Swift with **no arguments**, avoiding the
+ * `KotlinArray` parameter that Kotlin's `vararg` produces in the Swift bridge.
+ *
+ * Call this from `AppDelegate.application(_:didFinishLaunchingWithOptions:)`
  * **before** any Koin-managed dependency is accessed:
  *
  * ```swift
@@ -105,19 +132,13 @@ val iosModule = module {
  *         return true
  *     }
  * }
- *
- * @main
- * struct PushUpApp: App {
- *     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
- *     var body: some Scene { WindowGroup { ContentView() } }
- * }
  * ```
  *
  * Returns `Unit` (mapped to `Void` in Swift) to keep the Swift API surface
  * clean — callers have no use for the internal `KoinApplication` object.
  */
-fun initKoin(vararg extraModules: Module) {
+fun initKoin() {
     startKoin {
-        modules(listOf(iosModule) + sharedModules + extraModules.toList())
+        modules(listOf(iosModule) + sharedModules)
     }
 }
