@@ -127,8 +127,18 @@ struct MainTabView: View {
             .tag(Tab.stats)
             .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
+            // Profile tab -- real implementation (Task 3.10)
+            NavigationStack {
+                ProfileView()
+            }
+            .tabItem {
+                Label(Tab.profile.label, icon: Tab.profile.icon)
+            }
+            .tag(Tab.profile)
+            .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
+
             // Remaining tabs -- placeholders until their tasks are implemented
-            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .history && $0 != .stats }) { tab in
+            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .history && $0 != .stats && $0 != .profile }) { tab in
                 NavigationStack {
                     TabPlaceholderView(tab: tab)
                 }
