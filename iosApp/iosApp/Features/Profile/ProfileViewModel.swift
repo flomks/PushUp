@@ -201,8 +201,7 @@ final class ProfileViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        let result = await DIHelper.shared.safeGetCurrentUser()
-        if let user = result.user {
+        if let user = await AuthService.shared.getCurrentUser() {
             applyUserData(user)
         } else {
             displayName = ""
@@ -335,7 +334,7 @@ final class ProfileViewModel: ObservableObject {
     /// login screen.
     func signOut() {
         Task {
-            await DIHelper.shared.safeLogout()
+            await AuthService.shared.logout()
         }
         NotificationCenter.default.post(name: .userDidSignOut, object: nil)
     }
