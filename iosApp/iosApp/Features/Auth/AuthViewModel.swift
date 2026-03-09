@@ -104,6 +104,11 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Continuation for Apple Sign-In — bridges the delegate callback to async/await.
     private var appleSignInContinuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>?
 
+    /// Retained reference to the active ASWebAuthenticationSession.
+    /// Must be kept alive for the duration of the OAuth flow — ARC would
+    /// otherwise deallocate it immediately after start() returns.
+    private var webAuthSession: ASWebAuthenticationSession?
+
     // MARK: - Form Validation
 
     /// Returns `true` when the login form has valid, non-empty inputs.
@@ -464,12 +469,32 @@ final class AuthViewModel: NSObject, ObservableObject {
     }
 
     /// Opens an ASWebAuthenticationSession and returns the callback URL.
+    ///
+    /// Must be called on the MainActor (this class is @MainActor so that is
+    /// guaranteed). The session is retained as a property so ARC does not
+    /// deallocate it before the callback fires.
     private func openWebAuthSession(url: URL, callbackScheme: String) async throws -> URL {
+        // Find the key window before entering the continuation — UIKit APIs
+        // must be called on the main thread, which is guaranteed here because
+        // AuthViewModel is @MainActor.
+        guard
+            let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+            let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow })
+                ?? windowScene.windows.first
+        else {
+            throw AuthError.unknown("No active window found for Google Sign-In.")
+        }
+
+        let provider = WebAuthPresentationProvider(window: keyWindow)
+
         return try await withCheckedThrowingContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: callbackScheme
-            ) { callbackURL, error in
+            ) { [weak self] callbackURL, error in
+                self?.webAuthSession = nil
                 if let error = error {
                     continuation.resume(throwing: error)
                 } else if let callbackURL = callbackURL {
@@ -479,19 +504,11 @@ final class AuthViewModel: NSObject, ObservableObject {
                 }
             }
             session.prefersEphemeralWebBrowserSession = false
-            session.presentationContextProvider = self.webAuthPresentationProvider()
+            session.presentationContextProvider = provider
+            // Retain the session so ARC does not free it before the callback.
+            self.webAuthSession = session
             session.start()
         }
-    }
-
-    /// Returns a presentation context provider for ASWebAuthenticationSession.
-    private func webAuthPresentationProvider() -> ASWebAuthenticationPresentationContextProviding {
-        let window = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }?
-            .windows
-            .first { $0.isKeyWindow }
-        return WebAuthPresentationProvider(window: window ?? UIWindow())
     }
 
     /// Parses the Supabase OAuth callback URL and stores the session via KMP.
