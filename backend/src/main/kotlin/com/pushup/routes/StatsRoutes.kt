@@ -6,6 +6,7 @@ import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.StatsService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.log
 import io.ktor.server.auth.authenticate
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -17,6 +18,10 @@ import java.time.format.DateTimeParseException
 /**
  * Registers all /api/stats/[daily|weekly|monthly|total|streak] routes.
  * Every endpoint requires a valid Supabase JWT (Bearer token).
+ *
+ * All database operations are wrapped in try-catch to prevent uncaught
+ * exceptions from crashing the server process. Errors are logged and
+ * a 500 response is returned to the client.
  */
 fun Route.statsRoutes(statsService: StatsService) {
     authenticate(JWT_AUTH) {
@@ -27,7 +32,15 @@ fun Route.statsRoutes(statsService: StatsService) {
                     HttpStatusCode.Unauthorized, ErrorResponse("unauthorized", "Missing or invalid user identity")
                 )
                 val date = call.parseDate("date") ?: return@get
-                call.respond(HttpStatusCode.OK, statsService.getDailyStats(userId, date))
+                try {
+                    call.respond(HttpStatusCode.OK, statsService.getDailyStats(userId, date))
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get daily stats for user $userId on $date", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("internal_server_error", "Failed to retrieve daily statistics"),
+                    )
+                }
             }
 
             get("/weekly") {
@@ -35,7 +48,15 @@ fun Route.statsRoutes(statsService: StatsService) {
                     HttpStatusCode.Unauthorized, ErrorResponse("unauthorized", "Missing or invalid user identity")
                 )
                 val weekStart = call.parseDate("week_start") ?: return@get
-                call.respond(HttpStatusCode.OK, statsService.getWeeklyStats(userId, weekStart))
+                try {
+                    call.respond(HttpStatusCode.OK, statsService.getWeeklyStats(userId, weekStart))
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get weekly stats for user $userId starting $weekStart", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("internal_server_error", "Failed to retrieve weekly statistics"),
+                    )
+                }
             }
 
             get("/monthly") {
@@ -64,21 +85,45 @@ fun Route.statsRoutes(statsService: StatsService) {
                         ErrorResponse("bad_request", "Invalid 'year' value '$yearParam'. Must be between 2000 and 2100."),
                     )
                 }
-                call.respond(HttpStatusCode.OK, statsService.getMonthlyStats(userId, month, year))
+                try {
+                    call.respond(HttpStatusCode.OK, statsService.getMonthlyStats(userId, month, year))
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get monthly stats for user $userId ($month/$year)", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("internal_server_error", "Failed to retrieve monthly statistics"),
+                    )
+                }
             }
 
             get("/total") {
                 val userId = call.authenticatedUserId() ?: return@get call.respond(
                     HttpStatusCode.Unauthorized, ErrorResponse("unauthorized", "Missing or invalid user identity")
                 )
-                call.respond(HttpStatusCode.OK, statsService.getTotalStats(userId))
+                try {
+                    call.respond(HttpStatusCode.OK, statsService.getTotalStats(userId))
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get total stats for user $userId", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("internal_server_error", "Failed to retrieve total statistics"),
+                    )
+                }
             }
 
             get("/streak") {
                 val userId = call.authenticatedUserId() ?: return@get call.respond(
                     HttpStatusCode.Unauthorized, ErrorResponse("unauthorized", "Missing or invalid user identity")
                 )
-                call.respond(HttpStatusCode.OK, statsService.getStreak(userId))
+                try {
+                    call.respond(HttpStatusCode.OK, statsService.getStreak(userId))
+                } catch (e: Exception) {
+                    call.application.log.error("Failed to get streak for user $userId", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse("internal_server_error", "Failed to retrieve streak data"),
+                    )
+                }
             }
         }
     }

@@ -1,30 +1,52 @@
 package com.pushup.plugins
 
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
+import io.ktor.server.application.log
 import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.calllogging.processingTimeMillis
 import io.ktor.server.plugins.defaultheaders.DefaultHeaders
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import org.slf4j.event.Level
 
 fun Application.configureMonitoring() {
+    val isDev = System.getenv("KTOR_ENV") != "production"
+
     install(CallLogging) {
         level = Level.INFO
-        // Health-Check-Requests nicht loggen -- wuerden die Logs fluten
-        filter { call -> !call.request.path().startsWith("/health") }
+
+        // In production, suppress /health to avoid log flooding from Docker
+        // healthchecks (every 30s). In dev, log everything so you can see
+        // that the server is alive and responding.
+        if (!isDev) {
+            filter { call -> !call.request.path().startsWith("/health") }
+        }
+
+        // Custom log format: shows method, path, status code, and duration.
+        // Example: "200 OK: GET /api/stats/daily (12ms)"
+        format { call ->
+            val status = call.response.status() ?: HttpStatusCode(0, "Unknown")
+            val method = call.request.httpMethod.value
+            val path = call.request.path()
+            val duration = call.processingTimeMillis()
+            "$status: $method $path (${duration}ms)"
+        }
     }
+
     install(DefaultHeaders) {
-        // Verhindert MIME-Type-Sniffing
         header("X-Content-Type-Options", "nosniff")
-        // Verhindert Einbettung in iframes (Clickjacking-Schutz)
         header("X-Frame-Options", "DENY")
-        // HSTS: Browser merkt sich fuer 1 Jahr dass nur HTTPS erlaubt ist
         header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        // CSP: Nur eigene Ressourcen erlaubt -- API gibt nur JSON aus, kein HTML
         header("Content-Security-Policy", "default-src 'none'")
-        // Kein Referrer-Header bei Cross-Origin-Requests
         header("Referrer-Policy", "no-referrer")
-        // Deaktiviert Browser-Features die eine API nicht benoetigt
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     }
+
+    log.info(
+        "Monitoring configured (call logging: {}, health filter: {})",
+        "enabled",
+        if (isDev) "disabled (all requests logged)" else "enabled (/health suppressed)",
+    )
 }

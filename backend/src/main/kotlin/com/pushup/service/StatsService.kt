@@ -22,7 +22,7 @@ import org.jetbrains.exposed.sql.max
 import org.jetbrains.exposed.sql.min
 import org.jetbrains.exposed.sql.stringParam
 import org.jetbrains.exposed.sql.sum
-import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -98,14 +98,14 @@ class StatsService {
     // Public API
     // -----------------------------------------------------------------------
 
-    fun getDailyStats(userId: UUID, date: LocalDate): DailyStatsDTO = transaction {
+    suspend fun getDailyStats(userId: UUID, date: LocalDate): DailyStatsDTO = newSuspendedTransaction {
         val dayStart = date.atStartOfDay().toInstant(ZoneOffset.UTC)
         val dayEnd = date.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
         val byDay = fetchDailyAggregates(userId, dayStart, dayEnd)
         byDay[date] ?: emptyDailyStats(date)
     }
 
-    fun getWeeklyStats(userId: UUID, weekStart: LocalDate): WeeklyStatsDTO = transaction {
+    suspend fun getWeeklyStats(userId: UUID, weekStart: LocalDate): WeeklyStatsDTO = newSuspendedTransaction {
         val monday = weekStart.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val sunday = monday.plusDays(6)
         val from = monday.atStartOfDay().toInstant(ZoneOffset.UTC)
@@ -115,7 +115,7 @@ class StatsService {
         buildWeeklyDTO(monday, byDay)
     }
 
-    fun getMonthlyStats(userId: UUID, month: Int, year: Int): MonthlyStatsDTO = transaction {
+    suspend fun getMonthlyStats(userId: UUID, month: Int, year: Int): MonthlyStatsDTO = newSuspendedTransaction {
         val firstDay = LocalDate.of(year, month, 1)
         val lastDay = firstDay.with(TemporalAdjusters.lastDayOfMonth())
 
@@ -150,7 +150,7 @@ class StatsService {
         )
     }
 
-    fun getTotalStats(userId: UUID): TotalStatsDTO = transaction {
+    suspend fun getTotalStats(userId: UUID): TotalStatsDTO = newSuspendedTransaction {
         val row = WorkoutSessions
             .select(pushUpSum, creditsSum, qualityAvg, sessionCount, bestSessionExpr, firstWorkoutExpr)
             .where {
@@ -159,7 +159,7 @@ class StatsService {
             }
             .firstOrNull()
 
-        if (row == null) return@transaction emptyTotalStats()
+        if (row == null) return@newSuspendedTransaction emptyTotalStats()
 
         val sessions = row[sessionCount].toInt()
         val pushUps = row[pushUpSum] ?: 0
@@ -188,7 +188,7 @@ class StatsService {
      *
      * @param today Injectable for deterministic unit tests (defaults to UTC today).
      */
-    fun getStreak(userId: UUID, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): StreakDTO = transaction {
+    suspend fun getStreak(userId: UUID, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): StreakDTO = newSuspendedTransaction {
         // SELECT DISTINCT DATE_TRUNC('day', started_at) ... ORDER BY 1 ASC
         val workoutDays: List<LocalDate> = WorkoutSessions
             .select(WorkoutSessions.startedAtDay)
@@ -203,7 +203,7 @@ class StatsService {
             }
 
         if (workoutDays.isEmpty()) {
-            return@transaction StreakDTO(currentStreak = 0, longestStreak = 0, lastWorkoutDate = null)
+            return@newSuspendedTransaction StreakDTO(currentStreak = 0, longestStreak = 0, lastWorkoutDate = null)
         }
 
         val descending = workoutDays.asReversed() // already ASC, reverse is O(1)

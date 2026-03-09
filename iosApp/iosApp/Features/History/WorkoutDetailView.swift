@@ -1,35 +1,42 @@
 import Charts
+import Shared
 import SwiftUI
 
 // MARK: - WorkoutDetailView
 
 /// Detail screen for a single completed workout session.
 ///
+/// Loads push-up records from the local SQLite database on appear via
+/// `DataBridge.fetchRecordsForSession`. The hero metrics card is shown
+/// immediately (data comes from the `WorkoutSession` struct); the chart
+/// and records list appear once the records have loaded.
+///
 /// **Layout**
 /// ```
 /// +-----------------------------------+
-/// |  [Back]  Mon, Mar 8 · 09:42  [X] |  <- navigation bar
-/// |                                   |
-/// |  [Hero metrics card]              |  <- push-ups, duration, earned, quality
-/// |                                   |
-/// |  [Form Score Chart]               |  <- line chart of form score over time
-/// |                                   |
-/// |  [Push-Up Records]                |  <- list of individual reps
-/// |    Rep 1  |  0:05  |  ★★★★☆     |
-/// |    Rep 2  |  0:12  |  ★★★★★     |
-/// |    ...                            |
+/// |  [Back]  Mon, Mar 8 - 09:42  [X]  |  <- navigation bar
+/// |                                    |
+/// |  [Hero metrics card]               |  <- push-ups, duration, earned, quality
+/// |                                    |
+/// |  [Form Score Chart]                |  <- line chart of form score over time
+/// |                                    |
+/// |  [Push-Up Records]                 |  <- list of individual reps
+/// |    Rep 1  |  0:05  |  85%         |
+/// |    Rep 2  |  0:12  |  92%         |
+/// |    ...                             |
 /// +-----------------------------------+
 /// ```
-///
-/// **Acceptance criteria covered (Task 3.9)**
-/// - All PushUpRecords displayed in a scrollable list
-/// - Form-score-over-time line chart using Swift Charts
-/// - Hero metrics: push-ups, duration, earned time, quality stars
 struct WorkoutDetailView: View {
 
     let session: WorkoutSession
 
     @Environment(\.dismiss) private var dismiss
+
+    /// Push-up records loaded from the local DB on appear.
+    @State private var records: [DetailPushUpRecord] = []
+
+    /// Whether records are currently being loaded.
+    @State private var isLoadingRecords: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -48,7 +55,7 @@ struct WorkoutDetailView: View {
                     .padding(.bottom, AppSpacing.screenVerticalBottom)
                 }
             }
-            .navigationTitle(session.shortDateString)
+            .navigationTitle("\(session.shortDateString) - \(session.timeString)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -64,8 +71,31 @@ struct WorkoutDetailView: View {
                     .accessibilityIdentifier("detail_close_button")
                 }
             }
+            .task { loadRecords() }
         }
         .accessibilityIdentifier("workout_detail_screen")
+    }
+
+    // MARK: - Load Records
+
+    private func loadRecords() {
+        let sessionIdString = session.id.uuidString.lowercased()
+        DataBridge.shared.fetchRecordsForSession(sessionId: sessionIdString) { kmpRecords in
+            let startEpoch = session.startDate.timeIntervalSince1970
+            let mapped: [DetailPushUpRecord] = kmpRecords.enumerated().map { index, record in
+                let recordEpoch = Double(record.timestamp.epochSeconds)
+                let offset = max(0, recordEpoch - startEpoch)
+                return DetailPushUpRecord(
+                    id: UUID(uuidString: record.id) ?? UUID(),
+                    repNumber: index + 1,
+                    timeOffset: offset,
+                    formScore: Double(record.formScore),
+                    depthScore: Double(record.depthScore)
+                )
+            }
+            self.records = mapped
+            self.isLoadingRecords = false
+        }
     }
 
     // MARK: - Hero Card
@@ -168,14 +198,26 @@ struct WorkoutDetailView: View {
 
     @ViewBuilder
     private var formScoreChart: some View {
-        if !session.records.isEmpty {
+        if isLoadingRecords {
+            // Loading indicator while records are being fetched
+            VStack(spacing: AppSpacing.sm) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(AppColors.primary)
+                Text("Loading records...")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, AppSpacing.xl)
+        } else if !records.isEmpty {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
                 Label("Form Score Over Time", icon: .chartBar)
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Chart(session.records) { record in
+                Chart(records) { record in
                     // Area fill under the line
                     AreaMark(
                         x: .value("Time", record.timeOffset),
@@ -238,7 +280,7 @@ struct WorkoutDetailView: View {
                     plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
                 }
                 .frame(height: 180)
-                .animation(.spring(duration: 0.6, bounce: 0.1), value: session.records.count)
+                .animation(.spring(duration: 0.6, bounce: 0.1), value: records.count)
 
                 // Legend
                 HStack(spacing: AppSpacing.md) {
@@ -253,6 +295,24 @@ struct WorkoutDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
             .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
             .accessibilityIdentifier("detail_form_score_chart")
+        } else {
+            // No records available -- show a summary instead
+            VStack(spacing: AppSpacing.sm) {
+                Image(icon: .chartBar)
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text("No detailed rep data available for this session.")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, AppSpacing.xl)
+            .padding(.horizontal, AppSpacing.md)
+            .background(AppColors.backgroundSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
         }
     }
 
@@ -279,7 +339,7 @@ struct WorkoutDetailView: View {
 
     @ViewBuilder
     private var recordsList: some View {
-        if !session.records.isEmpty {
+        if !records.isEmpty {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
                 // Header
@@ -290,7 +350,7 @@ struct WorkoutDetailView: View {
 
                     Spacer()
 
-                    Text("\(session.records.count) reps")
+                    Text("\(records.count) reps")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
                 }
@@ -302,10 +362,10 @@ struct WorkoutDetailView: View {
 
                 // Records
                 LazyVStack(spacing: 0) {
-                    ForEach(session.records) { record in
+                    ForEach(records) { record in
                         recordRow(record)
 
-                        if record.id != session.records.last?.id {
+                        if record.id != records.last?.id {
                             Divider()
                                 .padding(.leading, AppSpacing.md)
                         }
@@ -345,7 +405,7 @@ struct WorkoutDetailView: View {
     }
 
     @ViewBuilder
-    private func recordRow(_ record: PushUpRecord) -> some View {
+    private func recordRow(_ record: DetailPushUpRecord) -> some View {
         HStack {
             // Rep number
             Text("#\(record.repNumber)")
@@ -396,19 +456,22 @@ struct WorkoutDetailView: View {
     }
 }
 
+// MARK: - DetailPushUpRecord
+
+/// View-layer model for a single push-up record in the detail view.
+/// Separate from the HistoryViewModel's `PushUpRecord` to avoid coupling.
+struct DetailPushUpRecord: Identifiable {
+    let id: UUID
+    let repNumber: Int
+    let timeOffset: TimeInterval
+    let formScore: Double
+    let depthScore: Double
+}
+
 // MARK: - Previews
 
 #if DEBUG
 #Preview("WorkoutDetailView") {
-    let records: [PushUpRecord] = (1...42).map { i in
-        PushUpRecord(
-            id: UUID(),
-            repNumber: i,
-            timeOffset: Double(i) * 11.5 + Double.random(in: -2...2),
-            formScore: min(1.0, max(0.0, 0.84 + Double.random(in: -0.15...0.15)))
-        )
-    }
-
     let session = WorkoutSession(
         id: UUID(),
         startDate: Date().addingTimeInterval(-3600),
@@ -416,22 +479,13 @@ struct WorkoutDetailView: View {
         durationSeconds: 487,
         earnedMinutes: 5,
         averageQuality: 0.84,
-        records: records
+        records: []
     )
 
     WorkoutDetailView(session: session)
 }
 
 #Preview("WorkoutDetailView - Dark") {
-    let records: [PushUpRecord] = (1...28).map { i in
-        PushUpRecord(
-            id: UUID(),
-            repNumber: i,
-            timeOffset: Double(i) * 9.0,
-            formScore: min(1.0, max(0.0, 0.72 + Double.random(in: -0.2...0.2)))
-        )
-    }
-
     let session = WorkoutSession(
         id: UUID(),
         startDate: Date(),
@@ -439,7 +493,7 @@ struct WorkoutDetailView: View {
         durationSeconds: 312,
         earnedMinutes: 3,
         averageQuality: 0.72,
-        records: records
+        records: []
     )
 
     WorkoutDetailView(session: session)

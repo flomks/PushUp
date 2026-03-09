@@ -74,11 +74,16 @@ fun Application.configureDatabase(): Boolean {
         driverClassName      = "org.postgresql.Driver"
         maximumPoolSize      = 10
         minimumIdle          = 2
-        idleTimeout          = 600_000    // 10 minutes
-        connectionTimeout    = 30_000     // 30 seconds
+        idleTimeout          = 300_000    // 5 minutes
+        connectionTimeout    = 5_000      // 5 seconds (fail fast instead of blocking 30s)
         maxLifetime          = 1_800_000  // 30 minutes
         isAutoCommit         = false
         transactionIsolation = "TRANSACTION_READ_COMMITTED"
+        // Validate connections before handing them to the application.
+        // Prevents stale/broken connections from causing query failures.
+        connectionTestQuery  = "SELECT 1"
+        // Detect connection leaks in development (logs a warning after 30s).
+        leakDetectionThreshold = if (isDev) 30_000 else 0
         validate()
     }
 
