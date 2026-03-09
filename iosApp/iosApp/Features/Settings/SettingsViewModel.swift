@@ -1,29 +1,7 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - FacingDirection
-
-/// The preferred camera for workout pose detection.
-enum FacingDirection: String, CaseIterable, Identifiable {
-    case front = "front"
-    case back  = "back"
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .front: return "Front Camera"
-        case .back:  return "Back Camera"
-        }
-    }
-
-    var icon: AppIcon {
-        switch self {
-        case .front: return .cameraRotate
-        case .back:  return .camera
-        }
-    }
-}
+// FacingDirection is defined in CameraManager.swift (single shared definition).
 
 // MARK: - AppearanceMode
 
