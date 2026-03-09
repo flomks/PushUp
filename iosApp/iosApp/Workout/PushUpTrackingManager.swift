@@ -204,7 +204,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Requires `KoinIOSKt.doInitKoin()` to have been called at app startup
     /// before this initialiser is invoked.
     convenience init() {
-        let helper = DIHelper.companion.shared
+        let helper = DIHelper.shared
         self.init(
             performanceMonitor: PerformanceMonitor(),
             getOrCreateLocalUser: helper.getOrCreateLocalUserUseCase(),
