@@ -28,21 +28,21 @@ import org.koin.core.component.get
  * Koin-managed instances. It is exposed to Swift as a plain class with
  * factory methods, keeping the Swift side free of Koin imports.
  *
+ * Declared as a Kotlin `object` so Kotlin/Native exports it to Swift as
+ * `DIHelper.shared` — the standard singleton accessor pattern on iOS.
+ *
  * **Usage from Swift**
  * ```swift
  * // At app startup (before any use case is needed):
  * KoinIOSKt.doInitKoin()
  *
  * // Then resolve use cases on demand:
- * let helper = DIHelper.shared
- * let startWorkout = helper.startWorkoutUseCase()
+ * let useCase = DIHelper.shared.loginWithEmailUseCase()
  * ```
  *
- * Requires [initKoin] to have been called before [shared] is first accessed.
- * The [shared] instance is created lazily so that accessing the companion
- * object before Koin is initialised does not crash.
+ * Requires [initKoin] to have been called before any method is invoked.
  */
-class DIHelper private constructor() : KoinComponent {
+object DIHelper : KoinComponent {
 
     /**
      * Returns a new [GetOrCreateLocalUserUseCase] instance from Koin.
@@ -162,21 +162,4 @@ class DIHelper private constructor() : KoinComponent {
 
 }
 
-/**
- * Lazily-initialised singleton accessor for [DIHelper].
- *
- * Exposed as a top-level function so Kotlin/Native exports it cleanly to Swift
- * as a free function `DIHelperKt.shared()` — avoiding the companion-object
- * accessor pattern that Kotlin/Native does not always export reliably.
- *
- * Usage from Swift:
- * ```swift
- * let helper = DIHelperKt.shared()
- * let useCase = helper.loginWithEmailUseCase()
- * ```
- *
- * Requires [initKoin] to have been called before the first access.
- */
-private val _sharedDIHelper: DIHelper by lazy { DIHelper() }
 
-fun diHelperShared(): DIHelper = _sharedDIHelper
