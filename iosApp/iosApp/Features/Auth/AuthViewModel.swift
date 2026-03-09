@@ -195,6 +195,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = mapAuthException(error)
+        } catch let error as KotlinThrowable {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapKotlinThrowable(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -202,7 +206,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Login failed: \(error.localizedDescription)"
         }
     }
 
@@ -224,6 +228,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = mapAuthException(error)
+        } catch let error as KotlinThrowable {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapKotlinThrowable(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -231,7 +239,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Registration failed: \(error.localizedDescription)"
         }
     }
 
@@ -433,6 +441,24 @@ final class AuthViewModel: NSObject, ObservableObject {
         default:
             return msg.isEmpty ? "An unknown error occurred." : msg
         }
+    }
+
+    /// Maps any KotlinThrowable (Kotlin exceptions that are not AuthException)
+    /// to a user-facing error message. Prevents crashes from unhandled Kotlin errors.
+    private func mapKotlinThrowable(_ error: KotlinThrowable) -> String {
+        let msg = error.message ?? String(describing: type(of: error))
+        // Check if it wraps an AuthException by inspecting the message
+        if msg.contains("InvalidCredentials") || msg.contains("invalid credentials", options: .caseInsensitive) {
+            return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
+        }
+        if msg.contains("NetworkError") || msg.contains("connect", options: .caseInsensitive) {
+            return "Network error. Please check your connection."
+        }
+        if msg.contains("email confirmation", options: .caseInsensitive) ||
+           msg.contains("confirm your email", options: .caseInsensitive) {
+            return "Please confirm your email address before signing in."
+        }
+        return "An error occurred. Please try again."
     }
 
     private func validateLogin() throws {

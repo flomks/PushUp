@@ -164,19 +164,25 @@ class AuthRepositoryImpl(
         return try {
             block()
         } catch (e: CancellationException) {
-            // Never swallow cancellation -- always re-throw to preserve structured concurrency.
+            // Never swallow cancellation.
             throw e
         } catch (e: AuthException) {
+            // Already typed — re-throw as-is.
             throw e
         } catch (e: Exception) {
-            val msg = e.message ?: "Unknown error"
-            if (msg.contains("connect", ignoreCase = true) ||
+            val msg = e.message ?: e::class.simpleName ?: "Unknown error"
+            when {
+                msg.contains("connect", ignoreCase = true) ||
                 msg.contains("timeout", ignoreCase = true) ||
-                msg.contains("network", ignoreCase = true)
-            ) {
-                throw AuthException.NetworkError(msg, e)
+                msg.contains("network", ignoreCase = true) ||
+                msg.contains("unreachable", ignoreCase = true) ||
+                msg.contains("refused", ignoreCase = true) ->
+                    throw AuthException.NetworkError(msg, e)
+                msg.contains("JsonDecoding", ignoreCase = true) ||
+                msg.contains("SerializationException", ignoreCase = true) ->
+                    throw AuthException.ServerError(0, "Unexpected server response", msg, e)
+                else -> throw AuthException.Unknown(msg, e)
             }
-            throw AuthException.Unknown(msg, e)
         }
     }
 

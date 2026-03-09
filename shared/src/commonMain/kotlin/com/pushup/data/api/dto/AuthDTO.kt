@@ -115,19 +115,33 @@ data class AuthErrorDTO(
 /**
  * Converts an [AuthSessionDTO] to an [AuthToken] domain model.
  *
- * @param currentEpochSeconds The current time in epoch seconds, used to compute [AuthToken.expiresAt].
- * @throws IllegalStateException if the session is incomplete (missing access token, refresh token, or user).
+ * Throws [com.pushup.domain.model.AuthException.InvalidCredentials] (not
+ * [IllegalStateException]) when the session is incomplete so that the error
+ * is caught by [com.pushup.data.repository.AuthRepositoryImpl.wrapAuthCall]
+ * and surfaced as a typed exception instead of crashing the app.
+ *
+ * A missing access_token typically means email confirmation is required.
  */
 fun AuthSessionDTO.toAuthToken(currentEpochSeconds: Long): AuthToken {
-    val access = requireNotNull(accessToken) { "Auth session missing access_token" }
-    val refresh = requireNotNull(refreshToken) { "Auth session missing refresh_token" }
-    val uid = requireNotNull(user?.id) { "Auth session missing user.id" }
+    val access = accessToken?.takeIf { it.isNotBlank() }
+        ?: throw com.pushup.domain.model.AuthException.InvalidCredentials(
+            "Sign-in succeeded but no session was returned. " +
+                "Please confirm your email address first."
+        )
+    val refresh = refreshToken?.takeIf { it.isNotBlank() }
+        ?: throw com.pushup.domain.model.AuthException.InvalidCredentials(
+            "Auth session missing refresh_token"
+        )
+    val uid = user?.id?.takeIf { it.isNotBlank() }
+        ?: throw com.pushup.domain.model.AuthException.InvalidCredentials(
+            "Auth session missing user.id"
+        )
     val expiry = currentEpochSeconds + (expiresIn ?: 3600L)
     return AuthToken(
         accessToken = access,
         refreshToken = refresh,
         userId = uid,
         expiresAt = expiry,
-        userEmail = user.email?.takeIf { it.isNotBlank() },
+        userEmail = user?.email?.takeIf { it.isNotBlank() },
     )
 }
