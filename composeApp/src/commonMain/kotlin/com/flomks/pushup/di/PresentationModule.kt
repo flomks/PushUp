@@ -6,7 +6,6 @@ import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
 import com.pushup.domain.repository.FriendshipRepository
 import org.koin.core.module.dsl.viewModel
-import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 
 /**
@@ -17,7 +16,9 @@ import org.koin.dsl.module
  *
  * [FriendStatsViewModel] accepts runtime parameters (friendId, friendName) and
  * is registered with a parameterised factory so callers can pass them via
- * `koinViewModel { parametersOf(friendId, friendName) }`.
+ * `koinViewModel(key = friendId) { parametersOf(friendId, friendName) }`.
+ *
+ * Parameters are resolved by index (not by type) because both are [String].
  */
 val presentationModule = module {
     viewModel {
@@ -34,9 +35,9 @@ val presentationModule = module {
 
     viewModel { params ->
         FriendStatsViewModel(
-            repository  = get<FriendshipRepository>(),
-            friendId    = params.get(),
-            friendName  = params.get(),
+            repository = get<FriendshipRepository>(),
+            friendId   = params[0],
+            friendName = params[1],
         )
     }
 }

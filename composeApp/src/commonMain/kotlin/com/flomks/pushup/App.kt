@@ -27,6 +27,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.flomks.pushup.friends.FriendRequestsInboxScreen
 import com.flomks.pushup.friends.FriendRequestsViewModel
 import com.flomks.pushup.friends.FriendsListScreen
+import com.flomks.pushup.friends.FriendsListState
 import com.flomks.pushup.friends.FriendsListViewModel
 import com.flomks.pushup.friends.FriendStatsScreen
 import com.flomks.pushup.friends.FriendStatsViewModel
@@ -82,9 +83,12 @@ fun FriendsSection(
     var statsTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     // If a stats target is set, show the stats screen (full-screen overlay within the section).
+    // The `key` parameter ensures Koin creates a fresh ViewModel per friend ID,
+    // preventing stale data when navigating between different friends.
     val target = statsTarget
     if (target != null) {
         val statsViewModel: FriendStatsViewModel = koinViewModel(
+            key = "friend_stats_${target.first}",
             parameters = { parametersOf(target.first, target.second) },
         )
         FriendStatsScreen(
@@ -107,17 +111,13 @@ fun FriendsSection(
             2 -> FriendsListScreen(
                 viewModel = friendsListViewModel,
                 onFriendClick = { friendId ->
-                    // Resolve the friend's display name from the current list state
-                    val friendName = friendsListViewModel.uiState.value
-                        .listState
-                        .let { state ->
-                            (state as? com.flomks.pushup.friends.FriendsListState.Success)
-                                ?.friends
-                                ?.firstOrNull { it.id == friendId }
-                                ?.let { it.displayName ?: it.username ?: "" }
-                                ?: ""
-                        }
-                    statsTarget = Pair(friendId, friendName)
+                    // Resolve the friend's display name from the current list state.
+                    val friendName = (friendsListViewModel.uiState.value.listState as? FriendsListState.Success)
+                        ?.friends
+                        ?.firstOrNull { it.id == friendId }
+                        ?.let { it.displayName ?: it.username ?: "" }
+                        ?: ""
+                    statsTarget = friendId to friendName
                 },
             )
         }
