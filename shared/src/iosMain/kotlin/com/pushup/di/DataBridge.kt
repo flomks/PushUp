@@ -1,7 +1,9 @@
 package com.pushup.di
 
+import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.GetDailyStatsUseCase
@@ -92,6 +94,30 @@ object DataBridge : KoinComponent {
             .observeCredit(userId)
             .catch { /* ignore errors — best-effort live updates */ }
             .collect { credit -> onUpdate(credit) }
+    }
+
+    // =========================================================================
+    // Push-up records
+    // =========================================================================
+
+    /**
+     * Fetches all push-up records for a given [sessionId] from the local DB.
+     *
+     * Records are returned in ascending timestamp order. The callback receives
+     * an empty list when no records exist for the session.
+     */
+    fun fetchRecordsForSession(
+        sessionId: String,
+        onResult: (List<PushUpRecord>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val records = get<PushUpRecordRepository>().getBySessionId(sessionId)
+                onResult(records)
+            } catch (_: Exception) {
+                onResult(emptyList())
+            }
+        }
     }
 
     // =========================================================================

@@ -12,7 +12,6 @@ import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.DayOfWeek
@@ -82,23 +81,12 @@ class StatsRepositoryImpl(
     /**
      * Returns daily stats for [date].
      *
-     * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline. Both the connectivity check and the API
-     * call run on [dispatcher] to ensure main-safety.
+     * Always computes from the local SQLite database for instant results.
+     * The Ktor API is intentionally not consulted on the read path to avoid
+     * network latency blocking the UI. The local DB is the source of truth;
+     * sync use-cases keep it up-to-date in the background.
      */
     override suspend fun getDailyStats(userId: String, date: LocalDate): DailyStats? {
-        // Try Ktor API first if available and online.
-        if (ktorApiClient != null && networkMonitor != null) {
-            try {
-                val result = withContext(dispatcher) {
-                    if (networkMonitor.isConnected()) ktorApiClient.getDailyStats(date) else null
-                }
-                if (result != null) return result
-            } catch (_: Exception) {
-                // Fall through to local computation.
-            }
-        }
-
         return safeDbCall(dispatcher, "Failed to get daily stats for user '$userId' on $date") {
             val sessions = querySessionsForDateRange(
                 userId = userId,
@@ -113,23 +101,9 @@ class StatsRepositoryImpl(
     /**
      * Returns weekly stats for the week starting on [weekStart].
      *
-     * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline. Both the connectivity check and the API
-     * call run on [dispatcher] to ensure main-safety.
+     * Always computes from the local SQLite database for instant results.
      */
     override suspend fun getWeeklyStats(userId: String, weekStart: LocalDate): WeeklyStats? {
-        // Try Ktor API first if available and online.
-        if (ktorApiClient != null && networkMonitor != null) {
-            try {
-                val result = withContext(dispatcher) {
-                    if (networkMonitor.isConnected()) ktorApiClient.getWeeklyStats(weekStart) else null
-                }
-                if (result != null) return result
-            } catch (_: Exception) {
-                // Fall through to local computation.
-            }
-        }
-
         return safeDbCall(
             dispatcher,
             "Failed to get weekly stats for user '$userId' starting $weekStart",
@@ -165,23 +139,9 @@ class StatsRepositoryImpl(
     /**
      * Returns monthly stats for [month]/[year].
      *
-     * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline. Both the connectivity check and the API
-     * call run on [dispatcher] to ensure main-safety.
+     * Always computes from the local SQLite database for instant results.
      */
     override suspend fun getMonthlyStats(userId: String, month: Int, year: Int): MonthlyStats? {
-        // Try Ktor API first if available and online.
-        if (ktorApiClient != null && networkMonitor != null) {
-            try {
-                val result = withContext(dispatcher) {
-                    if (networkMonitor.isConnected()) ktorApiClient.getMonthlyStats(month, year) else null
-                }
-                if (result != null) return result
-            } catch (_: Exception) {
-                // Fall through to local computation.
-            }
-        }
-
         return safeDbCall(
             dispatcher,
             "Failed to get monthly stats for user '$userId' ($month/$year)",
@@ -218,23 +178,9 @@ class StatsRepositoryImpl(
     /**
      * Returns all-time stats for [userId].
      *
-     * Tries the Ktor API first when online; falls back to local computation
-     * on any failure or when offline. Both the connectivity check and the API
-     * call run on [dispatcher] to ensure main-safety.
+     * Always computes from the local SQLite database for instant results.
      */
     override suspend fun getTotalStats(userId: String): TotalStats? {
-        // Try Ktor API first if available and online.
-        if (ktorApiClient != null && networkMonitor != null) {
-            try {
-                val result = withContext(dispatcher) {
-                    if (networkMonitor.isConnected()) ktorApiClient.getTotalStats(userId) else null
-                }
-                if (result != null) return result
-            } catch (_: Exception) {
-                // Fall through to local computation.
-            }
-        }
-
         return safeDbCall(
             dispatcher,
             "Failed to get total stats for user '$userId'",
