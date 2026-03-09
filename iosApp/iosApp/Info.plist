@@ -2,9 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Performance: allow ProMotion displays to run at full 120 Hz -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+
+	<!-- Camera permission description shown in the system prompt -->
 	<key>NSCameraUsageDescription</key>
 	<string>PushUp uses the camera to detect and count your push-ups in real time using pose estimation.</string>
+
+	<!-- Photo library permission (for avatar upload in Profile) -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PushUp uses your photo library so you can set a profile picture.</string>
+
+	<!-- App display name shown on the Home Screen and in Settings -->
+	<key>CFBundleDisplayName</key>
+	<string>PushUp</string>
+
+	<!-- Launch screen storyboard -->
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
 </dict>
 </plist>
