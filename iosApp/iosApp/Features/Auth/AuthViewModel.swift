@@ -186,18 +186,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             )
             isLoading = false
             authState = .authenticated
-        } catch let error as AuthExceptionInvalidCredentials {
+        } catch let error as AuthException {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.invalidCredentials.errorDescription
-        } catch let error as AuthExceptionNetworkError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
-        } catch let error as AuthExceptionServerError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = "Server error (\(error.statusCode)). Please try again."
+            errorMessage = mapAuthException(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -223,18 +215,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             )
             isLoading = false
             authState = .authenticated
-        } catch let error as AuthExceptionEmailAlreadyInUse {
+        } catch let error as AuthException {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.emailAlreadyInUse.errorDescription
-        } catch let error as AuthExceptionWeakPassword {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = "Password is too weak. Please choose a stronger password."
-        } catch let error as AuthExceptionNetworkError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
+            errorMessage = mapAuthException(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -295,14 +279,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             // User cancelled — do not show an error message.
-        } catch let error as AuthExceptionInvalidCredentials {
+        } catch let error as AuthException {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = "Apple Sign-In failed. The token may have expired. Please try again."
-        } catch let error as AuthExceptionNetworkError {
-            isLoading = false
-            authState = .unauthenticated
-            errorMessage = AuthError.networkError(error.message ?? "Connection failed").errorDescription
+            errorMessage = mapAuthException(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -404,6 +384,33 @@ final class AuthViewModel: NSObject, ObservableObject {
     }
 
     // MARK: - Private
+
+    /// Maps a KMP AuthException (sealed class) to a user-facing error message.
+    ///
+    /// Kotlin/Native exports sealed class subclasses as nested Swift types, but
+    /// they cannot be used directly in `catch` clauses. Instead we catch the
+    /// base `AuthException` and use `is` checks here.
+    private func mapAuthException(_ error: AuthException) -> String {
+        if error is AuthExceptionInvalidCredentials {
+            return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
+        } else if error is AuthExceptionEmailAlreadyInUse {
+            return AuthError.emailAlreadyInUse.errorDescription ?? "Email already in use."
+        } else if error is AuthExceptionWeakPassword {
+            return "Password is too weak. Please choose a stronger password."
+        } else if error is AuthExceptionInvalidEmail {
+            return AuthError.invalidEmail.errorDescription ?? "Invalid email."
+        } else if error is AuthExceptionSessionExpired {
+            return "Your session has expired. Please sign in again."
+        } else if error is AuthExceptionNotAuthenticated {
+            return "Not authenticated. Please sign in."
+        } else if let networkError = error as? AuthExceptionNetworkError {
+            return AuthError.networkError(networkError.message ?? "Connection failed").errorDescription ?? "Network error."
+        } else if let serverError = error as? AuthExceptionServerError {
+            return "Server error (\(serverError.statusCode)). Please try again."
+        } else {
+            return AuthError.unknown(error.message ?? "Unknown error").errorDescription ?? "Unknown error."
+        }
+    }
 
     private func validateLogin() throws {
         guard isValidEmail(loginEmail) else { throw AuthError.invalidEmail }
