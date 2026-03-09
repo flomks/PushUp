@@ -23,7 +23,7 @@ struct ContentView: View {
         ZStack {
             // MARK: Camera feed (full screen)
             CameraContainerView(
-                onSampleBuffer: { buf in
+                onSampleBuffer: { @Sendable buf in
                     viewModel.process(buf)
                 },
                 onPositionChange: { newPosition in
