@@ -106,6 +106,27 @@ class AuthRepositoryImpl(
             user
         }
 
+    override suspend fun loginWithImplicitTokens(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresIn: Long,
+    ): User = withContext(dispatcher) {
+        val now = clock.now()
+        val token = AuthToken(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            userId = userId,
+            userEmail = userEmail,
+            expiresAt = now.epochSeconds + expiresIn,
+        )
+        tokenStorage.save(token)
+        val user = makeUser(token, emailOverride = userEmail)
+        userRepository.upsertUser(user)
+        user
+    }
+
     override suspend fun logout(clearLocalData: Boolean): Unit =
         withContext(dispatcher) {
             // Always clear the token first.

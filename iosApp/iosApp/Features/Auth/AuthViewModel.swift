@@ -315,14 +315,13 @@ final class AuthViewModel: NSObject, ObservableObject {
     ///
     /// Opens an ASWebAuthenticationSession with the Supabase Google OAuth
     /// endpoint. After the user authenticates, Supabase redirects back to
-    /// the app via a deep link containing a PKCE authorization code.
+    /// the app via a deep link.
     ///
-    /// Flow:
-    /// 1. Open Supabase OAuth URL in ASWebAuthenticationSession
-    /// 2. User authenticates with Google in the browser
-    /// 3. Supabase redirects back to the app with ?code=<pkce_code>
-    /// 4. Exchange the code for a Supabase session via LoginWithGoogleUseCase
+    /// Supabase may return either:
+    /// - **Implicit Flow**: tokens in the URL fragment (`#access_token=...`)
+    /// - **PKCE Flow**: a code in the query string (`?code=...`)
     ///
+    /// This method handles both cases automatically.
     /// No Google SDK required — Supabase handles the OAuth server-side.
     func loginWithGoogle() async {
         clearMessages()
@@ -334,13 +333,12 @@ final class AuthViewModel: NSObject, ObservableObject {
             let redirectURL = "\(bundleID)://auth/callback"
             guard
                 let encodedRedirect = redirectURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                let authURL = URL(string: "\(supabaseURL)/auth/v1/authorize?provider=google&redirect_to=\(encodedRedirect)&flow_type=pkce")
+                let authURL = URL(string: "\(supabaseURL)/auth/v1/authorize?provider=google&redirect_to=\(encodedRedirect)")
             else {
                 throw AuthError.unknown("Invalid Supabase URL configuration.")
             }
             let callbackURL = try await openWebAuthSession(url: authURL, callbackScheme: bundleID)
-            let code = try extractOAuthCode(from: callbackURL)
-            _ = try await DIHelper.shared.loginWithGoogleOAuthCode(code: code)
+            try await handleOAuthCallback(url: callbackURL)
             isLoading = false
             authState = .authenticated
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
@@ -350,6 +348,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = mapAuthException(error)
+        } catch let error as KotlinThrowable {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapKotlinThrowable(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -548,28 +550,88 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Extracts the PKCE authorization code from a Supabase OAuth callback URL.
+    /// Handles the Supabase OAuth callback URL.
     ///
-    /// Supabase PKCE flow returns the code as a query parameter:
-    ///   com.flomks.pushup://auth/callback?code=<pkce_code>
-    private func extractOAuthCode(from url: URL) throws -> String {
+    /// Supports both flows:
+    /// - **PKCE**: `?code=<pkce_code>` in query string -> exchange via KMP
+    /// - **Implicit**: `#access_token=...&refresh_token=...` in fragment -> store directly
+    private func handleOAuthCallback(url: URL) async throws {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
 
-        // Check for error first
+        // Check for error in query params
         if let errorParam = queryItems.first(where: { $0.name == "error" })?.value {
-            let desc = queryItems.first(where: { $0.name == "error_description" })?.value
-                ?? errorParam
+            let desc = queryItems.first(where: { $0.name == "error_description" })?.value ?? errorParam
             throw AuthError.unknown("Google Sign-In failed: \(desc)")
         }
 
-        guard let code = queryItems.first(where: { $0.name == "code" })?.value,
-              !code.isEmpty else {
-            throw AuthError.unknown(
-                "OAuth callback did not contain an authorization code. URL: \(url.absoluteString)"
-            )
+        // Try PKCE flow first: ?code=...
+        if let code = queryItems.first(where: { $0.name == "code" })?.value, !code.isEmpty {
+            _ = try await DIHelper.shared.loginWithGoogleOAuthCode(code: code)
+            return
         }
-        return code
+
+        // Try Implicit flow: #access_token=...&refresh_token=...
+        if let fragment = url.fragment, !fragment.isEmpty {
+            var params: [String: String] = [:]
+            for pair in fragment.components(separatedBy: "&") {
+                let parts = pair.components(separatedBy: "=")
+                if parts.count >= 2 {
+                    params[parts[0]] = parts[1...].joined(separator: "=")
+                        .removingPercentEncoding ?? parts[1]
+                }
+            }
+
+            // Check for error in fragment
+            if let errorCode = params["error"] {
+                let desc = params["error_description"]?.replacingOccurrences(of: "+", with: " ") ?? errorCode
+                throw AuthError.unknown("Google Sign-In failed: \(desc)")
+            }
+
+            guard let accessToken = params["access_token"],
+                  let refreshToken = params["refresh_token"] else {
+                throw AuthError.unknown("OAuth callback missing tokens.")
+            }
+
+            let expiresIn = Int64(params["expires_in"] ?? "3600") ?? 3600
+            let userId = parseJWTClaim(accessToken, claim: "sub") ?? ""
+            let userEmail = parseJWTClaim(accessToken, claim: "email")
+
+            guard !userId.isEmpty else {
+                throw AuthError.unknown("Could not extract user ID from token.")
+            }
+
+            _ = try await DIHelper.shared.loginWithImplicitTokens(
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                userId: userId,
+                userEmail: userEmail,
+                expiresIn: expiresIn
+            )
+            return
+        }
+
+        throw AuthError.unknown("OAuth callback contained neither a code nor tokens.")
+    }
+
+    /// Parses a claim from a JWT token (base64url-encoded payload).
+    private func parseJWTClaim(_ jwt: String, claim: String) -> String? {
+        let parts = jwt.components(separatedBy: ".")
+        guard parts.count == 3 else { return nil }
+        var base64 = parts[1]
+        let remainder = base64.count % 4
+        if remainder > 0 {
+            base64 += String(repeating: "=", count: 4 - remainder)
+        }
+        base64 = base64
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        guard let data = Data(base64Encoded: base64),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = json[claim] as? String else {
+            return nil
+        }
+        return value
     }
 }
 
