@@ -187,7 +187,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
         isLoading = true
         authState = .loading
-        let result = await DIHelper.shared.safeLoginWithEmail(
+        let result = await AuthService.shared.loginWithEmail(
             email: loginEmail.trimmingCharacters(in: .whitespaces),
             password: loginPassword
         )
@@ -212,7 +212,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
         isLoading = true
         authState = .loading
-        let result = await DIHelper.shared.safeRegisterWithEmail(
+        let result = await AuthService.shared.registerWithEmail(
             email: registerEmail.trimmingCharacters(in: .whitespaces),
             password: registerPassword
         )
@@ -266,7 +266,7 @@ final class AuthViewModel: NSObject, ObservableObject {
                   let idToken = String(data: tokenData, encoding: .utf8) else {
                 throw AuthError.unknown("Apple did not return an identity token.")
             }
-            let result = await DIHelper.shared.safeLoginWithApple(idToken: idToken)
+            let result = await AuthService.shared.loginWithApple(idToken: idToken)
             isLoading = false
             if result.isSuccess {
                 authState = .authenticated
@@ -336,7 +336,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Signs the current user out and returns to the unauthenticated state.
     func signOut() {
         Task {
-            await DIHelper.shared.safeLogout()
+            await AuthService.shared.logout()
         }
         authState = .unauthenticated
         clearAllFields()
@@ -347,8 +347,7 @@ final class AuthViewModel: NSObject, ObservableObject {
 
     /// Checks whether a valid Supabase token exists and restores the session.
     func restoreSession() async {
-        let result = await DIHelper.shared.safeGetCurrentUser()
-        if result.isSuccess {
+        if let _ = await AuthService.shared.getCurrentUser() {
             authState = .authenticated
         } else {
             authState = .unauthenticated
@@ -466,7 +465,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// - **Implicit**: `#access_token=...&refresh_token=...` in fragment -> store directly
     ///
     /// Returns AuthResult — never throws Kotlin exceptions.
-    private func handleOAuthCallback(url: URL) async throws -> AuthResult {
+    private func handleOAuthCallback(url: URL) async throws -> AuthServiceResult {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
 
@@ -478,7 +477,7 @@ final class AuthViewModel: NSObject, ObservableObject {
 
         // Try PKCE flow first: ?code=...
         if let code = queryItems.first(where: { $0.name == "code" })?.value, !code.isEmpty {
-            return await DIHelper.shared.safeLoginWithGoogleOAuthCode(code: code)
+            return await AuthService.shared.loginWithGoogleOAuthCode(code: code)
         }
 
         // Try Implicit flow: #access_token=...&refresh_token=...
@@ -511,7 +510,7 @@ final class AuthViewModel: NSObject, ObservableObject {
                 throw AuthError.unknown("Could not extract user ID from token.")
             }
 
-            return await DIHelper.shared.safeLoginWithImplicitTokens(
+            return await AuthService.shared.storeImplicitSession(
                 accessToken: accessToken,
                 refreshToken: refreshToken,
                 userId: userId,
@@ -583,13 +582,16 @@ extension AuthViewModel: ASAuthorizationControllerDelegate {
 extension AuthViewModel: ASAuthorizationControllerPresentationContextProviding {
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        let scenes = UIApplication.shared.connectedScenes
-        let windowScene = scenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-        return windowScene?.windows.first(where: { $0.isKeyWindow })
-            ?? windowScene?.windows.first
-            ?? UIWindow()
+        // UIApplication must be accessed on the main thread.
+        // Since ASAuthorizationController always calls this on the main thread,
+        // we use MainActor.assumeIsolated which is safe here.
+        MainActor.assumeIsolated {
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first { $0.activationState == .foregroundActive }?
+                .windows.first(where: { $0.isKeyWindow })
+                ?? UIWindow()
+        }
     }
 }
 
