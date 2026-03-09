@@ -78,7 +78,7 @@ final class WorkoutViewModel: ObservableObject {
     @Published var soundEnabled: Bool = true
 
     /// The current camera position (front / back).
-    @Published private(set) var cameraPosition: CapturePosition = CapturePosition.front
+    @Published private(set) var cameraPosition: CameraLens = CameraLens.front
 
     /// The current camera state (idle / running / stopped / error).
     @Published private(set) var cameraState: CameraState = .idle
@@ -168,7 +168,7 @@ final class WorkoutViewModel: ObservableObject {
         isNewRecord = false
         comparisonPercent = nil
         // Restart the camera preview for the idle state.
-        trackingManager.startCameraPreview(position: CapturePosition.front)
+        trackingManager.startCameraPreview(position: CameraLens.front)
     }
 
     // MARK: - Public API: Summary (Task 3.7)
@@ -192,7 +192,7 @@ final class WorkoutViewModel: ObservableObject {
     /// Starts the camera preview for the idle state.
     /// Does nothing if tracking is already active.
     func startPreview() {
-        trackingManager.startCameraPreview(position: CapturePosition.front)
+        trackingManager.startCameraPreview(position: CameraLens.front)
     }
 
     /// Stops the camera preview. Only effective when not tracking.
@@ -310,7 +310,7 @@ final class WorkoutViewModel: ObservableObject {
             .store(in: &cancellables)
 
         manager.cameraPositionPublisher
-            .sink { [weak self] (position: CapturePosition) in self?.cameraPosition = position }
+            .sink { [weak self] (position: CameraLens) in self?.cameraPosition = position }
             .store(in: &cancellables)
 
         manager.cameraStatePublisher
