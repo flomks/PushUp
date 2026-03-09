@@ -1,5 +1,6 @@
 package com.flomks.pushup.di
 
+import com.flomks.pushup.friends.FriendRequestsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
 import com.pushup.domain.repository.FriendshipRepository
 import org.koin.core.module.dsl.viewModel
@@ -14,5 +15,9 @@ import org.koin.dsl.module
 val presentationModule = module {
     viewModel {
         UserSearchViewModel(repository = get<FriendshipRepository>())
+    }
+
+    viewModel {
+        FriendRequestsViewModel(repository = get<FriendshipRepository>())
     }
 }

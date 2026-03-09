@@ -2,6 +2,7 @@ package com.pushup.data.repository
 
 import com.pushup.data.api.FriendshipApiClient
 import com.pushup.domain.model.Friendship
+import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.UserSearchResult
 import com.pushup.domain.repository.FriendshipRepository
 
@@ -23,4 +24,10 @@ class FriendshipRepositoryImpl(
 
     override suspend fun sendFriendRequest(receiverId: String): Friendship =
         apiClient.sendFriendRequest(receiverId)
+
+    override suspend fun getIncomingFriendRequests(): List<FriendRequest> =
+        apiClient.getIncomingFriendRequests()
+
+    override suspend fun respondToFriendRequest(friendshipId: String, accept: Boolean): Friendship =
+        apiClient.respondToFriendRequest(friendshipId, accept)
 }

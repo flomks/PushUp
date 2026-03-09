@@ -3,6 +3,8 @@ package com.pushup.service
 import com.pushup.models.FriendProfile
 import com.pushup.models.FriendshipResponse
 import com.pushup.models.FriendsListResponse
+import com.pushup.models.IncomingFriendRequest
+import com.pushup.models.IncomingFriendRequestsResponse
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
 import com.pushup.plugins.NotificationType
@@ -381,5 +383,64 @@ open class FriendshipService {
         val friends: List<FriendProfile> = counterpartIds.mapNotNull { profilesById[it] }
 
         FriendsListResponse(friends = friends, total = friends.size)
+    }
+
+    /**
+     * Returns all incoming pending friend requests for [userId], including the
+     * friendship row ID needed to accept or decline each request.
+     *
+     * Each entry combines the friendship row (for the ID and createdAt timestamp)
+     * with the requester's profile data from the users table.
+     *
+     * @param userId UUID of the authenticated caller (the receiver).
+     * @return [IncomingFriendRequestsResponse] with all pending incoming requests.
+     */
+    open suspend fun getIncomingFriendRequests(
+        userId: UUID,
+    ): IncomingFriendRequestsResponse = newSuspendedTransaction {
+
+        // Fetch all pending friendship rows where the caller is the receiver.
+        val rows = Friendships.selectAll().where {
+            (Friendships.status     eq FriendshipStatus.PENDING.toDbValue()) and
+            (Friendships.receiverId eq userId)
+        }.toList()
+
+        if (rows.isEmpty()) {
+            return@newSuspendedTransaction IncomingFriendRequestsResponse(
+                requests = emptyList(),
+                total    = 0,
+            )
+        }
+
+        // Collect all requester UUIDs for a single batch profile lookup.
+        val requesterIds = rows.map { it[Friendships.requesterId] }
+
+        val profilesById: Map<UUID, FriendProfile> = Users.selectAll()
+            .where { Users.id inList requesterIds }
+            .associate { userRow ->
+                val id = userRow[Users.id]
+                id to FriendProfile(
+                    id          = id.toString(),
+                    username    = userRow[Users.username],
+                    displayName = userRow[Users.displayName],
+                    avatarUrl   = userRow[Users.avatarUrl],
+                )
+            }
+
+        val requests: List<IncomingFriendRequest> = rows.mapNotNull { row ->
+            val requesterId = row[Friendships.requesterId]
+            val profile     = profilesById[requesterId] ?: return@mapNotNull null
+            IncomingFriendRequest(
+                friendshipId = row[Friendships.id].toString(),
+                requesterId  = requesterId.toString(),
+                username     = profile.username,
+                displayName  = profile.displayName,
+                avatarUrl    = profile.avatarUrl,
+                createdAt    = row[Friendships.createdAt]
+                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+            )
+        }
+
+        IncomingFriendRequestsResponse(requests = requests, total = requests.size)
     }
 }

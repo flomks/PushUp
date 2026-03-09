@@ -1,6 +1,5 @@
 package com.flomks.pushup.friends
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,8 +35,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -350,40 +346,6 @@ private fun UserSearchResultItem(
                 onClick = onSendFriendRequest,
             )
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Avatar
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun UserAvatar(
-    displayName: String,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        // When a real image loading library (Coil/Kamel) is available, replace
-        // this placeholder with an async image. For now we show the initials.
-        val initials = displayName
-            .split(" ", "_")
-            .take(2)
-            .mapNotNull { it.firstOrNull()?.uppercaseChar() }
-            .joinToString("")
-            .ifEmpty { "?" }
-
-        Text(
-            text = initials,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.Bold,
-        )
     }
 }
 
