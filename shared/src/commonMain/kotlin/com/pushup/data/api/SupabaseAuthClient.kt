@@ -4,6 +4,7 @@ import com.pushup.data.api.dto.AuthErrorDTO
 import com.pushup.data.api.dto.AuthSessionDTO
 import com.pushup.data.api.dto.EmailPasswordRequest
 import com.pushup.data.api.dto.IdTokenRequest
+import com.pushup.data.api.dto.OAuthCodeRequest
 import com.pushup.data.api.dto.RefreshTokenRequest
 import com.pushup.data.api.dto.toAuthToken
 import com.pushup.domain.model.AuthException
@@ -118,6 +119,29 @@ class SupabaseAuthClient(
             url.parameters.append("grant_type", "id_token")
             contentType(ContentType.Application.Json)
             setBody(IdTokenRequest(provider = provider.apiValue, idToken = idToken))
+        }
+        if (!response.status.isSuccess()) {
+            throw mapAuthError(response.status.value, runCatching { response.bodyAsText() }.getOrNull())
+        }
+        val session = response.body<AuthSessionDTO>()
+        return session.toAuthToken(clock.now().epochSeconds)
+    }
+
+    /**
+     * Exchanges a Supabase OAuth PKCE authorization code for a session token.
+     *
+     * Calls `POST /auth/v1/token?grant_type=pkce`.
+     *
+     * @param code The authorization code from the OAuth redirect URL `?code=` parameter.
+     * @return [AuthToken] for the authenticated session.
+     * @throws AuthException on failure.
+     */
+    override suspend fun exchangeOAuthCode(code: String): AuthToken {
+        val response = httpClient.post("$authBase/token") {
+            header("apikey", supabaseAnonKey)
+            url.parameters.append("grant_type", "pkce")
+            contentType(ContentType.Application.Json)
+            setBody(OAuthCodeRequest(authCode = code))
         }
         if (!response.status.isSuccess()) {
             throw mapAuthError(response.status.value, runCatching { response.bodyAsText() }.getOrNull())

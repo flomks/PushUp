@@ -43,6 +43,17 @@ data class RefreshTokenRequest(
     @SerialName("refresh_token") val refreshToken: String,
 )
 
+/**
+ * Request body for exchanging a PKCE OAuth authorization code for a session.
+ *
+ * Used for `POST /auth/v1/token?grant_type=pkce`.
+ * The [authCode] is the `code` parameter returned in the OAuth redirect URL.
+ */
+@Serializable
+data class OAuthCodeRequest(
+    @SerialName("auth_code") val authCode: String,
+)
+
 // =============================================================================
 // Supabase Auth response bodies
 // =============================================================================

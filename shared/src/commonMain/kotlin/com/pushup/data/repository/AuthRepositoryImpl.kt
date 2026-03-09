@@ -97,24 +97,36 @@ class AuthRepositoryImpl(
             user
         }
 
+    override suspend fun loginWithOAuthCode(code: String): User =
+        withContext(dispatcher) {
+            val token = wrapAuthCall { authClient.exchangeOAuthCode(code) }
+            tokenStorage.save(token)
+            val user = makeUser(token, emailOverride = null)
+            userRepository.upsertUser(user)
+            user
+        }
+
     override suspend fun logout(clearLocalData: Boolean): Unit =
         withContext(dispatcher) {
+            // Always clear the token first.
             tokenStorage.clear()
-            if (clearLocalData) {
-                // Read the current user ID before clearing, then delete.
-                // Best-effort: a failure here should not prevent the token from
-                // being cleared (which already happened above).
-                runCatching {
-                    val userId = userRepository.getCurrentUser()?.id
-                    if (userId != null) {
-                        userRepository.deleteUser(userId)
-                    }
+            // Always delete the local user record on logout to prevent stale
+            // DB entries from being mistaken for an authenticated session.
+            runCatching {
+                val userId = userRepository.getCurrentUser()?.id
+                if (userId != null) {
+                    userRepository.deleteUser(userId)
                 }
             }
         }
 
     override suspend fun getCurrentUser(): User? =
         withContext(dispatcher) {
+            // Only return a user if a valid token also exists in secure storage.
+            // This prevents stale DB entries (e.g. from a previous session that
+            // was not properly cleared) from being treated as authenticated.
+            val token = tokenStorage.load() ?: return@withContext null
+            // Token exists — return the local user record.
             userRepository.getCurrentUser()
         }
 
