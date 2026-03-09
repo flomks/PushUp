@@ -10,12 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -127,6 +127,10 @@ internal fun FriendStatsContent(
 
             when (val state = uiState.statsState) {
                 is FriendStatsState.Loading -> StatsLoadingState()
+                is FriendStatsState.Empty   -> StatsEmptyState(
+                    friendName = uiState.friendName,
+                    period     = uiState.selectedPeriod,
+                )
                 is FriendStatsState.Error   -> StatsErrorState(message = state.message, onRetry = onRefresh)
                 is FriendStatsState.Success -> StatsSuccessContent(stats = state.stats)
             }
@@ -159,7 +163,7 @@ private fun PeriodSelector(
 }
 
 // ---------------------------------------------------------------------------
-// Loading / error states
+// Loading / empty / error states
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -169,6 +173,46 @@ private fun StatsLoadingState() {
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun StatsEmptyState(
+    friendName: String,
+    period: StatsPeriod,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.FitnessCenter,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "No activity yet",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            val periodLabel = when (period) {
+                StatsPeriod.DAY   -> "today"
+                StatsPeriod.WEEK  -> "this week"
+                StatsPeriod.MONTH -> "this month"
+            }
+            val name = friendName.ifBlank { "Your friend" }
+            Text(
+                text = "$name hasn't recorded any push-ups $periodLabel.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -226,44 +270,90 @@ private fun StatsSuccessContent(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Stats cards grid (2 columns)
+        // Hero push-up card -- full width, visually dominant
+        PushUpHeroCard(count = stats.pushupCount)
+
+        // Secondary stats grid (2 columns)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            StatCard(
-                label = "Push-ups",
-                value = stats.pushupCount.toString(),
-                modifier = Modifier.weight(1f),
-            )
             StatCard(
                 label = "Sessions",
                 value = stats.totalSessions.toString(),
                 modifier = Modifier.weight(1f),
             )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
             StatCard(
                 label = "Time Earned",
                 value = formatSeconds(stats.totalEarnedSeconds),
                 modifier = Modifier.weight(1f),
             )
-            StatCard(
-                label = "Avg Quality",
-                value = if (stats.averageQuality != null) {
-                    "${(stats.averageQuality * 100).roundToInt()}%"
-                } else {
-                    "N/A"
-                },
-                modifier = Modifier.weight(1f),
-            )
         }
 
+        StatCard(
+            label = "Avg Quality",
+            value = stats.averageQuality
+                ?.let { "${(it * 100).roundToInt()}%" }
+                ?: "N/A",
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Push-up hero card
+// ---------------------------------------------------------------------------
+
+/**
+ * Full-width hero card that displays the push-up count as the primary metric.
+ *
+ * Uses a larger display text style and a distinct primary-tinted background so
+ * the number is immediately readable at a glance.
+ */
+@Composable
+private fun PushUpHeroCard(
+    count: Int,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.displayLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FitnessCenter,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                )
+                Text(
+                    text = "Push-ups",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+                )
+            }
+        }
     }
 }
 
@@ -372,6 +462,41 @@ private fun FriendStatsLoadingPreview() {
                 friendId   = "u1",
                 friendName = "Alice Smith",
                 statsState = FriendStatsState.Loading,
+            ),
+            onBack = {},
+            onPeriodSelected = {},
+            onRefresh = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun FriendStatsEmptyPreview() {
+    MaterialTheme {
+        FriendStatsContent(
+            uiState = FriendStatsUiState(
+                friendId       = "u1",
+                friendName     = "Alice Smith",
+                selectedPeriod = StatsPeriod.DAY,
+                statsState     = FriendStatsState.Empty,
+            ),
+            onBack = {},
+            onPeriodSelected = {},
+            onRefresh = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun FriendStatsErrorPreview() {
+    MaterialTheme {
+        FriendStatsContent(
+            uiState = FriendStatsUiState(
+                friendId   = "u1",
+                friendName = "Alice Smith",
+                statsState = FriendStatsState.Error("Failed to load stats. Please try again."),
             ),
             onBack = {},
             onPeriodSelected = {},

@@ -47,8 +47,14 @@ sealed interface FriendStatsState {
     /** Load is in progress. */
     data object Loading : FriendStatsState
 
-    /** Loaded successfully. */
+    /** Loaded successfully with at least one session recorded. */
     data class Success(val stats: FriendActivityStats) : FriendStatsState
+
+    /**
+     * Loaded successfully but the friend has no recorded sessions for the
+     * selected period (pushupCount == 0 and totalSessions == 0).
+     */
+    data object Empty : FriendStatsState
 
     /** Load failed with an error message. */
     data class Error(val message: String) : FriendStatsState
@@ -129,7 +135,12 @@ class FriendStatsViewModel(
             val period = _uiState.value.selectedPeriod.apiValue
             try {
                 val stats = repository.getFriendStats(friendId, period)
-                _uiState.update { it.copy(statsState = FriendStatsState.Success(stats)) }
+                val newState = if (stats.totalSessions == 0) {
+                    FriendStatsState.Empty
+                } else {
+                    FriendStatsState.Success(stats)
+                }
+                _uiState.update { it.copy(statsState = newState) }
             } catch (e: ApiException.Unauthorized) {
                 _uiState.update {
                     it.copy(statsState = FriendStatsState.Error("Session expired. Please log in again."))
