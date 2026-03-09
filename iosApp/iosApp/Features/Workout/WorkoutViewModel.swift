@@ -219,6 +219,17 @@ final class WorkoutViewModel: ObservableObject {
         computeSummaryStats()
 
         phase = .finished
+
+        // Fire the post-workout local notification (Task 3.12).
+        // Only send when at least one push-up was counted.
+        if pushUpCount > 0 {
+            let minutes = earnedMinutes
+            Task {
+                await NotificationManager.shared.scheduleWorkoutCompleteNotification(
+                    earnedMinutes: minutes
+                )
+            }
+        }
     }
 
     /// Computes personal-record and comparison statistics for the summary screen.

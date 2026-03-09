@@ -184,7 +184,20 @@ final class SettingsViewModel: ObservableObject {
 
     /// Whether daily reminder notifications are enabled.
     @Published var notificationsEnabled: Bool {
-        didSet { UserDefaults.standard.set(notificationsEnabled, forKey: SettingsKeys.notificationsEnabled) }
+        didSet {
+            UserDefaults.standard.set(notificationsEnabled, forKey: SettingsKeys.notificationsEnabled)
+            // Schedule or cancel all notifications when the master toggle changes.
+            Task {
+                if notificationsEnabled {
+                    await NotificationManager.shared.enableAllNotifications(
+                        hour: notificationHour,
+                        minute: notificationMinute
+                    )
+                } else {
+                    NotificationManager.shared.disableAllNotifications()
+                }
+            }
+        }
     }
 
     /// Hour component of the daily reminder time (0-23).
@@ -193,6 +206,15 @@ final class SettingsViewModel: ObservableObject {
             let clamped = notificationHour.clamped(to: SettingsValidation.notificationHourRange)
             if notificationHour != clamped { notificationHour = clamped; return }
             UserDefaults.standard.set(notificationHour, forKey: SettingsKeys.notificationHour)
+            // Reschedule the daily reminder when the time changes.
+            if notificationsEnabled {
+                Task {
+                    await NotificationManager.shared.rescheduleDailyReminder(
+                        hour: notificationHour,
+                        minute: notificationMinute
+                    )
+                }
+            }
         }
     }
 
@@ -202,6 +224,15 @@ final class SettingsViewModel: ObservableObject {
             let clamped = notificationMinute.clamped(to: SettingsValidation.notificationMinuteRange)
             if notificationMinute != clamped { notificationMinute = clamped; return }
             UserDefaults.standard.set(notificationMinute, forKey: SettingsKeys.notificationMinute)
+            // Reschedule the daily reminder when the time changes.
+            if notificationsEnabled {
+                Task {
+                    await NotificationManager.shared.rescheduleDailyReminder(
+                        hour: notificationHour,
+                        minute: notificationMinute
+                    )
+                }
+            }
         }
     }
 
@@ -345,6 +376,7 @@ final class SettingsViewModel: ObservableObject {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .badge, .sound])
             notificationsEnabled = granted
+            // The notificationsEnabled didSet schedules notifications when granted.
             await refreshNotificationStatus()
         } catch {
             errorMessage = "Could not request notification permission: \(error.localizedDescription)"
@@ -353,9 +385,24 @@ final class SettingsViewModel: ObservableObject {
     }
 
     /// Handles the notifications toggle being flipped by the user.
+    ///
+    /// When enabling:
+    ///   - If permission is `.notDetermined`, requests it (the `notificationsEnabled`
+    ///     didSet fires after the system dialog resolves).
+    ///   - If permission is already `.authorized`, sets the flag and schedules
+    ///     notifications immediately.
+    ///   - If permission is `.denied`, opens iOS Settings.
+    ///
+    /// When disabling: cancels all pending notifications.
     func handleNotificationsToggle(_ enabled: Bool) async {
         if enabled {
-            await requestNotificationPermission()
+            if notificationAuthorizationStatus == .authorized {
+                // Permission already granted -- just enable and schedule.
+                notificationsEnabled = true
+            } else {
+                // Will request permission; didSet fires on result.
+                await requestNotificationPermission()
+            }
         } else {
             notificationsEnabled = false
         }
