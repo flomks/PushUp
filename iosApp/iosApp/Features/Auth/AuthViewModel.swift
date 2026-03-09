@@ -317,11 +317,14 @@ final class AuthViewModel: NSObject, ObservableObject {
         isLoading = true
         authState = .loading
         do {
-            let supabaseURL = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String ?? ""
-            guard !supabaseURL.isEmpty,
-                  !supabaseURL.contains("your-project-ref") else {
-                throw AuthError.notConfigured
-            }
+            // Read from Info.plist; fall back to hardcoded value if injection failed.
+            let supabaseURL: String = {
+                let plistValue = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String ?? ""
+                if plistValue.isEmpty || plistValue.contains("your-project-ref") || plistValue == "$(SUPABASE_URL)" {
+                    return "https://akpdpsmmmahbbkiclvsi.supabase.co"
+                }
+                return plistValue
+            }()
             let bundleID = Bundle.main.bundleIdentifier ?? "com.flomks.pushup"
             let redirectScheme = bundleID
             let redirectURL = "\(redirectScheme)://auth/callback"

@@ -18,19 +18,21 @@
 	<key>CFBundleDisplayName</key>
 	<string>PushUp</string>
 
-	<!-- Supabase configuration — values injected from Config.xcconfig at build time -->
+	<!-- Supabase configuration — hardcoded here because xcconfig variable
+	     injection into Info.plist is unreliable when GENERATE_INFOPLIST_FILE=YES.
+	     The anon key is intentionally public (client-side only). -->
 	<key>SupabaseURL</key>
-	<string>$(SUPABASE_URL)</string>
+	<string>https://akpdpsmmmahbbkiclvsi.supabase.co</string>
 
 	<key>SupabaseAnonKey</key>
-	<string>$(SUPABASE_ANON_KEY)</string>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrcGRwc21tbWFoYmJraWNsdnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDY3NzYsImV4cCI6MjA4ODEyMjc3Nn0.e-RLjdb1KMqptf0d7-dh4IXxWkzHx9v5Z0Q5nNyyrsk</string>
 
 	<key>BackendBaseURL</key>
-	<string>$(BACKEND_BASE_URL)</string>
+	<string></string>
 
-	<!-- Google Sign-In iOS Client ID — injected from Config.xcconfig -->
+	<!-- Google Sign-In iOS Client ID -->
 	<key>GIDClientID</key>
-	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+	<string>932071108818-rooftfsunvngflbn61geqkdtpf0vk3gv.apps.googleusercontent.com</string>
 
 	<!-- URL schemes for OAuth callbacks -->
 	<!-- Apple Sign-In uses the bundle ID as the URL scheme automatically -->
