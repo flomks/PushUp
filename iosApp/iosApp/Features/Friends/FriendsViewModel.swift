@@ -69,6 +69,7 @@ final class FriendsViewModel: ObservableObject {
     @Published var isLoadingRequests: Bool = false
     @Published var requestsError: String? = nil
     @Published var respondingIds: Set<String> = []
+    @Published var respondError: String? = nil
 
     // Friends list
     @Published var friends: [FriendItem] = []
@@ -196,6 +197,7 @@ final class FriendsViewModel: ObservableObject {
     private func respondToRequest(_ friendshipId: String, accept: Bool) {
         guard !respondingIds.contains(friendshipId) else { return }
         respondingIds.insert(friendshipId)
+        respondError = nil
 
         FriendsBridge.shared.respondToFriendRequest(
             friendshipId: friendshipId,
@@ -206,10 +208,18 @@ final class FriendsViewModel: ObservableObject {
                 self.incomingRequests.removeAll { $0.id == friendshipId }
                 if accept { self.loadFriends() }
             },
-            onError: { [weak self] _ in
-                self?.respondingIds.remove(friendshipId)
+            onError: { [weak self] error in
+                guard let self else { return }
+                self.respondingIds.remove(friendshipId)
+                self.respondError = accept
+                    ? "Could not accept the request. Please try again."
+                    : "Could not decline the request. Please try again."
             }
         )
+    }
+
+    func dismissRespondError() {
+        respondError = nil
     }
 
     // MARK: - Friends List

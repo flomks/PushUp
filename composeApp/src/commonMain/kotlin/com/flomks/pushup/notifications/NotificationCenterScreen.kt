@@ -475,14 +475,12 @@ private fun notificationIcon(type: NotificationType) = when (type) {
 /**
  * Returns a short title string for a notification.
  */
-private fun notificationTitle(notification: AppNotification): String {
-    val actor = notification.actorName ?: "Someone"
-    return when (notification.type) {
+private fun notificationTitle(notification: AppNotification): String =
+    when (notification.type) {
         NotificationType.FRIEND_REQUEST  -> "New friend request"
         NotificationType.FRIEND_ACCEPTED -> "Friend request accepted"
         NotificationType.UNKNOWN         -> "New notification"
     }
-}
 
 /**
  * Returns a descriptive body string for a notification.

@@ -32,6 +32,18 @@ struct NotificationsView: View {
                     }
                 }
             }
+            // Surface mark-read action errors as an alert
+            .alert(
+                "Error",
+                isPresented: Binding(
+                    get: { viewModel.actionError != nil },
+                    set: { if !$0 { viewModel.dismissActionError() } }
+                )
+            ) {
+                Button("OK", role: .cancel) { viewModel.dismissActionError() }
+            } message: {
+                Text(viewModel.actionError ?? "")
+            }
         }
         .onAppear { viewModel.loadNotifications() }
     }
@@ -103,12 +115,12 @@ private struct NotificationRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: AppSpacing.sm) {
-                // Unread dot
+                // Unread indicator dot
                 Circle()
                     .fill(item.isRead ? Color.clear : AppColors.primary)
                     .frame(width: 8, height: 8)
 
-                // Icon
+                // Type icon
                 Image(systemName: item.iconName)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(item.isRead ? AppColors.textSecondary : AppColors.primary)
@@ -142,12 +154,16 @@ private struct NotificationRow: View {
 
 /// In-app banner shown at the top of the screen when a new notification arrives.
 /// Slides in from the top and auto-dismisses after 4 seconds.
+///
+/// The auto-dismiss task is stored so it can be cancelled if the user
+/// manually dismisses the banner first, preventing a double-dismiss.
 struct NotificationBannerOverlay: View {
 
     let item: NotificationDisplayItem
     let onDismiss: () -> Void
 
     @State private var isVisible = false
+    @State private var autoDismissTask: Task<Void, Never>? = nil
 
     var body: some View {
         VStack {
@@ -170,7 +186,9 @@ struct NotificationBannerOverlay: View {
 
                     Spacer()
 
-                    Button(action: onDismiss) {
+                    Button {
+                        dismiss()
+                    } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white.opacity(0.8))
@@ -187,13 +205,31 @@ struct NotificationBannerOverlay: View {
         }
         .onAppear {
             withAnimation(.spring(response: 0.4)) { isVisible = true }
-            // Auto-dismiss after 4 seconds
-            Task {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                withAnimation(.easeOut(duration: 0.3)) { isVisible = false }
-                try? await Task.sleep(nanoseconds: 350_000_000)
-                onDismiss()
-            }
+            scheduleAutoDismiss()
+        }
+        .onDisappear {
+            autoDismissTask?.cancel()
+        }
+    }
+
+    // MARK: - Private
+
+    private func dismiss() {
+        autoDismissTask?.cancel()
+        withAnimation(.easeOut(duration: 0.3)) { isVisible = false }
+        // Allow the slide-out animation to complete before removing from hierarchy.
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            onDismiss()
+        }
+    }
+
+    private func scheduleAutoDismiss() {
+        autoDismissTask?.cancel()
+        autoDismissTask = Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            dismiss()
         }
     }
 }

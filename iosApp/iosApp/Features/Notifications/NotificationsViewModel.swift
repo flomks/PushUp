@@ -1,37 +1,52 @@
 import Foundation
 import Shared
 
+// MARK: - NotificationKind
+
+/// Type-safe representation of a notification kind, derived from the
+/// raw string returned by the backend. Avoids stringly-typed switch
+/// statements scattered across the view layer.
+enum NotificationKind: String {
+    case friendRequest  = "friend_request"
+    case friendAccepted = "friend_accepted"
+    case unknown
+
+    init(rawType: String) {
+        self = NotificationKind(rawValue: rawType) ?? .unknown
+    }
+}
+
 // MARK: - NotificationDisplayItem
 
 struct NotificationDisplayItem: Identifiable {
     let id: String
-    let type: String          // "friend_request" | "friend_accepted"
+    let kind: NotificationKind
     let actorName: String?
     let isRead: Bool
     let createdAt: String
 
     var title: String {
-        switch type {
-        case "friend_request":  return "New friend request"
-        case "friend_accepted": return "Friend request accepted"
-        default:                return "Notification"
+        switch kind {
+        case .friendRequest:  return "New friend request"
+        case .friendAccepted: return "Friend request accepted"
+        case .unknown:        return "Notification"
         }
     }
 
     var body: String {
         let actor = actorName ?? "Someone"
-        switch type {
-        case "friend_request":  return "\(actor) sent you a friend request"
-        case "friend_accepted": return "\(actor) accepted your friend request"
-        default:                return "You have a new notification"
+        switch kind {
+        case .friendRequest:  return "\(actor) sent you a friend request"
+        case .friendAccepted: return "\(actor) accepted your friend request"
+        case .unknown:        return "You have a new notification"
         }
     }
 
     var iconName: String {
-        switch type {
-        case "friend_request":  return "person.badge.plus"
-        case "friend_accepted": return "checkmark.circle.fill"
-        default:                return "bell.fill"
+        switch kind {
+        case .friendRequest:  return "person.badge.plus"
+        case .friendAccepted: return "checkmark.circle.fill"
+        case .unknown:        return "bell.fill"
         }
     }
 }
@@ -44,6 +59,7 @@ final class NotificationsViewModel: ObservableObject {
     @Published var notifications: [NotificationDisplayItem] = []
     @Published var isLoading: Bool = false
     @Published var error: String? = nil
+    @Published var actionError: String? = nil
     @Published var banner: NotificationDisplayItem? = nil
 
     var unreadCount: Int {
@@ -56,23 +72,38 @@ final class NotificationsViewModel: ObservableObject {
         isLoading = true
         error = nil
 
+        // Capture the current unread count before the async call so the
+        // banner detection compares against the pre-load baseline.
+        let previousUnreadCount = unreadCount
+
         NotificationsBridge.shared.getNotifications(
             onResult: { [weak self] items in
                 guard let self else { return }
-                let previous = self.unreadCount
-                self.notifications = items.map {
-                    NotificationDisplayItem(
-                        id: $0.id,
-                        type: $0.type.toDbValue(),
-                        actorName: $0.actorName,
-                        isRead: $0.isRead,
-                        createdAt: $0.createdAt
+                self.notifications = items.map { item in
+                    // Map the Kotlin NotificationType enum to our Swift kind
+                    // using the stable db-value string, not an internal method.
+                    let rawType: String
+                    switch item.type {
+                    case NotificationType.friendRequest:  rawType = "friend_request"
+                    case NotificationType.friendAccepted: rawType = "friend_accepted"
+                    default:                              rawType = "unknown"
+                    }
+                    return NotificationDisplayItem(
+                        id: item.id,
+                        kind: NotificationKind(rawType: rawType),
+                        actorName: item.actorName,
+                        isRead: item.isRead,
+                        createdAt: item.createdAt
                     )
                 }
                 self.isLoading = false
-                // Show banner if a new unread notification arrived
-                let newUnread = self.unreadCount
-                if newUnread > previous, let first = self.notifications.first(where: { !$0.isRead }) {
+
+                // Show a banner only when new unread notifications arrived
+                // since the last load. Use the captured baseline, not the
+                // current computed value, to avoid a race.
+                let newUnreadCount = self.unreadCount
+                if newUnreadCount > previousUnreadCount,
+                   let first = self.notifications.first(where: { !$0.isRead }) {
                     self.banner = first
                 }
             },
@@ -91,15 +122,18 @@ final class NotificationsViewModel: ObservableObject {
             notificationId: id,
             onSuccess: { [weak self] in
                 guard let self else { return }
-                self.notifications = self.notifications.map {
-                    $0.id == id
-                        ? NotificationDisplayItem(id: $0.id, type: $0.type,
-                                                   actorName: $0.actorName, isRead: true,
-                                                   createdAt: $0.createdAt)
-                        : $0
+                self.notifications = self.notifications.map { item in
+                    guard item.id == id else { return item }
+                    return NotificationDisplayItem(
+                        id: item.id, kind: item.kind,
+                        actorName: item.actorName, isRead: true,
+                        createdAt: item.createdAt
+                    )
                 }
             },
-            onError: { _ in }
+            onError: { [weak self] _ in
+                self?.actionError = "Could not mark notification as read. Please try again."
+            }
         )
     }
 
@@ -107,17 +141,25 @@ final class NotificationsViewModel: ObservableObject {
         NotificationsBridge.shared.markAllNotificationsRead(
             onSuccess: { [weak self] in
                 guard let self else { return }
-                self.notifications = self.notifications.map {
-                    NotificationDisplayItem(id: $0.id, type: $0.type,
-                                             actorName: $0.actorName, isRead: true,
-                                             createdAt: $0.createdAt)
+                self.notifications = self.notifications.map { item in
+                    NotificationDisplayItem(
+                        id: item.id, kind: item.kind,
+                        actorName: item.actorName, isRead: true,
+                        createdAt: item.createdAt
+                    )
                 }
             },
-            onError: { _ in }
+            onError: { [weak self] _ in
+                self?.actionError = "Could not mark all notifications as read. Please try again."
+            }
         )
     }
 
     func dismissBanner() {
         banner = nil
+    }
+
+    func dismissActionError() {
+        actionError = nil
     }
 }

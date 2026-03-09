@@ -17,6 +17,9 @@ import org.koin.core.component.get
  *
  * All callbacks are dispatched on [Dispatchers.Main] so Swift ViewModels
  * can update @Published properties directly.
+ *
+ * Error messages passed to [onError] are user-facing strings only --
+ * internal exception details are never forwarded to the UI layer.
  */
 object FriendsBridge : KoinComponent {
 
@@ -33,10 +36,9 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val results = get<FriendshipRepository>().searchUsers(query)
-                onResult(results)
-            } catch (e: Exception) {
-                onError(e.message ?: "Search failed")
+                onResult(get<FriendshipRepository>().searchUsers(query))
+            } catch (_: Exception) {
+                onError("Search failed. Please try again.")
             }
         }
     }
@@ -52,10 +54,9 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val friendship = get<FriendshipRepository>().sendFriendRequest(receiverId)
-                onResult(friendship)
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to send request")
+                onResult(get<FriendshipRepository>().sendFriendRequest(receiverId))
+            } catch (_: Exception) {
+                onError("Could not send friend request. Please try again.")
             }
         }
     }
@@ -70,10 +71,9 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val requests = get<FriendshipRepository>().getIncomingFriendRequests()
-                onResult(requests)
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to load requests")
+                onResult(get<FriendshipRepository>().getIncomingFriendRequests())
+            } catch (_: Exception) {
+                onError("Could not load friend requests. Please try again.")
             }
         }
     }
@@ -90,10 +90,9 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val friendship = get<FriendshipRepository>().respondToFriendRequest(friendshipId, accept)
-                onResult(friendship)
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to respond to request")
+                onResult(get<FriendshipRepository>().respondToFriendRequest(friendshipId, accept))
+            } catch (_: Exception) {
+                onError("Could not respond to the request. Please try again.")
             }
         }
     }
@@ -108,10 +107,9 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val friends = get<FriendshipRepository>().getFriends()
-                onResult(friends)
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to load friends")
+                onResult(get<FriendshipRepository>().getFriends())
+            } catch (_: Exception) {
+                onError("Could not load friends. Please try again.")
             }
         }
     }
@@ -129,8 +127,8 @@ object FriendsBridge : KoinComponent {
             try {
                 get<FriendshipRepository>().removeFriend(friendId)
                 onSuccess()
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to remove friend")
+            } catch (_: Exception) {
+                onError("Could not remove friend. Please try again.")
             }
         }
     }

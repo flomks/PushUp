@@ -14,6 +14,9 @@ import org.koin.core.component.get
  *
  * All callbacks are dispatched on [Dispatchers.Main] so Swift ViewModels
  * can update @Published properties directly.
+ *
+ * Error messages passed to [onError] are user-facing strings only --
+ * internal exception details are never forwarded to the UI layer.
  */
 object NotificationsBridge : KoinComponent {
 
@@ -29,10 +32,9 @@ object NotificationsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                val notifications = get<NotificationRepository>().getNotifications()
-                onResult(notifications)
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to load notifications")
+                onResult(get<NotificationRepository>().getNotifications())
+            } catch (_: Exception) {
+                onError("Could not load notifications. Please try again.")
             }
         }
     }
@@ -50,8 +52,8 @@ object NotificationsBridge : KoinComponent {
             try {
                 get<NotificationRepository>().markNotificationRead(notificationId)
                 onSuccess()
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to mark as read")
+            } catch (_: Exception) {
+                onError("Could not mark notification as read. Please try again.")
             }
         }
     }
@@ -68,8 +70,8 @@ object NotificationsBridge : KoinComponent {
             try {
                 get<NotificationRepository>().markAllNotificationsRead()
                 onSuccess()
-            } catch (e: Exception) {
-                onError(e.message ?: "Failed to mark all as read")
+            } catch (_: Exception) {
+                onError("Could not mark all notifications as read. Please try again.")
             }
         }
     }

@@ -35,43 +35,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         }
     }
 
-    var label: String {
-        switch self {
-        case .dashboard: return "Dashboard"
-        case .workout:   return "Workout"
-        case .history:   return "History"
-        case .stats:     return "Stats"
-        case .friends:   return "Friends"
-        case .profile:   return "Profile"
-        case .settings:  return "Settings"
-        }
-    }
-
-    var placeholderDescription: String {
-        switch self {
-        case .dashboard: return "Your time credit and daily statistics will appear here."
-        case .workout:   return "Start a workout here and count your push-ups in real time."
-        case .history:   return "All your past workouts will appear here."
-        case .stats:     return "Daily, weekly, and monthly statistics will appear here."
-        case .friends:   return "Find friends, manage requests, and see your friends list."
-        case .profile:   return "Your profile, avatar, and account information will appear here."
-        case .settings:  return "Push-up rate, notifications, and other settings will appear here."
-        }
-    }
-
-    var accessibilityIdentifier: String {
-        switch self {
-        case .dashboard: return "tab_dashboard"
-        case .workout:   return "tab_workout"
-        case .history:   return "tab_history"
-        case .stats:     return "tab_stats"
-        case .friends:   return "tab_friends"
-        case .profile:   return "tab_profile"
-        case .settings:  return "tab_settings"
-        }
-    }
-    }
-
     /// The localised label shown below the tab bar icon and in the
     /// navigation bar title.
     var label: String {
@@ -80,6 +43,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "Workout"
         case .history:   return "History"
         case .stats:     return "Stats"
+        case .friends:   return "Friends"
         case .profile:   return "Profile"
         case .settings:  return "Settings"
         }
@@ -93,6 +57,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "Start a workout here and count your push-ups in real time."
         case .history:   return "All your past workouts will appear here."
         case .stats:     return "Daily, weekly, and monthly statistics will appear here."
+        case .friends:   return "Find friends, manage requests, and see your friends list."
         case .profile:   return "Your profile, avatar, and account information will appear here."
         case .settings:  return "Push-up rate, notifications, and other settings will appear here."
         }
@@ -105,6 +70,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "tab_workout"
         case .history:   return "tab_history"
         case .stats:     return "tab_stats"
+        case .friends:   return "tab_friends"
         case .profile:   return "tab_profile"
         case .settings:  return "tab_settings"
         }
@@ -115,10 +81,15 @@ enum Tab: Int, CaseIterable, Identifiable {
 
 /// Root navigation container for the PushUp app.
 ///
-/// Renders a `TabView` with six tabs. Each tab owns its own `NavigationStack`
+/// Renders a `TabView` with seven tabs. Each tab owns its own `NavigationStack`
 /// so that navigation state is independent per tab. The selected tab is
 /// intentionally **not** persisted -- the app always opens on the Dashboard
 /// tab after a cold launch, as required by Task 3.3.
+///
+/// A single `FriendsViewModel` instance is owned here and passed into
+/// `FriendsView` so that the tab-bar badge and the list share the same data.
+/// Similarly, `NotificationsViewModel` is owned here so the in-app banner
+/// overlay is driven by the same state as the notification list.
 struct MainTabView: View {
 
     /// The currently selected tab. Defaults to `.dashboard` and is never
@@ -126,15 +97,18 @@ struct MainTabView: View {
     /// persistent" acceptance criterion.
     @State private var selectedTab: Tab = .dashboard
 
-    /// Shared ViewModels for Friends and Notifications so badge counts and
-    /// banners are available across the whole tab bar.
+    /// Single source of truth for friends data -- shared between the tab-bar
+    /// badge and the FriendsView so they always reflect the same state.
     @StateObject private var friendsViewModel = FriendsViewModel()
+
+    /// Single source of truth for notifications -- shared between the in-app
+    /// banner overlay and the NotificationsView.
     @StateObject private var notificationsViewModel = NotificationsViewModel()
 
     var body: some View {
         ZStack(alignment: .top) {
             TabView(selection: $selectedTab) {
-                // Dashboard tab
+                // Dashboard tab -- real implementation (Task 3.5)
                 NavigationStack {
                     DashboardView(selectedTab: $selectedTab)
                 }
@@ -144,7 +118,7 @@ struct MainTabView: View {
                 .tag(Tab.dashboard)
                 .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
 
-                // Workout tab
+                // Workout tab -- real implementation (Task 3.6)
                 WorkoutView()
                     .tabItem {
                         Label(Tab.workout.label, icon: Tab.workout.icon)
@@ -152,7 +126,7 @@ struct MainTabView: View {
                     .tag(Tab.workout)
                     .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
-                // History tab
+                // History tab -- real implementation (Task 3.9)
                 NavigationStack {
                     HistoryView()
                 }
@@ -162,7 +136,7 @@ struct MainTabView: View {
                 .tag(Tab.history)
                 .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
 
-                // Stats tab
+                // Stats tab -- real implementation (Task 3.8)
                 NavigationStack {
                     StatsView()
                 }
@@ -172,17 +146,17 @@ struct MainTabView: View {
                 .tag(Tab.stats)
                 .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
-                // Friends tab (new)
-                FriendsView()
+                // Friends tab -- passes the shared ViewModel so the badge and
+                // the list are always in sync.
+                FriendsView(viewModel: friendsViewModel)
                     .tabItem {
                         Label(Tab.friends.label, icon: Tab.friends.icon)
                     }
                     .tag(Tab.friends)
-                    .badge(friendsViewModel.pendingRequestCount > 0
-                           ? friendsViewModel.pendingRequestCount : 0)
+                    .badge(friendsViewModel.pendingRequestCount)
                     .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
 
-                // Profile tab
+                // Profile tab -- real implementation (Task 3.10)
                 NavigationStack {
                     ProfileView()
                 }
@@ -192,7 +166,7 @@ struct MainTabView: View {
                 .tag(Tab.profile)
                 .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
 
-                // Settings tab
+                // Settings tab -- real implementation (Task 3.11)
                 NavigationStack {
                     SettingsView()
                 }
@@ -204,10 +178,12 @@ struct MainTabView: View {
             }
             .tint(AppColors.primary)
 
-            // Offline banner overlay -- slides in from the top when offline.
+            // Offline banner overlay (Task 3.14) -- slides in from the top
+            // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
 
-            // In-app notification banner -- slides in when a new notification arrives.
+            // In-app notification banner -- slides in when a new unread
+            // notification arrives while the user is in the app.
             if let banner = notificationsViewModel.banner {
                 NotificationBannerOverlay(item: banner) {
                     notificationsViewModel.dismissBanner()
@@ -230,10 +206,6 @@ struct MainTabView: View {
 ///
 /// All display data (icon, title, description) is derived from the `Tab`
 /// enum so there is a single source of truth for tab metadata.
-///
-/// Replace individual cases in `MainTabView.body` with the real feature
-/// views as they are implemented (Task 3.5 Dashboard, Task 3.6 Workout,
-/// Task 3.8 Stats, Task 3.10 Profile, Task 3.11 Settings).
 struct TabPlaceholderView: View {
 
     let tab: Tab

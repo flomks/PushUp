@@ -10,7 +10,9 @@ import SwiftUI
 ///   2 – Friends       (accepted friends list with remove)
 struct FriendsView: View {
 
-    @StateObject private var viewModel = FriendsViewModel()
+    /// Injected from MainTabView so the tab-bar badge and this view share
+    /// the same ViewModel instance and are always in sync.
+    @ObservedObject var viewModel: FriendsViewModel
     @State private var selectedSegment: Int = 0
 
     var body: some View {
@@ -257,6 +259,17 @@ struct FriendRequestsView: View {
                 .refreshable { viewModel.loadIncomingRequests() }
             }
         }
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { viewModel.respondError != nil },
+                set: { if !$0 { viewModel.dismissRespondError() } }
+            )
+        ) {
+            Button("OK", role: .cancel) { viewModel.dismissRespondError() }
+        } message: {
+            Text(viewModel.respondError ?? "")
+        }
     }
 
     private var emptyState: some View {
@@ -496,6 +509,6 @@ private struct FriendRow: View {
 
 #if DEBUG
 #Preview("FriendsView") {
-    FriendsView()
+    FriendsView(viewModel: FriendsViewModel())
 }
 #endif
