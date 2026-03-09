@@ -26,8 +26,6 @@ fun Application.configureStatusPages() {
                 ErrorResponse(error = "internal_server_error", message = "An unexpected error occurred"),
             )
         }
-        status(HttpStatusCode.NotFound) { call, status ->
-            call.respond(status, ErrorResponse(error = "not_found", message = "Not found"))
-        }
+
     }
 }
