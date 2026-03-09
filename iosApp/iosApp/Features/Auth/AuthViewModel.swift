@@ -179,7 +179,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             try validateLogin()
             isLoading = true
             authState = .loading
-            let useCase = DIHelper.shared.loginWithEmailUseCase()
+            let useCase = DIHelperKt.diHelperShared().loginWithEmailUseCase()
             _ = try await useCase.invoke(
                 email: loginEmail.trimmingCharacters(in: .whitespaces),
                 password: loginPassword
@@ -216,7 +216,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             try validateRegistration()
             isLoading = true
             authState = .loading
-            let useCase = DIHelper.shared.registerWithEmailUseCase()
+            let useCase = DIHelperKt.diHelperShared().registerWithEmailUseCase()
             _ = try await useCase.invoke(
                 email: registerEmail.trimmingCharacters(in: .whitespaces),
                 password: registerPassword
@@ -287,7 +287,7 @@ final class AuthViewModel: NSObject, ObservableObject {
                   let idToken = String(data: tokenData, encoding: .utf8) else {
                 throw AuthError.unknown("Apple did not return an identity token.")
             }
-            let useCase = DIHelper.shared.loginWithAppleUseCase()
+            let useCase = DIHelperKt.diHelperShared().loginWithAppleUseCase()
             _ = try await useCase.invoke(idToken: idToken)
             isLoading = false
             authState = .authenticated
@@ -370,7 +370,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Signs the current user out and returns to the unauthenticated state.
     func signOut() {
         Task {
-            let useCase = DIHelper.shared.logoutUseCase()
+            let useCase = DIHelperKt.diHelperShared().logoutUseCase()
             try? await useCase.invoke(clearLocalData: false)
         }
         authState = .unauthenticated
@@ -385,7 +385,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Call this on app launch to skip the login screen when the user is
     /// already signed in.
     func restoreSession() async {
-        let useCase = DIHelper.shared.getCurrentUserUseCase()
+        let useCase = DIHelperKt.diHelperShared().getCurrentUserUseCase()
         if let _ = try? await useCase.invoke() {
             authState = .authenticated
         }
@@ -527,7 +527,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         let userEmail = parseJWTClaim(accessToken, claim: "email")
 
         // Store the session via the KMP DIHelper
-        DIHelper.shared.storeOAuthSession(
+        DIHelperKt.diHelperShared().storeOAuthSession(
             accessToken: accessToken,
             refreshToken: refreshToken,
             userId: userId,

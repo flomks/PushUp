@@ -160,19 +160,23 @@ class DIHelper private constructor() : KoinComponent {
         }
     }
 
-    companion object {
-        /**
-         * Lazily-initialised singleton instance.
-         *
-         * Lazy initialisation ensures that the [DIHelper] constructor (and
-         * therefore the first Koin `get()` call) only runs after [initKoin]
-         * has been called. Accessing [shared] before [initKoin] will still
-         * crash at the first `get()` call, but the companion object itself
-         * is safe to reference before Koin is ready.
-         *
-         * A single [DIHelper] is sufficient because all use cases are resolved
-         * lazily on each call to the factory methods above.
-         */
-        val shared: DIHelper by lazy { DIHelper() }
-    }
 }
+
+/**
+ * Lazily-initialised singleton accessor for [DIHelper].
+ *
+ * Exposed as a top-level function so Kotlin/Native exports it cleanly to Swift
+ * as a free function `DIHelperKt.shared()` — avoiding the companion-object
+ * accessor pattern that Kotlin/Native does not always export reliably.
+ *
+ * Usage from Swift:
+ * ```swift
+ * let helper = DIHelperKt.shared()
+ * let useCase = helper.loginWithEmailUseCase()
+ * ```
+ *
+ * Requires [initKoin] to have been called before the first access.
+ */
+private val _sharedDIHelper: DIHelper by lazy { DIHelper() }
+
+fun diHelperShared(): DIHelper = _sharedDIHelper
