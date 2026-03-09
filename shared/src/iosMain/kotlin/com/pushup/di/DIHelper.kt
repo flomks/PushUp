@@ -1,6 +1,7 @@
 package com.pushup.di
 
 import com.pushup.domain.model.User
+import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
@@ -52,4 +53,24 @@ object DIHelper : KoinComponent {
      */
     suspend fun loginWithGoogleOAuthCode(code: String): User =
         get<LoginWithGoogleUseCase>().invokeWithOAuthCode(code)
+
+    /**
+     * Stores a session from the Supabase OAuth Implicit Flow.
+     *
+     * Used when Supabase returns tokens directly in the URL fragment
+     * instead of a PKCE code.
+     */
+    suspend fun loginWithImplicitTokens(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresIn: Long,
+    ): User = get<AuthRepository>().loginWithImplicitTokens(
+        accessToken = accessToken,
+        refreshToken = refreshToken,
+        userId = userId,
+        userEmail = userEmail,
+        expiresIn = expiresIn,
+    )
 }

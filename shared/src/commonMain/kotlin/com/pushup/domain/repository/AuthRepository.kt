@@ -84,6 +84,27 @@ interface AuthRepository {
     suspend fun loginWithOAuthCode(code: String): User
 
     /**
+     * Stores a session from the Supabase OAuth Implicit Flow.
+     *
+     * Used when Supabase returns tokens directly in the URL fragment
+     * (`#access_token=...&refresh_token=...`) instead of a PKCE code.
+     *
+     * @param accessToken  The Supabase JWT access token.
+     * @param refreshToken The Supabase refresh token.
+     * @param userId       The user ID (from the JWT `sub` claim).
+     * @param userEmail    The user's email (from the JWT `email` claim), or null.
+     * @param expiresIn    Seconds until the access token expires.
+     * @return The authenticated [User].
+     */
+    suspend fun loginWithImplicitTokens(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresIn: Long,
+    ): User
+
+    /**
      * Signs out the current user.
      *
      * Clears the stored tokens from secure local storage. Optionally clears
