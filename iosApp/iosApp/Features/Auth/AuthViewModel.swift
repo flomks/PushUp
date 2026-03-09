@@ -385,30 +385,34 @@ final class AuthViewModel: NSObject, ObservableObject {
 
     // MARK: - Private
 
-    /// Maps a KMP AuthException (sealed class) to a user-facing error message.
+    /// Maps a KMP AuthException to a user-facing error message.
     ///
-    /// Kotlin/Native exports sealed class subclasses as nested Swift types, but
-    /// they cannot be used directly in `catch` clauses. Instead we catch the
-    /// base `AuthException` and use `is` checks here.
+    /// Kotlin/Native sealed class subclasses are not reliably accessible as
+    /// distinct Swift types. We identify the subclass by its Swift class name
+    /// (via String(describing:)) which Kotlin/Native always exports.
     private func mapAuthException(_ error: AuthException) -> String {
-        if error is AuthExceptionInvalidCredentials {
+        let typeName = String(describing: type(of: error))
+        let msg = error.message ?? ""
+
+        switch typeName {
+        case _ where typeName.contains("InvalidCredentials"):
             return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
-        } else if error is AuthExceptionEmailAlreadyInUse {
+        case _ where typeName.contains("EmailAlreadyInUse"):
             return AuthError.emailAlreadyInUse.errorDescription ?? "Email already in use."
-        } else if error is AuthExceptionWeakPassword {
+        case _ where typeName.contains("WeakPassword"):
             return "Password is too weak. Please choose a stronger password."
-        } else if error is AuthExceptionInvalidEmail {
+        case _ where typeName.contains("InvalidEmail"):
             return AuthError.invalidEmail.errorDescription ?? "Invalid email."
-        } else if error is AuthExceptionSessionExpired {
+        case _ where typeName.contains("SessionExpired"):
             return "Your session has expired. Please sign in again."
-        } else if error is AuthExceptionNotAuthenticated {
+        case _ where typeName.contains("NotAuthenticated"):
             return "Not authenticated. Please sign in."
-        } else if let networkError = error as? AuthExceptionNetworkError {
-            return AuthError.networkError(networkError.message ?? "Connection failed").errorDescription ?? "Network error."
-        } else if let serverError = error as? AuthExceptionServerError {
-            return "Server error (\(serverError.statusCode)). Please try again."
-        } else {
-            return AuthError.unknown(error.message ?? "Unknown error").errorDescription ?? "Unknown error."
+        case _ where typeName.contains("NetworkError"):
+            return AuthError.networkError(msg.isEmpty ? "Connection failed" : msg).errorDescription ?? "Network error."
+        case _ where typeName.contains("ServerError"):
+            return "Server error. Please try again."
+        default:
+            return msg.isEmpty ? "An unknown error occurred." : msg
         }
     }
 
