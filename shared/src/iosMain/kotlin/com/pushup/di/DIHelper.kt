@@ -1,5 +1,6 @@
 package com.pushup.di
 
+import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.usecase.FinishWorkoutUseCase
@@ -21,22 +22,21 @@ import org.koin.core.component.get
  * Declared as a Kotlin `object` so Kotlin/Native exports it to Swift as
  * `DIHelper.shared` — the standard singleton accessor pattern on iOS.
  *
- * **Usage from Swift**
- * ```swift
- * KoinIOSKt.doInitKoin()
- * let useCase = DIHelper.shared.loginWithEmailUseCase()
- * ```
+ * All auth methods are "safe" — they never throw exceptions across the
+ * Kotlin/Swift boundary. Instead they return [AuthResult] which contains
+ * either the [User] or an error message string.
  *
  * Requires [initKoin] to have been called before any method is invoked.
  */
 object DIHelper : KoinComponent {
 
+    // Workout use cases (unchanged)
     fun getOrCreateLocalUserUseCase(): GetOrCreateLocalUserUseCase = get()
     fun startWorkoutUseCase(): StartWorkoutUseCase = get()
     fun recordPushUpUseCase(): RecordPushUpUseCase = get()
     fun finishWorkoutUseCase(): FinishWorkoutUseCase = get()
 
-    // Auth use cases
+    // Raw use case accessors (kept for non-auth usage)
     fun loginWithEmailUseCase(): LoginWithEmailUseCase = get()
     fun registerWithEmailUseCase(): RegisterWithEmailUseCase = get()
     fun loginWithAppleUseCase(): LoginWithAppleUseCase = get()
@@ -44,33 +44,105 @@ object DIHelper : KoinComponent {
     fun logoutUseCase(): LogoutUseCase = get()
     fun getCurrentUserUseCase(): GetCurrentUserUseCase = get()
 
-    /**
-     * Exchanges a Supabase PKCE OAuth code for a session.
-     *
-     * Exposed as a top-level suspend function on DIHelper so Swift can call it
-     * directly via the KMP async bridge, avoiding the need to call a non-operator
-     * method on LoginWithGoogleUseCase (which Kotlin/Native exports differently).
-     */
-    suspend fun loginWithGoogleOAuthCode(code: String): User =
-        get<LoginWithGoogleUseCase>().invokeWithOAuthCode(code)
+    // =========================================================================
+    // Safe auth methods — NEVER throw, always return AuthResult
+    // =========================================================================
 
     /**
-     * Stores a session from the Supabase OAuth Implicit Flow.
-     *
-     * Used when Supabase returns tokens directly in the URL fragment
-     * instead of a PKCE code.
+     * Signs in with email and password. Never throws.
      */
-    suspend fun loginWithImplicitTokens(
+    suspend fun safeLoginWithEmail(email: String, password: String): AuthResult =
+        safeAuthCall { get<LoginWithEmailUseCase>().invoke(email, password) }
+
+    /**
+     * Registers with email and password. Never throws.
+     */
+    suspend fun safeRegisterWithEmail(email: String, password: String): AuthResult =
+        safeAuthCall { get<RegisterWithEmailUseCase>().invoke(email, password) }
+
+    /**
+     * Signs in with Apple ID token. Never throws.
+     */
+    suspend fun safeLoginWithApple(idToken: String): AuthResult =
+        safeAuthCall { get<LoginWithAppleUseCase>().invoke(idToken) }
+
+    /**
+     * Exchanges a PKCE OAuth code. Never throws.
+     */
+    suspend fun safeLoginWithGoogleOAuthCode(code: String): AuthResult =
+        safeAuthCall { get<LoginWithGoogleUseCase>().invokeWithOAuthCode(code) }
+
+    /**
+     * Stores tokens from the Implicit OAuth flow. Never throws.
+     */
+    suspend fun safeLoginWithImplicitTokens(
         accessToken: String,
         refreshToken: String,
         userId: String,
         userEmail: String?,
         expiresIn: Long,
-    ): User = get<AuthRepository>().loginWithImplicitTokens(
-        accessToken = accessToken,
-        refreshToken = refreshToken,
-        userId = userId,
-        userEmail = userEmail,
-        expiresIn = expiresIn,
-    )
+    ): AuthResult = safeAuthCall {
+        get<AuthRepository>().loginWithImplicitTokens(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            userId = userId,
+            userEmail = userEmail,
+            expiresIn = expiresIn,
+        )
+    }
+
+    /**
+     * Gets the current user. Returns null user if not authenticated. Never throws.
+     */
+    suspend fun safeGetCurrentUser(): AuthResult = try {
+        val user = get<GetCurrentUserUseCase>().invoke()
+        AuthResult(user = user)
+    } catch (_: Exception) {
+        AuthResult(user = null, errorMessage = null)
+    }
+
+    /**
+     * Signs out. Never throws.
+     */
+    suspend fun safeLogout() {
+        try {
+            get<LogoutUseCase>().invoke(clearLocalData = true)
+        } catch (_: Exception) {
+            // Best-effort logout — ignore errors
+        }
+    }
+
+    // =========================================================================
+    // Private
+    // =========================================================================
+
+    /**
+     * Wraps any auth call so exceptions NEVER cross the Kotlin/Swift boundary.
+     * Maps known AuthException subclasses to user-friendly messages.
+     */
+    private suspend fun safeAuthCall(block: suspend () -> User): AuthResult = try {
+        AuthResult(user = block())
+    } catch (e: AuthException.InvalidCredentials) {
+        AuthResult(errorMessage = "Email or password is incorrect.")
+    } catch (e: AuthException.EmailAlreadyInUse) {
+        AuthResult(errorMessage = "This email address is already in use.")
+    } catch (e: AuthException.WeakPassword) {
+        AuthResult(errorMessage = "Password is too weak. Please choose a stronger password.")
+    } catch (e: AuthException.InvalidEmail) {
+        AuthResult(errorMessage = "Please enter a valid email address.")
+    } catch (e: AuthException.SessionExpired) {
+        AuthResult(errorMessage = "Your session has expired. Please sign in again.")
+    } catch (e: AuthException.NotAuthenticated) {
+        AuthResult(errorMessage = "Not authenticated. Please sign in.")
+    } catch (e: AuthException.NetworkError) {
+        AuthResult(errorMessage = "Network error: ${e.message ?: "Connection failed"}. Please check your internet connection.")
+    } catch (e: AuthException.ServerError) {
+        AuthResult(errorMessage = "Server error (${e.statusCode}). Please try again later.")
+    } catch (e: AuthException.Unknown) {
+        AuthResult(errorMessage = e.message ?: "An unknown error occurred.")
+    } catch (e: AuthException) {
+        AuthResult(errorMessage = e.message ?: "Authentication failed.")
+    } catch (e: Exception) {
+        AuthResult(errorMessage = e.message ?: "An unexpected error occurred.")
+    }
 }
