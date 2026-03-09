@@ -5,8 +5,11 @@ import SwiftUI
 /// Settings screen for the PushUp app.
 ///
 /// Follows the standard iOS grouped-list settings style with section headers
-/// and footers. All preferences are persisted via `@AppStorage` in the
-/// `SettingsViewModel`.
+/// and footers. All preferences are persisted via `UserDefaults` in the
+/// `SettingsViewModel` and survive app restarts.
+///
+/// The selected `AppearanceMode` is applied at the root level via
+/// `.preferredColorScheme()` so it affects the entire app.
 ///
 /// **Sections**
 /// 1. Time Credit -- push-ups/min stepper, quality multiplier, daily limit
@@ -70,10 +73,8 @@ struct SettingsView: View {
 
     private var timeCreditSection: some View {
         Section {
-            // Push-ups per minute stepper row
             pushUpsPerMinuteRow
 
-            // Quality multiplier toggle
             SettingsToggleRow(
                 icon: .starFill,
                 iconColor: .orange,
@@ -82,13 +83,12 @@ struct SettingsView: View {
                 isOn: $viewModel.qualityMultiplierEnabled
             )
 
-            // Daily credit limit
             dailyCreditLimitRow
 
         } header: {
             SettingsSectionHeader("Time Credit")
         } footer: {
-            Text("Each push-up earns \(String(format: "%.1f", 60.0 / Double(viewModel.pushUpsPerMinute))) seconds of time credit at the configured rate.")
+            Text("Each push-up earns \(Self.formatCreditPerRep(viewModel.pushUpsPerMinute)) seconds of time credit at the configured rate.")
         }
     }
 
@@ -107,12 +107,11 @@ struct SettingsView: View {
 
             Spacer()
 
-            // Stepper control
             HStack(spacing: AppSpacing.xs) {
                 Button {
                     viewModel.decrementPushUpsPerMinute()
                 } label: {
-                    Image(systemName: AppIcon.minus.rawValue)
+                    Image(icon: .minus)
                         .font(.system(size: 14, weight: .semibold))
                         .frame(width: 28, height: 28)
                         .background(AppColors.backgroundTertiary)
@@ -120,17 +119,19 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(viewModel.pushUpsPerMinute <= SettingsViewModel.pushUpsPerMinuteRange.lowerBound)
+                .accessibilityLabel("Decrease push-ups per minute")
 
                 Text("\(viewModel.pushUpsPerMinute)")
                     .font(AppTypography.bodySemibold)
                     .foregroundStyle(AppColors.textPrimary)
                     .monospacedDigit()
                     .frame(minWidth: 28, alignment: .center)
+                    .accessibilityLabel("\(viewModel.pushUpsPerMinute) push-ups per minute")
 
                 Button {
                     viewModel.incrementPushUpsPerMinute()
                 } label: {
-                    Image(systemName: AppIcon.plus.rawValue)
+                    Image(icon: .plus)
                         .font(.system(size: 14, weight: .semibold))
                         .frame(width: 28, height: 28)
                         .background(AppColors.backgroundTertiary)
@@ -138,9 +139,11 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(viewModel.pushUpsPerMinute >= SettingsViewModel.pushUpsPerMinuteRange.upperBound)
+                .accessibilityLabel("Increase push-ups per minute")
             }
         }
         .padding(.vertical, AppSpacing.xxs)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -169,7 +172,6 @@ struct SettingsView: View {
         .padding(.vertical, AppSpacing.xxs)
         .contentShape(Rectangle())
 
-        // Show the limit value row when enabled
         if viewModel.dailyCreditLimitEnabled {
             Button {
                 showDailyLimitPicker = true
@@ -179,15 +181,16 @@ struct SettingsView: View {
                         .font(AppTypography.body)
                         .foregroundStyle(AppColors.textPrimary)
                     Spacer()
-                    Text(formatMinutes(viewModel.dailyCreditLimit ?? 60))
+                    Text(Self.formatMinutes(viewModel.dailyCreditLimit ?? 60))
                         .font(AppTypography.body)
                         .foregroundStyle(AppColors.textSecondary)
-                    Image(systemName: AppIcon.chevronRight.rawValue)
+                    Image(icon: .chevronRight)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(AppColors.textTertiary)
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Daily credit limit: \(Self.formatMinutes(viewModel.dailyCreditLimit ?? 60))")
         }
     }
 
@@ -195,7 +198,6 @@ struct SettingsView: View {
 
     private var cameraSection: some View {
         Section {
-            // Camera preference picker
             Picker(selection: Binding(
                 get: { viewModel.cameraPosition },
                 set: { viewModel.cameraPosition = $0 }
@@ -214,7 +216,6 @@ struct SettingsView: View {
             }
             .pickerStyle(.navigationLink)
 
-            // Pose overlay toggle
             SettingsToggleRow(
                 icon: .eye,
                 iconColor: .teal,
@@ -232,7 +233,6 @@ struct SettingsView: View {
 
     private var notificationsSection: some View {
         Section {
-            // Notifications master toggle
             HStack(spacing: AppSpacing.sm) {
                 SettingsIconView(icon: .bellFill, color: .red)
 
@@ -259,7 +259,6 @@ struct SettingsView: View {
             }
             .padding(.vertical, AppSpacing.xxs)
 
-            // Notification time picker (only shown when enabled)
             if viewModel.notificationsEnabled {
                 Button {
                     showNotificationTimePicker = true
@@ -277,13 +276,14 @@ struct SettingsView: View {
                             .font(AppTypography.body)
                             .foregroundStyle(AppColors.textSecondary)
 
-                        Image(systemName: AppIcon.chevronRight.rawValue)
+                        Image(icon: .chevronRight)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(AppColors.textTertiary)
                     }
                     .padding(.vertical, AppSpacing.xxs)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Daily reminder at \(viewModel.notificationTimeLabel)")
             }
 
         } header: {
@@ -366,13 +366,14 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Image(systemName: AppIcon.chevronRight.rawValue)
+                    Image(icon: .chevronRight)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(AppColors.textTertiary)
                 }
                 .padding(.vertical, AppSpacing.xxs)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Time credit formula information")
 
         } header: {
             SettingsSectionHeader("Info")
@@ -385,7 +386,6 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            // Version info row
             HStack(spacing: AppSpacing.sm) {
                 SettingsIconView(icon: .gearshapeFill, color: .gray)
 
@@ -400,8 +400,9 @@ struct SettingsView: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
             .padding(.vertical, AppSpacing.xxs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("App version \(AppInfo.versionString)")
 
-            // Privacy Policy link
             SettingsLinkRow(
                 icon: .shieldFill,
                 iconColor: .blue,
@@ -409,7 +410,6 @@ struct SettingsView: View {
                 url: AppInfo.privacyPolicyURL
             )
 
-            // Terms of Service link
             SettingsLinkRow(
                 icon: .docText,
                 iconColor: .gray,
@@ -417,7 +417,6 @@ struct SettingsView: View {
                 url: AppInfo.termsOfServiceURL
             )
 
-            // Support link
             SettingsLinkRow(
                 icon: .questionmarkCircle,
                 iconColor: .green,
@@ -430,15 +429,23 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Shared Formatters
 
-    private func formatMinutes(_ minutes: Int) -> String {
+    /// Formats a minute value into a human-readable duration string.
+    /// Shared across the settings screen and its sub-sheets.
+    static func formatMinutes(_ minutes: Int) -> String {
         if minutes >= 60 {
             let h = minutes / 60
             let m = minutes % 60
             return m > 0 ? "\(h)h \(m)m" : "\(h)h"
         }
         return "\(minutes) min"
+    }
+
+    /// Formats the credit-per-rep value for the section footer.
+    private static func formatCreditPerRep(_ pushUpsPerMinute: Int) -> String {
+        guard pushUpsPerMinute > 0 else { return "0.0" }
+        return String(format: "%.1f", 60.0 / Double(pushUpsPerMinute))
     }
 }
 
@@ -463,6 +470,9 @@ private struct SettingsSectionHeader: View {
 // MARK: - SettingsIconView
 
 /// Rounded-square icon used in settings rows (iOS Settings style).
+///
+/// Matches the native iOS Settings app icon treatment: a coloured rounded
+/// rectangle with a white SF Symbol centred inside.
 struct SettingsIconView: View {
     let icon: AppIcon
     let color: Color
@@ -470,10 +480,10 @@ struct SettingsIconView: View {
 
     var body: some View {
         Image(systemName: icon.rawValue)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: size * 0.5, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(color, in: RoundedRectangle(cornerRadius: 6))
+            .background(color, in: RoundedRectangle(cornerRadius: size * 0.214))
     }
 }
 
@@ -510,6 +520,10 @@ struct SettingsToggleRow: View {
                 .tint(AppColors.primary)
         }
         .padding(.vertical, AppSpacing.xxs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title)\(subtitle.map { ", \($0)" } ?? "")")
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -533,12 +547,13 @@ private struct SettingsLinkRow: View {
 
                 Spacer()
 
-                Image(systemName: "arrow.up.right")
+                Image(icon: .arrowUpRight)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AppColors.textTertiary)
             }
             .padding(.vertical, AppSpacing.xxs)
         }
+        .accessibilityLabel("\(title), opens in browser")
     }
 }
 
@@ -558,20 +573,22 @@ private struct DailyLimitPickerSheet: View {
                         dismiss()
                     } label: {
                         HStack {
-                            Text(formatMinutes(minutes))
+                            Text(SettingsView.formatMinutes(minutes))
                                 .font(AppTypography.body)
                                 .foregroundStyle(AppColors.textPrimary)
 
                             Spacer()
 
                             if viewModel.dailyCreditLimit == minutes {
-                                Image(systemName: AppIcon.checkmark.rawValue)
+                                Image(icon: .checkmark)
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(AppColors.primary)
                             }
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(SettingsView.formatMinutes(minutes))
+                    .accessibilityAddTraits(viewModel.dailyCreditLimit == minutes ? .isSelected : [])
                 }
             }
             .listStyle(.insetGrouped)
@@ -584,15 +601,6 @@ private struct DailyLimitPickerSheet: View {
             }
         }
         .presentationDetents([.medium])
-    }
-
-    private func formatMinutes(_ minutes: Int) -> String {
-        if minutes >= 60 {
-            let h = minutes / 60
-            let m = minutes % 60
-            return m > 0 ? "\(h) hr \(m) min" : "\(h) hr"
-        }
-        return "\(minutes) min"
     }
 }
 
@@ -655,7 +663,7 @@ private struct TimeCreditFormulaSheet: View {
                     // Hero icon
                     HStack {
                         Spacer()
-                        Image(systemName: AppIcon.clockBadgePlus.rawValue)
+                        Image(icon: .clockBadgePlus)
                             .font(.system(size: 56, weight: .light))
                             .foregroundStyle(AppColors.primary)
                             .symbolRenderingMode(.hierarchical)
@@ -663,19 +671,18 @@ private struct TimeCreditFormulaSheet: View {
                     }
                     .padding(.top, AppSpacing.md)
 
-                    // Formula explanation
                     VStack(alignment: .leading, spacing: AppSpacing.md) {
 
                         formulaSection(
                             title: "Basic Formula",
-                            content: "Each push-up earns you a fixed amount of screen time based on your configured push-up rate:\n\n  Credit per rep = 60 seconds ÷ Push-Ups per Minute\n\nFor example, at the default rate of 10 push-ups/min, each rep earns 6 seconds."
+                            content: "Each push-up earns you a fixed amount of screen time based on your configured push-up rate:\n\n  Credit per rep = 60 seconds / Push-Ups per Minute\n\nFor example, at the default rate of 10 push-ups/min, each rep earns 6 seconds."
                         )
 
                         Divider()
 
                         formulaSection(
                             title: "Quality Multiplier",
-                            content: "When the Quality Multiplier is enabled, your form score (0–100%) scales the earned credit:\n\n  Final credit = Base credit × Form score\n\nPerfect form (100%) earns the full amount. Poor form reduces the credit proportionally, encouraging good technique."
+                            content: "When the Quality Multiplier is enabled, your form score (0-100%) scales the earned credit:\n\n  Final credit = Base credit x Form score\n\nPerfect form (100%) earns the full amount. Poor form reduces the credit proportionally, encouraging good technique."
                         )
 
                         Divider()
@@ -689,7 +696,7 @@ private struct TimeCreditFormulaSheet: View {
 
                         formulaSection(
                             title: "Example",
-                            content: "Rate: 10 push-ups/min\nReps: 30\nForm score: 80%\n\nBase credit: 30 × 6s = 180s (3 min)\nWith quality: 180s × 0.80 = 144s (2 min 24s)"
+                            content: "Rate: 10 push-ups/min\nReps: 30\nForm score: 80%\n\nBase credit: 30 x 6s = 180s (3 min)\nWith quality: 180s x 0.80 = 144s (2 min 24s)"
                         )
                     }
                 }

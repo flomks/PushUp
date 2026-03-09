@@ -63,7 +63,12 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
 // MARK: - SettingsKeys
 
-/// Centralised `UserDefaults` key strings.
+/// Centralised `UserDefaults` key strings for all app settings.
+///
+/// Keys are scoped under the `settings.` prefix to avoid collisions with
+/// other `UserDefaults` consumers. Visibility is intentionally `internal`
+/// so that other features (e.g. WorkoutViewModel, DashboardViewModel) can
+/// read settings values without importing the full SettingsViewModel.
 enum SettingsKeys {
     static let pushUpsPerMinute      = "settings.pushUpsPerMinute"
     static let qualityMultiplier     = "settings.qualityMultiplier"
@@ -78,13 +83,27 @@ enum SettingsKeys {
     static let appearanceMode        = "settings.appearanceMode"
 }
 
+// MARK: - Validation Constants
+
+/// Range and boundary constants for settings values.
+private enum SettingsValidation {
+    static let pushUpsPerMinuteRange = 1...50
+    static let pushUpsPerMinuteDefault = 10
+    static let notificationHourRange = 0...23
+    static let notificationHourDefault = 8
+    static let notificationMinuteRange = 0...59
+    static let notificationMinuteDefault = 0
+    static let dailyCreditLimitDefault = 60
+}
+
 // MARK: - SettingsViewModel
 
 /// Manages all persistent user preferences for the Settings screen.
 ///
 /// Every property is backed by `UserDefaults` and published via `@Published`
 /// so the SwiftUI view re-renders on every change. Values are persisted
-/// immediately in each `didSet` observer.
+/// immediately in each `didSet` observer. All values are clamped to their
+/// valid ranges on load to guard against corrupted or tampered defaults.
 ///
 /// **Defaults**
 /// | Setting                  | Default        |
@@ -104,9 +123,13 @@ final class SettingsViewModel: ObservableObject {
 
     // MARK: - Workout / Credit Settings
 
-    /// Push-ups per minute used to calculate time credit. Range: 1–50.
+    /// Push-ups per minute used to calculate time credit. Range: 1-50.
     @Published var pushUpsPerMinute: Int {
-        didSet { UserDefaults.standard.set(pushUpsPerMinute, forKey: SettingsKeys.pushUpsPerMinute) }
+        didSet {
+            let clamped = pushUpsPerMinute.clamped(to: SettingsValidation.pushUpsPerMinuteRange)
+            if pushUpsPerMinute != clamped { pushUpsPerMinute = clamped; return }
+            UserDefaults.standard.set(pushUpsPerMinute, forKey: SettingsKeys.pushUpsPerMinute)
+        }
     }
 
     /// When enabled, the quality multiplier (form score) scales the earned credit.
@@ -123,9 +146,7 @@ final class SettingsViewModel: ObservableObject {
     /// The daily credit limit in minutes, or `nil` when disabled.
     var dailyCreditLimit: Int? {
         get { _dailyCreditLimitMins > 0 ? _dailyCreditLimitMins : nil }
-        set {
-            _dailyCreditLimitMins = newValue ?? 0
-        }
+        set { _dailyCreditLimitMins = newValue ?? 0 }
     }
 
     /// Whether the daily credit limit is active.
@@ -133,8 +154,9 @@ final class SettingsViewModel: ObservableObject {
         get { _dailyCreditLimitMins > 0 }
         set {
             if newValue {
-                // Enable with a sensible default if currently disabled.
-                if _dailyCreditLimitMins <= 0 { _dailyCreditLimitMins = 60 }
+                if _dailyCreditLimitMins <= 0 {
+                    _dailyCreditLimitMins = SettingsValidation.dailyCreditLimitDefault
+                }
             } else {
                 _dailyCreditLimitMins = 0
             }
@@ -150,9 +172,7 @@ final class SettingsViewModel: ObservableObject {
 
     var cameraPosition: CameraPosition {
         get { CameraPosition(rawValue: _cameraPositionRaw) ?? .back }
-        set {
-            _cameraPositionRaw = newValue.rawValue
-        }
+        set { _cameraPositionRaw = newValue.rawValue }
     }
 
     /// Whether the skeleton / pose overlay is shown during workouts.
@@ -167,14 +187,22 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(notificationsEnabled, forKey: SettingsKeys.notificationsEnabled) }
     }
 
-    /// Hour component of the daily reminder time (0–23).
+    /// Hour component of the daily reminder time (0-23).
     @Published var notificationHour: Int {
-        didSet { UserDefaults.standard.set(notificationHour, forKey: SettingsKeys.notificationHour) }
+        didSet {
+            let clamped = notificationHour.clamped(to: SettingsValidation.notificationHourRange)
+            if notificationHour != clamped { notificationHour = clamped; return }
+            UserDefaults.standard.set(notificationHour, forKey: SettingsKeys.notificationHour)
+        }
     }
 
-    /// Minute component of the daily reminder time (0–59).
+    /// Minute component of the daily reminder time (0-59).
     @Published var notificationMinute: Int {
-        didSet { UserDefaults.standard.set(notificationMinute, forKey: SettingsKeys.notificationMinute) }
+        didSet {
+            let clamped = notificationMinute.clamped(to: SettingsValidation.notificationMinuteRange)
+            if notificationMinute != clamped { notificationMinute = clamped; return }
+            UserDefaults.standard.set(notificationMinute, forKey: SettingsKeys.notificationMinute)
+        }
     }
 
     // MARK: - Feedback Settings
@@ -198,9 +226,7 @@ final class SettingsViewModel: ObservableObject {
     /// The user's preferred color scheme.
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: _appearanceModeRaw) ?? .system }
-        set {
-            _appearanceModeRaw = newValue.rawValue
-        }
+        set { _appearanceModeRaw = newValue.rawValue }
     }
 
     // MARK: - Notification Authorization State
@@ -236,13 +262,13 @@ final class SettingsViewModel: ObservableObject {
         }
         set {
             let components = Calendar.current.dateComponents([.hour, .minute], from: newValue)
-            notificationHour   = components.hour   ?? 8
-            notificationMinute = components.minute ?? 0
+            notificationHour   = components.hour   ?? SettingsValidation.notificationHourDefault
+            notificationMinute = components.minute ?? SettingsValidation.notificationMinuteDefault
         }
     }
 
     /// The stepper range for push-ups per minute.
-    static let pushUpsPerMinuteRange = 1...50
+    static let pushUpsPerMinuteRange = SettingsValidation.pushUpsPerMinuteRange
 
     /// Available daily credit limit options in minutes.
     static let dailyCreditLimitOptions: [Int] = [30, 45, 60, 90, 120, 180, 240]
@@ -252,31 +278,44 @@ final class SettingsViewModel: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
 
-        // Load persisted values, falling back to sensible defaults.
-        pushUpsPerMinute     = defaults.object(forKey: SettingsKeys.pushUpsPerMinute) != nil
+        // Load persisted values with validation and sensible fallbacks.
+        let rawPushUps = defaults.object(forKey: SettingsKeys.pushUpsPerMinute) != nil
             ? defaults.integer(forKey: SettingsKeys.pushUpsPerMinute)
-            : 10
+            : SettingsValidation.pushUpsPerMinuteDefault
+        pushUpsPerMinute = rawPushUps.clamped(to: SettingsValidation.pushUpsPerMinuteRange)
+
         qualityMultiplierEnabled = defaults.object(forKey: SettingsKeys.qualityMultiplier) != nil
             ? defaults.bool(forKey: SettingsKeys.qualityMultiplier)
             : true
-        _dailyCreditLimitMins = defaults.integer(forKey: SettingsKeys.dailyCreditLimitMins)
-        _cameraPositionRaw   = defaults.string(forKey: SettingsKeys.cameraPosition)
+
+        _dailyCreditLimitMins = max(0, defaults.integer(forKey: SettingsKeys.dailyCreditLimitMins))
+
+        _cameraPositionRaw = defaults.string(forKey: SettingsKeys.cameraPosition)
             ?? CameraPosition.back.rawValue
-        poseOverlayEnabled   = defaults.object(forKey: SettingsKeys.poseOverlay) != nil
+
+        poseOverlayEnabled = defaults.object(forKey: SettingsKeys.poseOverlay) != nil
             ? defaults.bool(forKey: SettingsKeys.poseOverlay)
             : true
+
         notificationsEnabled = defaults.bool(forKey: SettingsKeys.notificationsEnabled)
-        notificationHour     = defaults.object(forKey: SettingsKeys.notificationHour) != nil
+
+        let rawHour = defaults.object(forKey: SettingsKeys.notificationHour) != nil
             ? defaults.integer(forKey: SettingsKeys.notificationHour)
-            : 8
-        notificationMinute   = defaults.integer(forKey: SettingsKeys.notificationMinute)
+            : SettingsValidation.notificationHourDefault
+        notificationHour = rawHour.clamped(to: SettingsValidation.notificationHourRange)
+
+        let rawMinute = defaults.integer(forKey: SettingsKeys.notificationMinute)
+        notificationMinute = rawMinute.clamped(to: SettingsValidation.notificationMinuteRange)
+
         hapticFeedbackEnabled = defaults.object(forKey: SettingsKeys.hapticFeedback) != nil
             ? defaults.bool(forKey: SettingsKeys.hapticFeedback)
             : true
-        soundEffectsEnabled  = defaults.object(forKey: SettingsKeys.soundEffects) != nil
+
+        soundEffectsEnabled = defaults.object(forKey: SettingsKeys.soundEffects) != nil
             ? defaults.bool(forKey: SettingsKeys.soundEffects)
             : true
-        _appearanceModeRaw   = defaults.string(forKey: SettingsKeys.appearanceMode)
+
+        _appearanceModeRaw = defaults.string(forKey: SettingsKeys.appearanceMode)
             ?? AppearanceMode.system.rawValue
     }
 
@@ -349,6 +388,15 @@ final class SettingsViewModel: ObservableObject {
     private func openSystemSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+}
+
+// MARK: - Comparable + Clamped
+
+private extension Comparable {
+    /// Returns `self` clamped to the given closed range.
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
     }
 }
 

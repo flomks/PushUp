@@ -76,7 +76,7 @@ enum Tab: Int, CaseIterable, Identifiable {
 
 /// Root navigation container for the PushUp app.
 ///
-/// Renders a `TabView` with five tabs. Each tab owns its own `NavigationStack`
+/// Renders a `TabView` with six tabs. Each tab owns its own `NavigationStack`
 /// so that navigation state is independent per tab. The selected tab is
 /// intentionally **not** persisted -- the app always opens on the Dashboard
 /// tab after a cold launch, as required by Task 3.3.
