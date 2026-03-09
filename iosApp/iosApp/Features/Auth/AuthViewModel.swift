@@ -340,8 +340,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             }
             let callbackURL = try await openWebAuthSession(url: authURL, callbackScheme: bundleID)
             let code = try extractOAuthCode(from: callbackURL)
-            let useCase = DIHelper.shared.loginWithGoogleUseCase()
-            _ = try await useCase.invokeWithOAuthCode(code: code)
+            _ = try await DIHelper.shared.loginWithGoogleOAuthCode(code: code)
             isLoading = false
             authState = .authenticated
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
@@ -446,16 +445,14 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Maps any KotlinThrowable (Kotlin exceptions that are not AuthException)
     /// to a user-facing error message. Prevents crashes from unhandled Kotlin errors.
     private func mapKotlinThrowable(_ error: KotlinThrowable) -> String {
-        let msg = error.message ?? String(describing: type(of: error))
-        // Check if it wraps an AuthException by inspecting the message
-        if msg.contains("InvalidCredentials") || msg.contains("invalid credentials", options: .caseInsensitive) {
+        let msg = (error.message ?? String(describing: type(of: error))).lowercased()
+        if msg.contains("invalidcredentials") || msg.contains("invalid credentials") {
             return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
         }
-        if msg.contains("NetworkError") || msg.contains("connect", options: .caseInsensitive) {
+        if msg.contains("networkerror") || msg.contains("connect") || msg.contains("timeout") {
             return "Network error. Please check your connection."
         }
-        if msg.contains("email confirmation", options: .caseInsensitive) ||
-           msg.contains("confirm your email", options: .caseInsensitive) {
+        if msg.contains("email confirmation") || msg.contains("confirm your email") {
             return "Please confirm your email address before signing in."
         }
         return "An error occurred. Please try again."
