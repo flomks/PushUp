@@ -6,6 +6,7 @@ import com.pushup.models.SendFriendRequestBody
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
+import com.pushup.service.FriendListFilter
 import com.pushup.service.FriendshipService
 import com.pushup.service.RespondFriendRequestResult
 import com.pushup.service.SendFriendRequestResult
@@ -15,6 +16,7 @@ import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
@@ -24,10 +26,15 @@ import java.util.UUID
  * Registers all /api/friends routes.
  *
  * Routes:
- *   POST  /api/friends/request      -- Sends a friend request from the authenticated
- *                                      user to another user identified by receiver_id.
- *   PATCH /api/friends/request/{id} -- Allows the receiver to accept or decline a
- *                                      pending friend request.
+ *   GET   /api/friends               -- Returns the caller's friends list.
+ *                                       Optional query parameter:
+ *                                         ?status=accepted  (default) -- confirmed friends
+ *                                         ?status=incoming            -- pending requests received
+ *                                         ?status=outgoing            -- pending requests sent
+ *   POST  /api/friends/request       -- Sends a friend request from the authenticated
+ *                                       user to another user identified by receiver_id.
+ *   PATCH /api/friends/request/{id}  -- Allows the receiver to accept or decline a
+ *                                       pending friend request.
  *
  * @param friendshipService Service that handles friendship business logic.
  * @param databaseReady     Whether the database connection was successfully
@@ -40,6 +47,104 @@ fun Route.friendRoutes(
 ) {
     authenticate(JWT_AUTH) {
         route("/api/friends") {
+
+            /**
+             * GET /api/friends?status={accepted|incoming|outgoing}
+             *
+             * Returns the friends list of the authenticated user.
+             *
+             * Query parameters:
+             *   status (optional) -- one of:
+             *     "accepted"  (default) -- confirmed friends (status = accepted)
+             *     "incoming"            -- pending requests received by the caller
+             *     "outgoing"            -- pending requests sent by the caller
+             *
+             * Response body (JSON):
+             * ```json
+             * {
+             *   "friends": [
+             *     {
+             *       "id": "<uuid>",
+             *       "username": "john_doe",
+             *       "displayName": "John Doe",
+             *       "avatarUrl": "https://..."
+             *     }
+             *   ],
+             *   "total": 1
+             * }
+             * ```
+             *
+             * Responses:
+             *   200 OK                  -- [FriendsListResponse] JSON
+             *   400 Bad Request         -- Unknown value for the `status` query parameter
+             *   401 Unauthorized        -- Invalid or missing JWT
+             *   503 Service Unavailable -- Database not configured
+             */
+            get {
+                // ----------------------------------------------------------
+                // Auth guard
+                // ----------------------------------------------------------
+                val callerId = call.authenticatedUserId()
+                if (callerId == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error   = "unauthorized",
+                            message = "Invalid authentication credentials",
+                        ),
+                    )
+                    return@get
+                }
+
+                // ----------------------------------------------------------
+                // Database availability guard
+                // ----------------------------------------------------------
+                if (!databaseReady) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse(
+                            error   = "service_unavailable",
+                            message = "Database connection is not configured",
+                        ),
+                    )
+                    return@get
+                }
+
+                // ----------------------------------------------------------
+                // Parse and validate the optional ?status= query parameter
+                // ----------------------------------------------------------
+                val statusParam = call.request.queryParameters["status"]
+                val filter = FriendListFilter.fromQueryParam(statusParam)
+                if (filter == null) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse(
+                            error   = "bad_request",
+                            message = "Invalid 'status' parameter: must be 'accepted', 'incoming', or 'outgoing'",
+                        ),
+                    )
+                    return@get
+                }
+
+                // ----------------------------------------------------------
+                // Delegate to service
+                // ----------------------------------------------------------
+                try {
+                    val response = friendshipService.getFriends(callerId, filter)
+                    call.respond(HttpStatusCode.OK, response)
+                } catch (e: Exception) {
+                    call.application.log.error(
+                        "Failed to retrieve friends list for caller=$callerId filter=$filter", e
+                    )
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error   = "internal_server_error",
+                            message = "Failed to retrieve friends list",
+                        ),
+                    )
+                }
+            }
 
             /**
              * POST /api/friends/request

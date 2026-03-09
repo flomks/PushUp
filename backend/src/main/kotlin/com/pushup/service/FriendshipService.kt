@@ -1,6 +1,8 @@
 package com.pushup.service
 
+import com.pushup.models.FriendProfile
 import com.pushup.models.FriendshipResponse
+import com.pushup.models.FriendsListResponse
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
 import com.pushup.plugins.NotificationType
@@ -16,6 +18,33 @@ import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+
+/**
+ * Filter applied to GET /api/friends.
+ *
+ *   ACCEPTED -- users who are confirmed friends (status = accepted)
+ *   INCOMING -- pending requests where the caller is the receiver
+ *   OUTGOING -- pending requests where the caller is the requester
+ */
+enum class FriendListFilter {
+    ACCEPTED,
+    INCOMING,
+    OUTGOING,
+    ;
+
+    companion object {
+        /**
+         * Parses the `?status=` query parameter value (case-insensitive).
+         * Returns null when the value is unrecognised.
+         */
+        fun fromQueryParam(value: String?): FriendListFilter? = when (value?.lowercase()) {
+            null, "", "accepted" -> ACCEPTED
+            "incoming"           -> INCOMING
+            "outgoing"           -> OUTGOING
+            else                 -> null
+        }
+    }
+}
 
 /**
  * Result type for [FriendshipService.sendFriendRequest].
@@ -271,5 +300,86 @@ open class FriendshipService {
                 createdAt   = createdAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             ),
         )
+    }
+
+    /**
+     * Returns the friends list for [userId] filtered by [filter].
+     *
+     * - [FriendListFilter.ACCEPTED]  -- all users who share an `accepted`
+     *   friendship row with [userId] (in either direction).
+     * - [FriendListFilter.INCOMING]  -- users who sent a `pending` request to
+     *   [userId] (i.e. [userId] is the receiver).
+     * - [FriendListFilter.OUTGOING]  -- users to whom [userId] sent a `pending`
+     *   request (i.e. [userId] is the requester).
+     *
+     * Each entry contains the basic profile data of the counterpart user:
+     * id, username, displayName, avatarUrl.
+     *
+     * @param userId UUID of the authenticated caller.
+     * @param filter Which subset of relationships to return.
+     * @return [FriendsListResponse] with the matching profiles.
+     */
+    open suspend fun getFriends(
+        userId: UUID,
+        filter: FriendListFilter,
+    ): FriendsListResponse = newSuspendedTransaction {
+
+        // ------------------------------------------------------------------
+        // Build the WHERE predicate based on the requested filter.
+        //
+        // For ACCEPTED we look in both directions (A->B or B->A) because
+        // either party could have been the original requester.
+        // For INCOMING / OUTGOING the direction is fixed.
+        // ------------------------------------------------------------------
+        val rows = when (filter) {
+            FriendListFilter.ACCEPTED -> Friendships.selectAll().where {
+                (Friendships.status eq FriendshipStatus.ACCEPTED.toDbValue()) and (
+                    (Friendships.requesterId eq userId) or
+                    (Friendships.receiverId  eq userId)
+                )
+            }
+
+            FriendListFilter.INCOMING -> Friendships.selectAll().where {
+                (Friendships.status     eq FriendshipStatus.PENDING.toDbValue()) and
+                (Friendships.receiverId eq userId)
+            }
+
+            FriendListFilter.OUTGOING -> Friendships.selectAll().where {
+                (Friendships.status      eq FriendshipStatus.PENDING.toDbValue()) and
+                (Friendships.requesterId eq userId)
+            }
+        }.toList()
+
+        // ------------------------------------------------------------------
+        // For each friendship row, determine the UUID of the counterpart
+        // (the "other" user), then fetch their profile from the users table.
+        // ------------------------------------------------------------------
+        val counterpartIds: List<UUID> = rows.map { row ->
+            val requesterId = row[Friendships.requesterId]
+            val receiverId  = row[Friendships.receiverId]
+            if (requesterId == userId) receiverId else requesterId
+        }
+
+        // Fetch all counterpart profiles in a single query.
+        val profilesById: Map<UUID, FriendProfile> = if (counterpartIds.isEmpty()) {
+            emptyMap()
+        } else {
+            Users.selectAll()
+                .where { Users.id inList counterpartIds }
+                .associate { userRow ->
+                    val id = userRow[Users.id]
+                    id to FriendProfile(
+                        id          = id.toString(),
+                        username    = userRow[Users.username],
+                        displayName = userRow[Users.displayName],
+                        avatarUrl   = userRow[Users.avatarUrl],
+                    )
+                }
+        }
+
+        // Preserve the order returned by the friendship query.
+        val friends: List<FriendProfile> = counterpartIds.mapNotNull { profilesById[it] }
+
+        FriendsListResponse(friends = friends, total = friends.size)
     }
 }

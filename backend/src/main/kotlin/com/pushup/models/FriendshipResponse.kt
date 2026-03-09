@@ -40,3 +40,33 @@ data class FriendshipResponse(
     val status: String,
     val createdAt: String,
 )
+
+/**
+ * Basic profile data of a friend or pending-request counterpart.
+ *
+ * Sensitive fields (email, createdAt, updatedAt) are intentionally omitted.
+ *
+ * @property id          UUID of the user.
+ * @property username    Unique handle (e.g. "john_doe"), null if not yet set.
+ * @property displayName Free-form display name, null if not yet set.
+ * @property avatarUrl   URL to the user's avatar image, null if not set.
+ */
+@Serializable
+data class FriendProfile(
+    val id: String,
+    val username: String?,
+    val displayName: String?,
+    val avatarUrl: String?,
+)
+
+/**
+ * Response body returned by GET /api/friends.
+ *
+ * @property friends List of friend profiles matching the requested status filter.
+ * @property total   Total number of entries in this response (convenience field).
+ */
+@Serializable
+data class FriendsListResponse(
+    val friends: List<FriendProfile>,
+    val total: Int,
+)
