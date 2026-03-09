@@ -137,17 +137,15 @@ struct MainTabView: View {
             .tag(Tab.profile)
             .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
 
-            // Remaining tabs -- placeholders until their tasks are implemented
-            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .history && $0 != .stats && $0 != .profile }) { tab in
-                NavigationStack {
-                    TabPlaceholderView(tab: tab)
-                }
-                .tabItem {
-                    Label(tab.label, icon: tab.icon)
-                }
-                .tag(tab)
-                .accessibilityIdentifier(tab.accessibilityIdentifier)
+            // Settings tab -- real implementation (Task 3.11)
+            NavigationStack {
+                SettingsView()
             }
+            .tabItem {
+                Label(Tab.settings.label, icon: Tab.settings.icon)
+            }
+            .tag(Tab.settings)
+            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
         }
         .tint(AppColors.primary)
     }

@@ -114,6 +114,29 @@ enum AppIcon: String {
     case chevronRight       = "chevron.right"
     case star               = "star"
 
+    // MARK: - Settings
+
+    case sunMax             = "sun.max"
+    case moonFill           = "moon.fill"
+    case circleHalfFilled   = "circle.lefthalf.filled"
+    case bell               = "bell"
+    case bellFill           = "bell.fill"
+    case bellSlash          = "bell.slash"
+    case speakerWave        = "speaker.wave.2"
+    case speakerSlash       = "speaker.slash"
+    case handTap            = "hand.tap"
+    case plusMinus          = "plus.forwardslash.minus"
+    case creditCard         = "creditcard"
+    case clockBadgePlus     = "clock.badge.plus"
+    case link               = "link"
+    case shieldFill         = "shield.fill"
+    case docText            = "doc.text"
+    case questionmarkCircle = "questionmark.circle"
+    case plus               = "plus"
+    case textformat         = "textformat"
+    case moonCircle         = "moon.circle"
+    case sunCircle          = "sun.min.fill"
+
     // MARK: - Misc
 
     case minus              = "minus"
