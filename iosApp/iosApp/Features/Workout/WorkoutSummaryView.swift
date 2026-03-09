@@ -281,7 +281,7 @@ struct WorkoutSummaryView: View {
     private func prepareAndShare() {
         let qualityText: String
         if let score = qualityScore {
-            qualityText = "\(Int(score * 100))% Formqualitaet"
+            qualityText = "\(Int(score * 100))% form quality"
         } else {
             qualityText = ""
         }

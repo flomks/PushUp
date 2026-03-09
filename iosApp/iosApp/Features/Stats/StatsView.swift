@@ -275,10 +275,9 @@ struct StatsView: View {
     }
 
     private func exportPDF() {
-        // TODO: Implement PDF export via UIGraphicsPDFRenderer.
-        // For now, show a placeholder share sheet.
-        let pdfContent = "PDF export coming soon."
-        shareContent(pdfContent, filename: "pushup_stats.pdf")
+        // PDF export requires UIGraphicsPDFRenderer integration.
+        // For now, fall back to CSV export with a user-facing note.
+        viewModel.errorMessage = "PDF export is not yet available. Use CSV export instead."
     }
 
     private func generateCSVContent() -> String {

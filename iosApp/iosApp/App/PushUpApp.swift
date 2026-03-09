@@ -89,12 +89,16 @@ struct RootView: View {
             if !hasSeenOnboarding {
                 showOnboarding = true
             }
+        }
+        .task {
             // Dismiss the splash overlay after a brief moment to allow the
-            // first SwiftUI render pass to complete.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.easeOut(duration: 0.4)) {
-                    showSplash = false
-                }
+            // first SwiftUI render pass to complete. Using structured
+            // concurrency so the timer is automatically cancelled if the
+            // view disappears.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.4)) {
+                showSplash = false
             }
         }
     }
@@ -102,35 +106,38 @@ struct RootView: View {
 
 // MARK: - SplashOverlayView
 
-/// Branded overlay that mirrors the launch screen appearance.
+/// Branded overlay that **exactly** mirrors the `LaunchScreen.storyboard`
+/// appearance so the transition from the system launch screen is seamless.
 ///
-/// Shown briefly on app start and fades out smoothly, providing a seamless
-/// visual bridge between the system launch screen and the first app screen.
+/// Uses the same `LaunchLogo` image asset, `LaunchBackground` color, font
+/// sizes, and layout offsets as the storyboard to avoid any visual jump.
 private struct SplashOverlayView: View {
 
     var body: some View {
         ZStack {
-            // Match the launch screen background color
-            AppColors.primary
+            // Must match the LaunchScreen.storyboard background color.
+            Color("LaunchBackground")
                 .ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.lg) {
-                // App logo (push-up figure)
-                Image(icon: .figureStrengthTraining)
-                    .font(.system(size: 80, weight: .semibold))
+            VStack(spacing: 20) {
+                // Must match the storyboard's 200x200 LaunchLogo imageView.
+                Image("LaunchLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 200, height: 200)
+
+                // Must match the storyboard's 32pt boldSystem font label.
+                Text("PushUp")
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
-                    .symbolRenderingMode(.hierarchical)
 
-                VStack(spacing: AppSpacing.xs) {
-                    Text("PushUp")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text("Earn your screen time")
-                        .font(AppTypography.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
-                }
+                // Must match the storyboard's 16pt system font tagline.
+                Text("Earn your screen time")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.75))
             }
+            // The storyboard centres the group with a -60pt vertical offset.
+            .offset(y: -30)
         }
     }
 }

@@ -18,8 +18,8 @@
 	<key>CFBundleDisplayName</key>
 	<string>PushUp</string>
 
-	<!-- Launch screen storyboard -->
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
+	<!-- UILaunchStoryboardName is set via INFOPLIST_KEY_UILaunchStoryboardName
+	     in the Xcode build settings (project.pbxproj) and merged into the
+	     generated Info.plist at build time. Do NOT duplicate it here. -->
 </dict>
 </plist>
