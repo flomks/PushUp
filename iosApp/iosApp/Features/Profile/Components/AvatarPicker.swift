@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 
 // MARK: - AvatarView
 
@@ -36,6 +35,7 @@ struct AvatarView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .accessibilityHidden(true)
     }
 
     private var initialsView: some View {
@@ -88,7 +88,6 @@ struct AvatarPickerButton: View {
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottomTrailing) {
-                // Avatar image or initials
                 AvatarView(image: image, initials: initials, size: size)
                     .overlay(uploadOverlay)
                     .shadow(
@@ -96,7 +95,6 @@ struct AvatarPickerButton: View {
                         radius: 12, x: 0, y: 4
                     )
 
-                // Camera badge
                 if !isUploading {
                     cameraBadge
                 }
@@ -155,10 +153,12 @@ struct AvatarPickerButton: View {
 /// ```
 struct CameraImagePicker: UIViewControllerRepresentable {
 
+    @Environment(\.dismiss) private var dismiss
+
     let onImagePicked: (UIImage) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImagePicked: onImagePicked)
+        Coordinator(onImagePicked: onImagePicked, dismiss: dismiss)
     }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
@@ -169,16 +169,26 @@ struct CameraImagePicker: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(
+        _ uiViewController: UIImagePickerController,
+        context: Context
+    ) {}
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    final class Coordinator: NSObject,
+        UIImagePickerControllerDelegate,
+        UINavigationControllerDelegate
+    {
+        private let onImagePicked: (UIImage) -> Void
+        private let dismiss: DismissAction
 
-        let onImagePicked: (UIImage) -> Void
-
-        init(onImagePicked: @escaping (UIImage) -> Void) {
+        init(
+            onImagePicked: @escaping (UIImage) -> Void,
+            dismiss: DismissAction
+        ) {
             self.onImagePicked = onImagePicked
+            self.dismiss = dismiss
         }
 
         func imagePickerController(
@@ -186,13 +196,14 @@ struct CameraImagePicker: UIViewControllerRepresentable {
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
             let image = (info[.editedImage] ?? info[.originalImage]) as? UIImage
-            picker.dismiss(animated: true) {
-                if let image { self.onImagePicked(image) }
+            dismiss()
+            if let image {
+                onImagePicked(image)
             }
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
+            dismiss()
         }
     }
 }
@@ -200,7 +211,7 @@ struct CameraImagePicker: UIViewControllerRepresentable {
 // MARK: - Previews
 
 #if DEBUG
-#Preview("AvatarView - With Image") {
+#Preview("AvatarView - Initials") {
     VStack(spacing: AppSpacing.lg) {
         AvatarView(image: nil, initials: "AJ", size: 96)
         AvatarView(image: nil, initials: "M", size: 64)

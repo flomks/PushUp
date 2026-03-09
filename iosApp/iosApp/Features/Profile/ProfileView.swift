@@ -24,7 +24,7 @@ import PhotosUI
 ///
 /// **Features**
 /// - Avatar upload from camera or photo library (stored in Supabase Storage)
-/// - Editable display name with inline save
+/// - Editable display name with inline save and validation
 /// - Read-only email and member-since date
 /// - Lifetime stats: total push-ups, workouts, earned time
 /// - Achievements section (placeholder for future implementation)
@@ -78,21 +78,7 @@ struct ProfileView: View {
             isPresented: $viewModel.showAvatarSourcePicker,
             titleVisibility: .visible
         ) {
-            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                Button("Take Photo") {
-                    viewModel.showCamera = true
-                }
-            }
-            Button("Choose from Library") {
-                viewModel.showPhotoPicker = true
-            }
-            if viewModel.avatarImage != nil {
-                Button("Remove Photo", role: .destructive) {
-                    // In a real app: delete from Supabase Storage and update profile row.
-                    // For now, clear the local image.
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+            avatarSourceDialogButtons
         }
         // Camera sheet
         .sheet(isPresented: $viewModel.showCamera) {
@@ -110,6 +96,26 @@ struct ProfileView: View {
         )
     }
 
+    // MARK: - Avatar Source Dialog Buttons
+
+    @ViewBuilder
+    private var avatarSourceDialogButtons: some View {
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            Button("Take Photo") {
+                viewModel.showCamera = true
+            }
+        }
+        Button("Choose from Library") {
+            viewModel.showPhotoPicker = true
+        }
+        if viewModel.avatarImage != nil {
+            Button("Remove Photo", role: .destructive) {
+                Task { await viewModel.removeAvatar() }
+            }
+        }
+        Button("Cancel", role: .cancel) {}
+    }
+
     // MARK: - Scroll Content
 
     private var scrollContent: some View {
@@ -125,16 +131,20 @@ struct ProfileView: View {
             .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
         .scrollDismissesKeyboard(.interactively)
-        // Success toast overlay
         .overlay(alignment: .top) {
-            if let message = viewModel.successMessage {
-                successToast(message)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.successMessage)
-                    .padding(.top, AppSpacing.sm)
-            }
+            successToastOverlay
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.successMessage)
+    }
+
+    // MARK: - Success Toast Overlay
+
+    @ViewBuilder
+    private var successToastOverlay: some View {
+        if let message = viewModel.successMessage {
+            successToast(message)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.top, AppSpacing.sm)
+        }
     }
 
     // MARK: - Header Card
@@ -142,45 +152,43 @@ struct ProfileView: View {
     private var headerCard: some View {
         Card {
             VStack(spacing: AppSpacing.lg) {
-                // Avatar + upload button
-                VStack(spacing: AppSpacing.sm) {
-                    AvatarPickerButton(
-                        image: viewModel.avatarImage,
-                        initials: viewModel.initials,
-                        isUploading: viewModel.isUploadingAvatar,
-                        size: 96
-                    ) {
-                        isNameFieldFocused = false
-                        viewModel.showAvatarSourcePicker = true
-                    }
-
-                    if viewModel.isUploadingAvatar {
-                        Text("Uploading...")
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-                }
-
+                avatarSection
                 Divider()
-
-                // Display name (editable)
                 displayNameRow
-
-                // Email (read-only)
                 profileInfoRow(
                     icon: .envelope,
                     label: "Email",
                     value: viewModel.email,
                     tint: AppColors.info
                 )
-
-                // Member since (read-only)
                 profileInfoRow(
                     icon: .calendarBadgeCheckmark,
                     label: "Member since",
                     value: viewModel.memberSinceText,
                     tint: AppColors.success
                 )
+            }
+        }
+    }
+
+    // MARK: - Avatar Section
+
+    private var avatarSection: some View {
+        VStack(spacing: AppSpacing.sm) {
+            AvatarPickerButton(
+                image: viewModel.avatarImage,
+                initials: viewModel.initials,
+                isUploading: viewModel.isUploadingAvatar,
+                size: 96
+            ) {
+                isNameFieldFocused = false
+                viewModel.showAvatarSourcePicker = true
+            }
+
+            if viewModel.isUploadingAvatar {
+                Text("Uploading...")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
             }
         }
     }
@@ -210,37 +218,56 @@ struct ProfileView: View {
                     .submitLabel(.done)
                     .onSubmit {
                         isNameFieldFocused = false
+                        guard viewModel.isDisplayNameValid else { return }
                         Task { await viewModel.saveDisplayName() }
                     }
                     .textContentType(.name)
                     .autocorrectionDisabled()
 
-                if viewModel.hasUnsavedNameChange {
-                    Button {
-                        isNameFieldFocused = false
-                        Task { await viewModel.saveDisplayName() }
-                    } label: {
-                        if viewModel.isSavingName {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(AppColors.primary)
-                                .scaleEffect(0.75)
-                        } else {
-                            Image(systemName: AppIcon.checkmark.rawValue)
-                                .font(.system(size: AppSpacing.iconSizeSmall, weight: .bold))
-                                .foregroundStyle(AppColors.primary)
-                        }
-                    }
-                    .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
-                    .transition(.scale.combined(with: .opacity))
-                    .animation(.spring(response: 0.3), value: viewModel.hasUnsavedNameChange)
+                if viewModel.hasUnsavedNameChange && viewModel.isDisplayNameValid {
+                    saveNameButton
                 }
             }
             .padding(.horizontal, AppSpacing.sm)
             .frame(height: AppSpacing.buttonHeightSecondary)
             .background(AppColors.backgroundTertiary)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+
+            // Inline validation error
+            if let error = viewModel.displayNameError {
+                Text(error)
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(AppColors.error)
+                    .padding(.leading, AppSpacing.xs)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.displayNameError)
+    }
+
+    private var saveNameButton: some View {
+        Button {
+            isNameFieldFocused = false
+            Task { await viewModel.saveDisplayName() }
+        } label: {
+            Group {
+                if viewModel.isSavingName {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(AppColors.primary)
+                        .scaleEffect(0.75)
+                } else {
+                    Image(systemName: AppIcon.checkmark.rawValue)
+                        .font(.system(size: AppSpacing.iconSizeSmall, weight: .bold))
+                        .foregroundStyle(AppColors.primary)
+                }
+            }
+        }
+        .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
+        .disabled(viewModel.isSavingName)
+        .transition(.scale.combined(with: .opacity))
+        .animation(.spring(response: 0.3), value: viewModel.hasUnsavedNameChange)
+        .accessibilityLabel("Save display name")
     }
 
     // MARK: - Profile Info Row
@@ -278,38 +305,41 @@ struct ProfileView: View {
             sectionHeader("Account Statistics", icon: .chartBarFill)
 
             if let stats = viewModel.stats {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ],
-                    spacing: AppSpacing.sm
-                ) {
-                    ProfileStatCell(
-                        value: formatLargeNumber(stats.totalPushUps),
-                        label: "Push-Ups",
-                        icon: .figureStrengthTraining,
-                        tint: AppColors.primary
-                    )
-
-                    ProfileStatCell(
-                        value: "\(stats.totalWorkouts)",
-                        label: "Workouts",
-                        icon: .flameFill,
-                        tint: AppColors.secondary
-                    )
-
-                    ProfileStatCell(
-                        value: formatMinutes(stats.totalEarnedMinutes),
-                        label: "Time Earned",
-                        icon: .clockBadgeCheckmark,
-                        tint: AppColors.success
-                    )
-                }
+                statsGrid(stats)
             } else {
                 statsLoadingPlaceholder
             }
+        }
+    }
+
+    private func statsGrid(_ stats: ProfileStats) -> some View {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible()),
+                count: 3
+            ),
+            spacing: AppSpacing.sm
+        ) {
+            ProfileStatCell(
+                value: formatLargeNumber(stats.totalPushUps),
+                label: "Push-Ups",
+                icon: .figureStrengthTraining,
+                tint: AppColors.primary
+            )
+
+            ProfileStatCell(
+                value: "\(stats.totalWorkouts)",
+                label: "Workouts",
+                icon: .flameFill,
+                tint: AppColors.secondary
+            )
+
+            ProfileStatCell(
+                value: formatMinutes(stats.totalEarnedMinutes),
+                label: "Time Earned",
+                icon: .clockBadgeCheckmark,
+                tint: AppColors.success
+            )
         }
     }
 
@@ -361,27 +391,31 @@ struct ProfileView: View {
             sectionHeader("Account", icon: .personFill)
 
             VStack(spacing: AppSpacing.xs) {
-                // Sign out
                 SecondaryButton("Sign Out", icon: .arrowRightSquare) {
                     viewModel.signOut()
                 }
 
-                // Delete account
-                DestructiveButton(
-                    "Delete Account",
-                    icon: .trash
-                ) {
-                    viewModel.showDeleteConfirmation = true
-                }
-                .disabled(viewModel.isDeletingAccount)
-                .overlay {
-                    if viewModel.isDeletingAccount {
-                        RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                            .fill(AppColors.backgroundSecondary.opacity(0.6))
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(AppColors.error)
-                    }
+                deleteAccountButton
+            }
+        }
+    }
+
+    private var deleteAccountButton: some View {
+        DestructiveButton(
+            "Delete Account",
+            icon: .trash
+        ) {
+            viewModel.showDeleteConfirmation = true
+        }
+        .disabled(viewModel.isDeletingAccount)
+        .overlay {
+            if viewModel.isDeletingAccount {
+                ZStack {
+                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+                        .fill(AppColors.backgroundSecondary.opacity(0.6))
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(AppColors.error)
                 }
             }
         }
@@ -400,6 +434,7 @@ struct ProfileView: View {
                 .foregroundStyle(AppColors.textPrimary)
         }
         .padding(.top, AppSpacing.xs)
+        .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Success Toast
@@ -439,9 +474,16 @@ struct ProfileView: View {
     // MARK: - Formatters
 
     private func formatLargeNumber(_ value: Int) -> String {
-        if value >= 1_000 {
+        if value >= 10_000 {
             let k = Double(value) / 1_000.0
             return String(format: "%.1fk", k)
+        }
+        if value >= 1_000 {
+            let formatted = NumberFormatter.localizedString(
+                from: NSNumber(value: value),
+                number: .decimal
+            )
+            return formatted
         }
         return "\(value)"
     }
@@ -459,7 +501,7 @@ struct ProfileView: View {
 // MARK: - ProfileStatCell
 
 /// Compact stat cell used in the 3-column statistics grid on the profile screen.
-private struct ProfileStatCell: View {
+struct ProfileStatCell: View {
 
     let value: String
     let label: String
@@ -487,6 +529,8 @@ private struct ProfileStatCell: View {
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(label): \(value)")
         }
     }
 }
