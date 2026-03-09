@@ -131,16 +131,10 @@ final class DashboardViewModel: ObservableObject {
 
     /// Shared fetch logic used by both `loadData()` and `refresh()`.
     private func fetchData(errorPrefix: String) async {
-        do {
-            // TODO: Replace with real KMP use-case calls once
-            // GetTimeCreditUseCase / GetDailyStatsUseCase are wired up.
-            // For now show an empty state — no mock data.
-            applyEmptyState()
-        } catch is CancellationError {
-            // Task was cancelled (e.g. view disappeared) -- do not set error.
-        } catch {
-            errorMessage = errorPrefix
-        }
+        // TODO: Replace with real KMP use-case calls once
+        // GetTimeCreditUseCase / GetDailyStatsUseCase are wired up.
+        // For now show an empty state — no mock data.
+        applyEmptyState()
     }
 
     /// Resets all published properties to their empty/zero state.

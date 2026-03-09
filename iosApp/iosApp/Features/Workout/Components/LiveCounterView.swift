@@ -64,7 +64,7 @@ private struct BounceModifier: ViewModifier, Animatable {
     func body(content: Content) -> some View {
         content
             .scaleEffect(isScaledUp ? 1.18 : 1.0)
-            .onChange(of: trigger) { _ in
+            .onChange(of: trigger) {
                 guard trigger > 0 else { return }
                 withAnimation(.spring(response: 0.15, dampingFraction: 0.4)) {
                     isScaledUp = true

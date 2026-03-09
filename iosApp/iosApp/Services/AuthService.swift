@@ -94,13 +94,10 @@ final class AuthService {
         userEmail: String?,
         expiresIn: Int64
     ) async -> AuthServiceResult {
-        // AuthRepository.loginWithImplicitTokens is not directly accessible from Swift.
-        // We store the session by calling loginWithEmail is not applicable here.
-        // Instead we use the AuthRepository via a dedicated KMP wrapper.
-        // Since DIHelper.loginWithImplicitTokens is a suspend function on an object,
-        // it is exported as a completionHandler method.
+        // DIHelper.loginWithImplicitTokens is a suspend function on a Kotlin object.
+        // Kotlin/Native exports it as a completionHandler-based method.
         await safeCall {
-            try await withKMPAuthSuspend { handler in
+            try await withKMPAuthSuspend { (handler: @escaping (User?, Error?) -> Void) in
                 DIHelper.shared.loginWithImplicitTokens(
                     accessToken: accessToken,
                     refreshToken: refreshToken,
@@ -126,15 +123,13 @@ final class AuthService {
     }
 
     func logout() async {
-        do {
-            let _: KotlinUnit = try await withKMPAuthSuspend { handler in
-                DIHelper.shared.logoutUseCase().invoke(
-                    clearLocalData: true,
-                    completionHandler: handler
-                )
+        // LogoutUseCase.invoke returns Unit (Void in Swift).
+        // We use a simple semaphore bridge since withKMPAuthSuspend expects a non-Void return.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DIHelper.shared.logoutUseCase().invoke(clearLocalData: true) { error in
+                // Ignore errors — best-effort logout
+                continuation.resume()
             }
-        } catch {
-            // Best-effort logout
         }
     }
 
