@@ -1,6 +1,5 @@
 package com.flomks.pushup.friends
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -29,7 +27,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,7 +34,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -65,6 +61,7 @@ fun FriendRequestsInboxScreen(
         onAccept = viewModel::onAccept,
         onDecline = viewModel::onDecline,
         onRefresh = viewModel::onRefresh,
+        onDismissActionError = viewModel::onDismissActionError,
         modifier = modifier,
     )
 }
@@ -79,6 +76,7 @@ internal fun FriendRequestsInboxContent(
     onAccept: (String) -> Unit,
     onDecline: (String) -> Unit,
     onRefresh: () -> Unit,
+    onDismissActionError: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -94,6 +92,15 @@ internal fun FriendRequestsInboxContent(
             fontWeight = FontWeight.Bold,
         )
 
+        // Transient error banner for failed accept/decline actions.
+        if (uiState.actionError != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            ActionErrorBanner(
+                message = uiState.actionError,
+                onDismiss = onDismissActionError,
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
 
         when (val state = uiState.inboxState) {
@@ -106,6 +113,45 @@ internal fun FriendRequestsInboxContent(
                 onAccept          = onAccept,
                 onDecline         = onDecline,
             )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Action error banner
+// ---------------------------------------------------------------------------
+
+/**
+ * Dismissible error banner shown when an accept/decline action fails.
+ *
+ * Displayed between the title and the list so it does not obscure content.
+ */
+@Composable
+private fun ActionErrorBanner(
+    message: String,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Warning,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = message,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        TextButton(onClick = onDismiss) {
+            Text(text = "Dismiss", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -231,8 +277,8 @@ private fun FriendRequestItem(
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar
-        RequestorAvatar(
+        // Avatar (shared composable)
+        UserAvatar(
             displayName = request.displayName ?: request.username ?: "?",
         )
 
@@ -311,38 +357,6 @@ private fun FriendRequestItem(
                 }
             }
         }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Avatar
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun RequestorAvatar(
-    displayName: String,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
-        contentAlignment = Alignment.Center,
-    ) {
-        val initials = displayName
-            .split(" ", "_")
-            .take(2)
-            .mapNotNull { it.firstOrNull()?.uppercaseChar() }
-            .joinToString("")
-            .ifEmpty { "?" }
-
-        Text(
-            text = initials,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.Bold,
-        )
     }
 }
 

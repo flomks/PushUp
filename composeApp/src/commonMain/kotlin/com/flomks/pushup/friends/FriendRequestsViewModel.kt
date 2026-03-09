@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.pushup.data.api.ApiException
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.repository.FriendshipRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,10 +22,15 @@ import kotlinx.coroutines.launch
  * @property inboxState        Current loading / content / error state.
  * @property actionInFlightIds Set of friendship IDs for which an accept/decline
  *                             call is currently in flight.
+ * @property actionError       Transient error message shown when an accept/decline
+ *                             action fails. Cleared on the next successful action
+ *                             or when [FriendRequestsViewModel.onDismissActionError]
+ *                             is called.
  */
 data class FriendRequestsUiState(
     val inboxState: InboxState = InboxState.Loading,
     val actionInFlightIds: Set<String> = emptySet(),
+    val actionError: String? = null,
 )
 
 /**
@@ -55,6 +61,7 @@ sealed interface InboxState {
  * - Loading the list of incoming pending friend requests on creation.
  * - Accepting or declining individual requests with optimistic removal.
  * - Error state management with user-visible feedback.
+ * - Cancellation of in-flight loads when a new load is triggered.
  *
  * @property repository The [FriendshipRepository] used for API calls.
  */
@@ -64,6 +71,9 @@ class FriendRequestsViewModel(
 
     private val _uiState = MutableStateFlow(FriendRequestsUiState())
     val uiState: StateFlow<FriendRequestsUiState> = _uiState.asStateFlow()
+
+    /** Tracks the currently running load so it can be cancelled on refresh. */
+    private var activeLoadJob: Job? = null
 
     init {
         loadRequests()
@@ -76,7 +86,8 @@ class FriendRequestsViewModel(
     /**
      * Reloads the inbox from the server.
      *
-     * Useful for pull-to-refresh or retry after an error.
+     * Cancels any in-flight load to prevent stale results from overwriting
+     * the new response.
      */
     fun onRefresh() {
         loadRequests()
@@ -86,7 +97,7 @@ class FriendRequestsViewModel(
      * Accepts the friend request identified by [friendshipId].
      *
      * Optimistically removes the request from the list on success.
-     * On error, removes the in-flight indicator so the user can retry.
+     * On error, surfaces a transient error message and restores the buttons.
      */
     fun onAccept(friendshipId: String) {
         respondToRequest(friendshipId, accept = true)
@@ -96,10 +107,17 @@ class FriendRequestsViewModel(
      * Declines the friend request identified by [friendshipId].
      *
      * Optimistically removes the request from the list on success.
-     * On error, removes the in-flight indicator so the user can retry.
+     * On error, surfaces a transient error message and restores the buttons.
      */
     fun onDecline(friendshipId: String) {
         respondToRequest(friendshipId, accept = false)
+    }
+
+    /**
+     * Dismisses the transient action error message.
+     */
+    fun onDismissActionError() {
+        _uiState.update { it.copy(actionError = null) }
     }
 
     // -------------------------------------------------------------------------
@@ -108,9 +126,13 @@ class FriendRequestsViewModel(
 
     /**
      * Fetches the incoming friend requests and updates [_uiState].
+     *
+     * Cancels any previously running load to avoid stale results overwriting
+     * newer ones when the user taps refresh rapidly.
      */
     private fun loadRequests() {
-        viewModelScope.launch {
+        activeLoadJob?.cancel()
+        activeLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(inboxState = InboxState.Loading) }
             try {
                 val requests = repository.getIncomingFriendRequests()
@@ -142,26 +164,40 @@ class FriendRequestsViewModel(
     /**
      * Sends an accept or decline response for the given [friendshipId].
      *
-     * On success, removes the request from the current list optimistically.
-     * On failure, removes the in-flight indicator so the button reappears.
+     * On success, removes the request from the current list.
+     * On failure, removes the in-flight indicator so the buttons reappear
+     * and surfaces a transient error message.
      */
     private fun respondToRequest(friendshipId: String, accept: Boolean) {
         if (_uiState.value.actionInFlightIds.contains(friendshipId)) return
 
         viewModelScope.launch {
-            // Mark as in-flight
+            // Mark as in-flight and clear any previous action error.
             _uiState.update { state ->
-                state.copy(actionInFlightIds = state.actionInFlightIds + friendshipId)
+                state.copy(
+                    actionInFlightIds = state.actionInFlightIds + friendshipId,
+                    actionError = null,
+                )
             }
 
             try {
                 repository.respondToFriendRequest(friendshipId, accept)
                 // Remove the request from the list on success
                 removeRequest(friendshipId)
-            } catch (_: Exception) {
-                // Remove in-flight indicator; buttons reappear so the user can retry
+            } catch (e: ApiException.Unauthorized) {
                 _uiState.update { state ->
-                    state.copy(actionInFlightIds = state.actionInFlightIds - friendshipId)
+                    state.copy(
+                        actionInFlightIds = state.actionInFlightIds - friendshipId,
+                        actionError = "Session expired. Please log in again.",
+                    )
+                }
+            } catch (e: Exception) {
+                val action = if (accept) "accept" else "decline"
+                _uiState.update { state ->
+                    state.copy(
+                        actionInFlightIds = state.actionInFlightIds - friendshipId,
+                        actionError = "Failed to $action request. Please try again.",
+                    )
                 }
             }
         }
@@ -179,9 +215,9 @@ class FriendRequestsViewModel(
                 ?.filter { it.friendshipId != friendshipId }
 
             val newInboxState = when {
-                updatedRequests == null  -> state.inboxState
+                updatedRequests == null   -> state.inboxState
                 updatedRequests.isEmpty() -> InboxState.Empty
-                else                     -> InboxState.Success(updatedRequests)
+                else                      -> InboxState.Success(updatedRequests)
             }
 
             state.copy(

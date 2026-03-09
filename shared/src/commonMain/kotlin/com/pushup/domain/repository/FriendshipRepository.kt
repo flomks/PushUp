@@ -36,11 +36,11 @@ interface FriendshipRepository {
     /**
      * Returns all incoming pending friend requests for the authenticated user.
      *
-     * Calls `GET /api/friends?status=incoming` and maps each entry to a
+     * Calls `GET /api/friends/requests/incoming` and maps each entry to a
      * [FriendRequest] that includes the friendship row ID needed to accept
      * or decline the request.
      *
-     * @return List of [FriendRequest]s ordered by creation time (newest first).
+     * @return List of [FriendRequest]s with requester profile data.
      * @throws com.pushup.data.api.ApiException on network or server errors.
      */
     suspend fun getIncomingFriendRequests(): List<FriendRequest>

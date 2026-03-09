@@ -109,16 +109,34 @@ class FriendshipApiClient(
      * @param friendshipId UUID of the friendship row to update.
      * @param accept       `true` to accept, `false` to decline.
      * @return The updated [Friendship] record.
+     * @throws IllegalArgumentException if [friendshipId] is not a valid UUID.
      */
-    suspend fun respondToFriendRequest(friendshipId: String, accept: Boolean): Friendship = withRetry {
-        val token = tokenProvider()
-        val status = if (accept) "accepted" else "declined"
-        httpClient.patch("$backendBaseUrl/api/friends/request/$friendshipId") {
-            bearerAuth(token)
-            contentType(ContentType.Application.Json)
-            setBody(RespondFriendRequestDTO(status = status))
-        }.also { it.expectSuccess() }
-            .body<FriendshipResponseDTO>()
-            .toDomain()
+    suspend fun respondToFriendRequest(friendshipId: String, accept: Boolean): Friendship {
+        // Validate UUID format before interpolating into the URL path to prevent
+        // path traversal or injection via malformed IDs.
+        require(UUID_REGEX.matches(friendshipId)) {
+            "friendshipId must be a valid UUID, got: $friendshipId"
+        }
+        return withRetry {
+            val token = tokenProvider()
+            val status = if (accept) "accepted" else "declined"
+            httpClient.patch("$backendBaseUrl/api/friends/request/$friendshipId") {
+                bearerAuth(token)
+                contentType(ContentType.Application.Json)
+                setBody(RespondFriendRequestDTO(status = status))
+            }.also { it.expectSuccess() }
+                .body<FriendshipResponseDTO>()
+                .toDomain()
+        }
+    }
+
+    companion object {
+        /**
+         * Regex for validating UUID v4 format before interpolating into URL paths.
+         * Prevents path traversal or injection via malformed IDs.
+         */
+        private val UUID_REGEX = Regex(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        )
     }
 }
