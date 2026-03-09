@@ -9,6 +9,34 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
 
 // ---------------------------------------------------------------------------
+// Friendship status values -- mirror the public.friendship_status PostgreSQL enum
+// ---------------------------------------------------------------------------
+
+/**
+ * Kotlin representation of the `public.friendship_status` PostgreSQL enum.
+ *
+ * Values:
+ *   PENDING  -- friend request sent, awaiting a response
+ *   ACCEPTED -- both users are friends
+ *   DECLINED -- receiver explicitly rejected the request
+ */
+enum class FriendshipStatus {
+    PENDING,
+    ACCEPTED,
+    DECLINED,
+    ;
+
+    /** Returns the lowercase string stored in the database enum column. */
+    fun toDbValue(): String = name.lowercase()
+
+    companion object {
+        /** Parses a database enum string (case-insensitive) back to [FriendshipStatus]. */
+        fun fromDbValue(value: String): FriendshipStatus =
+            entries.first { it.name.equals(value, ignoreCase = true) }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Exposed table definitions (mirror the Supabase PostgreSQL schema)
 // ---------------------------------------------------------------------------
 
@@ -36,6 +64,41 @@ object TimeCredits : Table("time_credits") {
 
     override val primaryKey = PrimaryKey(id)
 }
+
+/**
+ * Mirrors the public.friendships table in Supabase.
+ *
+ * One row per directed friend request.  The pair (requester_id, receiver_id)
+ * is unique -- only one request can exist between any two users at a time.
+ *
+ * Status lifecycle:
+ *   pending  -> accepted  (receiver accepts)
+ *   pending  -> declined  (receiver declines)
+ *   any      -> (deleted) (either party cancels / unfriends)
+ *
+ * The [status] column is stored as a PostgreSQL enum (`friendship_status`).
+ * Exposed reads it as a plain [String]; use [FriendshipStatus.fromDbValue] to
+ * convert to the Kotlin enum and [FriendshipStatus.toDbValue] to write it back.
+ */
+object Friendships : Table("friendships") {
+    val id          = uuid("id")
+    val requesterId = uuid("requester_id").references(Users.id)
+    val receiverId  = uuid("receiver_id").references(Users.id)
+
+    /**
+     * Stored as the PostgreSQL `friendship_status` enum.
+     * Exposed does not have built-in support for custom PG enums, so the
+     * column is mapped to [String].  Use [FriendshipStatus] for type-safe
+     * access in application code.
+     */
+    val status      = varchar("status", 16)
+
+    val createdAt   = timestampWithTimeZone("created_at")
+    val updatedAt   = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 
 /**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
