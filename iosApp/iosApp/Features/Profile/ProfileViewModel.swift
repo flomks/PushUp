@@ -202,7 +202,7 @@ final class ProfileViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let useCase = DIHelper.shared.getCurrentUserUseCase()
+            let useCase = DIHelperKt.diHelperShared().getCurrentUserUseCase()
             if let user = try? await useCase.invoke() {
                 applyUserData(user)
             } else {
@@ -338,7 +338,7 @@ final class ProfileViewModel: ObservableObject {
     /// login screen.
     func signOut() {
         Task {
-            let useCase = DIHelper.shared.logoutUseCase()
+            let useCase = DIHelperKt.diHelperShared().logoutUseCase()
             try? await useCase.invoke(clearLocalData: false)
         }
         NotificationCenter.default.post(name: .userDidSignOut, object: nil)
