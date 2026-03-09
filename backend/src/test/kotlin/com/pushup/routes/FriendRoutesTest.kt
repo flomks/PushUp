@@ -1,12 +1,15 @@
 package com.pushup.routes
 
 import com.pushup.models.FriendshipResponse
+import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.configureSerialization
 import com.pushup.plugins.configureStatusPages
 import com.pushup.service.FriendshipService
+import com.pushup.service.RespondFriendRequestResult
 import com.pushup.service.SendFriendRequestResult
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -235,6 +238,185 @@ class FriendRoutesTest {
             val body = response.bodyAsText()
             assertContains(body, friendshipId.toString())
             assertContains(body, "pending")
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // PATCH /api/friends/request/{id} tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `PATCH returns 401 when no token is provided`() = withApp(FriendshipService()) {
+        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"status":"accepted"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `PATCH returns 503 when database is not ready`() = withApp(FriendshipService(), databaseReady = false) {
+        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            bearerAuth(buildToken())
+            contentType(ContentType.Application.Json)
+            setBody("""{"status":"accepted"}""")
+        }
+        assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+    }
+
+    @Test
+    fun `PATCH returns 400 when id is not a valid UUID`() = withApp(FriendshipService()) {
+        val response = patch("/api/friends/request/not-a-uuid") {
+            bearerAuth(buildToken())
+            contentType(ContentType.Application.Json)
+            setBody("""{"status":"accepted"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertContains(response.bodyAsText(), "bad_request")
+    }
+
+    @Test
+    fun `PATCH returns 400 when body is missing`() = withApp(FriendshipService()) {
+        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            bearerAuth(buildToken())
+            contentType(ContentType.Application.Json)
+            setBody("")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `PATCH returns 400 when status value is invalid`() = withApp(FriendshipService()) {
+        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            bearerAuth(buildToken())
+            contentType(ContentType.Application.Json)
+            setBody("""{"status":"pending"}""")
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertContains(response.bodyAsText(), "bad_request")
+    }
+
+    @Test
+    fun `PATCH returns 404 when service returns NotFound`() {
+        val stubService = object : FriendshipService() {
+            override suspend fun respondToFriendRequest(
+                callerId: UUID,
+                friendshipId: UUID,
+                newStatus: FriendshipStatus,
+            ): RespondFriendRequestResult = RespondFriendRequestResult.NotFound
+        }
+        withApp(stubService) {
+            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+                bearerAuth(buildToken())
+                contentType(ContentType.Application.Json)
+                setBody("""{"status":"accepted"}""")
+            }
+            assertEquals(HttpStatusCode.NotFound, response.status)
+            assertContains(response.bodyAsText(), "not_found")
+        }
+    }
+
+    @Test
+    fun `PATCH returns 401 when service returns Forbidden`() {
+        val stubService = object : FriendshipService() {
+            override suspend fun respondToFriendRequest(
+                callerId: UUID,
+                friendshipId: UUID,
+                newStatus: FriendshipStatus,
+            ): RespondFriendRequestResult = RespondFriendRequestResult.Forbidden
+        }
+        withApp(stubService) {
+            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+                bearerAuth(buildToken())
+                contentType(ContentType.Application.Json)
+                setBody("""{"status":"accepted"}""")
+            }
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+            assertContains(response.bodyAsText(), "unauthorized")
+        }
+    }
+
+    @Test
+    fun `PATCH returns 409 when service returns AlreadyResponded`() {
+        val stubService = object : FriendshipService() {
+            override suspend fun respondToFriendRequest(
+                callerId: UUID,
+                friendshipId: UUID,
+                newStatus: FriendshipStatus,
+            ): RespondFriendRequestResult = RespondFriendRequestResult.AlreadyResponded("accepted")
+        }
+        withApp(stubService) {
+            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+                bearerAuth(buildToken())
+                contentType(ContentType.Application.Json)
+                setBody("""{"status":"declined"}""")
+            }
+            assertEquals(HttpStatusCode.Conflict, response.status)
+            assertContains(response.bodyAsText(), "already_responded")
+        }
+    }
+
+    @Test
+    fun `PATCH returns 200 with updated friendship when accepted`() {
+        val friendshipId = UUID.randomUUID()
+        val requesterId  = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun respondToFriendRequest(
+                callerId: UUID,
+                friendshipId: UUID,
+                newStatus: FriendshipStatus,
+            ): RespondFriendRequestResult = RespondFriendRequestResult.Success(
+                FriendshipResponse(
+                    id          = friendshipId.toString(),
+                    requesterId = requesterId.toString(),
+                    receiverId  = callerId.toString(),
+                    status      = "accepted",
+                    createdAt   = "2026-03-09T12:00:00Z",
+                ),
+            )
+        }
+        withApp(stubService) {
+            val response = patch("/api/friends/request/$friendshipId") {
+                bearerAuth(buildToken())
+                contentType(ContentType.Application.Json)
+                setBody("""{"status":"accepted"}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, friendshipId.toString())
+            assertContains(body, "accepted")
+        }
+    }
+
+    @Test
+    fun `PATCH returns 200 with updated friendship when declined`() {
+        val friendshipId = UUID.randomUUID()
+        val requesterId  = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun respondToFriendRequest(
+                callerId: UUID,
+                friendshipId: UUID,
+                newStatus: FriendshipStatus,
+            ): RespondFriendRequestResult = RespondFriendRequestResult.Success(
+                FriendshipResponse(
+                    id          = friendshipId.toString(),
+                    requesterId = requesterId.toString(),
+                    receiverId  = callerId.toString(),
+                    status      = "declined",
+                    createdAt   = "2026-03-09T12:00:00Z",
+                ),
+            )
+        }
+        withApp(stubService) {
+            val response = patch("/api/friends/request/$friendshipId") {
+                bearerAuth(buildToken())
+                contentType(ContentType.Application.Json)
+                setBody("""{"status":"declined"}""")
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, friendshipId.toString())
+            assertContains(body, "declined")
         }
     }
 }
