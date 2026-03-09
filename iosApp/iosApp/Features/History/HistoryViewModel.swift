@@ -324,16 +324,9 @@ final class HistoryViewModel: ObservableObject {
     // MARK: - Private: Fetch
 
     private func fetchData(errorPrefix: String) async {
-        do {
-            // Simulate network / database latency.
-            // Replace with real KMP use-case invocations once shared module is linked.
-            try await Task.sleep(nanoseconds: 600_000_000)
-            allSessions = Self.makeStubSessions()
-        } catch is CancellationError {
-            // Task was cancelled -- do not set error.
-        } catch {
-            errorMessage = errorPrefix
-        }
+        // TODO: Replace with real KMP use-case calls once workout history
+        // use cases are wired up. For now show empty list — no mock data.
+        allSessions = []
     }
 
     // MARK: - Cached DateFormatters
@@ -359,92 +352,4 @@ final class HistoryViewModel: ObservableObject {
         return f
     }()
 
-    // MARK: - Stub Data Factory
-
-    private static func makeStubSessions() -> [WorkoutSession] {
-        let calendar = Calendar.current
-        let now = Date()
-
-        // Deterministic session data: (daysAgo, hour, minute, pushUps, durationSec, quality)
-        let sessionData: [(Int, Int, Int, Int, Int, Double)] = [
-            (0,  8, 15, 42, 487, 0.88),
-            (0, 18, 30, 28, 312, 0.74),
-            (1,  7, 45, 55, 623, 0.92),
-            (2,  9,  0, 35, 401, 0.81),
-            (3, 17, 20, 48, 534, 0.86),
-            (3, 12,  5, 22, 258, 0.69),
-            (5,  8, 30, 61, 712, 0.94),
-            (6, 19, 10, 33, 378, 0.77),
-            (7,  7, 55, 45, 510, 0.83),
-            (8, 16, 40, 18, 210, 0.62),
-            (9,  9, 15, 52, 598, 0.90),
-            (10, 8,  0, 38, 432, 0.79),
-            (12, 17, 30, 44, 498, 0.85),
-            (13,  8, 20, 29, 335, 0.72),
-            (14,  9, 45, 57, 648, 0.91),
-            (15, 18,  0, 36, 412, 0.80),
-            (16,  7, 30, 50, 567, 0.87),
-            (17, 16, 15, 25, 288, 0.68),
-            (19,  8, 45, 63, 724, 0.93),
-            (20, 17, 50, 41, 468, 0.82),
-            (21,  9, 10, 34, 390, 0.76),
-            (22,  8,  0, 47, 535, 0.84),
-            (24, 18, 25, 20, 235, 0.65),
-            (25,  7, 40, 58, 662, 0.89),
-            (26,  9, 30, 32, 368, 0.75),
-            (27, 17,  5, 46, 522, 0.83),
-            (28,  8, 15, 39, 445, 0.78),
-            (30, 16, 50, 53, 605, 0.88),
-        ]
-
-        return sessionData.compactMap { (daysAgo, hour, minute, pushUps, duration, quality) in
-            guard var date = calendar.date(byAdding: .day, value: -daysAgo, to: now) else {
-                return nil
-            }
-            date = calendar.date(
-                bySettingHour: hour, minute: minute, second: 0, of: date
-            ) ?? date
-
-            let earned = max(1, pushUps / 10)
-            let records = makeStubRecords(count: pushUps, duration: TimeInterval(duration), quality: quality)
-
-            return WorkoutSession(
-                id: UUID(),
-                startDate: date,
-                pushUpCount: pushUps,
-                durationSeconds: duration,
-                earnedMinutes: earned,
-                averageQuality: quality,
-                records: records
-            )
-        }
-        .sorted { $0.startDate > $1.startDate }
-    }
-
-    /// Generates realistic push-up records for a session.
-    private static func makeStubRecords(
-        count: Int,
-        duration: TimeInterval,
-        quality: Double
-    ) -> [PushUpRecord] {
-        guard count > 0 else { return [] }
-
-        // Distribute reps roughly evenly across the session duration,
-        // with slight variation to simulate natural pacing.
-        let baseInterval = duration / Double(count)
-
-        return (0..<count).map { i in
-            let jitter = Double.random(in: -0.3...0.3) * baseInterval
-            let timeOffset = max(0, Double(i) * baseInterval + jitter)
-            // Quality varies around the session average with +/-0.1 noise
-            let repQuality = min(1.0, max(0.0, quality + Double.random(in: -0.1...0.1)))
-
-            return PushUpRecord(
-                id: UUID(),
-                repNumber: i + 1,
-                timeOffset: timeOffset,
-                formScore: repQuality
-            )
-        }
-    }
 }

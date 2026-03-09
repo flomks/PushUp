@@ -1,22 +1,21 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.UserRepository
 import kotlinx.datetime.Clock
 
 /**
- * Use-case: Get or create a local "Guest" user.
+ * Use-case: Get the currently authenticated local user.
  *
- * This is a stub implementation for Phase 1A. It checks whether a local user
- * already exists in the database. If one is found it is returned immediately.
- * If no user exists, a new "Guest" user is created with a generated ID,
- * persisted to the local database, and returned.
+ * Returns the authenticated [User] from the local database.
+ * Throws [AuthException.NotAuthenticated] if no user is signed in —
+ * the caller must redirect to the login screen in that case.
  *
- * This will be replaced by real authentication in Phase 1B.
+ * The old "create Guest user" behaviour has been removed. All data
+ * is tied to a real Supabase Auth account.
  *
- * @property userRepository Repository used to read and persist the user.
- * @property clock Clock used to generate creation timestamps.
- * @property idGenerator Strategy for generating unique user IDs.
+ * @property userRepository Repository used to read the current user.
  */
 class GetOrCreateLocalUserUseCase(
     private val userRepository: UserRepository,
@@ -25,23 +24,14 @@ class GetOrCreateLocalUserUseCase(
 ) {
 
     /**
-     * Returns the existing local user, or creates and persists a new Guest user.
+     * Returns the currently authenticated [User].
      *
-     * @return The current (or newly created) [User].
+     * @throws AuthException.NotAuthenticated if no user is signed in.
      */
     suspend operator fun invoke(): User {
-        val existing = userRepository.getCurrentUser()
-        if (existing != null) return existing
-
-        val now = clock.now()
-        val guestUser = User(
-            id = idGenerator.generate(),
-            email = "guest@local",
-            displayName = "Guest",
-            createdAt = now,
-            lastSyncedAt = now,
-        )
-        userRepository.saveUser(guestUser)
-        return guestUser
+        return userRepository.getCurrentUser()
+            ?: throw AuthException.NotAuthenticated(
+                "No authenticated user found. Please sign in."
+            )
     }
 }

@@ -132,21 +132,10 @@ final class DashboardViewModel: ObservableObject {
     /// Shared fetch logic used by both `loadData()` and `refresh()`.
     private func fetchData(errorPrefix: String) async {
         do {
-            // Simulate network / database latency.
-            // Replace with real KMP use-case invocations:
-            //
-            //   let credit = try await getTimeCreditUseCase(userId: currentUserId)
-            //   availableSeconds = Int(credit.availableSeconds)
-            //   totalEarnedSeconds = Int(credit.totalEarnedSeconds)
-            //
-            //   let today = LocalDate.today()
-            //   let daily = try await getDailyStatsUseCase(userId: currentUserId, date: today)
-            //   // map daily -> DashboardDailyStats
-            //
-            //   let weekly = try await getWeeklyStatsUseCase(userId: currentUserId, weekStartDate: weekStart)
-            //   // map weekly.dailyBreakdown -> [DashboardWeekDay]
-            try await Task.sleep(nanoseconds: 800_000_000)
-            applyStubData()
+            // TODO: Replace with real KMP use-case calls once
+            // GetTimeCreditUseCase / GetDailyStatsUseCase are wired up.
+            // For now show an empty state — no mock data.
+            applyEmptyState()
         } catch is CancellationError {
             // Task was cancelled (e.g. view disappeared) -- do not set error.
         } catch {
@@ -154,43 +143,23 @@ final class DashboardViewModel: ObservableObject {
         }
     }
 
-    /// Populates all published properties with realistic stub data.
-    private func applyStubData() {
-        // Time credit
-        availableSeconds   = 5_400   // 1h 30m
-        totalEarnedSeconds = 9_000   // 2h 30m
+    /// Resets all published properties to their empty/zero state.
+    /// Shown until real data is loaded from the backend.
+    private func applyEmptyState() {
+        availableSeconds   = 0
+        totalEarnedSeconds = 0
+        dailyStats         = nil
+        lastSession        = nil
+        hasEverWorkedOut   = false
 
-        // Today's stats
-        dailyStats = DashboardDailyStats(
-            pushUps: 42,
-            sessions: 2,
-            earnedMinutes: 14,
-            averageQuality: 0.84,
-            bestSession: 28
-        )
-
-        // Weekly bar chart (Mon-Sun)
-        let pushUpValues = [35, 0, 52, 18, 42, 0, 0]
         let todayIndex = WeekdayHelper.todayIndex()
-
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
             DashboardWeekDay(
                 id: idx,
                 label: label,
-                pushUps: pushUpValues[idx],
+                pushUps: 0,
                 isToday: idx == todayIndex
             )
         }
-
-        // Last session
-        lastSession = DashboardLastSession(
-            pushUpCount: 28,
-            durationSeconds: 7 * 60 + 23,
-            earnedSeconds: 8 * 60 + 24,
-            qualityScore: 0.84,
-            relativeDate: "Today"
-        )
-
-        hasEverWorkedOut = true
     }
 }
