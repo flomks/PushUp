@@ -12,15 +12,16 @@ import io.ktor.server.request.path
 import org.slf4j.event.Level
 
 fun Application.configureMonitoring() {
-    val isDev = System.getenv("KTOR_ENV") != "production"
+    // Set SUPPRESS_HEALTH_LOG=true in .env to hide /health from logs.
+    // By default ALL requests are logged so you can always see what is
+    // reaching the server. Only suppress once you have confirmed
+    // everything works and the healthcheck noise bothers you.
+    val suppressHealth = System.getenv("SUPPRESS_HEALTH_LOG")?.lowercase() == "true"
 
     install(CallLogging) {
         level = Level.INFO
 
-        // In production, suppress /health to avoid log flooding from Docker
-        // healthchecks (every 30s). In dev, log everything so you can see
-        // that the server is alive and responding.
-        if (!isDev) {
+        if (suppressHealth) {
             filter { call -> !call.request.path().startsWith("/health") }
         }
 
@@ -45,8 +46,7 @@ fun Application.configureMonitoring() {
     }
 
     log.info(
-        "Monitoring configured (call logging: {}, health filter: {})",
-        "enabled",
-        if (isDev) "disabled (all requests logged)" else "enabled (/health suppressed)",
+        "Monitoring configured (call logging: enabled, /health logging: {})",
+        if (suppressHealth) "suppressed (SUPPRESS_HEALTH_LOG=true)" else "enabled",
     )
 }
