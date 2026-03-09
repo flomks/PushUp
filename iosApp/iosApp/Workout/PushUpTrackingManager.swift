@@ -254,7 +254,7 @@ final class PushUpTrackingManager: ObservableObject {
         // stopTracking() clears the delegates to release camera resources.
         wireDetectionPipeline()
 
-        cameraManager.setupAndStart(position: .front)
+        cameraManager.setupAndStart(position: CameraLens.front)
         isTracking = true
         sessionStartDate = Date()
         startSessionTimer()
@@ -316,7 +316,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// The current camera position (front/back).
-    var currentCapturePosition: CapturePosition {
+    var currentCameraLens: CameraLens {
         cameraManager.currentPosition
     }
 
@@ -328,7 +328,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Starts the camera preview without starting the tracking pipeline.
     /// Use this to show the camera feed in the idle state before the user
     /// taps "Start".
-    func startCameraPreview(position: CapturePosition = CapturePosition.front) {
+    func startCameraPreview(position: CameraLens = CameraLens.front) {
         guard !isTracking else { return }
         cameraManager.setupAndStart(position: position)
     }
@@ -345,7 +345,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// Publisher for camera position changes.
-    var cameraPositionPublisher: Published<CapturePosition>.Publisher {
+    var cameraPositionPublisher: Published<CameraLens>.Publisher {
         cameraManager.$currentPosition
     }
 
@@ -482,7 +482,7 @@ final class PushUpTrackingManager: ObservableObject {
             // Final cancellation check before committing the session ID.
             guard !Task.isCancelled else { return }
 
-            activeSessionId = session.id.uuidString
+            activeSessionId = session.id
             #if DEBUG
             print("[PushUpTrackingManager] KMP workout started: session=\(session.id)")
             #endif

@@ -1,10 +1,10 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - CapturePosition
+// MARK: - CameraLens
 
 /// The preferred camera for workout pose detection.
-enum CapturePosition: String, CaseIterable, Identifiable {
+enum CameraLens: String, CaseIterable, Identifiable {
     case front = "front"
     case back  = "back"
 
@@ -170,8 +170,8 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(_cameraPositionRaw, forKey: SettingsKeys.cameraPosition) }
     }
 
-    var cameraPosition: CapturePosition {
-        get { CapturePosition(rawValue: _cameraPositionRaw) ?? .back }
+    var cameraPosition: CameraLens {
+        get { CameraLens(rawValue: _cameraPositionRaw) ?? .back }
         set { _cameraPositionRaw = newValue.rawValue }
     }
 
@@ -337,7 +337,7 @@ final class SettingsViewModel: ObservableObject {
         _dailyCreditLimitMins = max(0, defaults.integer(forKey: SettingsKeys.dailyCreditLimitMins))
 
         _cameraPositionRaw = defaults.string(forKey: SettingsKeys.cameraPosition)
-            ?? CapturePosition.back.rawValue
+            ?? CameraLens.back.rawValue
 
         poseOverlayEnabled = defaults.object(forKey: SettingsKeys.poseOverlay) != nil
             ? defaults.bool(forKey: SettingsKeys.poseOverlay)
