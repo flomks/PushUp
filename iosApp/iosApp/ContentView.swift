@@ -17,7 +17,7 @@ struct ContentView: View {
 
     /// Tracks the active camera lens so Vision gets the correct pixel-buffer
     /// orientation. Updated by CameraContainerView via its cameraManager.
-    @State private var cameraPosition: CameraPosition = .back
+    @State private var cameraPosition: CapturePosition = .back
 
     var body: some View {
         ZStack {
@@ -296,7 +296,7 @@ final class PushUpDemoViewModel: ObservableObject {
     /// position changes. Read from the video output queue inside process(_:).
     /// nonisolated(unsafe) is correct: writes happen on the main actor before
     /// any frame arrives, and a one-frame stale read causes no visible artefact.
-    nonisolated(unsafe) var cameraPosition: CameraPosition = .back
+    nonisolated(unsafe) var cameraPosition: CapturePosition = .back
 
     private let poseDetector = VisionPoseDetector()
 

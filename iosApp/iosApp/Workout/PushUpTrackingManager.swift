@@ -316,7 +316,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// The current camera position (front/back).
-    var currentCameraPosition: CameraPosition {
+    var currentCapturePosition: CapturePosition {
         cameraManager.currentPosition
     }
 
@@ -328,7 +328,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Starts the camera preview without starting the tracking pipeline.
     /// Use this to show the camera feed in the idle state before the user
     /// taps "Start".
-    func startCameraPreview(position: CameraPosition = CameraPosition.front) {
+    func startCameraPreview(position: CapturePosition = CapturePosition.front) {
         guard !isTracking else { return }
         cameraManager.setupAndStart(position: position)
     }
@@ -345,7 +345,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// Publisher for camera position changes.
-    var cameraPositionPublisher: Published<CameraPosition>.Publisher {
+    var cameraPositionPublisher: Published<CapturePosition>.Publisher {
         cameraManager.$currentPosition
     }
 
@@ -475,14 +475,14 @@ final class PushUpTrackingManager: ObservableObject {
             // start a new workout session.
             try Task.checkCancellation()
 
-            let session: WorkoutSession = try await withKMPSuspend { handler in
+            let session = try await withKMPSuspend { handler in
                 self.startWorkout.invoke(userId: user.id, completionHandler: handler)
-            }
+            } as Shared.WorkoutSession
 
             // Final cancellation check before committing the session ID.
             guard !Task.isCancelled else { return }
 
-            activeSessionId = session.id
+            activeSessionId = session.id.uuidString
             #if DEBUG
             print("[PushUpTrackingManager] KMP workout started: session=\(session.id)")
             #endif
@@ -560,7 +560,7 @@ final class PushUpTrackingManager: ObservableObject {
                         formScore: kmpFormScore,
                         completionHandler: handler
                     )
-                } as PushUpRecord
+                } as Shared.PushUpRecord
                 #if DEBUG
                 print(
                     "[PushUpTrackingManager] Recorded push-up #\(event.count)" +
@@ -593,9 +593,9 @@ final class PushUpTrackingManager: ObservableObject {
         }
 
         do {
-            let summary: WorkoutSummary = try await withKMPSuspend { handler in
+            let summary = try await withKMPSuspend { handler in
                 self.finishWorkout.invoke(sessionId: sessionId, completionHandler: handler)
-            }
+            } as Shared.WorkoutSummary
             #if DEBUG
             print(
                 "[PushUpTrackingManager] KMP workout finished." +

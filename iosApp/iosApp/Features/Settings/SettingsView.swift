@@ -362,7 +362,7 @@ struct SettingsView: View {
                 get: { viewModel.cameraPosition },
                 set: { viewModel.cameraPosition = $0 }
             )) {
-                ForEach(CameraPosition.allCases) { position in
+                ForEach(CapturePosition.allCases) { position in
                     Label(position.label, icon: position.icon)
                         .tag(position)
                 }
