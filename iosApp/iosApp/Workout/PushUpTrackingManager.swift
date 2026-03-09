@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import Foundation
 import Shared
 
@@ -327,7 +328,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Starts the camera preview without starting the tracking pipeline.
     /// Use this to show the camera feed in the idle state before the user
     /// taps "Start".
-    func startCameraPreview(position: CameraPosition = .front) {
+    func startCameraPreview(position: CameraPosition = CameraPosition.front) {
         guard !isTracking else { return }
         cameraManager.setupAndStart(position: position)
     }

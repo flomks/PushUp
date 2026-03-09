@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import UIKit
 import UserNotifications
 
 // MARK: - NotificationIdentifier
