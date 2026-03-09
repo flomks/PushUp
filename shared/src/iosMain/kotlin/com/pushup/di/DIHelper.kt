@@ -60,7 +60,9 @@ object DIHelper : KoinComponent {
      * Only stores the token; the user DB record is created lazily when
      * getCurrentUserUseCase is called after login.
      *
-     * @return true if the token was stored successfully, false otherwise.
+     * @return Empty string on success, or an error message on failure.
+     *         Using String instead of Boolean because Kotlin Boolean is
+     *         exported as KotlinBoolean in Swift which causes type issues.
      */
     fun storeImplicitSession(
         accessToken: String,
@@ -68,20 +70,22 @@ object DIHelper : KoinComponent {
         userId: String,
         userEmail: String?,
         expiresIn: Long,
-    ): Boolean {
+    ): String {
         return try {
+            val safeRefreshToken = refreshToken.ifBlank { "implicit_no_refresh" }
+            val safeUserId = userId.ifBlank { "unknown" }
             val now = Clock.System.now()
             val token = AuthToken(
                 accessToken = accessToken,
-                refreshToken = refreshToken,
-                userId = userId,
+                refreshToken = safeRefreshToken,
+                userId = safeUserId,
                 userEmail = userEmail,
                 expiresAt = now.epochSeconds + expiresIn,
             )
             get<TokenStorage>().save(token)
-            true
-        } catch (_: Exception) {
-            false
+            "" // empty = success
+        } catch (e: Exception) {
+            e.message ?: "Unknown error storing session"
         }
     }
 }

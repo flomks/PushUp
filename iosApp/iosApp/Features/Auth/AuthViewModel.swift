@@ -315,11 +315,12 @@ final class AuthViewModel: NSObject, ObservableObject {
             let callbackURL = try await openWebAuthSession(url: authURL, callbackScheme: bundleID)
             let result = try await handleOAuthCallback(url: callbackURL)
             isLoading = false
-            if result.isSuccess {
+            if result.errorMessage == nil {
+                // Success — either user is set (PKCE flow) or token was stored (implicit flow)
                 authState = .authenticated
             } else {
                 authState = .unauthenticated
-                errorMessage = result.errorMessage ?? "Google Sign-In failed."
+                errorMessage = result.errorMessage
             }
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             isLoading = false

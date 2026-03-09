@@ -94,32 +94,21 @@ final class AuthService {
         userEmail: String?,
         expiresIn: Int64
     ) async -> AuthServiceResult {
-        // DIHelper.storeImplicitSession is a regular (non-suspend) Kotlin function —
-        // directly callable from Swift without a completionHandler bridge.
-        // It stores the token in the Keychain and upserts the user in the local DB.
-        guard DIHelper.shared.storeImplicitSession(
+        // DIHelper.storeImplicitSession is a regular (non-suspend) Kotlin function.
+        // Returns empty string on success, error message on failure.
+        let storeError = DIHelper.shared.storeImplicitSession(
             accessToken: accessToken,
             refreshToken: refreshToken,
             userId: userId,
             userEmail: userEmail,
             expiresIn: expiresIn
-        ) else {
-            return .failure("Failed to store session. Please try again.")
+        )
+        guard storeError.isEmpty else {
+            return .failure("Failed to store session: \(storeError)")
         }
-        // Token stored successfully — fetch the user from the local DB
-        if let user = await getCurrentUser() {
-            return .success(user)
-        }
-        // DB upsert may still be in-flight; return a minimal user object
-        let email = userEmail ?? "\(userId)@social.local"
-        let displayName = email.components(separatedBy: "@").first ?? "User"
-        // We can't construct a KMP User directly in Swift without Instant.
-        // Instead, re-fetch after a brief delay to let the coroutine complete.
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        if let user = await getCurrentUser() {
-            return .success(user)
-        }
-        return .failure("Session stored but user profile not yet available. Please restart the app.")
+        // Token stored — return nil error to signal success.
+        // errorMessage == nil means success for the implicit flow.
+        return AuthServiceResult(user: nil, errorMessage: nil)
     }
 
     // MARK: - Session
