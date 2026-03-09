@@ -254,7 +254,7 @@ final class PushUpTrackingManager: ObservableObject {
         // stopTracking() clears the delegates to release camera resources.
         wireDetectionPipeline()
 
-        cameraManager.setupAndStart(position: CameraLens.front)
+        cameraManager.setupAndStart(position: DeviceLens.front)
         isTracking = true
         sessionStartDate = Date()
         startSessionTimer()
@@ -316,7 +316,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// The current camera position (front/back).
-    var currentCameraLens: CameraLens {
+    var currentDeviceLens: DeviceLens {
         cameraManager.currentPosition
     }
 
@@ -328,7 +328,7 @@ final class PushUpTrackingManager: ObservableObject {
     /// Starts the camera preview without starting the tracking pipeline.
     /// Use this to show the camera feed in the idle state before the user
     /// taps "Start".
-    func startCameraPreview(position: CameraLens = CameraLens.front) {
+    func startCameraPreview(position: DeviceLens = DeviceLens.front) {
         guard !isTracking else { return }
         cameraManager.setupAndStart(position: position)
     }
@@ -345,7 +345,7 @@ final class PushUpTrackingManager: ObservableObject {
     }
 
     /// Publisher for camera position changes.
-    var cameraPositionPublisher: Published<CameraLens>.Publisher {
+    var cameraPositionPublisher: Published<DeviceLens>.Publisher {
         cameraManager.$currentPosition
     }
 
