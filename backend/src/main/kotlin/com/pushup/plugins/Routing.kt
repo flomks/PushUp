@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.response.respond
 import io.ktor.server.routing.get
+import io.ktor.server.routing.head
 import io.ktor.server.routing.routing
 
 fun Application.configureRouting(
@@ -18,8 +19,13 @@ fun Application.configureRouting(
     databaseReady: Boolean = true,
 ) {
     routing {
+        // GET and HEAD for /health -- Nginx, Docker healthcheck, and uptime
+        // monitors commonly send HEAD requests to check if the server is alive.
         get("/health") {
             call.respond(HttpStatusCode.OK, HealthResponse(status = "ok"))
+        }
+        head("/health") {
+            call.respond(HttpStatusCode.OK)
         }
 
         userRoutes(databaseReady = databaseReady)
