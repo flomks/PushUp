@@ -50,7 +50,7 @@ struct OfflineBanner: View {
             }
         }
         // Observe connectivity changes and animate the visibility flag.
-        .onChange(of: networkMonitor.isConnected) { connected in
+        .onChange(of: networkMonitor.isConnected) { _, connected in
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                 isVisible = !connected
             }
