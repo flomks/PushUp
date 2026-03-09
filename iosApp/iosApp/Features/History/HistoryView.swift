@@ -64,8 +64,6 @@ struct HistoryView: View {
         .task { await viewModel.startObserving() }
         .alert("Error", isPresented: showError) {
             Button("OK", role: .cancel) {}
-        }
-            Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
         }

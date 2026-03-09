@@ -255,7 +255,7 @@ class WorkoutSessionRepositoryImpl(
                         api.updateWorkoutSession(
                             id = session.id,
                             request = UpdateWorkoutSessionRequest(
-                                endedAt = session.endedAt?.toString(),
+                                endedAt = session.endedAt.toString(),
                                 pushUpCount = session.pushUpCount,
                                 earnedTimeCredits = session.earnedTimeCreditSeconds.toInt(),
                                 quality = session.quality,
