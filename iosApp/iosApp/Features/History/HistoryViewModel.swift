@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Shared
 
 // MARK: - HistoryFilter
 
@@ -20,20 +21,7 @@ enum HistoryFilter: Int, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - PushUpRecord
-
-/// A single push-up rep recorded during a workout session.
-struct PushUpRecord: Identifiable {
-    let id: UUID
-    /// Rep number within the session (1-based).
-    let repNumber: Int
-    /// Timestamp of the rep relative to session start, in seconds.
-    let timeOffset: TimeInterval
-    /// Form quality score for this rep in [0.0, 1.0].
-    let formScore: Double
-}
-
-// MARK: - WorkoutSession
+// MARK: - WorkoutSession (view model)
 
 /// A completed workout session with all associated data.
 struct WorkoutSession: Identifiable {
@@ -75,8 +63,6 @@ struct WorkoutSession: Identifiable {
 
     // MARK: - Cached DateFormatters
 
-    /// Cached formatter for "HH:mm" (e.g. "09:42").
-    /// `DateFormatter` is expensive to allocate -- reuse a single instance.
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
@@ -84,7 +70,6 @@ struct WorkoutSession: Identifiable {
         return f
     }()
 
-    /// Cached formatter for "EEE, MMM d" (e.g. "Mon, Mar 8").
     private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "EEE, MMM d"
@@ -93,15 +78,22 @@ struct WorkoutSession: Identifiable {
     }()
 }
 
+// MARK: - PushUpRecord (view model)
+
+/// A single push-up rep recorded during a workout session.
+struct PushUpRecord: Identifiable {
+    let id: UUID
+    let repNumber: Int
+    let timeOffset: TimeInterval
+    let formScore: Double
+}
+
 // MARK: - HistorySection
 
 /// A group of workout sessions sharing the same calendar day.
 struct HistorySection: Identifiable {
-    /// The calendar day this section represents (yyyy-MM-dd).
     let id: String
-    /// Display header string (e.g. "Today", "Yesterday", "Mon, Mar 8").
     let title: String
-    /// Sessions within this day, sorted newest first.
     let sessions: [WorkoutSession]
 }
 
@@ -109,61 +101,36 @@ struct HistorySection: Identifiable {
 
 /// Manages all data and state for the History screen.
 ///
-/// Data is currently simulated with realistic stub values so the UI can be
-/// built and previewed without a live backend. Replace `fetchData()` with
-/// real KMP use-case calls (e.g. `GetWorkoutHistoryUseCase`) once the shared
-/// module is linked into the iOS target.
+/// Observes the local SQLite database via KMP's `DataBridge.observeSessions`.
+/// The Flow emits immediately with the current list and again on every change
+/// (e.g. after a workout is finished), so the history is always up to date
+/// without requiring a manual refresh.
 @MainActor
 final class HistoryViewModel: ObservableObject {
 
     // MARK: - Published State
 
-    /// Currently selected time-range filter.
     @Published var selectedFilter: HistoryFilter = .all
-
-    /// Current search text (date search).
     @Published var searchText: String = ""
-
-    /// Whether the initial load is in progress.
     @Published private(set) var isLoading: Bool = false
-
-    /// Whether a pull-to-refresh is in progress.
     @Published private(set) var isRefreshing: Bool = false
-
-    /// Non-nil when a load attempt failed.
     @Published var errorMessage: String? = nil
-
-    /// The session pending deletion (triggers confirmation alert).
     @Published var sessionPendingDeletion: WorkoutSession? = nil
-
-    /// Whether the delete confirmation alert is shown.
     @Published var showDeleteConfirmation: Bool = false
-
-    /// Filtered and grouped sections, recomputed when inputs change.
-    /// Using `@Published` instead of a computed property avoids redundant
-    /// re-filtering on every SwiftUI body evaluation.
     @Published private(set) var filteredSections: [HistorySection] = []
 
     // MARK: - Private Data
 
-    /// All sessions loaded from the data source, newest first.
-    /// `@Published` so that mutations (e.g. delete) trigger UI updates.
     @Published private var allSessions: [WorkoutSession] = []
-
-    /// Combine subscriptions for reactive filtering.
     private var cancellables = Set<AnyCancellable>()
+
+    /// The KMP Flow observation job. Cancelled when this ViewModel is deallocated.
+    private var observationJob: Kotlinx_coroutines_coreJob?
 
     // MARK: - Derived State
 
-    /// Whether the filtered result set is empty.
-    var isEmpty: Bool {
-        filteredSections.isEmpty
-    }
-
-    /// Whether there are any sessions at all (for empty state messaging).
-    var hasAnyData: Bool {
-        !allSessions.isEmpty
-    }
+    var isEmpty: Bool { filteredSections.isEmpty }
+    var hasAnyData: Bool { !allSessions.isEmpty }
 
     // MARK: - Init
 
@@ -171,46 +138,59 @@ final class HistoryViewModel: ObservableObject {
         bindFilterPipeline()
     }
 
-    // MARK: - Actions
-
-    /// Loads history data. Called on first appear.
-    func loadData() async {
-        guard !isLoading, !isRefreshing else { return }
-        isLoading = true
-        errorMessage = nil
-        await fetchData(errorPrefix: "Failed to load history.")
-        isLoading = false
+    deinit {
+        observationJob?.cancel(cause: nil)
     }
 
-    /// Triggered by pull-to-refresh.
+    // MARK: - Actions
+
+    /// Starts observing the local database. Call once on first appear.
+    func startObserving() async {
+        guard observationJob == nil else { return }
+        isLoading = true
+
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            isLoading = false
+            return
+        }
+        let userId = user.id
+
+        // observeSessions returns a Job that keeps the Flow alive.
+        // Each emission updates allSessions on the main thread.
+        observationJob = DataBridge.shared.observeSessions(userId: userId) { [weak self] kmpSessions in
+            guard let self else { return }
+            self.allSessions = kmpSessions.compactMap { Self.map(kmpSession: $0) }
+            self.isLoading = false
+            self.isRefreshing = false
+        }
+    }
+
+    /// Triggered by pull-to-refresh — the Flow already keeps data live,
+    /// so this just shows the refreshing indicator briefly.
     func refresh() async {
         guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
-        errorMessage = nil
-        await fetchData(errorPrefix: "Refresh failed.")
+        // The Flow will emit again automatically if data changed.
+        // Give it a moment then clear the indicator.
+        try? await Task.sleep(for: .milliseconds(500))
         isRefreshing = false
     }
 
-    /// Clears the current error message.
-    func clearError() {
-        errorMessage = nil
-    }
+    func clearError() { errorMessage = nil }
 
-    /// Initiates the delete flow for a session.
     func requestDelete(_ session: WorkoutSession) {
         sessionPendingDeletion = session
         showDeleteConfirmation = true
     }
 
-    /// Confirms and performs the deletion.
     func confirmDelete() {
         guard let session = sessionPendingDeletion else { return }
         allSessions.removeAll { $0.id == session.id }
         sessionPendingDeletion = nil
         showDeleteConfirmation = false
+        // TODO: call WorkoutSessionRepository.delete once exposed via DataBridge
     }
 
-    /// Cancels the pending deletion.
     func cancelDelete() {
         sessionPendingDeletion = nil
         showDeleteConfirmation = false
@@ -218,25 +198,17 @@ final class HistoryViewModel: ObservableObject {
 
     // MARK: - Private: Reactive Filter Pipeline
 
-    /// Sets up a Combine pipeline that recomputes `filteredSections`
-    /// whenever `allSessions`, `selectedFilter`, or `searchText` change.
-    /// Debounces search text by 300ms to avoid excessive recomputation
-    /// while the user is typing.
     private func bindFilterPipeline() {
         let sessionsPublisher = $allSessions
-        let filterPublisher = $selectedFilter
-        let searchPublisher = $searchText
+        let filterPublisher   = $selectedFilter
+        let searchPublisher   = $searchText
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .removeDuplicates()
 
         Publishers.CombineLatest3(sessionsPublisher, filterPublisher, searchPublisher)
             .map { [weak self] sessions, filter, searchText in
                 guard let self else { return [] }
-                let filtered = self.applyFilters(
-                    sessions: sessions,
-                    filter: filter,
-                    searchText: searchText
-                )
+                let filtered = self.applyFilters(sessions: sessions, filter: filter, searchText: searchText)
                 return self.groupedByDay(filtered)
             }
             .receive(on: RunLoop.main)
@@ -252,12 +224,10 @@ final class HistoryViewModel: ObservableObject {
     ) -> [WorkoutSession] {
         var result = sessions
 
-        // Apply time-range filter
         let now = Date()
         let calendar = Calendar.current
         switch filter {
-        case .all:
-            break
+        case .all: break
         case .lastWeek:
             let cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
             result = result.filter { $0.startDate >= cutoff }
@@ -266,7 +236,6 @@ final class HistoryViewModel: ObservableObject {
             result = result.filter { $0.startDate >= cutoff }
         }
 
-        // Apply date search
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !query.isEmpty {
             result = result.filter { session in
@@ -283,10 +252,9 @@ final class HistoryViewModel: ObservableObject {
 
     private func groupedByDay(_ sessions: [WorkoutSession]) -> [HistorySection] {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today     = calendar.startOfDay(for: Date())
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
 
-        // Group by day key, preserving insertion order (newest first).
         var groups: [(key: String, sessions: [WorkoutSession])] = []
         var seen: [String: Int] = [:]
 
@@ -301,7 +269,7 @@ final class HistoryViewModel: ObservableObject {
         }
 
         return groups.map { group in
-            let dayDate = Self.isoDateFormatter.date(from: group.key) ?? Date()
+            let dayDate  = Self.isoDateFormatter.date(from: group.key) ?? Date()
             let dayStart = calendar.startOfDay(for: dayDate)
 
             let title: String
@@ -313,20 +281,31 @@ final class HistoryViewModel: ObservableObject {
                 title = Self.sectionHeaderFormatter.string(from: dayDate)
             }
 
-            return HistorySection(
-                id: group.key,
-                title: title,
-                sessions: group.sessions
-            )
+            return HistorySection(id: group.key, title: title, sessions: group.sessions)
         }
     }
 
-    // MARK: - Private: Fetch
+    // MARK: - Private: KMP → View Model Mapping
 
-    private func fetchData(errorPrefix: String) async {
-        // TODO: Replace with real KMP use-case calls once workout history
-        // use cases are wired up. For now show empty list — no mock data.
-        allSessions = []
+    /// Maps a KMP `WorkoutSession` to the view-layer `WorkoutSession`.
+    /// Only completed sessions (endedAt != nil) are shown in history.
+    private static func map(kmpSession: Shared.WorkoutSession) -> WorkoutSession? {
+        guard let endedAtInstant = kmpSession.endedAt else { return nil }
+
+        let startMs  = kmpSession.startedAt.epochSeconds * 1_000 + Int64(kmpSession.startedAt.nanosecondsOfSecond) / 1_000_000
+        let endMs    = endedAtInstant.epochSeconds * 1_000 + Int64(endedAtInstant.nanosecondsOfSecond) / 1_000_000
+        let startDate = Date(timeIntervalSince1970: Double(startMs) / 1_000.0)
+        let duration  = max(0, Int((endMs - startMs) / 1_000))
+
+        return WorkoutSession(
+            id: UUID(uuidString: kmpSession.id) ?? UUID(),
+            startDate: startDate,
+            pushUpCount: Int(kmpSession.pushUpCount),
+            durationSeconds: duration,
+            earnedMinutes: Int(kmpSession.earnedTimeCreditSeconds / 60),
+            averageQuality: Double(kmpSession.quality),
+            records: []
+        )
     }
 
     // MARK: - Cached DateFormatters
@@ -351,5 +330,4 @@ final class HistoryViewModel: ObservableObject {
         f.locale = Locale(identifier: "en_US")
         return f
     }()
-
 }

@@ -396,6 +396,24 @@ class SyncUseCaseTests {
         assertEquals(1, fakeSupabase.createSessionCallCount)
     }
 
+    @Test
+    fun syncWorkouts_skipsIncompleteSession_withNullEndedAt() = runTest {
+        insertUser()
+        // Insert a session that has not been finished yet (endedAt == null)
+        insertPendingSession(id = "in-progress", endedAt = null)
+        // Insert a completed session that should be synced
+        insertPendingSession(id = "completed")
+
+        val useCase = makeSyncWorkoutsUseCase()
+        val result = useCase("user-1")
+
+        // The in-progress session must NOT be uploaded; only the completed one
+        assertEquals(1, result.synced)
+        assertEquals(1, result.skipped) // in-progress session counted as skipped
+        assertEquals(0, result.failed)
+        assertEquals(1, fakeSupabase.createSessionCallCount)
+    }
+
     // =========================================================================
     // SyncTimeCreditUseCase
     // =========================================================================
@@ -1036,6 +1054,17 @@ class FakeAuthRepository : AuthRepository {
 
     override suspend fun loginWithGoogle(idToken: String): User =
         throw UnsupportedOperationException()
+
+    override suspend fun loginWithOAuthCode(code: String): User =
+        throw UnsupportedOperationException()
+
+    override suspend fun loginWithImplicitTokens(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresIn: Long,
+    ): User = throw UnsupportedOperationException()
 
     override suspend fun logout(clearLocalData: Boolean) {}
 

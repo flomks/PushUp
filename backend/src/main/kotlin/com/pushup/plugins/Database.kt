@@ -24,6 +24,20 @@ object Users : Table("users") {
 }
 
 /**
+ * Mirrors the public.time_credits table in Supabase.
+ * One row per user -- tracks accumulated earned and spent screen-time credits.
+ */
+object TimeCredits : Table("time_credits") {
+    val id                 = uuid("id")
+    val userId             = uuid("user_id").references(Users.id)
+    val totalEarnedSeconds = long("total_earned_seconds")
+    val totalSpentSeconds  = long("total_spent_seconds")
+    val updatedAt          = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
  *

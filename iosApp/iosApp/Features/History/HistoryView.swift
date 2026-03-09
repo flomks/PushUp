@@ -61,11 +61,10 @@ struct HistoryView: View {
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { toolbarContent }
-        .task { await viewModel.loadData() }
+        .task { await viewModel.startObserving() }
         .alert("Error", isPresented: showError) {
-            Button("Try Again") {
-                Task { await viewModel.loadData() }
-            }
+            Button("OK", role: .cancel) {}
+        }
             Button("OK", role: .cancel) {}
         } message: {
             Text(viewModel.errorMessage ?? "")
