@@ -4,7 +4,9 @@ import com.flomks.pushup.friends.FriendRequestsViewModel
 import com.flomks.pushup.friends.FriendsListViewModel
 import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
+import com.flomks.pushup.notifications.NotificationViewModel
 import com.pushup.domain.repository.FriendshipRepository
+import com.pushup.domain.repository.NotificationRepository
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
@@ -39,5 +41,9 @@ val presentationModule = module {
             friendId   = params[0],
             friendName = params[1],
         )
+    }
+
+    viewModel {
+        NotificationViewModel(repository = get<NotificationRepository>())
     }
 }
