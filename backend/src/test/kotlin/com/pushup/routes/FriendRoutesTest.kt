@@ -1,14 +1,18 @@
 package com.pushup.routes
 
+import com.pushup.models.FriendProfile
 import com.pushup.models.FriendshipResponse
+import com.pushup.models.FriendsListResponse
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.configureSerialization
 import com.pushup.plugins.configureStatusPages
+import com.pushup.service.FriendListFilter
 import com.pushup.service.FriendshipService
 import com.pushup.service.RespondFriendRequestResult
 import com.pushup.service.SendFriendRequestResult
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -417,6 +421,252 @@ class FriendRoutesTest {
             val body = response.bodyAsText()
             assertContains(body, friendshipId.toString())
             assertContains(body, "declined")
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // GET /api/friends tests
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `GET friends returns 401 when no token is provided`() = withApp(FriendshipService()) {
+        val response = get("/api/friends")
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `GET friends returns 503 when database is not ready`() =
+        withApp(FriendshipService(), databaseReady = false) {
+            val response = get("/api/friends") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
+        }
+
+    @Test
+    fun `GET friends returns 400 for unknown status parameter`() = withApp(FriendshipService()) {
+        val response = get("/api/friends?status=unknown") {
+            bearerAuth(buildToken())
+        }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertContains(response.bodyAsText(), "bad_request")
+    }
+
+    @Test
+    fun `GET friends returns 200 with empty list when no accepted friends`() {
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse = FriendsListResponse(friends = emptyList(), total = 0)
+        }
+        withApp(stubService) {
+            val response = get("/api/friends") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, "\"friends\"")
+            assertContains(body, "\"total\"")
+        }
+    }
+
+    @Test
+    fun `GET friends returns 200 with accepted friends by default`() {
+        val friendId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse {
+                assertEquals(FriendListFilter.ACCEPTED, filter)
+                return FriendsListResponse(
+                    friends = listOf(
+                        FriendProfile(
+                            id          = friendId.toString(),
+                            username    = "jane_doe",
+                            displayName = "Jane Doe",
+                            avatarUrl   = "https://example.com/avatar.png",
+                        ),
+                    ),
+                    total = 1,
+                )
+            }
+        }
+        withApp(stubService) {
+            val response = get("/api/friends") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, friendId.toString())
+            assertContains(body, "jane_doe")
+            assertContains(body, "Jane Doe")
+            assertContains(body, "\"total\"")
+        }
+    }
+
+    @Test
+    fun `GET friends returns 200 with accepted friends when status=accepted`() {
+        val friendId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse {
+                assertEquals(FriendListFilter.ACCEPTED, filter)
+                return FriendsListResponse(
+                    friends = listOf(
+                        FriendProfile(
+                            id          = friendId.toString(),
+                            username    = "alice",
+                            displayName = "Alice",
+                            avatarUrl   = null,
+                        ),
+                    ),
+                    total = 1,
+                )
+            }
+        }
+        withApp(stubService) {
+            val response = get("/api/friends?status=accepted") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertContains(response.bodyAsText(), friendId.toString())
+        }
+    }
+
+    @Test
+    fun `GET friends returns 200 with incoming pending requests when status=incoming`() {
+        val senderId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse {
+                assertEquals(FriendListFilter.INCOMING, filter)
+                return FriendsListResponse(
+                    friends = listOf(
+                        FriendProfile(
+                            id          = senderId.toString(),
+                            username    = "bob",
+                            displayName = "Bob",
+                            avatarUrl   = null,
+                        ),
+                    ),
+                    total = 1,
+                )
+            }
+        }
+        withApp(stubService) {
+            val response = get("/api/friends?status=incoming") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, senderId.toString())
+            assertContains(body, "bob")
+        }
+    }
+
+    @Test
+    fun `GET friends returns 200 with outgoing pending requests when status=outgoing`() {
+        val receiverId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse {
+                assertEquals(FriendListFilter.OUTGOING, filter)
+                return FriendsListResponse(
+                    friends = listOf(
+                        FriendProfile(
+                            id          = receiverId.toString(),
+                            username    = "charlie",
+                            displayName = "Charlie",
+                            avatarUrl   = "https://example.com/charlie.png",
+                        ),
+                    ),
+                    total = 1,
+                )
+            }
+        }
+        withApp(stubService) {
+            val response = get("/api/friends?status=outgoing") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, receiverId.toString())
+            assertContains(body, "charlie")
+        }
+    }
+
+    @Test
+    fun `GET friends response includes all required profile fields`() {
+        val friendId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse = FriendsListResponse(
+                friends = listOf(
+                    FriendProfile(
+                        id          = friendId.toString(),
+                        username    = "dave",
+                        displayName = "Dave Smith",
+                        avatarUrl   = "https://example.com/dave.jpg",
+                    ),
+                ),
+                total = 1,
+            )
+        }
+        withApp(stubService) {
+            val response = get("/api/friends") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            // Verify all four required profile fields are present in the response
+            assertContains(body, "\"id\"")
+            assertContains(body, "\"username\"")
+            assertContains(body, "\"displayName\"")
+            assertContains(body, "\"avatarUrl\"")
+            assertContains(body, friendId.toString())
+            assertContains(body, "dave")
+            assertContains(body, "Dave Smith")
+            assertContains(body, "https://example.com/dave.jpg")
+        }
+    }
+
+    @Test
+    fun `GET friends handles null optional profile fields`() {
+        val friendId = UUID.randomUUID()
+        val stubService = object : FriendshipService() {
+            override suspend fun getFriends(
+                userId: UUID,
+                filter: FriendListFilter,
+            ): FriendsListResponse = FriendsListResponse(
+                friends = listOf(
+                    FriendProfile(
+                        id          = friendId.toString(),
+                        username    = null,
+                        displayName = null,
+                        avatarUrl   = null,
+                    ),
+                ),
+                total = 1,
+            )
+        }
+        withApp(stubService) {
+            val response = get("/api/friends") {
+                bearerAuth(buildToken())
+            }
+            assertEquals(HttpStatusCode.OK, response.status)
+            val body = response.bodyAsText()
+            assertContains(body, friendId.toString())
+            assertContains(body, "\"total\"")
         }
     }
 }
