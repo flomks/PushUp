@@ -83,20 +83,20 @@ final class AuthService {
         userEmail: String?,
         expiresIn: Int64
     ) async -> AuthServiceResult {
-        // storeImplicitSession is a regular (non-suspend) Kotlin function.
-        // Returns empty string on success, error message on failure.
-        let storeError = DIHelper.shared.storeImplicitSession(
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            userId: userId,
-            userEmail: userEmail,
-            expiresIn: expiresIn
-        )
-        guard storeError.isEmpty else {
-            return .failure("Failed to store session: \(storeError)")
+        // Use the SafeAuthBridge suspend function which stores the token AND
+        // creates the User record in the local database (via AuthRepository).
+        // The previous implementation only stored the token, leaving the User
+        // record missing — causing empty profile data after Google login.
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeLoginWithImplicitTokens(
+                accessToken: accessToken,
+                refreshToken: refreshToken,
+                userId: userId,
+                userEmail: userEmail,
+                expiresIn: expiresIn,
+                completionHandler: handler
+            )
         }
-        // Token stored — errorMessage nil signals success
-        return AuthServiceResult(user: nil, errorMessage: nil)
     }
 
     // MARK: - Session

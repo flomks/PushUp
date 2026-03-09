@@ -316,7 +316,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             let result = try await handleOAuthCallback(url: callbackURL)
             isLoading = false
             if result.errorMessage == nil {
-                // Success — either user is set (PKCE flow) or token was stored (implicit flow)
+                // Success — user record created and token stored for both PKCE and implicit flows
                 authState = .authenticated
             } else {
                 authState = .unauthenticated

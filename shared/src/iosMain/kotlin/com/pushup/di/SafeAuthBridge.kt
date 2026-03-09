@@ -37,6 +37,22 @@ object SafeAuthBridge : KoinComponent {
     suspend fun safeLoginWithGoogleOAuthCode(code: String): SafeAuthResult =
         safeCall { get<LoginWithGoogleUseCase>().invokeWithOAuthCode(code) }
 
+    suspend fun safeLoginWithImplicitTokens(
+        accessToken: String,
+        refreshToken: String,
+        userId: String,
+        userEmail: String?,
+        expiresIn: Long,
+    ): SafeAuthResult = safeCall {
+        get<com.pushup.domain.repository.AuthRepository>().loginWithImplicitTokens(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            userId = userId,
+            userEmail = userEmail,
+            expiresIn = expiresIn,
+        )
+    }
+
     suspend fun safeGetCurrentUser(): SafeAuthResult = try {
         val user = get<GetCurrentUserUseCase>().invoke()
         SafeAuthResult(user = user, errorMessage = null)
