@@ -128,6 +128,16 @@ enum AppIcon: String {
     case questionmarkCircle = "questionmark.circle"
     case plus               = "plus"
 
+    // MARK: - Sync / Offline
+
+    case arrowTriangle2Circlepath = "arrow.triangle.2.circlepath"
+    case arrowClockwise     = "arrow.clockwise"
+    case wifiSlash          = "wifi.slash"
+    case wifi               = "wifi"
+    case cloudFill          = "cloud.fill"
+    case icloudAndArrowUp   = "icloud.and.arrow.up"
+    case exclamationmarkArrowTriangle2Circlepath = "exclamationmark.arrow.triangle.2.circlepath"
+
     // MARK: - Misc
 
     case minus              = "minus"

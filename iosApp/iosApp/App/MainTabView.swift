@@ -88,66 +88,72 @@ struct MainTabView: View {
     @State private var selectedTab: Tab = .dashboard
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Dashboard tab -- real implementation (Task 3.5)
-            NavigationStack {
-                DashboardView(selectedTab: $selectedTab)
-            }
-            .tabItem {
-                Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
-            }
-            .tag(Tab.dashboard)
-            .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
-
-            // Workout tab -- real implementation (Task 3.6)
-            WorkoutView()
-                .tabItem {
-                    Label(Tab.workout.label, icon: Tab.workout.icon)
+        ZStack(alignment: .top) {
+            TabView(selection: $selectedTab) {
+                // Dashboard tab -- real implementation (Task 3.5)
+                NavigationStack {
+                    DashboardView(selectedTab: $selectedTab)
                 }
-                .tag(Tab.workout)
-                .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
+                .tabItem {
+                    Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
+                }
+                .tag(Tab.dashboard)
+                .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
 
-            // History tab -- real implementation (Task 3.9)
-            NavigationStack {
-                HistoryView()
-            }
-            .tabItem {
-                Label(Tab.history.label, icon: Tab.history.icon)
-            }
-            .tag(Tab.history)
-            .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
+                // Workout tab -- real implementation (Task 3.6)
+                WorkoutView()
+                    .tabItem {
+                        Label(Tab.workout.label, icon: Tab.workout.icon)
+                    }
+                    .tag(Tab.workout)
+                    .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
-            // Stats tab -- real implementation (Task 3.8)
-            NavigationStack {
-                StatsView()
-            }
-            .tabItem {
-                Label(Tab.stats.label, icon: Tab.stats.icon)
-            }
-            .tag(Tab.stats)
-            .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
+                // History tab -- real implementation (Task 3.9)
+                NavigationStack {
+                    HistoryView()
+                }
+                .tabItem {
+                    Label(Tab.history.label, icon: Tab.history.icon)
+                }
+                .tag(Tab.history)
+                .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
 
-            // Profile tab -- real implementation (Task 3.10)
-            NavigationStack {
-                ProfileView()
-            }
-            .tabItem {
-                Label(Tab.profile.label, icon: Tab.profile.icon)
-            }
-            .tag(Tab.profile)
-            .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
+                // Stats tab -- real implementation (Task 3.8)
+                NavigationStack {
+                    StatsView()
+                }
+                .tabItem {
+                    Label(Tab.stats.label, icon: Tab.stats.icon)
+                }
+                .tag(Tab.stats)
+                .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
-            // Settings tab -- real implementation (Task 3.11)
-            NavigationStack {
-                SettingsView()
+                // Profile tab -- real implementation (Task 3.10)
+                NavigationStack {
+                    ProfileView()
+                }
+                .tabItem {
+                    Label(Tab.profile.label, icon: Tab.profile.icon)
+                }
+                .tag(Tab.profile)
+                .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
+
+                // Settings tab -- real implementation (Task 3.11)
+                NavigationStack {
+                    SettingsView()
+                }
+                .tabItem {
+                    Label(Tab.settings.label, icon: Tab.settings.icon)
+                }
+                .tag(Tab.settings)
+                .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
             }
-            .tabItem {
-                Label(Tab.settings.label, icon: Tab.settings.icon)
-            }
-            .tag(Tab.settings)
-            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
+            .tint(AppColors.primary)
+
+            // Offline banner overlay (Task 3.14) -- slides in from the top
+            // when the device loses connectivity and slides out on reconnect.
+            OfflineBanner()
         }
-        .tint(AppColors.primary)
     }
 }
 

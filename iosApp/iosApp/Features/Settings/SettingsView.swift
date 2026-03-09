@@ -22,6 +22,8 @@ import SwiftUI
 struct SettingsView: View {
 
     @StateObject private var viewModel = SettingsViewModel()
+    @ObservedObject private var syncService = SyncService.shared
+    @ObservedObject private var networkMonitor = NetworkMonitor.shared
 
     /// Controls the daily credit limit picker sheet.
     @State private var showDailyLimitPicker = false
@@ -41,6 +43,7 @@ struct SettingsView: View {
 
     var body: some View {
         List {
+            syncSection
             timeCreditSection
             cameraSection
             notificationsSection
@@ -66,6 +69,162 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showFormulaInfo) {
             TimeCreditFormulaSheet()
+        }
+    }
+
+    // MARK: - Sync Section
+
+    private var syncSection: some View {
+        Section {
+            // Sync status row
+            HStack(spacing: AppSpacing.sm) {
+                SettingsIconView(icon: .arrowTriangle2Circlepath, color: AppColors.primary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sync Status")
+                        .font(AppTypography.body)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Text(syncStatusLabel)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(syncStatusColor)
+                }
+
+                Spacer()
+
+                syncStatusIcon
+            }
+            .padding(.vertical, AppSpacing.xxs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Sync status: \(syncStatusLabel)")
+
+            // Unsynced workouts row (only shown when count > 0)
+            if syncService.unsyncedCount > 0 {
+                HStack(spacing: AppSpacing.sm) {
+                    SettingsIconView(icon: .icloudAndArrowUp, color: .orange)
+
+                    Text("Unsynced Workouts")
+                        .font(AppTypography.body)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Spacer()
+
+                    Text("\(syncService.unsyncedCount)")
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.warning)
+                        .padding(.horizontal, AppSpacing.xs)
+                        .padding(.vertical, AppSpacing.xxs)
+                        .background(AppColors.warning.opacity(0.15), in: Capsule())
+                }
+                .padding(.vertical, AppSpacing.xxs)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(syncService.unsyncedCount) workouts not yet synced")
+            }
+
+            // Manual sync button
+            Button {
+                Task { await syncService.syncNow() }
+            } label: {
+                HStack(spacing: AppSpacing.sm) {
+                    SettingsIconView(icon: .arrowClockwise, color: .green)
+
+                    Text("Sync Now")
+                        .font(AppTypography.body)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Spacer()
+
+                    if syncService.isSyncing {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.8)
+                    }
+                }
+                .padding(.vertical, AppSpacing.xxs)
+            }
+            .buttonStyle(.plain)
+            .disabled(syncService.isSyncing || !networkMonitor.isConnected)
+            .opacity(syncService.isSyncing || !networkMonitor.isConnected ? 0.5 : 1.0)
+            .accessibilityLabel("Sync now")
+            .accessibilityHint(networkMonitor.isConnected ? "Double tap to sync data" : "Not available while offline")
+
+        } header: {
+            SettingsSectionHeader("Data Sync")
+        } footer: {
+            Text(syncService.lastSyncLabel)
+        }
+    }
+
+    /// Human-readable label for the current sync state.
+    private var syncStatusLabel: String {
+        if !networkMonitor.isConnected {
+            return "Offline"
+        }
+        switch syncService.syncState {
+        case .idle:
+            return syncService.unsyncedCount > 0 ? "Pending" : "Up to date"
+        case .syncing:
+            return "Syncing..."
+        case .success:
+            return "Synced"
+        case .error(let message):
+            return "Error: \(message)"
+        case .offline:
+            return "Offline"
+        }
+    }
+
+    /// Color for the sync status label.
+    private var syncStatusColor: Color {
+        if !networkMonitor.isConnected { return AppColors.textSecondary }
+        switch syncService.syncState {
+        case .idle:
+            return syncService.unsyncedCount > 0 ? AppColors.warning : AppColors.success
+        case .syncing:
+            return AppColors.primary
+        case .success:
+            return AppColors.success
+        case .error:
+            return AppColors.error
+        case .offline:
+            return AppColors.textSecondary
+        }
+    }
+
+    /// Icon for the sync status indicator in the settings row.
+    @ViewBuilder
+    private var syncStatusIcon: some View {
+        switch syncService.syncState {
+        case .idle:
+            if !networkMonitor.isConnected {
+                Image(icon: .wifiSlash)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AppColors.textSecondary)
+            } else if syncService.unsyncedCount > 0 {
+                Image(icon: .exclamationmarkArrowTriangle2Circlepath)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AppColors.warning)
+            } else {
+                Image(icon: .checkmarkCircleFill)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(AppColors.success)
+            }
+        case .syncing:
+            ProgressView()
+                .progressViewStyle(.circular)
+                .scaleEffect(0.7)
+        case .success:
+            Image(icon: .checkmarkCircleFill)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppColors.success)
+        case .error:
+            Image(icon: .exclamationmarkTriangle)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppColors.error)
+        case .offline:
+            Image(icon: .wifiSlash)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppColors.textSecondary)
         }
     }
 
