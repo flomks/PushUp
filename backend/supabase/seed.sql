@@ -231,5 +231,48 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- =============================================================================
+-- 6. SEED FRIENDSHIPS
+-- =============================================================================
+-- Demonstrates all three friendship_status values using the two seed users
+-- (Alice and Bob) plus the demo user created in migration 003.
+--
+-- Scenario:
+--   Alice -> Bob   : accepted  (they are friends)
+--   Demo  -> Alice : pending   (demo user sent Alice a request, not yet answered)
+--   Bob   -> Demo  : declined  (Bob sent demo user a request, demo declined)
+
+INSERT INTO public.friendships (id, requester_id, receiver_id, status, created_at, updated_at)
+VALUES
+  -- Alice and Bob are friends (Alice sent the request, Bob accepted)
+  (
+    'ffffffff-0000-0000-0000-000000000001',
+    '00000000-0000-0000-0000-000000000001',  -- Alice (requester)
+    '00000000-0000-0000-0000-000000000002',  -- Bob   (receiver)
+    'accepted',
+    NOW() - INTERVAL '10 days',
+    NOW() - INTERVAL '9 days'
+  ),
+  -- Demo user sent Alice a friend request that is still pending
+  (
+    'ffffffff-0000-0000-0000-000000000002',
+    '11111111-1111-1111-1111-111111111111',  -- Demo  (requester)
+    '00000000-0000-0000-0000-000000000001',  -- Alice (receiver)
+    'pending',
+    NOW() - INTERVAL '2 days',
+    NOW() - INTERVAL '2 days'
+  ),
+  -- Bob sent Demo a friend request that Demo declined
+  (
+    'ffffffff-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000002',  -- Bob   (requester)
+    '11111111-1111-1111-1111-111111111111',  -- Demo  (receiver)
+    'declined',
+    NOW() - INTERVAL '5 days',
+    NOW() - INTERVAL '4 days'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+
+-- =============================================================================
 -- END OF SEED
 -- =============================================================================
