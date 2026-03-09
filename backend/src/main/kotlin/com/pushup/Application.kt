@@ -42,11 +42,22 @@ fun main() {
 }
 
 fun Application.module() {
+    val log = LoggerFactory.getLogger("com.pushup.Application")
+
+    log.info("Initialising plugins ...")
     configureSerialization()
     configureMonitoring()
     configureStatusPages()
     configureCORS()
+
     val databaseReady = configureDatabase()
     configureAuth()
     configureRouting(databaseReady = databaseReady)
+
+    log.info("=".repeat(60))
+    log.info("PushUp backend ready")
+    log.info("  Database: {}", if (databaseReady) "CONNECTED" else "DISABLED (no DATABASE_URL)")
+    log.info("  Auth:     {}", if (System.getenv("SUPABASE_JWT_SECRET").isNullOrBlank()) "DISABLED (no JWT secret)" else "ENABLED")
+    log.info("  Env:      {}", System.getenv("KTOR_ENV") ?: "development")
+    log.info("=".repeat(60))
 }

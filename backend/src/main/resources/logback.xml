@@ -1,18 +1,39 @@
 <configuration>
+    <!--
+      PushUp Backend Logging Configuration
+
+      Environment variables:
+        LOG_LEVEL      - Root log level (default: INFO)
+        APP_LOG_LEVEL  - com.pushup.* log level (default: DEBUG)
+
+      Usage:
+        docker compose logs -f                    # follow all logs
+        LOG_LEVEL=DEBUG docker compose up -d      # enable verbose logging
+    -->
+
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{20} - %msg%n</pattern>
         </encoder>
     </appender>
 
+    <!-- Root level: controls all loggers not explicitly configured below -->
     <root level="${LOG_LEVEL:-INFO}">
         <appender-ref ref="STDOUT"/>
     </root>
 
+    <!-- Ktor framework: INFO shows request/response logs from CallLogging -->
     <logger name="io.ktor" level="INFO"/>
+
+    <!-- Netty: only warnings (very verbose at INFO) -->
     <logger name="io.netty" level="WARN"/>
-    <logger name="com.zaxxer.hikari" level="WARN"/>
-    <logger name="Exposed" level="WARN"/>
-    <logger name="com.pushup" level="${APP_LOG_LEVEL:-INFO}"/>
-    <!-- deploy trigger v3 -->
+
+    <!-- HikariCP: INFO shows pool stats, WARN hides routine messages -->
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+
+    <!-- Exposed SQL: INFO shows executed queries (useful for debugging) -->
+    <logger name="Exposed" level="${EXPOSED_LOG_LEVEL:-WARN}"/>
+
+    <!-- Application code: DEBUG by default so all app logs are visible -->
+    <logger name="com.pushup" level="${APP_LOG_LEVEL:-DEBUG}"/>
 </configuration>
