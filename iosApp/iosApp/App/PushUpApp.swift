@@ -33,14 +33,24 @@ struct RootView: View {
     /// Persisted flag: `true` after the user has completed onboarding once.
     @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding: Bool = false
 
+    /// The user's preferred appearance mode, read directly from `UserDefaults`
+    /// so the color scheme is applied at the root level without requiring
+    /// the full `SettingsViewModel`.
+    @AppStorage(SettingsKeys.appearanceMode) private var appearanceModeRaw: String = AppearanceMode.system.rawValue
+
     /// Controls whether the onboarding sheet is presented over the auth flow.
     @State private var showOnboarding: Bool = false
+
+    /// The resolved appearance mode from the persisted raw value.
+    private var resolvedColorScheme: ColorScheme? {
+        (AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme
+    }
 
     var body: some View {
         Group {
             switch authViewModel.authState {
             case .authenticated:
-                // Post-login destination: the full 5-tab main navigation
+                // Post-login destination: the full 6-tab main navigation
                 // implemented in Task 3.3 (MainTabView.swift).
                 MainTabView()
                     .transition(.opacity)
@@ -56,6 +66,7 @@ struct RootView: View {
                     }
             }
         }
+        .preferredColorScheme(resolvedColorScheme)
         .animation(.easeInOut(duration: 0.35), value: authViewModel.authState)
         .onAppear {
             if !hasSeenOnboarding {

@@ -76,7 +76,7 @@ enum Tab: Int, CaseIterable, Identifiable {
 
 /// Root navigation container for the PushUp app.
 ///
-/// Renders a `TabView` with five tabs. Each tab owns its own `NavigationStack`
+/// Renders a `TabView` with six tabs. Each tab owns its own `NavigationStack`
 /// so that navigation state is independent per tab. The selected tab is
 /// intentionally **not** persisted -- the app always opens on the Dashboard
 /// tab after a cold launch, as required by Task 3.3.
@@ -137,17 +137,15 @@ struct MainTabView: View {
             .tag(Tab.profile)
             .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
 
-            // Remaining tabs -- placeholders until their tasks are implemented
-            ForEach(Tab.allCases.filter { $0 != .dashboard && $0 != .workout && $0 != .history && $0 != .stats && $0 != .profile }) { tab in
-                NavigationStack {
-                    TabPlaceholderView(tab: tab)
-                }
-                .tabItem {
-                    Label(tab.label, icon: tab.icon)
-                }
-                .tag(tab)
-                .accessibilityIdentifier(tab.accessibilityIdentifier)
+            // Settings tab -- real implementation (Task 3.11)
+            NavigationStack {
+                SettingsView()
             }
+            .tabItem {
+                Label(Tab.settings.label, icon: Tab.settings.icon)
+            }
+            .tag(Tab.settings)
+            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
         }
         .tint(AppColors.primary)
     }
