@@ -3,12 +3,14 @@ package com.pushup.plugins
 import com.pushup.models.HealthResponse
 import com.pushup.routes.friendActivityStatsRoutes
 import com.pushup.routes.friendRoutes
+import com.pushup.routes.notificationRoutes
 import com.pushup.routes.statsRoutes
 import com.pushup.routes.userDataRoutes
 import com.pushup.routes.userRoutes
 import com.pushup.routes.userSearchRoutes
 import com.pushup.service.FriendActivityStatsService
 import com.pushup.service.FriendshipService
+import com.pushup.service.NotificationService
 import com.pushup.service.StatsService
 import com.pushup.service.UserDataService
 import com.pushup.service.UserSearchService
@@ -25,6 +27,7 @@ fun Application.configureRouting(
     userSearchService: UserSearchService = UserSearchService(),
     friendshipService: FriendshipService = FriendshipService(),
     friendActivityStatsService: FriendActivityStatsService = FriendActivityStatsService(),
+    notificationService: NotificationService = NotificationService(),
     databaseReady: Boolean = true,
 ) {
     routing {
@@ -43,5 +46,6 @@ fun Application.configureRouting(
         userSearchRoutes(userSearchService, databaseReady = databaseReady)
         friendRoutes(friendshipService, databaseReady = databaseReady)
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)
+        notificationRoutes(notificationService, databaseReady = databaseReady)
     }
 }

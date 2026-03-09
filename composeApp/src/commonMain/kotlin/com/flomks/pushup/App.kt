@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MailOutline
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -34,6 +35,8 @@ import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.InboxState
 import com.flomks.pushup.friends.UserSearchScreen
 import com.flomks.pushup.friends.UserSearchViewModel
+import com.flomks.pushup.notifications.NotificationCenterScreen
+import com.flomks.pushup.notifications.NotificationViewModel
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -55,12 +58,14 @@ fun App() {
 /**
  * Friends section of the app.
  *
- * Shows three tabs:
- * - "Find Friends" -- user search with send-request support.
- * - "Requests"     -- incoming pending friend requests with accept/decline.
- * - "Friends"      -- list of accepted friends with stats navigation and remove.
+ * Shows four tabs:
+ * - "Find Friends"   -- user search with send-request support.
+ * - "Requests"       -- incoming pending friend requests with accept/decline.
+ * - "Friends"        -- list of accepted friends with stats navigation and remove.
+ * - "Notifications"  -- in-app notification center with badge counter.
  *
  * The "Requests" tab shows a badge with the count of pending requests.
+ * The "Notifications" tab shows a badge with the count of unread notifications.
  * Tapping a friend in the "Friends" tab navigates to their stats screen.
  */
 @Composable
@@ -68,6 +73,7 @@ fun FriendsSection(
     searchViewModel: UserSearchViewModel = koinViewModel(),
     requestsViewModel: FriendRequestsViewModel = koinViewModel(),
     friendsListViewModel: FriendsListViewModel = koinViewModel(),
+    notificationViewModel: NotificationViewModel = koinViewModel(),
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -77,6 +83,10 @@ fun FriendsSection(
         ?.requests
         ?.size
         ?: 0
+
+    // Observe the notification state to compute the unread badge count.
+    val notificationUiState by notificationViewModel.uiState.collectAsState()
+    val unreadNotificationCount = notificationUiState.unreadCount
 
     // Navigation state: null = show the list, non-null = show stats for that friend.
     // Pair<friendId, friendName>
@@ -100,9 +110,10 @@ fun FriendsSection(
 
     Column(modifier = Modifier.fillMaxSize()) {
         FriendsTabs(
-            selectedTab  = selectedTab,
-            pendingCount = pendingCount,
-            onTabSelected = { selectedTab = it },
+            selectedTab              = selectedTab,
+            pendingCount             = pendingCount,
+            unreadNotificationCount  = unreadNotificationCount,
+            onTabSelected            = { selectedTab = it },
         )
 
         when (selectedTab) {
@@ -120,6 +131,7 @@ fun FriendsSection(
                     statsTarget = friendId to friendName
                 },
             )
+            3 -> NotificationCenterScreen(viewModel = notificationViewModel)
         }
     }
 }
@@ -131,14 +143,17 @@ fun FriendsSection(
 /**
  * Tab row for the friends section.
  *
- * @param selectedTab   Index of the currently selected tab (0 = Find, 1 = Requests, 2 = Friends).
- * @param pendingCount  Number of pending incoming requests; shown as a badge on tab 1.
- * @param onTabSelected Callback invoked when the user taps a tab.
+ * @param selectedTab             Index of the currently selected tab
+ *                                (0 = Find, 1 = Requests, 2 = Friends, 3 = Notifications).
+ * @param pendingCount            Number of pending incoming requests; shown as a badge on tab 1.
+ * @param unreadNotificationCount Number of unread notifications; shown as a badge on tab 3.
+ * @param onTabSelected           Callback invoked when the user taps a tab.
  */
 @Composable
 private fun FriendsTabs(
     selectedTab: Int,
     pendingCount: Int,
+    unreadNotificationCount: Int,
     onTabSelected: (Int) -> Unit,
 ) {
     TabRow(selectedTabIndex = selectedTab) {
@@ -194,6 +209,39 @@ private fun FriendsTabs(
                     imageVector = Icons.Default.Group,
                     contentDescription = "Friends",
                 )
+            },
+        )
+
+        // Tab 3: Notifications (with unread badge)
+        Tab(
+            selected = selectedTab == 3,
+            onClick  = { onTabSelected(3) },
+            text     = { Text("Notifications") },
+            icon     = {
+                BadgedBox(
+                    badge = {
+                        if (unreadNotificationCount > 0) {
+                            Badge {
+                                Text(
+                                    text = if (unreadNotificationCount > 99) {
+                                        "99+"
+                                    } else {
+                                        unreadNotificationCount.toString()
+                                    },
+                                )
+                            }
+                        }
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = if (unreadNotificationCount > 0) {
+                            "$unreadNotificationCount unread notifications"
+                        } else {
+                            "Notifications"
+                        },
+                    )
+                }
             },
         )
     }
