@@ -39,4 +39,19 @@ class LoginWithGoogleUseCase(
         require(idToken.isNotBlank()) { "Google ID token must not be blank" }
         return authRepository.loginWithGoogle(idToken)
     }
+
+    /**
+     * Signs in a user by exchanging a Supabase OAuth PKCE authorization code.
+     *
+     * Used after the Google OAuth redirect flow (ASWebAuthenticationSession).
+     * Supabase returns a `code` parameter in the redirect URL.
+     *
+     * @param code The authorization code from the OAuth redirect URL.
+     * @return The authenticated [User].
+     * @throws AuthException on failure.
+     */
+    suspend fun invokeWithOAuthCode(code: String): User {
+        require(code.isNotBlank()) { "OAuth code must not be blank" }
+        return authRepository.loginWithOAuthCode(code)
+    }
 }

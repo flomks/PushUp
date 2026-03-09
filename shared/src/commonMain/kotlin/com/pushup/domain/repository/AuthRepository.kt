@@ -72,6 +72,18 @@ interface AuthRepository {
     suspend fun loginWithGoogle(idToken: String): User
 
     /**
+     * Exchanges a Supabase OAuth PKCE authorization code for a session.
+     *
+     * Used after the Google OAuth redirect flow. Supabase returns a `code`
+     * parameter in the redirect URL which must be exchanged for tokens.
+     *
+     * @param code The authorization code from the OAuth redirect URL.
+     * @return The authenticated [User].
+     * @throws com.pushup.domain.model.AuthException on failure.
+     */
+    suspend fun loginWithOAuthCode(code: String): User
+
+    /**
      * Signs out the current user.
      *
      * Clears the stored tokens from secure local storage. Optionally clears

@@ -42,6 +42,21 @@ interface AuthClient {
     suspend fun signInWithIdToken(provider: SocialProvider, idToken: String): AuthToken
 
     /**
+     * Exchanges a Supabase OAuth PKCE authorization code for a session token.
+     *
+     * Used after the OAuth redirect flow (e.g. Google Sign-In via browser).
+     * Supabase returns a `code` parameter in the redirect URL which must be
+     * exchanged for an access/refresh token pair via this endpoint.
+     *
+     * Calls `POST /auth/v1/token?grant_type=pkce`.
+     *
+     * @param code The authorization code from the OAuth redirect URL.
+     * @return [AuthToken] for the authenticated session.
+     * @throws com.pushup.domain.model.AuthException on failure.
+     */
+    suspend fun exchangeOAuthCode(code: String): AuthToken
+
+    /**
      * Refreshes the access token using [refreshToken].
      *
      * @return New [AuthToken] with a fresh access token.

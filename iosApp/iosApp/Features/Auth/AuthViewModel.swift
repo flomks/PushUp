@@ -195,6 +195,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = mapAuthException(error)
+        } catch let error as KotlinThrowable {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapKotlinThrowable(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -202,7 +206,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Login failed: \(error.localizedDescription)"
         }
     }
 
@@ -224,6 +228,10 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = mapAuthException(error)
+        } catch let error as KotlinThrowable {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapKotlinThrowable(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
@@ -231,7 +239,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         } catch {
             isLoading = false
             authState = .unauthenticated
-            errorMessage = AuthError.unknown(error.localizedDescription).errorDescription
+            errorMessage = "Registration failed: \(error.localizedDescription)"
         }
     }
 
@@ -307,45 +315,46 @@ final class AuthViewModel: NSObject, ObservableObject {
     ///
     /// Opens an ASWebAuthenticationSession with the Supabase Google OAuth
     /// endpoint. After the user authenticates, Supabase redirects back to
-    /// the app with the session tokens in the URL fragment.
+    /// the app via a deep link containing a PKCE authorization code.
     ///
-    /// This approach does not require the Google Sign-In SDK — Supabase
-    /// handles the Google OAuth flow server-side and returns a complete
-    /// Supabase session in the redirect URL.
+    /// Flow:
+    /// 1. Open Supabase OAuth URL in ASWebAuthenticationSession
+    /// 2. User authenticates with Google in the browser
+    /// 3. Supabase redirects back to the app with ?code=<pkce_code>
+    /// 4. Exchange the code for a Supabase session via LoginWithGoogleUseCase
+    ///
+    /// No Google SDK required — Supabase handles the OAuth server-side.
     func loginWithGoogle() async {
         clearMessages()
         isLoading = true
         authState = .loading
         do {
-            // Read from Info.plist; fall back to hardcoded value if injection failed.
-            let supabaseURL: String = {
-                let plistValue = Bundle.main.object(forInfoDictionaryKey: "SupabaseURL") as? String ?? ""
-                if plistValue.isEmpty || plistValue.contains("your-project-ref") || plistValue == "$(SUPABASE_URL)" {
-                    return "https://akpdpsmmmahbbkiclvsi.supabase.co"
-                }
-                return plistValue
-            }()
+            let supabaseURL = "https://akpdpsmmmahbbkiclvsi.supabase.co"
             let bundleID = Bundle.main.bundleIdentifier ?? "com.flomks.pushup"
-            let redirectScheme = bundleID
-            let redirectURL = "\(redirectScheme)://auth/callback"
-            guard let encodedRedirect = redirectURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                  let authURL = URL(string: "\(supabaseURL)/auth/v1/authorize?provider=google&redirect_to=\(encodedRedirect)") else {
+            let redirectURL = "\(bundleID)://auth/callback"
+            guard
+                let encodedRedirect = redirectURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                let authURL = URL(string: "\(supabaseURL)/auth/v1/authorize?provider=google&redirect_to=\(encodedRedirect)&flow_type=pkce")
+            else {
                 throw AuthError.unknown("Invalid Supabase URL configuration.")
             }
-            let resultURL = try await openWebAuthSession(url: authURL, callbackScheme: redirectScheme)
-            try storeSupabaseOAuthSession(from: resultURL)
+            let callbackURL = try await openWebAuthSession(url: authURL, callbackScheme: bundleID)
+            let code = try extractOAuthCode(from: callbackURL)
+            let useCase = DIHelper.shared.loginWithGoogleUseCase()
+            _ = try await useCase.invokeWithOAuthCode(code: code)
             isLoading = false
             authState = .authenticated
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             isLoading = false
             authState = .unauthenticated
-            // User cancelled — do not show an error message.
+        } catch let error as AuthException {
+            isLoading = false
+            authState = .unauthenticated
+            errorMessage = mapAuthException(error)
         } catch let error as AuthError {
             isLoading = false
             authState = .unauthenticated
-            if let desc = error.errorDescription {
-                errorMessage = desc
-            }
+            if let desc = error.errorDescription { errorMessage = desc }
         } catch {
             isLoading = false
             authState = .unauthenticated
@@ -368,15 +377,25 @@ final class AuthViewModel: NSObject, ObservableObject {
 
     // MARK: - Session Restore
 
-    /// Checks whether a valid session exists and restores the authenticated state.
+    /// Checks whether a valid Supabase token exists and restores the session.
     ///
-    /// Call this on app launch to skip the login screen when the user is
-    /// already signed in.
+    /// Reads the stored token from the Keychain via TokenStorage.
+    /// Only authenticates if a real token is present — never based on
+    /// a local DB user alone (which could be a stale entry from a
+    /// previous session that was not properly cleared).
     func restoreSession() async {
+        // TokenStorage.load() returns nil if no token is stored in the Keychain.
+        // We access it via the KMP TokenStorage through a dedicated use case.
+        // getCurrentUser() internally checks tokenStorage first in AuthRepositoryImpl,
+        // so if no token exists it returns nil even if a DB user exists.
         let useCase = DIHelper.shared.getCurrentUserUseCase()
-        if let _ = try? await useCase.invoke() {
-            authState = .authenticated
+        guard let _ = try? await useCase.invoke() else {
+            // No token or no user — ensure we are in unauthenticated state
+            // and clear any stale DB user that might exist without a token.
+            authState = .unauthenticated
+            return
         }
+        authState = .authenticated
     }
 
     // MARK: - Helpers
@@ -422,6 +441,24 @@ final class AuthViewModel: NSObject, ObservableObject {
         default:
             return msg.isEmpty ? "An unknown error occurred." : msg
         }
+    }
+
+    /// Maps any KotlinThrowable (Kotlin exceptions that are not AuthException)
+    /// to a user-facing error message. Prevents crashes from unhandled Kotlin errors.
+    private func mapKotlinThrowable(_ error: KotlinThrowable) -> String {
+        let msg = error.message ?? String(describing: type(of: error))
+        // Check if it wraps an AuthException by inspecting the message
+        if msg.contains("InvalidCredentials") || msg.contains("invalid credentials", options: .caseInsensitive) {
+            return AuthError.invalidCredentials.errorDescription ?? "Invalid credentials."
+        }
+        if msg.contains("NetworkError") || msg.contains("connect", options: .caseInsensitive) {
+            return "Network error. Please check your connection."
+        }
+        if msg.contains("email confirmation", options: .caseInsensitive) ||
+           msg.contains("confirm your email", options: .caseInsensitive) {
+            return "Please confirm your email address before signing in."
+        }
+        return "An error occurred. Please try again."
     }
 
     private func validateLogin() throws {
@@ -514,79 +551,28 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Parses the Supabase OAuth callback URL and stores the session via KMP.
+    /// Extracts the PKCE authorization code from a Supabase OAuth callback URL.
     ///
-    /// Supabase returns tokens in the URL fragment after a successful OAuth flow:
-    ///   scheme://auth/callback#access_token=...&refresh_token=...&expires_in=...
-    private func storeSupabaseOAuthSession(from url: URL) throws {
-        guard let fragment = url.fragment, !fragment.isEmpty else {
-            // Check query parameters as fallback (some Supabase versions use query params)
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let queryItems = components?.queryItems ?? []
-            if let errorParam = queryItems.first(where: { $0.name == "error" })?.value {
-                let desc = queryItems.first(where: { $0.name == "error_description" })?.value ?? errorParam
-                throw AuthError.unknown("Google Sign-In failed: \(desc)")
-            }
-            throw AuthError.unknown("OAuth callback URL has no session tokens.")
-        }
+    /// Supabase PKCE flow returns the code as a query parameter:
+    ///   com.flomks.pushup://auth/callback?code=<pkce_code>
+    private func extractOAuthCode(from url: URL) throws -> String {
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryItems = components?.queryItems ?? []
 
-        var params: [String: String] = [:]
-        for pair in fragment.components(separatedBy: "&") {
-            let parts = pair.components(separatedBy: "=")
-            if parts.count >= 2 {
-                let key = parts[0]
-                let value = parts[1...].joined(separator: "=")
-                    .removingPercentEncoding ?? parts[1]
-                params[key] = value
-            }
-        }
-
-        if let errorCode = params["error"] {
-            let desc = params["error_description"]?
-                .replacingOccurrences(of: "+", with: " ") ?? errorCode
+        // Check for error first
+        if let errorParam = queryItems.first(where: { $0.name == "error" })?.value {
+            let desc = queryItems.first(where: { $0.name == "error_description" })?.value
+                ?? errorParam
             throw AuthError.unknown("Google Sign-In failed: \(desc)")
         }
 
-        guard let accessToken = params["access_token"],
-              let refreshToken = params["refresh_token"] else {
-            throw AuthError.unknown("OAuth callback did not contain session tokens.")
+        guard let code = queryItems.first(where: { $0.name == "code" })?.value,
+              !code.isEmpty else {
+            throw AuthError.unknown(
+                "OAuth callback did not contain an authorization code. URL: \(url.absoluteString)"
+            )
         }
-
-        let expiresIn = Int64(params["expires_in"] ?? "3600") ?? 3600
-        let expiresAt = Int64(Date().timeIntervalSince1970) + expiresIn
-        let userId = parseJWTClaim(accessToken, claim: "sub") ?? UUID().uuidString
-        let userEmail = parseJWTClaim(accessToken, claim: "email")
-
-        // Store the session via the KMP DIHelper
-        DIHelper.shared.storeOAuthSession(
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            userId: userId,
-            userEmail: userEmail,
-            expiresAt: expiresAt
-        )
-    }
-
-    /// Parses a claim from a JWT token (base64url-encoded payload).
-    private func parseJWTClaim(_ jwt: String, claim: String) -> String? {
-        let parts = jwt.components(separatedBy: ".")
-        guard parts.count == 3 else { return nil }
-        var base64 = parts[1]
-        // Pad to multiple of 4
-        let remainder = base64.count % 4
-        if remainder > 0 {
-            base64 += String(repeating: "=", count: 4 - remainder)
-        }
-        // Replace URL-safe characters with standard base64
-        base64 = base64
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        guard let data = Data(base64Encoded: base64),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let value = json[claim] as? String else {
-            return nil
-        }
-        return value
+        return code
     }
 }
 

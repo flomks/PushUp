@@ -97,24 +97,36 @@ class AuthRepositoryImpl(
             user
         }
 
+    override suspend fun loginWithOAuthCode(code: String): User =
+        withContext(dispatcher) {
+            val token = wrapAuthCall { authClient.exchangeOAuthCode(code) }
+            tokenStorage.save(token)
+            val user = makeUser(token, emailOverride = null)
+            userRepository.upsertUser(user)
+            user
+        }
+
     override suspend fun logout(clearLocalData: Boolean): Unit =
         withContext(dispatcher) {
+            // Always clear the token first.
             tokenStorage.clear()
-            if (clearLocalData) {
-                // Read the current user ID before clearing, then delete.
-                // Best-effort: a failure here should not prevent the token from
-                // being cleared (which already happened above).
-                runCatching {
-                    val userId = userRepository.getCurrentUser()?.id
-                    if (userId != null) {
-                        userRepository.deleteUser(userId)
-                    }
+            // Always delete the local user record on logout to prevent stale
+            // DB entries from being mistaken for an authenticated session.
+            runCatching {
+                val userId = userRepository.getCurrentUser()?.id
+                if (userId != null) {
+                    userRepository.deleteUser(userId)
                 }
             }
         }
 
     override suspend fun getCurrentUser(): User? =
         withContext(dispatcher) {
+            // Only return a user if a valid token also exists in secure storage.
+            // This prevents stale DB entries (e.g. from a previous session that
+            // was not properly cleared) from being treated as authenticated.
+            val token = tokenStorage.load() ?: return@withContext null
+            // Token exists — return the local user record.
             userRepository.getCurrentUser()
         }
 
@@ -152,19 +164,25 @@ class AuthRepositoryImpl(
         return try {
             block()
         } catch (e: CancellationException) {
-            // Never swallow cancellation -- always re-throw to preserve structured concurrency.
+            // Never swallow cancellation.
             throw e
         } catch (e: AuthException) {
+            // Already typed — re-throw as-is.
             throw e
         } catch (e: Exception) {
-            val msg = e.message ?: "Unknown error"
-            if (msg.contains("connect", ignoreCase = true) ||
+            val msg = e.message ?: e::class.simpleName ?: "Unknown error"
+            when {
+                msg.contains("connect", ignoreCase = true) ||
                 msg.contains("timeout", ignoreCase = true) ||
-                msg.contains("network", ignoreCase = true)
-            ) {
-                throw AuthException.NetworkError(msg, e)
+                msg.contains("network", ignoreCase = true) ||
+                msg.contains("unreachable", ignoreCase = true) ||
+                msg.contains("refused", ignoreCase = true) ->
+                    throw AuthException.NetworkError(msg, e)
+                msg.contains("JsonDecoding", ignoreCase = true) ||
+                msg.contains("SerializationException", ignoreCase = true) ->
+                    throw AuthException.ServerError(0, "Unexpected server response", msg, e)
+                else -> throw AuthException.Unknown(msg, e)
             }
-            throw AuthException.Unknown(msg, e)
         }
     }
 
