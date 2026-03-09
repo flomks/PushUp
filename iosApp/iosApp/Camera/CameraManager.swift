@@ -1,9 +1,9 @@
 import AVFoundation
 import UIKit
 
-// MARK: - PhysicalCamera
+// MARK: - LensSide
 
-enum PhysicalCamera: Sendable, Equatable {
+enum LensSide: Sendable, Equatable {
     case front
     case back
 
@@ -14,7 +14,7 @@ enum PhysicalCamera: Sendable, Equatable {
         }
     }
 
-    var toggled: PhysicalCamera {
+    var toggled: LensSide {
         self == .back ? .front : .back
     }
 }
@@ -79,7 +79,7 @@ final class CameraManager: NSObject, ObservableObject {
     // MARK: - Published state
 
     @Published private(set) var state: CameraState = .idle
-    @Published private(set) var currentPosition: PhysicalCamera = .back
+    @Published private(set) var currentPosition: LensSide = .back
 
     /// Current zoom factor applied to the active capture device.
     /// Always starts at 1.0 (main lens) and resets on camera switch.
@@ -142,7 +142,7 @@ final class CameraManager: NSObject, ObservableObject {
     /// The `@Published currentPosition` is only written on the main queue,
     /// but `switchCamera()` needs to read the current position from `sessionQueue`.
     private let positionLock = NSLock()
-    private var _currentPositionInternal: PhysicalCamera = .back
+    private var _currentPositionInternal: LensSide = .back
 
     // MARK: - Background observation tokens
 
@@ -219,7 +219,7 @@ final class CameraManager: NSObject, ObservableObject {
 
     /// Requests permission, configures the session for `position`, and starts it.
     /// All errors are surfaced via the `state` published property.
-    func setupAndStart(position: PhysicalCamera = .back) {
+    func setupAndStart(position: LensSide = .back) {
         requestPermission { [weak self] result in
             guard let self else { return }
             switch result {
@@ -338,13 +338,13 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Position Helpers (thread-safe)
 
-    private func readPosition() -> PhysicalCamera {
+    private func readPosition() -> LensSide {
         positionLock.lock()
         defer { positionLock.unlock() }
         return _currentPositionInternal
     }
 
-    private func updatePosition(_ position: PhysicalCamera) {
+    private func updatePosition(_ position: LensSide) {
         positionLock.lock()
         defer { positionLock.unlock() }
         _currentPositionInternal = position
@@ -352,7 +352,7 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Session Configuration (must run on sessionQueue)
 
-    private func configureSession(position: PhysicalCamera) throws {
+    private func configureSession(position: LensSide) throws {
         session.beginConfiguration()
         // commitConfiguration is always called, even on early throw.
         defer { session.commitConfiguration() }
@@ -529,7 +529,7 @@ final class CameraManager: NSObject, ObservableObject {
 
     // MARK: - Device Discovery
 
-    private func captureDevice(for position: PhysicalCamera) throws -> AVCaptureDevice {
+    private func captureDevice(for position: LensSide) throws -> AVCaptureDevice {
         // Ordered by preference: multi-lens systems first for best quality.
         let deviceTypes: [AVCaptureDevice.DeviceType] = [
             .builtInTripleCamera,
