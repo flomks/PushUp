@@ -9,6 +9,7 @@ import com.pushup.domain.usecase.sync.NetworkMonitor
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+import platform.Foundation.NSBundle
 
 /**
  * iOS-specific Koin module.
@@ -21,11 +22,10 @@ import org.koin.dsl.module
  * - [JwtTokenProvider] that reads the stored access token from [TokenStorage].
  *   Throws [IllegalStateException] when the user is not authenticated, which
  *   prevents unauthenticated requests from being sent silently.
- * - Placeholder named-string bindings for [SUPABASE_URL], [SUPABASE_ANON_KEY],
- *   and [BACKEND_BASE_URL]. Replace these with real values once the backend
- *   integration is configured (Task 3.x). The app will start and the local
- *   (offline) feature set will work; any network call will fail gracefully
- *   with a Ktor connection error rather than a crash.
+ * - [SUPABASE_URL] and [SUPABASE_ANON_KEY] read from the app bundle's
+ *   Info.plist (keys: `SupabaseURL` and `SupabaseAnonKey`). These values are
+ *   injected at build time via `Config.xcconfig` so they are never hardcoded
+ *   in source code.
  * - [IS_DEBUG] hardcoded to `false`. Kotlin/Native has no `BuildConfig`
  *   equivalent. Enable verbose HTTP logging by overriding this binding in a
  *   debug-only Koin module if needed.
@@ -48,9 +48,6 @@ val iosModule = module {
     // This is intentional: callers that invoke authenticated API endpoints
     // without a valid session should receive an explicit error rather than
     // silently sending an empty Bearer token to the backend.
-    //
-    // Replace with a Supabase Auth session provider in Task 3.x once the
-    // auth flow is implemented.
     single<JwtTokenProvider>(named(JWT_TOKEN_PROVIDER)) {
         val storage = get<TokenStorage>()
         JwtTokenProvider {
@@ -62,18 +59,27 @@ val iosModule = module {
         }
     }
 
-    // Supabase project URL.
-    // Replace with the real project URL from your Supabase dashboard:
-    //   "https://<ref>.supabase.co"
-    single<String>(named(SUPABASE_URL)) { "" }
+    // Supabase project URL — read from Info.plist key "SupabaseURL".
+    // Set via SUPABASE_URL in Config.xcconfig which is injected into Info.plist
+    // as INFOPLIST_KEY_SupabaseURL at build time.
+    single<String>(named(SUPABASE_URL)) {
+        NSBundle.mainBundle.objectForInfoDictionaryKey("SupabaseURL") as? String
+            ?: ""
+    }
 
-    // Supabase anon (public) API key.
-    // Replace with the real anon key from your Supabase dashboard.
-    single<String>(named(SUPABASE_ANON_KEY)) { "" }
+    // Supabase anon (public) API key — read from Info.plist key "SupabaseAnonKey".
+    // Set via SUPABASE_ANON_KEY in Config.xcconfig.
+    single<String>(named(SUPABASE_ANON_KEY)) {
+        NSBundle.mainBundle.objectForInfoDictionaryKey("SupabaseAnonKey") as? String
+            ?: ""
+    }
 
-    // Custom Ktor backend base URL.
-    // Replace with the real backend URL once deployed.
-    single<String>(named(BACKEND_BASE_URL)) { "" }
+    // Custom Ktor backend base URL — read from Info.plist key "BackendBaseURL".
+    // Falls back to empty string when not configured (offline-only mode).
+    single<String>(named(BACKEND_BASE_URL)) {
+        NSBundle.mainBundle.objectForInfoDictionaryKey("BackendBaseURL") as? String
+            ?: ""
+    }
 
     // HTTP debug logging flag.
     // Kotlin/Native has no BuildConfig equivalent; hardcoded to false.

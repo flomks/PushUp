@@ -7,3 +7,26 @@ CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
 
 IPHONEOS_DEPLOYMENT_TARGET=17.0
+
+// ---------------------------------------------------------------------------
+// Supabase configuration
+// Fill in the values from your Supabase project dashboard:
+//   Authentication > API Settings
+// These are injected into Info.plist at build time and read by KoinIOS.kt.
+// NEVER commit real credentials to version control.
+// ---------------------------------------------------------------------------
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key-here
+
+// ---------------------------------------------------------------------------
+// Google Sign-In
+// The iOS OAuth Client ID from Google Cloud Console.
+// Used to configure the URL scheme for the Google Sign-In redirect.
+// ---------------------------------------------------------------------------
+GOOGLE_IOS_CLIENT_ID=your-google-ios-client-id.apps.googleusercontent.com
+
+// ---------------------------------------------------------------------------
+// Custom Ktor backend base URL (optional)
+// Leave empty to run in offline-only mode.
+// ---------------------------------------------------------------------------
+BACKEND_BASE_URL=

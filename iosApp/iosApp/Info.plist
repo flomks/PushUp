@@ -18,6 +18,36 @@
 	<key>CFBundleDisplayName</key>
 	<string>PushUp</string>
 
+	<!-- Supabase configuration — values injected from Config.xcconfig at build time -->
+	<key>SupabaseURL</key>
+	<string>$(SUPABASE_URL)</string>
+
+	<key>SupabaseAnonKey</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+
+	<key>BackendBaseURL</key>
+	<string>$(BACKEND_BASE_URL)</string>
+
+	<!-- Google Sign-In iOS Client ID — injected from Config.xcconfig -->
+	<key>GIDClientID</key>
+	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
+
+	<!-- URL schemes for OAuth callbacks -->
+	<!-- Apple Sign-In uses the bundle ID as the URL scheme automatically -->
+	<!-- Google Sign-In redirect: reversed iOS client ID -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<!-- App bundle URL scheme (used for deep links and Supabase OAuth redirect) -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+	</array>
+
 	<!-- UILaunchStoryboardName is set via INFOPLIST_KEY_UILaunchStoryboardName
 	     in the Xcode build settings (project.pbxproj) and merged into the
 	     generated Info.plist at build time. Do NOT duplicate it here. -->

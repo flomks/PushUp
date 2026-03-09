@@ -1,3 +1,4 @@
+import Shared
 import SwiftUI
 import PhotosUI
 
@@ -194,27 +195,24 @@ final class ProfileViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    /// Loads all profile data. Called on first appear.
+    /// Loads all profile data from the local KMP database. Called on first appear.
     func loadData() async {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
 
         do {
-            // Simulate network / database latency.
-            // Replace with real Supabase profile fetch:
-            //   let profile = try await supabaseClient.from("profiles")
-            //       .select()
-            //       .eq("id", value: currentUserId)
-            //       .single()
-            //       .execute()
-            //       .value as ProfileRow
-            try await Task.sleep(nanoseconds: 800_000_000)
-            applyStubData()
-        } catch is CancellationError {
-            // Task was cancelled (e.g. view disappeared) -- do not set error.
-        } catch {
-            errorMessage = ProfileError.loadFailed(error.localizedDescription).errorDescription
+            let useCase = DIHelper.shared.getCurrentUserUseCase()
+            if let user = try? await useCase.invoke() {
+                applyUserData(user)
+            } else {
+                // No user in local DB yet — show empty state.
+                displayName = ""
+                savedDisplayName = ""
+                email = ""
+                memberSinceText = ""
+                stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+            }
         }
 
         isLoading = false
@@ -335,13 +333,14 @@ final class ProfileViewModel: ObservableObject {
 
     /// Signs the current user out and returns to the unauthenticated state.
     ///
-    /// Replace the stub with a real Supabase sign-out call:
-    /// ```swift
-    /// try await supabaseClient.auth.signOut()
-    /// ```
+    /// Clears the stored Supabase session token via the KMP LogoutUseCase,
+    /// then posts a notification so the root view transitions back to the
+    /// login screen.
     func signOut() {
-        // Notify the root app state to transition back to the auth flow.
-        // In a real app this would call the shared AuthViewModel / AppState.
+        Task {
+            let useCase = DIHelper.shared.logoutUseCase()
+            try? await useCase.invoke(clearLocalData: false)
+        }
         NotificationCenter.default.post(name: .userDidSignOut, object: nil)
     }
 
@@ -435,29 +434,27 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
-    /// Populates all published properties with realistic stub data.
-    private func applyStubData() {
-        displayName = "Alex Johnson"
-        savedDisplayName = "Alex Johnson"
-        email = "alex.johnson@example.com"
+    /// Populates all published properties from a real KMP [User] object.
+    private func applyUserData(_ user: User) {
+        displayName = user.displayName
+        savedDisplayName = user.displayName
+        email = user.email
 
-        // Format the member-since date.
-        let joinDate = Calendar.current.date(
-            byAdding: .month, value: -7, to: Date()
-        ) ?? Date()
+        // Format the member-since date from the KMP Instant (epoch seconds).
+        let joinDate = Date(timeIntervalSince1970: Double(user.createdAt.epochSeconds))
         let formatter = DateFormatter()
         formatter.dateStyle = .long
         formatter.timeStyle = .none
         memberSinceText = formatter.string(from: joinDate)
 
-        stats = ProfileStats(
-            totalPushUps: 3_847,
-            totalWorkouts: 142,
-            totalEarnedMinutes: 1_154
-        )
+        // Stats are loaded separately (workout history, time credits).
+        // Show zero until the stats use cases are wired up.
+        if stats == nil {
+            stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+        }
 
         // avatarImage stays nil to show the initials fallback by default.
-        // In a real app, load from avatarURL via AsyncImage or SDWebImage.
+        // Load from avatarURL via AsyncImage when avatar upload is implemented.
     }
 }
 
