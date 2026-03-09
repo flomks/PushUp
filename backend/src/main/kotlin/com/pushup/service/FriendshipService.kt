@@ -12,6 +12,7 @@ import com.pushup.plugins.Notifications
 import com.pushup.plugins.Users
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
@@ -95,6 +96,17 @@ sealed class RespondFriendRequestResult {
      * changed again (it was already accepted or declined).
      */
     data class AlreadyResponded(val currentStatus: String) : RespondFriendRequestResult()
+}
+
+/**
+ * Result type for [FriendshipService.removeFriend].
+ */
+sealed class RemoveFriendResult {
+    /** The friendship was removed successfully. */
+    object Success : RemoveFriendResult()
+
+    /** No accepted friendship exists between the caller and the target user. */
+    object NotFriends : RemoveFriendResult()
 }
 
 /**
@@ -442,5 +454,35 @@ open class FriendshipService {
         }
 
         IncomingFriendRequestsResponse(requests = requests, total = requests.size)
+    }
+
+    /**
+     * Removes the accepted friendship between [callerId] and [friendId].
+     *
+     * Deletes the friendship row in either direction (A->B or B->A) where
+     * the status is `accepted`. If no such row exists, returns [RemoveFriendResult.NotFriends].
+     *
+     * @param callerId UUID of the authenticated user initiating the removal.
+     * @param friendId UUID of the friend to remove.
+     * @return [RemoveFriendResult] describing the outcome.
+     */
+    open suspend fun removeFriend(
+        callerId: UUID,
+        friendId: UUID,
+    ): RemoveFriendResult = newSuspendedTransaction {
+
+        val deleted = Friendships.deleteWhere {
+            (status eq FriendshipStatus.ACCEPTED.toDbValue()) and (
+                (
+                    (requesterId eq callerId) and
+                    (receiverId  eq friendId)
+                ) or (
+                    (requesterId eq friendId) and
+                    (receiverId  eq callerId)
+                )
+            )
+        }
+
+        if (deleted == 0) RemoveFriendResult.NotFriends else RemoveFriendResult.Success
     }
 }

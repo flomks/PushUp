@@ -1,16 +1,22 @@
 package com.pushup.data.api
 
+import com.pushup.data.api.dto.FriendActivityStatsDTO
+import com.pushup.data.api.dto.FriendProfileDTO
 import com.pushup.data.api.dto.FriendshipResponseDTO
+import com.pushup.data.api.dto.FriendsListResponseDTO
 import com.pushup.data.api.dto.IncomingFriendRequestsResponseDTO
 import com.pushup.data.api.dto.RespondFriendRequestDTO
 import com.pushup.data.api.dto.SendFriendRequestDTO
 import com.pushup.data.api.dto.UserSearchResponseDTO
 import com.pushup.data.api.dto.toDomain
+import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.UserSearchResult
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.post
@@ -98,6 +104,68 @@ class FriendshipApiClient(
         }.also { it.expectSuccess() }
             .body<FriendshipResponseDTO>()
             .toDomain()
+    }
+
+    /**
+     * Returns all confirmed (accepted) friends of the authenticated user.
+     *
+     * Calls `GET /api/friends` (default status=accepted).
+     *
+     * @return List of [Friend]s with basic profile data.
+     */
+    suspend fun getFriends(): List<Friend> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$backendBaseUrl/api/friends") {
+            bearerAuth(token)
+        }.also { it.expectSuccess() }
+            .body<FriendsListResponseDTO>()
+            .friends
+            .map { it.toDomain() }
+    }
+
+    /**
+     * Returns activity statistics for a specific friend over a given period.
+     *
+     * Calls `GET /api/friends/{friendId}/stats?period=<period>`.
+     *
+     * @param friendId UUID of the friend whose stats are requested.
+     * @param period   One of "day", "week", or "month".
+     * @return [FriendActivityStats] for the requested period.
+     * @throws IllegalArgumentException if [friendId] is not a valid UUID.
+     */
+    suspend fun getFriendStats(friendId: String, period: String): FriendActivityStats {
+        require(UUID_REGEX.matches(friendId)) {
+            "friendId must be a valid UUID, got: $friendId"
+        }
+        return withRetry {
+            val token = tokenProvider()
+            httpClient.get("$backendBaseUrl/api/friends/$friendId/stats") {
+                bearerAuth(token)
+                url.parameters.append("period", period)
+            }.also { it.expectSuccess() }
+                .body<FriendActivityStatsDTO>()
+                .toDomain()
+        }
+    }
+
+    /**
+     * Removes the friendship between the authenticated user and [friendId].
+     *
+     * Calls `DELETE /api/friends/{friendId}`.
+     *
+     * @param friendId UUID of the friend's user account to remove.
+     * @throws IllegalArgumentException if [friendId] is not a valid UUID.
+     */
+    suspend fun removeFriend(friendId: String) {
+        require(UUID_REGEX.matches(friendId)) {
+            "friendId must be a valid UUID, got: $friendId"
+        }
+        withRetry {
+            val token = tokenProvider()
+            httpClient.delete("$backendBaseUrl/api/friends/$friendId") {
+                bearerAuth(token)
+            }.also { it.expectSuccess() }
+        }
     }
 
     /**

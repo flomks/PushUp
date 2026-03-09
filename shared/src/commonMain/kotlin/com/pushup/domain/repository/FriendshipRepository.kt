@@ -1,5 +1,7 @@
 package com.pushup.domain.repository
 
+import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.UserSearchResult
@@ -56,4 +58,36 @@ interface FriendshipRepository {
      * @throws com.pushup.data.api.ApiException on network or server errors.
      */
     suspend fun respondToFriendRequest(friendshipId: String, accept: Boolean): Friendship
+
+    /**
+     * Returns all confirmed (accepted) friends of the authenticated user.
+     *
+     * Calls `GET /api/friends` (default status=accepted).
+     *
+     * @return List of [Friend]s with basic profile data.
+     * @throws com.pushup.data.api.ApiException on network or server errors.
+     */
+    suspend fun getFriends(): List<Friend>
+
+    /**
+     * Removes the friendship between the authenticated user and [friendId].
+     *
+     * Calls `DELETE /api/friends/{friendId}`.
+     *
+     * @param friendId UUID of the friend's user account to remove.
+     * @throws com.pushup.data.api.ApiException on network or server errors.
+     */
+    suspend fun removeFriend(friendId: String)
+
+    /**
+     * Returns activity statistics for a specific friend over a given period.
+     *
+     * Calls `GET /api/friends/{friendId}/stats?period=<period>`.
+     *
+     * @param friendId UUID of the friend whose stats are requested.
+     * @param period   One of "day", "week", or "month".
+     * @return [FriendActivityStats] for the requested period.
+     * @throws com.pushup.data.api.ApiException on network or server errors.
+     */
+    suspend fun getFriendStats(friendId: String, period: String): FriendActivityStats
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
@@ -18,16 +19,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.flomks.pushup.friends.FriendRequestsInboxScreen
 import com.flomks.pushup.friends.FriendRequestsViewModel
+import com.flomks.pushup.friends.FriendsListScreen
+import com.flomks.pushup.friends.FriendsListViewModel
+import com.flomks.pushup.friends.FriendStatsScreen
+import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.InboxState
 import com.flomks.pushup.friends.UserSearchScreen
 import com.flomks.pushup.friends.UserSearchViewModel
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 @Composable
 @Preview
@@ -47,16 +54,19 @@ fun App() {
 /**
  * Friends section of the app.
  *
- * Shows two tabs:
+ * Shows three tabs:
  * - "Find Friends" -- user search with send-request support.
  * - "Requests"     -- incoming pending friend requests with accept/decline.
+ * - "Friends"      -- list of accepted friends with stats navigation and remove.
  *
  * The "Requests" tab shows a badge with the count of pending requests.
+ * Tapping a friend in the "Friends" tab navigates to their stats screen.
  */
 @Composable
 fun FriendsSection(
     searchViewModel: UserSearchViewModel = koinViewModel(),
     requestsViewModel: FriendRequestsViewModel = koinViewModel(),
+    friendsListViewModel: FriendsListViewModel = koinViewModel(),
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -66,6 +76,23 @@ fun FriendsSection(
         ?.requests
         ?.size
         ?: 0
+
+    // Navigation state: null = show the list, non-null = show stats for that friend.
+    // Pair<friendId, friendName>
+    var statsTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // If a stats target is set, show the stats screen (full-screen overlay within the section).
+    val target = statsTarget
+    if (target != null) {
+        val statsViewModel: FriendStatsViewModel = koinViewModel(
+            parameters = { parametersOf(target.first, target.second) },
+        )
+        FriendStatsScreen(
+            viewModel = statsViewModel,
+            onBack = { statsTarget = null },
+        )
+        return
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         FriendsTabs(
@@ -77,6 +104,22 @@ fun FriendsSection(
         when (selectedTab) {
             0 -> UserSearchScreen(viewModel = searchViewModel)
             1 -> FriendRequestsInboxScreen(viewModel = requestsViewModel)
+            2 -> FriendsListScreen(
+                viewModel = friendsListViewModel,
+                onFriendClick = { friendId ->
+                    // Resolve the friend's display name from the current list state
+                    val friendName = friendsListViewModel.uiState.value
+                        .listState
+                        .let { state ->
+                            (state as? com.flomks.pushup.friends.FriendsListState.Success)
+                                ?.friends
+                                ?.firstOrNull { it.id == friendId }
+                                ?.let { it.displayName ?: it.username ?: "" }
+                                ?: ""
+                        }
+                    statsTarget = Pair(friendId, friendName)
+                },
+            )
         }
     }
 }
@@ -88,7 +131,7 @@ fun FriendsSection(
 /**
  * Tab row for the friends section.
  *
- * @param selectedTab   Index of the currently selected tab (0 = Find, 1 = Requests).
+ * @param selectedTab   Index of the currently selected tab (0 = Find, 1 = Requests, 2 = Friends).
  * @param pendingCount  Number of pending incoming requests; shown as a badge on tab 1.
  * @param onTabSelected Callback invoked when the user taps a tab.
  */
@@ -138,6 +181,19 @@ private fun FriendsTabs(
                         },
                     )
                 }
+            },
+        )
+
+        // Tab 2: Friends list
+        Tab(
+            selected = selectedTab == 2,
+            onClick  = { onTabSelected(2) },
+            text     = { Text("Friends") },
+            icon     = {
+                Icon(
+                    imageVector = Icons.Default.Group,
+                    contentDescription = "Friends",
+                )
             },
         )
     }
