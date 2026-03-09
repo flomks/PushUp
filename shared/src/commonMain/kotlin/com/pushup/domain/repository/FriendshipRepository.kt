@@ -1,6 +1,7 @@
 package com.pushup.domain.repository
 
 import com.pushup.domain.model.Friendship
+import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.UserSearchResult
 
 /**
@@ -31,4 +32,28 @@ interface FriendshipRepository {
      * @throws com.pushup.data.api.ApiException on network or server errors.
      */
     suspend fun sendFriendRequest(receiverId: String): Friendship
+
+    /**
+     * Returns all incoming pending friend requests for the authenticated user.
+     *
+     * Calls `GET /api/friends?status=incoming` and maps each entry to a
+     * [FriendRequest] that includes the friendship row ID needed to accept
+     * or decline the request.
+     *
+     * @return List of [FriendRequest]s ordered by creation time (newest first).
+     * @throws com.pushup.data.api.ApiException on network or server errors.
+     */
+    suspend fun getIncomingFriendRequests(): List<FriendRequest>
+
+    /**
+     * Accepts or declines a pending friend request.
+     *
+     * Calls `PATCH /api/friends/request/{friendshipId}` with the given [accept] flag.
+     *
+     * @param friendshipId UUID of the friendship row to update.
+     * @param accept       `true` to accept, `false` to decline.
+     * @return The updated [Friendship] record.
+     * @throws com.pushup.data.api.ApiException on network or server errors.
+     */
+    suspend fun respondToFriendRequest(friendshipId: String, accept: Boolean): Friendship
 }

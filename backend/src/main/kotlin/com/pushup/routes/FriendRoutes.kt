@@ -26,15 +26,16 @@ import java.util.UUID
  * Registers all /api/friends routes.
  *
  * Routes:
- *   GET   /api/friends               -- Returns the caller's friends list.
- *                                       Optional query parameter:
- *                                         ?status=accepted  (default) -- confirmed friends
- *                                         ?status=incoming            -- pending requests received
- *                                         ?status=outgoing            -- pending requests sent
- *   POST  /api/friends/request       -- Sends a friend request from the authenticated
- *                                       user to another user identified by receiver_id.
- *   PATCH /api/friends/request/{id}  -- Allows the receiver to accept or decline a
- *                                       pending friend request.
+ *   GET   /api/friends                       -- Returns the caller's friends list.
+ *                                               Optional query parameter:
+ *                                                 ?status=accepted  (default) -- confirmed friends
+ *                                                 ?status=incoming            -- pending requests received
+ *                                                 ?status=outgoing            -- pending requests sent
+ *   GET   /api/friends/requests/incoming     -- Returns incoming pending requests with friendship IDs.
+ *   POST  /api/friends/request               -- Sends a friend request from the authenticated
+ *                                               user to another user identified by receiver_id.
+ *   PATCH /api/friends/request/{id}          -- Allows the receiver to accept or decline a
+ *                                               pending friend request.
  *
  * @param friendshipService Service that handles friendship business logic.
  * @param databaseReady     Whether the database connection was successfully
@@ -141,6 +142,76 @@ fun Route.friendRoutes(
                         ErrorResponse(
                             error   = "internal_server_error",
                             message = "Failed to retrieve friends list",
+                        ),
+                    )
+                }
+            }
+
+            /**
+             * GET /api/friends/requests/incoming
+             *
+             * Returns all incoming pending friend requests for the authenticated user.
+             * Each entry includes the friendship row ID (needed to accept/decline) and
+             * the requester's profile data.
+             *
+             * Response body (JSON):
+             * ```json
+             * {
+             *   "requests": [
+             *     {
+             *       "friendshipId": "<uuid>",
+             *       "requesterId":  "<uuid>",
+             *       "username":     "john_doe",
+             *       "displayName":  "John Doe",
+             *       "avatarUrl":    null,
+             *       "createdAt":    "2024-01-01T12:00:00Z"
+             *     }
+             *   ],
+             *   "total": 1
+             * }
+             * ```
+             *
+             * Responses:
+             *   200 OK                  -- [IncomingFriendRequestsResponse] JSON
+             *   401 Unauthorized        -- Invalid or missing JWT
+             *   503 Service Unavailable -- Database not configured
+             */
+            get("/requests/incoming") {
+                val callerId = call.authenticatedUserId()
+                if (callerId == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error   = "unauthorized",
+                            message = "Invalid authentication credentials",
+                        ),
+                    )
+                    return@get
+                }
+
+                if (!databaseReady) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse(
+                            error   = "service_unavailable",
+                            message = "Database connection is not configured",
+                        ),
+                    )
+                    return@get
+                }
+
+                try {
+                    val response = friendshipService.getIncomingFriendRequests(callerId)
+                    call.respond(HttpStatusCode.OK, response)
+                } catch (e: Exception) {
+                    call.application.log.error(
+                        "Failed to retrieve incoming friend requests for caller=$callerId", e
+                    )
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error   = "internal_server_error",
+                            message = "Failed to retrieve incoming friend requests",
                         ),
                     )
                 }

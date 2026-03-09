@@ -70,3 +70,36 @@ data class FriendsListResponse(
     val friends: List<FriendProfile>,
     val total: Int,
 )
+
+/**
+ * A single incoming friend request entry, combining the friendship row ID with
+ * the requester's profile data.
+ *
+ * @property friendshipId UUID of the friendship row (used to accept/decline).
+ * @property requesterId  UUID of the user who sent the request.
+ * @property username     Unique handle of the requester, null if not yet set.
+ * @property displayName  Free-form display name of the requester, null if not yet set.
+ * @property avatarUrl    URL to the requester's avatar image, null if not set.
+ * @property createdAt    ISO-8601 timestamp when the request was created.
+ */
+@Serializable
+data class IncomingFriendRequest(
+    val friendshipId: String,
+    val requesterId: String,
+    val username: String?,
+    val displayName: String?,
+    val avatarUrl: String?,
+    val createdAt: String,
+)
+
+/**
+ * Response body returned by GET /api/friends/requests/incoming.
+ *
+ * @property requests List of incoming pending friend requests.
+ * @property total    Total number of entries in this response (convenience field).
+ */
+@Serializable
+data class IncomingFriendRequestsResponse(
+    val requests: List<IncomingFriendRequest>,
+    val total: Int,
+)

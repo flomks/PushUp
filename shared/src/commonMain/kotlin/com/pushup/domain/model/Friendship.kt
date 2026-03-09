@@ -48,3 +48,22 @@ data class Friendship(
     val status: String,
     val createdAt: String,
 )
+
+/**
+ * Represents an incoming pending friend request shown in the inbox.
+ *
+ * @property friendshipId UUID of the friendship row (used to accept/decline).
+ * @property requesterId  UUID of the user who sent the request.
+ * @property username     Unique handle of the requester, null if not yet set.
+ * @property displayName  Free-form display name of the requester, null if not yet set.
+ * @property avatarUrl    URL to the requester's avatar image, null if not set.
+ * @property createdAt    ISO-8601 timestamp when the request was created.
+ */
+data class FriendRequest(
+    val friendshipId: String,
+    val requesterId: String,
+    val username: String?,
+    val displayName: String?,
+    val avatarUrl: String?,
+    val createdAt: String,
+)
