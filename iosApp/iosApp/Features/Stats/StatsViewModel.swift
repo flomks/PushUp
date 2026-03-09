@@ -232,16 +232,9 @@ final class StatsViewModel: ObservableObject {
     // MARK: - Private
 
     private func fetchData(errorPrefix: String) async {
-        do {
-            // Simulate network / database latency.
-            // Replace with real KMP use-case invocations once shared module is linked.
-            try await Task.sleep(nanoseconds: 700_000_000)
-            applyStubData()
-        } catch is CancellationError {
-            // Task was cancelled -- do not set error.
-        } catch {
-            errorMessage = errorPrefix
-        }
+        // TODO: Replace with real KMP use-case calls once stats use cases are wired up.
+        // For now show empty state — no mock data.
+        applyEmptyState()
     }
 
     private func loadCalendarDays() async {
@@ -251,101 +244,26 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Stub Data
 
-    private func applyStubData() {
-        // Daily / Calendar
-        calendarDays = Self.makeCalendarDays(for: displayedMonth)
-
-        // Weekly
-        weeklyBars = Self.makeWeeklyBars()
-        weeklyTotalPushUps = weeklyBars.map(\.pushUps).reduce(0, +)
-        let activeDays = weeklyBars.filter { $0.pushUps > 0 }
-        weeklyAveragePushUps = activeDays.isEmpty
-            ? 0
-            : Double(weeklyTotalPushUps) / Double(activeDays.count)
-        weeklyTotalSessions = weeklyBars.map(\.sessions).reduce(0, +)
-        weeklyEarnedMinutes = weeklyBars.map(\.earnedMinutes).reduce(0, +)
-
-        // Monthly
-        monthlyWeeks = Self.makeMonthlyWeeks()
-        monthlyTotalPushUps = monthlyWeeks.map(\.totalPushUps).reduce(0, +)
-        monthlyTotalSessions = monthlyWeeks.map(\.totalSessions).reduce(0, +)
-        monthlyEarnedMinutes = monthlyWeeks.map(\.totalEarnedMinutes).reduce(0, +)
-        monthComparison = MonthComparison(
-            currentMonthPushUps: monthlyTotalPushUps,
-            previousMonthPushUps: 312
-        )
-
-        // Total
-        totalStats = TotalStatsData(
-            totalPushUps: 2_847,
-            totalSessions: 94,
-            totalEarnedMinutes: 948,
-            longestStreakDays: 14,
-            currentStreakDays: 7,
-            averagePushUpsPerSession: 30.3,
-            averageSessionDurationSeconds: 7 * 60 + 12,
-            bestSingleSession: 68,
-            bestDay: 112,
-            bestWeek: 287,
-            activeDays: 61,
-            averageQuality: 0.81
-        )
+    private func applyEmptyState() {
+        calendarDays         = []
+        weeklyBars           = Self.makeEmptyWeeklyBars()
+        weeklyTotalPushUps   = 0
+        weeklyAveragePushUps = 0
+        weeklyTotalSessions  = 0
+        weeklyEarnedMinutes  = 0
+        monthlyWeeks         = []
+        monthlyTotalPushUps  = 0
+        monthlyTotalSessions = 0
+        monthlyEarnedMinutes = 0
+        monthComparison      = nil
+        totalStats           = nil
     }
 
-    // MARK: - Stub Factories
+    // MARK: - Empty State Factories
 
     private static func makeCalendarDays(for month: Date) -> [DayWorkoutData] {
-        let calendar = Calendar.current
-        guard
-            let monthStart = calendar.date(
-                from: calendar.dateComponents([.year, .month], from: month)
-            ),
-            let range = calendar.range(of: .day, in: .month, for: monthStart)
-        else { return [] }
-
-        // Realistic stub: workout on ~60% of days with varying intensity
-        let pushUpPattern: [Int] = [
-            35, 0, 52, 18, 42, 0, 0,
-            28, 45, 0, 61, 33, 0, 0,
-            40, 22, 55, 0, 38, 0, 0,
-            50, 0, 44, 29, 0, 0, 0,
-            36, 48, 0
-        ]
-
-        // Deterministic quality values per pattern index so the calendar
-        // does not re-randomise on every body evaluation.
-        let qualityPattern: [Double] = [
-            0.84, 0, 0.91, 0.78, 0.88, 0, 0,
-            0.76, 0.82, 0, 0.93, 0.80, 0, 0,
-            0.85, 0.73, 0.90, 0, 0.87, 0, 0,
-            0.89, 0, 0.81, 0.77, 0, 0, 0,
-            0.83, 0.86, 0
-        ]
-
-        let now = Date()
-
-        return range.compactMap { dayOffset -> DayWorkoutData? in
-            guard let date = calendar.date(
-                byAdding: .day, value: dayOffset - 1, to: monthStart
-            ) else { return nil }
-
-            // Don't show future days
-            if date > now { return nil }
-
-            let patternIdx = (dayOffset - 1) % pushUpPattern.count
-            let pushUps = pushUpPattern[patternIdx]
-            let sessions = pushUps > 0 ? (pushUps > 40 ? 2 : 1) : 0
-            let earned = pushUps / 3
-
-            return DayWorkoutData(
-                id: dayIdFormatter.string(from: date),
-                date: date,
-                pushUps: pushUps,
-                sessions: sessions,
-                earnedMinutes: earned,
-                averageQuality: qualityPattern[patternIdx]
-            )
-        }
+        // Returns empty array — real data comes from the backend.
+        return []
     }
 
     private static func makeWeeklyBars() -> [WeeklyBarData] {
@@ -356,9 +274,6 @@ final class StatsViewModel: ObservableObject {
         let todayIndex = (todayWeekday + 5) % 7
 
         let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        let pushUpValues = [35, 0, 52, 18, 42, 0, 0]
-        let sessionValues = [1, 0, 2, 1, 2, 0, 0]
-        let earnedValues  = [12, 0, 17, 6, 14, 0, 0]
 
         // Find Monday of current week
         let daysFromMonday = todayIndex
@@ -372,38 +287,16 @@ final class StatsViewModel: ObservableObject {
                 id: idx,
                 label: label,
                 date: date,
-                pushUps: idx <= todayIndex ? pushUpValues[idx] : 0,
-                sessions: idx <= todayIndex ? sessionValues[idx] : 0,
-                earnedMinutes: idx <= todayIndex ? earnedValues[idx] : 0,
+                pushUps: 0,
+                sessions: 0,
+                earnedMinutes: 0,
                 isToday: idx == todayIndex
             )
         }
     }
 
-    private static func makeMonthlyWeeks() -> [MonthlyWeekData] {
-        let calendar = Calendar.current
-        guard let monthStart = calendar.date(
-            from: calendar.dateComponents([.year, .month], from: Date())
-        ) else { return [] }
-
-        let weekLabels = ["W1", "W2", "W3", "W4"]
-        let pushUps    = [87, 147, 112, 98]
-        let sessions   = [3, 5, 4, 3]
-        let earned     = [29, 49, 37, 33]
-
-        return weekLabels.enumerated().map { idx, label in
-            let weekStart = calendar.date(
-                byAdding: .day, value: idx * 7, to: monthStart
-            ) ?? monthStart
-            return MonthlyWeekData(
-                id: idx,
-                label: label,
-                weekStart: weekStart,
-                totalPushUps: pushUps[idx],
-                totalSessions: sessions[idx],
-                totalEarnedMinutes: earned[idx]
-            )
-        }
+    private static func makeEmptyWeeklyBars() -> [WeeklyBarData] {
+        return makeWeeklyBars()
     }
 }
 

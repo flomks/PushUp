@@ -135,7 +135,7 @@ final class PushUpTrackingManager: ObservableObject {
 
     // MARK: - Private: KMP Use Cases
 
-    private let getOrCreateLocalUser: GetOrCreateLocalUserUseCase
+    private let getCurrentUser: GetCurrentUserUseCase
     private let startWorkout: StartWorkoutUseCase
     private let recordPushUp: RecordPushUpUseCase
     private let finishWorkout: FinishWorkoutUseCase
@@ -175,7 +175,7 @@ final class PushUpTrackingManager: ObservableObject {
     ///   - poseDetector: The Vision pose detector. Defaults to a new instance.
     ///   - pushUpDetector: The push-up detector. Defaults to a new instance.
     ///   - performanceMonitor: The performance monitor. Defaults to a new instance.
-    ///   - getOrCreateLocalUser: Use case for resolving the local user ID.
+    ///   - getCurrentUser: Use case for resolving the authenticated user ID.
     ///   - startWorkout: Use case for starting a KMP workout session.
     ///   - recordPushUp: Use case for recording a single push-up rep.
     ///   - finishWorkout: Use case for finishing the KMP workout session.
@@ -184,7 +184,7 @@ final class PushUpTrackingManager: ObservableObject {
         poseDetector: VisionPoseDetector = VisionPoseDetector(),
         pushUpDetector: PushUpDetector = PushUpDetector(),
         performanceMonitor: PerformanceMonitor,
-        getOrCreateLocalUser: GetOrCreateLocalUserUseCase,
+        getCurrentUser: GetCurrentUserUseCase,
         startWorkout: StartWorkoutUseCase,
         recordPushUp: RecordPushUpUseCase,
         finishWorkout: FinishWorkoutUseCase
@@ -193,7 +193,7 @@ final class PushUpTrackingManager: ObservableObject {
         self.poseDetector = poseDetector
         self.pushUpDetector = pushUpDetector
         self.performanceMonitor = performanceMonitor
-        self.getOrCreateLocalUser = getOrCreateLocalUser
+        self.getCurrentUser = getCurrentUser
         self.startWorkout = startWorkout
         self.recordPushUp = recordPushUp
         self.finishWorkout = finishWorkout
@@ -207,7 +207,7 @@ final class PushUpTrackingManager: ObservableObject {
         let helper = DIHelper.shared
         self.init(
             performanceMonitor: PerformanceMonitor(),
-            getOrCreateLocalUser: helper.getOrCreateLocalUserUseCase(),
+            getCurrentUser: helper.getCurrentUserUseCase(),
             startWorkout: helper.startWorkoutUseCase(),
             recordPushUp: helper.recordPushUpUseCase(),
             finishWorkout: helper.finishWorkoutUseCase()
@@ -459,7 +459,7 @@ final class PushUpTrackingManager: ObservableObject {
 
     // MARK: - Private: KMP Use Case Calls
 
-    /// Resolves the local user and starts a KMP workout session.
+    /// Resolves the authenticated user and starts a KMP workout session.
     ///
     /// Called from a cancellable `Task` after the camera has started.
     /// On failure: stops the camera, resets `isTracking`, and sets `lastError`.
@@ -467,11 +467,11 @@ final class PushUpTrackingManager: ObservableObject {
     private func startKMPWorkout() async {
         do {
             let user: User = try await withKMPSuspend { handler in
-                self.getOrCreateLocalUser.invoke(completionHandler: handler)
+                self.getCurrentUser.invoke(completionHandler: handler)
             }
 
             // Check cancellation between the two KMP calls. If stopTracking()
-            // was called while getOrCreateLocalUser was in flight, we must not
+            // was called while getCurrentUser was in flight, we must not
             // start a new workout session.
             try Task.checkCancellation()
 
