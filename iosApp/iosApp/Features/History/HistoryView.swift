@@ -8,7 +8,7 @@ import SwiftUI
 /// ```
 /// +-----------------------------------+
 /// |  History                          |  <- navigation bar
-/// |  [Last Week | Last Month | All]   |  <- filter chips
+/// |  [All | Last Month | Last Week]   |  <- filter chips
 /// |  [Search by date...]              |  <- search field
 /// |                                   |
 /// |  Today                            |  <- section header
@@ -23,13 +23,13 @@ import SwiftUI
 ///
 /// **Features**
 /// - Grouped list with section headers (Today / Yesterday / date)
-/// - Filter chips: Last Week, Last Month, All
+/// - Filter chips: All, Last Month, Last Week
 /// - Date search field
 /// - Swipe-to-delete with confirmation alert
 /// - Tap -> WorkoutDetailView sheet
 /// - Pull-to-refresh
 /// - Empty state: "Noch keine Workouts"
-/// - Loading skeleton
+/// - Loading state
 struct HistoryView: View {
 
     @StateObject private var viewModel = HistoryViewModel()
@@ -89,6 +89,7 @@ struct HistoryView: View {
                     .presentationDragIndicator(.visible)
             }
         }
+        .accessibilityIdentifier("history_screen")
     }
 
     // MARK: - Main Content
@@ -122,13 +123,14 @@ struct HistoryView: View {
                             viewModel.selectedFilter = filter
                         }
                     }
+                    .accessibilityIdentifier("history_filter_\(filter.label.lowercased().replacingOccurrences(of: " ", with: "_"))")
                 }
                 Spacer()
             }
 
             // Search field
             HStack(spacing: AppSpacing.xs) {
-                Image(systemName: "magnifyingglass")
+                Image(icon: .magnifyingglass)
                     .font(.system(size: AppSpacing.iconSizeSmall, weight: .medium))
                     .foregroundStyle(AppColors.textSecondary)
 
@@ -137,16 +139,19 @@ struct HistoryView: View {
                     .foregroundStyle(AppColors.textPrimary)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("history_search_field")
 
                 if !viewModel.searchText.isEmpty {
                     Button {
                         viewModel.searchText = ""
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image(icon: .xmarkCircleFill)
                             .font(.system(size: AppSpacing.iconSizeSmall))
                             .foregroundStyle(AppColors.textSecondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                    .accessibilityIdentifier("history_search_clear")
                 }
             }
             .padding(.horizontal, AppSpacing.sm)
@@ -190,16 +195,17 @@ struct HistoryView: View {
                                     Button(role: .destructive) {
                                         viewModel.requestDelete(session)
                                     } label: {
-                                        Label("Delete", systemImage: AppIcon.trash.rawValue)
+                                        Label("Delete", icon: .trash)
                                     }
                                 }
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         viewModel.requestDelete(session)
                                     } label: {
-                                        Label("Delete Workout", systemImage: AppIcon.trash.rawValue)
+                                        Label("Delete Workout", icon: .trash)
                                     }
                                 }
+                                .accessibilityIdentifier("history_session_\(session.id.uuidString)")
                         }
                     } header: {
                         sectionHeader(section.title)
@@ -212,6 +218,7 @@ struct HistoryView: View {
             .refreshable {
                 await viewModel.refresh()
             }
+            .accessibilityIdentifier("history_list")
         }
     }
 
@@ -264,6 +271,7 @@ struct HistoryView: View {
         .refreshable {
             await viewModel.refresh()
         }
+        .accessibilityIdentifier("history_empty_state")
     }
 
     // MARK: - Initial Loading View
@@ -279,6 +287,7 @@ struct HistoryView: View {
                 .font(AppTypography.subheadline)
                 .foregroundStyle(AppColors.textSecondary)
         }
+        .accessibilityIdentifier("history_loading")
     }
 
     // MARK: - Toolbar

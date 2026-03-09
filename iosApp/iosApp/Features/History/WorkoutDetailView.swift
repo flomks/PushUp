@@ -55,15 +55,17 @@ struct WorkoutDetailView: View {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image(icon: .xmarkCircleFill)
                             .font(.system(size: AppSpacing.iconSizeMedium))
                             .foregroundStyle(AppColors.textSecondary)
                             .symbolRenderingMode(.hierarchical)
                     }
                     .accessibilityLabel("Close")
+                    .accessibilityIdentifier("detail_close_button")
                 }
             }
         }
+        .accessibilityIdentifier("workout_detail_screen")
     }
 
     // MARK: - Hero Card
@@ -109,6 +111,7 @@ struct WorkoutDetailView: View {
                 }
             }
         }
+        .accessibilityIdentifier("detail_hero_card")
     }
 
     // MARK: - Metric Cells
@@ -134,11 +137,13 @@ struct WorkoutDetailView: View {
                 .foregroundStyle(AppColors.textSecondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     private var qualityMetricCell: some View {
         VStack(spacing: AppSpacing.xxs) {
-            starRating(count: session.starCount)
+            StarRatingView(count: session.starCount, size: 12)
 
             Text(String(format: "%.0f%%", session.averageQuality * 100))
                 .font(AppTypography.bodySemibold)
@@ -149,28 +154,14 @@ struct WorkoutDetailView: View {
                 .foregroundStyle(AppColors.textSecondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Quality: \(session.starCount) out of 5 stars, \(Int(session.averageQuality * 100)) percent")
     }
 
     private var metricDivider: some View {
         Rectangle()
             .fill(AppColors.separator)
             .frame(width: 1, height: 48)
-    }
-
-    @ViewBuilder
-    private func starRating(count: Int) -> some View {
-        HStack(spacing: 2) {
-            ForEach(0..<5, id: \.self) { index in
-                Image(systemName: index < count ? "star.fill" : "star")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(
-                        index < count
-                            ? AppColors.secondaryVariant
-                            : AppColors.textTertiary
-                    )
-            }
-        }
-        .accessibilityLabel("\(count) out of 5 stars")
     }
 
     // MARK: - Form Score Chart
@@ -222,7 +213,7 @@ struct WorkoutDetailView: View {
                             .foregroundStyle(AppColors.separator.opacity(0.5))
                         AxisValueLabel {
                             if let seconds = value.as(Double.self) {
-                                Text(formatTimeOffset(seconds))
+                                Text(Self.formatTimeOffset(seconds))
                                     .font(AppTypography.caption2)
                                     .foregroundStyle(AppColors.textSecondary)
                             }
@@ -261,6 +252,7 @@ struct WorkoutDetailView: View {
             .background(AppColors.backgroundSecondary)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
             .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+            .accessibilityIdentifier("detail_form_score_chart")
         }
     }
 
@@ -276,7 +268,8 @@ struct WorkoutDetailView: View {
         }
     }
 
-    private func formatTimeOffset(_ seconds: Double) -> String {
+    /// Formats a time offset in seconds as "M:SS".
+    private static func formatTimeOffset(_ seconds: Double) -> String {
         let m = Int(seconds) / 60
         let s = Int(seconds) % 60
         return String(format: "%d:%02d", m, s)
@@ -323,6 +316,7 @@ struct WorkoutDetailView: View {
             .background(AppColors.backgroundSecondary)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
             .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+            .accessibilityIdentifier("detail_records_list")
         }
     }
 
@@ -362,7 +356,7 @@ struct WorkoutDetailView: View {
             Spacer()
 
             // Time offset
-            Text(formatTimeOffset(record.timeOffset))
+            Text(Self.formatTimeOffset(record.timeOffset))
                 .font(AppTypography.caption1)
                 .foregroundStyle(AppColors.textSecondary)
                 .monospacedDigit()
@@ -397,7 +391,7 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, AppSpacing.xxs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "Rep \(record.repNumber), at \(formatTimeOffset(record.timeOffset)), quality \(Int(record.formScore * 100)) percent"
+            "Rep \(record.repNumber), at \(Self.formatTimeOffset(record.timeOffset)), quality \(Int(record.formScore * 100)) percent"
         )
     }
 }

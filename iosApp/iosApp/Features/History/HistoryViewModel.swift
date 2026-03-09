@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 // MARK: - HistoryFilter
@@ -52,17 +53,12 @@ struct WorkoutSession: Identifiable {
 
     /// Formatted time string (e.g. "09:42").
     var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: startDate)
+        Self.timeFormatter.string(from: startDate)
     }
 
     /// Formatted date string (e.g. "Mon, Mar 8").
     var shortDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d"
-        formatter.locale = Locale(identifier: "en_US")
-        return formatter.string(from: startDate)
+        Self.shortDateFormatter.string(from: startDate)
     }
 
     /// Formatted duration string (e.g. "7:32").
@@ -76,6 +72,25 @@ struct WorkoutSession: Identifiable {
     var starCount: Int {
         Int((averageQuality * 5).rounded())
     }
+
+    // MARK: - Cached DateFormatters
+
+    /// Cached formatter for "HH:mm" (e.g. "09:42").
+    /// `DateFormatter` is expensive to allocate -- reuse a single instance.
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    /// Cached formatter for "EEE, MMM d" (e.g. "Mon, Mar 8").
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        f.locale = Locale(identifier: "en_US")
+        return f
+    }()
 }
 
 // MARK: - HistorySection
@@ -124,18 +139,21 @@ final class HistoryViewModel: ObservableObject {
     /// Whether the delete confirmation alert is shown.
     @Published var showDeleteConfirmation: Bool = false
 
+    /// Filtered and grouped sections, recomputed when inputs change.
+    /// Using `@Published` instead of a computed property avoids redundant
+    /// re-filtering on every SwiftUI body evaluation.
+    @Published private(set) var filteredSections: [HistorySection] = []
+
     // MARK: - Private Data
 
     /// All sessions loaded from the data source, newest first.
-    private var allSessions: [WorkoutSession] = []
+    /// `@Published` so that mutations (e.g. delete) trigger UI updates.
+    @Published private var allSessions: [WorkoutSession] = []
 
-    // MARK: - Computed: Filtered & Grouped
+    /// Combine subscriptions for reactive filtering.
+    private var cancellables = Set<AnyCancellable>()
 
-    /// Sessions filtered by the selected time range and search text.
-    var filteredSections: [HistorySection] {
-        let filtered = filteredSessions
-        return groupedByDay(filtered)
-    }
+    // MARK: - Derived State
 
     /// Whether the filtered result set is empty.
     var isEmpty: Bool {
@@ -149,7 +167,9 @@ final class HistoryViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init() {}
+    init() {
+        bindFilterPipeline()
+    }
 
     // MARK: - Actions
 
@@ -196,36 +216,67 @@ final class HistoryViewModel: ObservableObject {
         showDeleteConfirmation = false
     }
 
+    // MARK: - Private: Reactive Filter Pipeline
+
+    /// Sets up a Combine pipeline that recomputes `filteredSections`
+    /// whenever `allSessions`, `selectedFilter`, or `searchText` change.
+    /// Debounces search text by 300ms to avoid excessive recomputation
+    /// while the user is typing.
+    private func bindFilterPipeline() {
+        let sessionsPublisher = $allSessions
+        let filterPublisher = $selectedFilter
+        let searchPublisher = $searchText
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .removeDuplicates()
+
+        Publishers.CombineLatest3(sessionsPublisher, filterPublisher, searchPublisher)
+            .map { [weak self] sessions, filter, searchText in
+                guard let self else { return [] }
+                let filtered = self.applyFilters(
+                    sessions: sessions,
+                    filter: filter,
+                    searchText: searchText
+                )
+                return self.groupedByDay(filtered)
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$filteredSections)
+    }
+
     // MARK: - Private: Filtering
 
-    private var filteredSessions: [WorkoutSession] {
-        var sessions = allSessions
+    private func applyFilters(
+        sessions: [WorkoutSession],
+        filter: HistoryFilter,
+        searchText: String
+    ) -> [WorkoutSession] {
+        var result = sessions
 
         // Apply time-range filter
         let now = Date()
         let calendar = Calendar.current
-        switch selectedFilter {
+        switch filter {
         case .all:
             break
         case .lastWeek:
             let cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
-            sessions = sessions.filter { $0.startDate >= cutoff }
+            result = result.filter { $0.startDate >= cutoff }
         case .lastMonth:
             let cutoff = calendar.date(byAdding: .month, value: -1, to: now) ?? now
-            sessions = sessions.filter { $0.startDate >= cutoff }
+            result = result.filter { $0.startDate >= cutoff }
         }
 
         // Apply date search
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !query.isEmpty {
-            sessions = sessions.filter { session in
+            result = result.filter { session in
                 session.shortDateString.lowercased().contains(query) ||
                 Self.searchDateFormatter.string(from: session.startDate).lowercased().contains(query) ||
                 Self.isoDateFormatter.string(from: session.startDate).lowercased().contains(query)
             }
         }
 
-        return sessions
+        return result
     }
 
     // MARK: - Private: Grouping
@@ -235,7 +286,7 @@ final class HistoryViewModel: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
 
-        // Group by day key
+        // Group by day key, preserving insertion order (newest first).
         var groups: [(key: String, sessions: [WorkoutSession])] = []
         var seen: [String: Int] = [:]
 
@@ -385,7 +436,7 @@ final class HistoryViewModel: ObservableObject {
         return (0..<count).map { i in
             let jitter = Double.random(in: -0.3...0.3) * baseInterval
             let timeOffset = max(0, Double(i) * baseInterval + jitter)
-            // Quality varies around the session average with ±0.1 noise
+            // Quality varies around the session average with +/-0.1 noise
             let repQuality = min(1.0, max(0.0, quality + Double.random(in: -0.1...0.1)))
 
             return PushUpRecord(

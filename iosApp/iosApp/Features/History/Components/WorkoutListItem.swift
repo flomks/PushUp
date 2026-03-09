@@ -4,7 +4,7 @@ import SwiftUI
 
 /// A single row in the workout history list.
 ///
-/// Displays date, time, push-up count, duration, earned time credit,
+/// Displays time, push-up count, duration, earned time credit,
 /// and a star quality rating for a completed `WorkoutSession`.
 ///
 /// Usage:
@@ -38,6 +38,9 @@ struct WorkoutListItem: View {
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
         .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityHint("Double tap to view details")
     }
 
     // MARK: - Quality Bar
@@ -54,7 +57,7 @@ struct WorkoutListItem: View {
         HStack(spacing: AppSpacing.xs) {
             // Time
             HStack(spacing: AppSpacing.xxs) {
-                Image(systemName: AppIcon.clock.rawValue)
+                Image(icon: .clock)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppColors.textSecondary)
 
@@ -66,7 +69,7 @@ struct WorkoutListItem: View {
             Spacer()
 
             // Star rating
-            starRating(count: session.starCount)
+            StarRatingView(count: session.starCount, size: 10)
         }
     }
 
@@ -76,14 +79,14 @@ struct WorkoutListItem: View {
         HStack(spacing: AppSpacing.sm) {
             // Duration
             metricPill(
-                icon: AppIcon.timer.rawValue,
+                icon: .timer,
                 text: session.durationString,
                 tint: AppColors.info
             )
 
             // Earned time
             metricPill(
-                icon: AppIcon.boltFill.rawValue,
+                icon: .boltFill,
                 text: "+\(session.earnedMinutes) min",
                 tint: AppColors.success
             )
@@ -104,7 +107,7 @@ struct WorkoutListItem: View {
                 .font(AppTypography.caption2)
                 .foregroundStyle(AppColors.textSecondary)
 
-            Image(systemName: "chevron.right")
+            Image(icon: .chevronRight)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(AppColors.textTertiary)
         }
@@ -113,25 +116,9 @@ struct WorkoutListItem: View {
     // MARK: - Helpers
 
     @ViewBuilder
-    private func starRating(count: Int) -> some View {
-        HStack(spacing: 2) {
-            ForEach(0..<5, id: \.self) { index in
-                Image(systemName: index < count ? "star.fill" : "star")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(
-                        index < count
-                            ? AppColors.secondaryVariant
-                            : AppColors.textTertiary
-                    )
-            }
-        }
-        .accessibilityLabel("\(count) out of 5 stars")
-    }
-
-    @ViewBuilder
-    private func metricPill(icon: String, text: String, tint: Color) -> some View {
+    private func metricPill(icon: AppIcon, text: String, tint: Color) -> some View {
         HStack(spacing: AppSpacing.xxs) {
-            Image(systemName: icon)
+            Image(systemName: icon.rawValue)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(tint)
 
@@ -142,6 +129,52 @@ struct WorkoutListItem: View {
         .padding(.horizontal, AppSpacing.xs)
         .padding(.vertical, 3)
         .background(tint.opacity(0.10), in: Capsule())
+    }
+
+    // MARK: - Accessibility
+
+    private var accessibilityDescription: String {
+        "\(session.pushUpCount) push-ups at \(session.timeString), " +
+        "duration \(session.durationString), " +
+        "earned \(session.earnedMinutes) minutes, " +
+        "\(session.starCount) out of 5 stars quality"
+    }
+}
+
+// MARK: - StarRatingView
+
+/// Reusable star rating display used across History list items and detail views.
+///
+/// Shows 5 stars, with `count` filled and the rest empty.
+///
+/// Usage:
+/// ```swift
+/// StarRatingView(count: 4, size: 12)
+/// ```
+struct StarRatingView: View {
+
+    /// Number of filled stars (0-5).
+    let count: Int
+
+    /// Point size for each star icon.
+    let size: CGFloat
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<5, id: \.self) { index in
+                Image(systemName: index < count
+                    ? AppIcon.starFill.rawValue
+                    : AppIcon.star.rawValue
+                )
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(
+                    index < count
+                        ? AppColors.secondaryVariant
+                        : AppColors.textTertiary
+                )
+            }
+        }
+        .accessibilityLabel("\(count) out of 5 stars")
     }
 }
 
