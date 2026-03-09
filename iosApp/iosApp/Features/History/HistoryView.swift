@@ -28,7 +28,7 @@ import SwiftUI
 /// - Swipe-to-delete with confirmation alert
 /// - Tap -> WorkoutDetailView sheet
 /// - Pull-to-refresh
-/// - Empty state: "Noch keine Workouts"
+/// - Empty state: "No workouts yet"
 /// - Loading state
 struct HistoryView: View {
 
@@ -259,7 +259,7 @@ struct HistoryView: View {
                     // No workouts at all
                     EmptyStateCard(
                         icon: .figureStrengthTraining,
-                        title: "Noch keine Workouts",
+                        title: "No workouts yet",
                         message: "Complete your first workout to see your history here."
                     )
                 }
