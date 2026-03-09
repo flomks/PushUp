@@ -184,7 +184,7 @@ struct CameraContainerView: View {
 
     /// Called on the main queue whenever the active camera lens changes.
     /// Use this to forward the current position to Vision for correct orientation.
-    var onPositionChange: ((CameraPosition) -> Void)?
+    var onPositionChange: ((CapturePosition) -> Void)?
 
     @StateObject private var cameraManager = CameraManager()
 
