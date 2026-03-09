@@ -160,7 +160,7 @@ final class VisionPoseDetector: ObservableObject, @unchecked Sendable {
     ///   - cameraPosition: The active camera lens. Used to derive the correct
     ///     `CGImagePropertyOrientation` for the raw sensor pixel buffer.
     ///     Defaults to `.back` for backward compatibility.
-    func process(_ sampleBuffer: CMSampleBuffer, cameraPosition: CameraLens = .back) {
+    func process(_ sampleBuffer: CMSampleBuffer, cameraPosition: DeviceLens = .back) {
         // Acquire lock to check both flags atomically, set isProcessing,
         // and increment frame counter under the same critical section.
         stateLock.lock()
