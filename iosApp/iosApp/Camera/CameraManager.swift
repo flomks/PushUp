@@ -3,9 +3,16 @@ import UIKit
 
 // MARK: - FacingDirection
 
-enum FacingDirection: Sendable, Equatable {
-    case front
-    case back
+/// Which physical camera on the device is active.
+///
+/// A single shared enum used by both the camera pipeline (CameraManager)
+/// and the settings UI (SettingsViewModel). Conforms to `String` + `CaseIterable`
+/// for persistence and SwiftUI pickers, and `Sendable` for cross-queue safety.
+enum FacingDirection: String, CaseIterable, Identifiable, Sendable, Equatable {
+    case front = "front"
+    case back  = "back"
+
+    var id: String { rawValue }
 
     var avPosition: AVCaptureDevice.Position {
         switch self {
@@ -16,6 +23,20 @@ enum FacingDirection: Sendable, Equatable {
 
     var toggled: FacingDirection {
         self == .back ? .front : .back
+    }
+
+    var label: String {
+        switch self {
+        case .front: return "Front Camera"
+        case .back:  return "Back Camera"
+        }
+    }
+
+    var icon: AppIcon {
+        switch self {
+        case .front: return .cameraRotate
+        case .back:  return .camera
+        }
     }
 }
 
