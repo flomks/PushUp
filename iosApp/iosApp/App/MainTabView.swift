@@ -12,6 +12,7 @@ enum Tab: Int, CaseIterable, Identifiable {
     case workout
     case history
     case stats
+    case friends
     case profile
     case settings
 
@@ -28,9 +29,47 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return .figureStrengthTraining
         case .history:   return .rectangleStackFill
         case .stats:     return .chartBarFill
+        case .friends:   return .person2Fill
         case .profile:   return .personFill
         case .settings:  return .gearshapeFill
         }
+    }
+
+    var label: String {
+        switch self {
+        case .dashboard: return "Dashboard"
+        case .workout:   return "Workout"
+        case .history:   return "History"
+        case .stats:     return "Stats"
+        case .friends:   return "Friends"
+        case .profile:   return "Profile"
+        case .settings:  return "Settings"
+        }
+    }
+
+    var placeholderDescription: String {
+        switch self {
+        case .dashboard: return "Your time credit and daily statistics will appear here."
+        case .workout:   return "Start a workout here and count your push-ups in real time."
+        case .history:   return "All your past workouts will appear here."
+        case .stats:     return "Daily, weekly, and monthly statistics will appear here."
+        case .friends:   return "Find friends, manage requests, and see your friends list."
+        case .profile:   return "Your profile, avatar, and account information will appear here."
+        case .settings:  return "Push-up rate, notifications, and other settings will appear here."
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .dashboard: return "tab_dashboard"
+        case .workout:   return "tab_workout"
+        case .history:   return "tab_history"
+        case .stats:     return "tab_stats"
+        case .friends:   return "tab_friends"
+        case .profile:   return "tab_profile"
+        case .settings:  return "tab_settings"
+        }
+    }
     }
 
     /// The localised label shown below the tab bar icon and in the
@@ -87,10 +126,15 @@ struct MainTabView: View {
     /// persistent" acceptance criterion.
     @State private var selectedTab: Tab = .dashboard
 
+    /// Shared ViewModels for Friends and Notifications so badge counts and
+    /// banners are available across the whole tab bar.
+    @StateObject private var friendsViewModel = FriendsViewModel()
+    @StateObject private var notificationsViewModel = NotificationsViewModel()
+
     var body: some View {
         ZStack(alignment: .top) {
             TabView(selection: $selectedTab) {
-                // Dashboard tab -- real implementation (Task 3.5)
+                // Dashboard tab
                 NavigationStack {
                     DashboardView(selectedTab: $selectedTab)
                 }
@@ -100,7 +144,7 @@ struct MainTabView: View {
                 .tag(Tab.dashboard)
                 .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
 
-                // Workout tab -- real implementation (Task 3.6)
+                // Workout tab
                 WorkoutView()
                     .tabItem {
                         Label(Tab.workout.label, icon: Tab.workout.icon)
@@ -108,7 +152,7 @@ struct MainTabView: View {
                     .tag(Tab.workout)
                     .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
-                // History tab -- real implementation (Task 3.9)
+                // History tab
                 NavigationStack {
                     HistoryView()
                 }
@@ -118,7 +162,7 @@ struct MainTabView: View {
                 .tag(Tab.history)
                 .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
 
-                // Stats tab -- real implementation (Task 3.8)
+                // Stats tab
                 NavigationStack {
                     StatsView()
                 }
@@ -128,7 +172,17 @@ struct MainTabView: View {
                 .tag(Tab.stats)
                 .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
-                // Profile tab -- real implementation (Task 3.10)
+                // Friends tab (new)
+                FriendsView()
+                    .tabItem {
+                        Label(Tab.friends.label, icon: Tab.friends.icon)
+                    }
+                    .tag(Tab.friends)
+                    .badge(friendsViewModel.pendingRequestCount > 0
+                           ? friendsViewModel.pendingRequestCount : 0)
+                    .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
+
+                // Profile tab
                 NavigationStack {
                     ProfileView()
                 }
@@ -138,7 +192,7 @@ struct MainTabView: View {
                 .tag(Tab.profile)
                 .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
 
-                // Settings tab -- real implementation (Task 3.11)
+                // Settings tab
                 NavigationStack {
                     SettingsView()
                 }
@@ -150,9 +204,21 @@ struct MainTabView: View {
             }
             .tint(AppColors.primary)
 
-            // Offline banner overlay (Task 3.14) -- slides in from the top
-            // when the device loses connectivity and slides out on reconnect.
+            // Offline banner overlay -- slides in from the top when offline.
             OfflineBanner()
+
+            // In-app notification banner -- slides in when a new notification arrives.
+            if let banner = notificationsViewModel.banner {
+                NotificationBannerOverlay(item: banner) {
+                    notificationsViewModel.dismissBanner()
+                }
+                .padding(.top, 8)
+                .zIndex(10)
+            }
+        }
+        .onAppear {
+            friendsViewModel.loadIncomingRequests()
+            notificationsViewModel.loadNotifications()
         }
     }
 }
