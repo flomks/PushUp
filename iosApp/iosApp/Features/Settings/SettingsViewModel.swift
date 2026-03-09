@@ -1,10 +1,10 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - PhysicalCamera
+// MARK: - LensSide
 
 /// The preferred camera for workout pose detection.
-enum PhysicalCamera: String, CaseIterable, Identifiable {
+enum LensSide: String, CaseIterable, Identifiable {
     case front = "front"
     case back  = "back"
 
@@ -170,8 +170,8 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(_cameraPositionRaw, forKey: SettingsKeys.cameraPosition) }
     }
 
-    var cameraPosition: PhysicalCamera {
-        get { PhysicalCamera(rawValue: _cameraPositionRaw) ?? .back }
+    var cameraPosition: LensSide {
+        get { LensSide(rawValue: _cameraPositionRaw) ?? .back }
         set { _cameraPositionRaw = newValue.rawValue }
     }
 
@@ -337,7 +337,7 @@ final class SettingsViewModel: ObservableObject {
         _dailyCreditLimitMins = max(0, defaults.integer(forKey: SettingsKeys.dailyCreditLimitMins))
 
         _cameraPositionRaw = defaults.string(forKey: SettingsKeys.cameraPosition)
-            ?? PhysicalCamera.back.rawValue
+            ?? LensSide.back.rawValue
 
         poseOverlayEnabled = defaults.object(forKey: SettingsKeys.poseOverlay) != nil
             ? defaults.bool(forKey: SettingsKeys.poseOverlay)
