@@ -28,16 +28,18 @@ import java.util.UUID
  * Registers all /api/friends routes.
  *
  * Routes:
- *   GET   /api/friends                       -- Returns the caller's friends list.
- *                                               Optional query parameter:
- *                                                 ?status=accepted  (default) -- confirmed friends
- *                                                 ?status=incoming            -- pending requests received
- *                                                 ?status=outgoing            -- pending requests sent
- *   GET   /api/friends/requests/incoming     -- Returns incoming pending requests with friendship IDs.
- *   POST  /api/friends/request               -- Sends a friend request from the authenticated
- *                                               user to another user identified by receiver_id.
- *   PATCH /api/friends/request/{id}          -- Allows the receiver to accept or decline a
- *                                               pending friend request.
+ *   GET    /api/friends                       -- Returns the caller's friends list.
+ *                                                Optional query parameter:
+ *                                                  ?status=accepted  (default) -- confirmed friends
+ *                                                  ?status=incoming            -- pending requests received
+ *                                                  ?status=outgoing            -- pending requests sent
+ *   GET    /api/friends/requests/incoming     -- Returns incoming pending requests with friendship IDs.
+ *   POST   /api/friends/request               -- Sends a friend request from the authenticated
+ *                                                user to another user identified by receiver_id.
+ *   PATCH  /api/friends/request/{id}          -- Allows the receiver to accept or decline a
+ *                                                pending friend request.
+ *   DELETE /api/friends/{id}                  -- Removes an accepted friendship between the
+ *                                                authenticated user and the specified friend.
  *
  * @param friendshipService Service that handles friendship business logic.
  * @param databaseReady     Whether the database connection was successfully
@@ -358,29 +360,6 @@ fun Route.friendRoutes(
             }
 
             /**
-             * PATCH /api/friends/request/{id}
-             *
-             * Allows the receiver of a pending friend request to accept or decline it.
-             * Only the receiver of the request is authorised to respond; the requester
-             * and any other user will receive 401.
-             *
-             * Path parameter:
-             *   id -- UUID of the friendship row to update.
-             *
-             * Request body (JSON):
-             * ```json
-             * { "status": "accepted" }   // or "declined"
-             * ```
-             *
-             * Responses:
-             *   200 OK                  -- [FriendshipResponse] JSON; status updated
-             *   400 Bad Request         -- Missing/malformed body or invalid status value
-             *   401 Unauthorized        -- Invalid/missing JWT, or caller is not the receiver
-             *   404 Not Found           -- No friendship with the given ID exists
-             *   409 Conflict            -- Request was already accepted or declined
-             *   503 Service Unavailable -- Database not configured
-             */
-            /**
              * DELETE /api/friends/{id}
              *
              * Removes the accepted friendship between the authenticated user and the
@@ -394,6 +373,7 @@ fun Route.friendRoutes(
              *   400 Bad Request         -- Malformed UUID in path parameter
              *   401 Unauthorized        -- Invalid or missing JWT
              *   404 Not Found           -- No accepted friendship exists with this user
+             *   422 Unprocessable       -- Caller tried to remove themselves
              *   503 Service Unavailable -- Database not configured
              */
             delete("/{id}") {
@@ -433,6 +413,18 @@ fun Route.friendRoutes(
                     return@delete
                 }
 
+                // Prevent self-removal
+                if (callerId == friendId) {
+                    call.respond(
+                        HttpStatusCode.UnprocessableEntity,
+                        ErrorResponse(
+                            error   = "self_removal",
+                            message = "You cannot remove yourself as a friend",
+                        ),
+                    )
+                    return@delete
+                }
+
                 try {
                     when (friendshipService.removeFriend(callerId, friendId)) {
                         is RemoveFriendResult.Success    -> call.respond(HttpStatusCode.NoContent)
@@ -458,6 +450,29 @@ fun Route.friendRoutes(
                 }
             }
 
+            /**
+             * PATCH /api/friends/request/{id}
+             *
+             * Allows the receiver of a pending friend request to accept or decline it.
+             * Only the receiver of the request is authorised to respond; the requester
+             * and any other user will receive 401.
+             *
+             * Path parameter:
+             *   id -- UUID of the friendship row to update.
+             *
+             * Request body (JSON):
+             * ```json
+             * { "status": "accepted" }   // or "declined"
+             * ```
+             *
+             * Responses:
+             *   200 OK                  -- [FriendshipResponse] JSON; status updated
+             *   400 Bad Request         -- Missing/malformed body or invalid status value
+             *   401 Unauthorized        -- Invalid/missing JWT, or caller is not the receiver
+             *   404 Not Found           -- No friendship with the given ID exists
+             *   409 Conflict            -- Request was already accepted or declined
+             *   503 Service Unavailable -- Database not configured
+             */
             patch("/request/{id}") {
                 // ----------------------------------------------------------
                 // Auth guard
