@@ -1,9 +1,9 @@
 package com.flomks.pushup.friends
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,8 +18,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,16 +43,11 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pushup.domain.model.FriendshipStatus
 import com.pushup.domain.model.UserSearchResult
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.ui.tooling.preview.Preview
 
 // ---------------------------------------------------------------------------
 // Screen entry point
@@ -80,7 +79,7 @@ fun UserSearchScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
-fun UserSearchContent(
+internal fun UserSearchContent(
     uiState: UserSearchUiState,
     onQueryChanged: (String) -> Unit,
     onClearQuery: () -> Unit,
@@ -143,7 +142,11 @@ private fun UserSearchField(
         modifier = modifier.fillMaxWidth(),
         placeholder = { Text("Search by username or name") },
         leadingIcon = {
-            SearchIcon()
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -151,7 +154,11 @@ private fun UserSearchField(
                     onClearQuery()
                     keyboardController?.hide()
                 }) {
-                    CloseIcon()
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear search",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         },
@@ -175,7 +182,9 @@ private fun SearchIdleState() {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            PeopleIcon(
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
             )
@@ -212,7 +221,9 @@ private fun SearchEmptyState(query: String) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            SearchOffIcon(
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
             )
@@ -239,7 +250,9 @@ private fun SearchErrorState(message: String) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            ErrorIcon(
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
             )
@@ -300,7 +313,6 @@ private fun UserSearchResultItem(
     ) {
         // Avatar
         UserAvatar(
-            avatarUrl = result.avatarUrl,
             displayName = result.displayName ?: result.username ?: "?",
         )
 
@@ -347,7 +359,6 @@ private fun UserSearchResultItem(
 
 @Composable
 private fun UserAvatar(
-    avatarUrl: String?,
     displayName: String,
     modifier: Modifier = Modifier,
 ) {
@@ -426,10 +437,7 @@ private fun SendRequestButton(
         onClick = onClick,
         enabled = !isLoading,
         modifier = modifier.height(36.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            horizontal = 12.dp,
-            vertical = 0.dp,
-        ),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
         shape = RoundedCornerShape(20.dp),
     ) {
         if (isLoading) {
@@ -446,58 +454,6 @@ private fun SendRequestButton(
             )
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Icon helpers (using Material symbols via text -- avoids extra dependencies)
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun SearchIcon() {
-    Icon(
-        imageVector = Icons.Default.Search,
-        contentDescription = "Search",
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun CloseIcon() {
-    Icon(
-        imageVector = Icons.Default.Close,
-        contentDescription = "Clear search",
-        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
-
-@Composable
-private fun PeopleIcon(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
-    Icon(
-        imageVector = Icons.Default.Person,
-        contentDescription = null,
-        modifier = modifier,
-        tint = tint,
-    )
-}
-
-@Composable
-private fun SearchOffIcon(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
-    Icon(
-        imageVector = Icons.Default.Search,
-        contentDescription = null,
-        modifier = modifier,
-        tint = tint,
-    )
-}
-
-@Composable
-private fun ErrorIcon(modifier: Modifier = Modifier, tint: Color = Color.Unspecified) {
-    Icon(
-        imageVector = Icons.Default.Warning,
-        contentDescription = null,
-        modifier = modifier,
-        tint = tint,
-    )
 }
 
 // ---------------------------------------------------------------------------

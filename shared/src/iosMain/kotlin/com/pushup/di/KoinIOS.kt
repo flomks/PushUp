@@ -7,6 +7,7 @@ import com.pushup.data.storage.TokenStorage
 import com.pushup.domain.usecase.sync.IosNetworkMonitor
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import org.koin.core.context.startKoin
+import org.koin.core.module.Module
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import platform.Foundation.NSBundle
@@ -115,8 +116,8 @@ val iosModule = module {
  * Returns `Unit` (mapped to `Void` in Swift) to keep the Swift API surface
  * clean — callers have no use for the internal `KoinApplication` object.
  */
-fun initKoin() {
+fun initKoin(vararg extraModules: Module) {
     startKoin {
-        modules(iosModule + sharedModules)
+        modules(listOf(iosModule) + sharedModules + extraModules.toList())
     }
 }

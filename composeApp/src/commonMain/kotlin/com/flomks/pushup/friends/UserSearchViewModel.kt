@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -65,8 +64,9 @@ sealed interface SearchState {
  *
  * Handles:
  * - Debounced search (300 ms) triggered by query changes.
+ * - Cancellation of in-flight searches when a new query arrives.
  * - Optimistic UI updates when a friend request is sent.
- * - Error state management.
+ * - Error state management with user-visible feedback.
  *
  * @property repository The [FriendshipRepository] used for API calls.
  */
@@ -81,13 +81,17 @@ class UserSearchViewModel(
     /** Internal flow of raw query strings, debounced before triggering a search. */
     private val _queryFlow = MutableStateFlow("")
 
+    /** Tracks the currently running search so it can be cancelled on new input. */
+    private var activeSearchJob: Job? = null
+
     init {
         // Observe query changes, debounce, and trigger search.
+        // The filter is removed intentionally -- we handle short/empty queries
+        // inside performSearch so that clearing the field properly resets state.
         _queryFlow
             .debounce(DEBOUNCE_MS)
             .distinctUntilChanged()
-            .filter { it.length >= MIN_QUERY_LENGTH }
-            .onEach { query -> performSearch(query) }
+            .onEach { query -> handleDebouncedQuery(query) }
             .launchIn(viewModelScope)
     }
 
@@ -103,16 +107,21 @@ class UserSearchViewModel(
      */
     fun onQueryChanged(query: String) {
         _uiState.update { it.copy(query = query) }
+        _queryFlow.value = query
+
+        // Immediately reset to Idle when query is too short so the user
+        // does not see stale results while typing a new query.
         if (query.length < MIN_QUERY_LENGTH) {
+            activeSearchJob?.cancel()
             _uiState.update { it.copy(searchState = SearchState.Idle) }
         }
-        _queryFlow.value = query
     }
 
     /**
      * Clears the search field and resets the result list.
      */
     fun onClearQuery() {
+        activeSearchJob?.cancel()
         _uiState.update { UserSearchUiState() }
         _queryFlow.value = ""
     }
@@ -120,9 +129,9 @@ class UserSearchViewModel(
     /**
      * Sends a friend request to the user identified by [userId].
      *
-     * Optimistically marks the user as "pending" in the result list so the UI
-     * updates immediately. If the request fails, the original status is restored
-     * and an error is surfaced.
+     * Marks the user as "pending" in the result list on success.
+     * On conflict (already pending/friends), still updates the badge.
+     * On other errors, removes the in-flight indicator and surfaces the error.
      */
     fun onSendFriendRequest(userId: String) {
         if (_uiState.value.sendRequestIds.contains(userId)) return
@@ -135,49 +144,12 @@ class UserSearchViewModel(
 
             try {
                 repository.sendFriendRequest(userId)
-
-                // Optimistically update the friendship status in the result list
-                _uiState.update { state ->
-                    val updatedResults = (state.searchState as? SearchState.Success)
-                        ?.results
-                        ?.map { result ->
-                            if (result.id == userId) {
-                                result.copy(friendshipStatus = FriendshipStatus.PENDING)
-                            } else {
-                                result
-                            }
-                        }
-                    state.copy(
-                        sendRequestIds = state.sendRequestIds - userId,
-                        searchState = if (updatedResults != null) {
-                            SearchState.Success(updatedResults)
-                        } else {
-                            state.searchState
-                        },
-                    )
-                }
+                updateResultStatus(userId, FriendshipStatus.PENDING)
             } catch (e: ApiException.Conflict) {
-                // Already friends or request already pending -- update status badge
-                _uiState.update { state ->
-                    val updatedResults = (state.searchState as? SearchState.Success)
-                        ?.results
-                        ?.map { result ->
-                            if (result.id == userId) {
-                                result.copy(friendshipStatus = FriendshipStatus.PENDING)
-                            } else {
-                                result
-                            }
-                        }
-                    state.copy(
-                        sendRequestIds = state.sendRequestIds - userId,
-                        searchState = if (updatedResults != null) {
-                            SearchState.Success(updatedResults)
-                        } else {
-                            state.searchState
-                        },
-                    )
-                }
-            } catch (e: Exception) {
+                // Already friends or request already pending -- update badge anyway
+                updateResultStatus(userId, FriendshipStatus.PENDING)
+            } catch (_: Exception) {
+                // Remove in-flight indicator; the button reappears so the user can retry
                 _uiState.update { state ->
                     state.copy(sendRequestIds = state.sendRequestIds - userId)
                 }
@@ -189,11 +161,30 @@ class UserSearchViewModel(
     // Private helpers
     // -------------------------------------------------------------------------
 
+    /**
+     * Handles a debounced query value. Resets to Idle for short queries,
+     * otherwise triggers a search.
+     */
+    private fun handleDebouncedQuery(query: String) {
+        if (query.length < MIN_QUERY_LENGTH) {
+            activeSearchJob?.cancel()
+            _uiState.update { it.copy(searchState = SearchState.Idle) }
+            return
+        }
+        performSearch(query)
+    }
+
+    /**
+     * Executes a search API call. Cancels any previously running search first
+     * to avoid stale results overwriting newer ones.
+     */
     private fun performSearch(query: String) {
-        viewModelScope.launch {
+        activeSearchJob?.cancel()
+        activeSearchJob = viewModelScope.launch {
             _uiState.update { it.copy(searchState = SearchState.Loading) }
             try {
-                val results = repository.searchUsers(query)
+                val sanitized = query.trim()
+                val results = repository.searchUsers(sanitized)
                 _uiState.update {
                     it.copy(
                         searchState = if (results.isEmpty()) {
@@ -216,6 +207,35 @@ class UserSearchViewModel(
                     it.copy(searchState = SearchState.Error("An unexpected error occurred."))
                 }
             }
+        }
+    }
+
+    /**
+     * Updates the friendship status of a single user in the current result list
+     * and removes the user from the in-flight set.
+     *
+     * Extracted to eliminate duplication between the success and conflict paths
+     * of [onSendFriendRequest].
+     */
+    private fun updateResultStatus(userId: String, newStatus: FriendshipStatus) {
+        _uiState.update { state ->
+            val updatedResults = (state.searchState as? SearchState.Success)
+                ?.results
+                ?.map { result ->
+                    if (result.id == userId) {
+                        result.copy(friendshipStatus = newStatus)
+                    } else {
+                        result
+                    }
+                }
+            state.copy(
+                sendRequestIds = state.sendRequestIds - userId,
+                searchState = if (updatedResults != null) {
+                    SearchState.Success(updatedResults)
+                } else {
+                    state.searchState
+                },
+            )
         }
     }
 
