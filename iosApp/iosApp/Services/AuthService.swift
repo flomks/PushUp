@@ -103,7 +103,7 @@ final class AuthService {
             userId: userId,
             userEmail: userEmail,
             expiresIn: expiresIn
-        ) != nil else {
+        ) else {
             return .failure("Failed to store session. Please try again.")
         }
         // Token stored successfully — fetch the user from the local DB

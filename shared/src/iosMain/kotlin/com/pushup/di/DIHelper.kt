@@ -2,10 +2,7 @@ package com.pushup.di
 
 import com.pushup.data.storage.TokenStorage
 import com.pushup.domain.model.AuthToken
-import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.User
-import com.pushup.domain.repository.AuthRepository
-import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
@@ -56,13 +53,22 @@ object DIHelper : KoinComponent {
      *
      * @return The stored [AuthToken], or null if storage failed.
      */
+    /**
+     * Stores a Supabase Implicit OAuth session token in the Keychain.
+     *
+     * This is a regular (non-suspend) function — directly callable from Swift.
+     * Only stores the token; the user DB record is created lazily when
+     * getCurrentUserUseCase is called after login.
+     *
+     * @return true if the token was stored successfully, false otherwise.
+     */
     fun storeImplicitSession(
         accessToken: String,
         refreshToken: String,
         userId: String,
         userEmail: String?,
         expiresIn: Long,
-    ): AuthToken? {
+    ): Boolean {
         return try {
             val now = Clock.System.now()
             val token = AuthToken(
@@ -73,25 +79,9 @@ object DIHelper : KoinComponent {
                 expiresAt = now.epochSeconds + expiresIn,
             )
             get<TokenStorage>().save(token)
-
-            // Upsert user record in local DB (fire-and-forget)
-            val email = userEmail?.takeIf { it.isNotBlank() }
-                ?: "$userId@social.local"
-            val displayName = email.substringBefore('@').ifBlank { "User" }
-            val user = User(
-                id = userId,
-                email = email,
-                displayName = displayName,
-                createdAt = now,
-                lastSyncedAt = now,
-            )
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
-                runCatching { get<UserRepository>().upsertUser(user) }
-            }
-
-            token
+            true
         } catch (_: Exception) {
-            null
+            false
         }
     }
 }
