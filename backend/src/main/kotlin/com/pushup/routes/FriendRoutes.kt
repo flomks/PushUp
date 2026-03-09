@@ -8,6 +8,7 @@ import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.FriendListFilter
 import com.pushup.service.FriendshipService
+import com.pushup.service.RemoveFriendResult
 import com.pushup.service.RespondFriendRequestResult
 import com.pushup.service.SendFriendRequestResult
 import io.ktor.http.HttpStatusCode
@@ -16,6 +17,7 @@ import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
@@ -378,6 +380,84 @@ fun Route.friendRoutes(
              *   409 Conflict            -- Request was already accepted or declined
              *   503 Service Unavailable -- Database not configured
              */
+            /**
+             * DELETE /api/friends/{id}
+             *
+             * Removes the accepted friendship between the authenticated user and the
+             * user identified by the `{id}` path parameter.
+             *
+             * Path parameter:
+             *   id -- UUID of the friend's user account to remove.
+             *
+             * Responses:
+             *   204 No Content          -- Friendship removed successfully
+             *   400 Bad Request         -- Malformed UUID in path parameter
+             *   401 Unauthorized        -- Invalid or missing JWT
+             *   404 Not Found           -- No accepted friendship exists with this user
+             *   503 Service Unavailable -- Database not configured
+             */
+            delete("/{id}") {
+                val callerId = call.authenticatedUserId()
+                if (callerId == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error   = "unauthorized",
+                            message = "Invalid authentication credentials",
+                        ),
+                    )
+                    return@delete
+                }
+
+                if (!databaseReady) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse(
+                            error   = "service_unavailable",
+                            message = "Database connection is not configured",
+                        ),
+                    )
+                    return@delete
+                }
+
+                val friendId = try {
+                    UUID.fromString(call.parameters["id"])
+                } catch (e: IllegalArgumentException) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse(
+                            error   = "bad_request",
+                            message = "Path parameter 'id' must be a valid UUID",
+                        ),
+                    )
+                    return@delete
+                }
+
+                try {
+                    when (friendshipService.removeFriend(callerId, friendId)) {
+                        is RemoveFriendResult.Success    -> call.respond(HttpStatusCode.NoContent)
+                        is RemoveFriendResult.NotFriends -> call.respond(
+                            HttpStatusCode.NotFound,
+                            ErrorResponse(
+                                error   = "not_found",
+                                message = "No accepted friendship exists with this user",
+                            ),
+                        )
+                    }
+                } catch (e: Exception) {
+                    call.application.log.error(
+                        "Failed to remove friend friendId=$friendId for caller=$callerId", e
+                    )
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error   = "internal_server_error",
+                            message = "Failed to remove friend",
+                        ),
+                    )
+                }
+            }
+
             patch("/request/{id}") {
                 // ----------------------------------------------------------
                 // Auth guard

@@ -1,5 +1,7 @@
 package com.pushup.data.api.dto
 
+import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.FriendshipStatus
@@ -92,8 +94,77 @@ data class IncomingFriendRequestsResponseDTO(
 )
 
 // ---------------------------------------------------------------------------
+// Friends list DTOs
+// ---------------------------------------------------------------------------
+
+/**
+ * DTO for a single entry in the GET /api/friends response.
+ */
+@Serializable
+data class FriendProfileDTO(
+    val id: String,
+    val username: String? = null,
+    @SerialName("displayName") val displayName: String? = null,
+    @SerialName("avatarUrl")   val avatarUrl: String? = null,
+)
+
+/**
+ * DTO for the full GET /api/friends response body.
+ */
+@Serializable
+data class FriendsListResponseDTO(
+    val friends: List<FriendProfileDTO>,
+    val total: Int,
+)
+
+// ---------------------------------------------------------------------------
+// Friend activity stats DTOs
+// ---------------------------------------------------------------------------
+
+/**
+ * DTO for the date range in the GET /api/friends/{id}/stats response.
+ */
+@Serializable
+data class FriendStatsDateRangeDTO(
+    val from: String,
+    val to: String,
+)
+
+/**
+ * DTO for the GET /api/friends/{id}/stats response body.
+ */
+@Serializable
+data class FriendActivityStatsDTO(
+    @SerialName("friendId")           val friendId: String,
+    @SerialName("period")             val period: String,
+    @SerialName("dateRange")          val dateRange: FriendStatsDateRangeDTO,
+    @SerialName("pushupCount")        val pushupCount: Int,
+    @SerialName("totalSessions")      val totalSessions: Int,
+    @SerialName("totalEarnedSeconds") val totalEarnedSeconds: Long,
+    @SerialName("averageQuality")     val averageQuality: Double? = null,
+)
+
+// ---------------------------------------------------------------------------
 // Mappers
 // ---------------------------------------------------------------------------
+
+fun FriendActivityStatsDTO.toDomain(): FriendActivityStats = FriendActivityStats(
+    friendId           = friendId,
+    period             = period,
+    dateFrom           = dateRange.from,
+    dateTo             = dateRange.to,
+    pushupCount        = pushupCount,
+    totalSessions      = totalSessions,
+    totalEarnedSeconds = totalEarnedSeconds,
+    averageQuality     = averageQuality,
+)
+
+fun FriendProfileDTO.toDomain(): Friend = Friend(
+    id          = id,
+    username    = username,
+    displayName = displayName,
+    avatarUrl   = avatarUrl,
+)
 
 fun UserSearchResultDTO.toDomain(): UserSearchResult = UserSearchResult(
     id = id,

@@ -1,6 +1,23 @@
 package com.pushup.domain.model
 
 /**
+ * A confirmed friend of the authenticated user.
+ *
+ * Returned by GET /api/friends (status=accepted).
+ *
+ * @property id          UUID of the friend's user account.
+ * @property username    Unique handle (e.g. "john_doe"), null if not yet set.
+ * @property displayName Free-form display name, null if not yet set.
+ * @property avatarUrl   URL to the friend's avatar image, null if not set.
+ */
+data class Friend(
+    val id: String,
+    val username: String?,
+    val displayName: String?,
+    val avatarUrl: String?,
+)
+
+/**
  * Represents the friendship status between the authenticated user and another user.
  */
 enum class FriendshipStatus {
