@@ -71,6 +71,7 @@ enum AppIcon: String {
     // MARK: - Actions
 
     case arrowRight         = "arrow.right"
+    case arrowRightSquare   = "arrow.right.square"
     case arrowCounterclockwise = "arrow.counterclockwise"
     case arrowDownCircleFill = "arrow.down.circle.fill"
     case checkmark          = "checkmark"
