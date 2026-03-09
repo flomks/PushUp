@@ -22,10 +22,10 @@
 	     injection into Info.plist is unreliable when GENERATE_INFOPLIST_FILE=YES.
 	     The anon key is intentionally public (client-side only). -->
 	<key>SupabaseURL</key>
-	<string>https://akpdpsmmmahbbkiclvsi.supabase.co</string>
+	<string>https://ptllenkizeipinpuqapl.supabase.co</string>
 
 	<key>SupabaseAnonKey</key>
-	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFrcGRwc21tbWFoYmJraWNsdnNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NDY3NzYsImV4cCI6MjA4ODEyMjc3Nn0.e-RLjdb1KMqptf0d7-dh4IXxWkzHx9v5Z0Q5nNyyrsk</string>
+	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bGxlbmtpemVpcGlucHVxYXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNzAzNTksImV4cCI6MjA4ODY0NjM1OX0.yK-LoeQeEqkk1YTyy0T0JC85l1XiR65av9kdAnjp3s0</string>
 
 	<key>BackendBaseURL</key>
 	<string></string>
