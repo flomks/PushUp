@@ -175,7 +175,7 @@ open class FriendshipService {
 
         if (existingRow != null) {
             val status = existingRow[Friendships.status]
-            return@newSuspendedTransaction SendFriendRequestResult.AlreadyExists(status)
+            return@newSuspendedTransaction SendFriendRequestResult.AlreadyExists(status.pgValue)
         }
 
         // ------------------------------------------------------------------
@@ -188,7 +188,7 @@ open class FriendshipService {
             it[id]          = newId
             it[Friendships.requesterId] = requesterId
             it[Friendships.receiverId]  = receiverId
-            it[status]      = FriendshipStatus.PENDING.toDbValue()
+            it[status]      = FriendshipStatus.PENDING
             it[createdAt]   = now
             it[updatedAt]   = now
         }
@@ -199,7 +199,7 @@ open class FriendshipService {
         Notifications.insert {
             it[id]        = UUID.randomUUID()
             it[userId]    = receiverId
-            it[type]      = NotificationType.FRIEND_REQUEST.toDbValue()
+            it[type]      = NotificationType.FRIEND_REQUEST
             it[actorId]   = requesterId
             it[payload]   = """{"friendship_id":"$newId"}"""
             it[isRead]    = false
@@ -215,7 +215,7 @@ open class FriendshipService {
                 id          = newId.toString(),
                 requesterId = requesterId.toString(),
                 receiverId  = receiverId.toString(),
-                status      = FriendshipStatus.PENDING.toDbValue(),
+                status      = FriendshipStatus.PENDING.pgValue,
                 createdAt   = now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             ),
         )
@@ -272,8 +272,8 @@ open class FriendshipService {
         // ------------------------------------------------------------------
         // 3. Only pending requests can be answered
         // ------------------------------------------------------------------
-        if (currentStatus != FriendshipStatus.PENDING.toDbValue()) {
-            return@newSuspendedTransaction RespondFriendRequestResult.AlreadyResponded(currentStatus)
+        if (currentStatus != FriendshipStatus.PENDING) {
+            return@newSuspendedTransaction RespondFriendRequestResult.AlreadyResponded(currentStatus.pgValue)
         }
 
         // ------------------------------------------------------------------
@@ -282,7 +282,7 @@ open class FriendshipService {
         val now = OffsetDateTime.now()
 
         Friendships.update({ Friendships.id eq friendshipId }) {
-            it[status]    = newStatus.toDbValue()
+            it[status]    = newStatus
             it[updatedAt] = now
         }
 
@@ -293,7 +293,7 @@ open class FriendshipService {
             Notifications.insert {
                 it[id]        = UUID.randomUUID()
                 it[userId]    = rowRequesterId
-                it[type]      = NotificationType.FRIEND_ACCEPTED.toDbValue()
+                it[type]      = NotificationType.FRIEND_ACCEPTED
                 it[actorId]   = callerId
                 it[payload]   = """{"friendship_id":"$friendshipId"}"""
                 it[isRead]    = false
@@ -310,7 +310,7 @@ open class FriendshipService {
                 id          = friendshipId.toString(),
                 requesterId = rowRequesterId.toString(),
                 receiverId  = rowReceiverId.toString(),
-                status      = newStatus.toDbValue(),
+                status      = newStatus.pgValue,
                 createdAt   = createdAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             ),
         )
@@ -347,19 +347,19 @@ open class FriendshipService {
         // ------------------------------------------------------------------
         val rows = when (filter) {
             FriendListFilter.ACCEPTED -> Friendships.selectAll().where {
-                (Friendships.status eq FriendshipStatus.ACCEPTED.toDbValue()) and (
+                (Friendships.status eq FriendshipStatus.ACCEPTED) and (
                     (Friendships.requesterId eq userId) or
                     (Friendships.receiverId  eq userId)
                 )
             }
 
             FriendListFilter.INCOMING -> Friendships.selectAll().where {
-                (Friendships.status     eq FriendshipStatus.PENDING.toDbValue()) and
+                (Friendships.status     eq FriendshipStatus.PENDING) and
                 (Friendships.receiverId eq userId)
             }
 
             FriendListFilter.OUTGOING -> Friendships.selectAll().where {
-                (Friendships.status      eq FriendshipStatus.PENDING.toDbValue()) and
+                (Friendships.status      eq FriendshipStatus.PENDING) and
                 (Friendships.requesterId eq userId)
             }
         }.toList()
@@ -413,7 +413,7 @@ open class FriendshipService {
 
         // Fetch all pending friendship rows where the caller is the receiver.
         val rows = Friendships.selectAll().where {
-            (Friendships.status     eq FriendshipStatus.PENDING.toDbValue()) and
+            (Friendships.status     eq FriendshipStatus.PENDING) and
             (Friendships.receiverId eq userId)
         }.toList()
 
@@ -472,7 +472,7 @@ open class FriendshipService {
     ): RemoveFriendResult = newSuspendedTransaction {
 
         val deleted = Friendships.deleteWhere {
-            (status eq FriendshipStatus.ACCEPTED.toDbValue()) and (
+            (status eq FriendshipStatus.ACCEPTED) and (
                 (
                     (requesterId eq callerId) and
                     (receiverId  eq friendId)

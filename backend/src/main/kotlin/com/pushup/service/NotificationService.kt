@@ -81,7 +81,7 @@ open class NotificationService {
             val actorId = row[Notifications.actorId]
             NotificationResponse(
                 id        = row[Notifications.id].toString(),
-                type      = row[Notifications.type],
+                type      = row[Notifications.type].pgValue,
                 actorId   = actorId?.toString(),
                 actorName = actorId?.let { actorNamesById[it] },
                 payload   = row[Notifications.payload],
