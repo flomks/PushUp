@@ -116,6 +116,57 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound])
     }
 
+    /// Called when the user taps a notification (local or remote) while the
+    /// app is in the foreground, background, or after a cold launch.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        Task { @MainActor in
+            self.handleRemotePush(userInfo: userInfo)
+        }
+        completionHandler()
+    }
+
+    // MARK: - Remote Push Handling
+
+    /// Routes an incoming remote push notification payload.
+    ///
+    /// Called from both `AppDelegate.didReceiveRemoteNotification` (background)
+    /// and `userNotificationCenter(_:didReceive:)` (tap from notification center).
+    ///
+    /// Currently posts a `Notification.Name.didReceiveFriendPush` so that
+    /// the Friends tab can refresh its badge and request list automatically.
+    @MainActor
+    func handleRemotePush(userInfo: [AnyHashable: Any]) {
+        guard let type = userInfo["type"] as? String else { return }
+
+        switch type {
+        case "friend_request":
+            // Post a notification so FriendsViewModel can refresh incoming requests.
+            NotificationCenter.default.post(
+                name: .didReceiveFriendRequestPush,
+                object: nil,
+                userInfo: userInfo as? [String: Any]
+            )
+            logger.info("Received friend_request push -- notifying FriendsViewModel.")
+
+        case "friend_accepted":
+            // Post a notification so FriendsViewModel can refresh the friends list.
+            NotificationCenter.default.post(
+                name: .didReceiveFriendAcceptedPush,
+                object: nil,
+                userInfo: userInfo as? [String: Any]
+            )
+            logger.info("Received friend_accepted push -- notifying FriendsViewModel.")
+
+        default:
+            logger.debug("Received unknown push type: \(type)")
+        }
+    }
+
     // MARK: - Authorisation
 
     /// Requests notification authorisation if the status is `.notDetermined`.
@@ -439,6 +490,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().setBadgeCount(0)
     }
 
+
     // MARK: - Private Helpers
 
     /// Convenience: returns `true` when notification authorisation is `.authorized`.
@@ -465,4 +517,16 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         // Suppress today's delivery since the user just worked out.
         cancelTodaysNotificationsIfWorkedOut()
     }
+}
+
+// MARK: - Notification Names (Remote Push)
+
+extension Notification.Name {
+    /// Posted when a `friend_request` push notification is received.
+    /// FriendsViewModel observes this to refresh the incoming requests list.
+    static let didReceiveFriendRequestPush = Notification.Name("didReceiveFriendRequestPush")
+
+    /// Posted when a `friend_accepted` push notification is received.
+    /// FriendsViewModel observes this to refresh the friends list.
+    static let didReceiveFriendAcceptedPush = Notification.Name("didReceiveFriendAcceptedPush")
 }

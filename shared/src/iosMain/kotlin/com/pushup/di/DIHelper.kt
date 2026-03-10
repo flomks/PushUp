@@ -64,6 +64,20 @@ object DIHelper : KoinComponent {
      *         Using String instead of Boolean because Kotlin Boolean is
      *         exported as KotlinBoolean in Swift which causes type issues.
      */
+    /**
+     * Returns the current access token from the Keychain, or null if not authenticated.
+     *
+     * Used by PushNotificationService.swift to attach a JWT to the device-token
+     * registration request without going through the full SafeAuthBridge bridge.
+     */
+    fun getAccessToken(): String? {
+        return try {
+            get<TokenStorage>().load()?.accessToken
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun storeImplicitSession(
         accessToken: String,
         refreshToken: String,

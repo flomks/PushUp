@@ -78,6 +78,31 @@ final class FriendsViewModel: ObservableObject {
     @Published var removingIds: Set<String> = []
 
     private var searchTask: Task<Void, Never>? = nil
+    private var pushObservers: [NSObjectProtocol] = []
+
+    init() {
+        // Observe remote push notifications so the UI refreshes automatically
+        // when a friend request or acceptance arrives while the app is open.
+        let requestObserver = NotificationCenter.default.addObserver(
+            forName: .didReceiveFriendRequestPush,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.loadIncomingRequests()
+        }
+        let acceptedObserver = NotificationCenter.default.addObserver(
+            forName: .didReceiveFriendAcceptedPush,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.loadFriends()
+        }
+        pushObservers = [requestObserver, acceptedObserver]
+    }
+
+    deinit {
+        pushObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    }
 
     // MARK: - Search
 

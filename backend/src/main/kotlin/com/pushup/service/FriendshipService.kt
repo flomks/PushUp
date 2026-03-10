@@ -117,8 +117,14 @@ sealed class RemoveFriendResult {
  *
  * The class and its public methods are `open` so that tests can create stub
  * subclasses without requiring a mocking framework.
+ *
+ * @param deviceTokenService Used to look up APNs tokens for push delivery.
+ *                           Defaults to a real [DeviceTokenService]; pass a
+ *                           stub in tests to avoid DB access.
  */
-open class FriendshipService {
+open class FriendshipService(
+    private val deviceTokenService: DeviceTokenService = DeviceTokenService(),
+) {
 
     /**
      * Sends a friend request from [requesterId] to [receiverId].
@@ -135,6 +141,33 @@ open class FriendshipService {
      * @return [SendFriendRequestResult] describing the outcome.
      */
     open suspend fun sendFriendRequest(
+        requesterId: UUID,
+        receiverId: UUID,
+    ): SendFriendRequestResult {
+        // Run the DB work first, then send the push outside the transaction.
+        val result = sendFriendRequestInTransaction(requesterId, receiverId)
+
+        // Fire push notification to the receiver (best-effort, non-blocking).
+        if (result is SendFriendRequestResult.Success) {
+            val requesterName = getDisplayName(requesterId)
+            val tokens = deviceTokenService.getTokensForUser(receiverId)
+            ApnsService.sendPushToAll(
+                deviceTokens = tokens,
+                title        = "New Friend Request",
+                body         = "${requesterName} sent you a friend request.",
+                category     = "FRIEND_REQUEST",
+                data         = mapOf(
+                    "type"          to "friend_request",
+                    "friendship_id" to result.friendship.id,
+                    "requester_id"  to requesterId.toString(),
+                ),
+            )
+        }
+
+        return result
+    }
+
+    private suspend fun sendFriendRequestInTransaction(
         requesterId: UUID,
         receiverId: UUID,
     ): SendFriendRequestResult = newSuspendedTransaction {
@@ -247,6 +280,37 @@ open class FriendshipService {
         callerId: UUID,
         friendshipId: UUID,
         newStatus: FriendshipStatus,
+    ): RespondFriendRequestResult {
+        // Run the DB work first, then send the push outside the transaction.
+        val result = respondToFriendRequestInTransaction(callerId, friendshipId, newStatus)
+
+        // Fire push to the original requester when their request is accepted.
+        if (result is RespondFriendRequestResult.Success &&
+            newStatus == FriendshipStatus.ACCEPTED
+        ) {
+            val acceptorName = getDisplayName(callerId)
+            val requesterId  = UUID.fromString(result.friendship.requesterId)
+            val tokens       = deviceTokenService.getTokensForUser(requesterId)
+            ApnsService.sendPushToAll(
+                deviceTokens = tokens,
+                title        = "Friend Request Accepted",
+                body         = "${acceptorName} accepted your friend request.",
+                category     = "FRIEND_ACCEPTED",
+                data         = mapOf(
+                    "type"          to "friend_accepted",
+                    "friendship_id" to friendshipId.toString(),
+                    "acceptor_id"   to callerId.toString(),
+                ),
+            )
+        }
+
+        return result
+    }
+
+    private suspend fun respondToFriendRequestInTransaction(
+        callerId: UUID,
+        friendshipId: UUID,
+        newStatus: FriendshipStatus,
     ): RespondFriendRequestResult = newSuspendedTransaction {
 
         // ------------------------------------------------------------------
@@ -287,7 +351,7 @@ open class FriendshipService {
         }
 
         // ------------------------------------------------------------------
-        // 5. Notify the requester when the request is accepted
+        // 5. Notify the requester when the request is accepted (in-app)
         // ------------------------------------------------------------------
         if (newStatus == FriendshipStatus.ACCEPTED) {
             Notifications.insert {
@@ -485,4 +549,25 @@ open class FriendshipService {
 
         if (deleted == 0) RemoveFriendResult.NotFriends else RemoveFriendResult.Success
     }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns the display name (or username, or a fallback) for [userId].
+     * Used to personalise push notification bodies.
+     */
+    private suspend fun getDisplayName(userId: UUID): String =
+        newSuspendedTransaction {
+            Users.selectAll()
+                .where { Users.id eq userId }
+                .singleOrNull()
+                ?.let { row ->
+                    row[Users.displayName]
+                        ?: row[Users.username]
+                        ?: "Someone"
+                }
+                ?: "Someone"
+        }
 }

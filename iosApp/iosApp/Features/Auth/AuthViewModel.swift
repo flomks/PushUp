@@ -198,6 +198,8 @@ final class AuthViewModel: NSObject, ObservableObject {
             // their history, stats, and time credits without waiting for
             // the next periodic sync.
             SyncService.shared.syncFromCloudAfterLogin()
+            // Register any APNs token that arrived before authentication.
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
         } else {
             authState = .unauthenticated
             errorMessage = result.errorMessage ?? "Login failed."
@@ -226,6 +228,8 @@ final class AuthViewModel: NSObject, ObservableObject {
             // New account: pull any existing cloud data (e.g. if the user
             // registered on another device previously).
             SyncService.shared.syncFromCloudAfterLogin()
+            // Register any APNs token that arrived before authentication.
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
         } else {
             authState = .unauthenticated
             errorMessage = result.errorMessage ?? "Registration failed."
@@ -364,6 +368,8 @@ final class AuthViewModel: NSObject, ObservableObject {
             // refreshed from the cloud (picks up changes from other devices
             // or sessions since the last time the app was open).
             SyncService.shared.syncFromCloudAfterLogin()
+            // Register any APNs token that arrived before the session was restored.
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
         } else {
             authState = .unauthenticated
         }

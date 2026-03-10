@@ -1,6 +1,7 @@
 package com.pushup.plugins
 
 import com.pushup.models.HealthResponse
+import com.pushup.routes.deviceTokenRoutes
 import com.pushup.routes.friendActivityStatsRoutes
 import com.pushup.routes.friendRoutes
 import com.pushup.routes.notificationRoutes
@@ -8,6 +9,7 @@ import com.pushup.routes.statsRoutes
 import com.pushup.routes.userDataRoutes
 import com.pushup.routes.userRoutes
 import com.pushup.routes.userSearchRoutes
+import com.pushup.service.DeviceTokenService
 import com.pushup.service.FriendActivityStatsService
 import com.pushup.service.FriendshipService
 import com.pushup.service.NotificationService
@@ -25,7 +27,8 @@ fun Application.configureRouting(
     statsService: StatsService = StatsService(),
     userDataService: UserDataService = UserDataService(statsService),
     userSearchService: UserSearchService = UserSearchService(),
-    friendshipService: FriendshipService = FriendshipService(),
+    deviceTokenService: DeviceTokenService = DeviceTokenService(),
+    friendshipService: FriendshipService = FriendshipService(deviceTokenService),
     friendActivityStatsService: FriendActivityStatsService = FriendActivityStatsService(),
     notificationService: NotificationService = NotificationService(),
     databaseReady: Boolean = true,
@@ -44,6 +47,7 @@ fun Application.configureRouting(
         statsRoutes(statsService)
         userDataRoutes(userDataService, databaseReady = databaseReady)
         userSearchRoutes(userSearchService, databaseReady = databaseReady)
+        deviceTokenRoutes(deviceTokenService, databaseReady = databaseReady)
         friendRoutes(friendshipService, databaseReady = databaseReady)
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)
         notificationRoutes(notificationService, databaseReady = databaseReady)
