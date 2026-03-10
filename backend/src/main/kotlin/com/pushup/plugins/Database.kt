@@ -4,9 +4,61 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.application.Application
 import io.ktor.server.application.log
+import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
+import org.jetbrains.exposed.sql.vendors.currentDialect
+import org.postgresql.util.PGobject
+
+// ---------------------------------------------------------------------------
+// PostgreSQL custom enum column helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates an Exposed column that maps to a PostgreSQL custom enum type.
+ *
+ * PostgreSQL enforces strict type matching: comparing a custom enum column
+ * with a plain `varchar` parameter fails with
+ * "operator does not exist: <enum_type> = character varying".
+ *
+ * This helper wraps the value in a [PGobject] with the correct type name so
+ * the JDBC driver sends it as the proper PostgreSQL enum type, satisfying the
+ * type-matching requirement without requiring explicit SQL casts.
+ *
+ * @param columnName  The database column name.
+ * @param pgTypeName  The PostgreSQL enum type name (e.g. "friendship_status").
+ * @param T           The Kotlin enum class. Must implement [PgEnumValue].
+ */
+inline fun <reified T> Table.pgEnum(
+    columnName: String,
+    pgTypeName: String,
+): Column<T> where T : Enum<T>, T : PgEnumValue =
+    customEnumeration(
+        name        = columnName,
+        sql         = pgTypeName,
+        fromDb      = { value ->
+            val str = when (value) {
+                is PGobject -> value.value ?: error("NULL enum value for $pgTypeName")
+                else        -> value.toString()
+            }
+            enumValues<T>().first { it.pgValue.equals(str, ignoreCase = true) }
+        },
+        toDb        = { enumVal ->
+            PGobject().apply {
+                type  = pgTypeName
+                this.value = enumVal.pgValue
+            }
+        },
+    )
+
+/**
+ * Interface for Kotlin enums that map to PostgreSQL enum values.
+ * Implement [pgValue] to return the exact string stored in the database.
+ */
+interface PgEnumValue {
+    val pgValue: String
+}
 
 // ---------------------------------------------------------------------------
 // Friendship status values -- mirror the public.friendship_status PostgreSQL enum
@@ -20,19 +72,19 @@ import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
  *   ACCEPTED -- both users are friends
  *   DECLINED -- receiver explicitly rejected the request
  */
-enum class FriendshipStatus {
-    PENDING,
-    ACCEPTED,
-    DECLINED,
+enum class FriendshipStatus(override val pgValue: String) : PgEnumValue {
+    PENDING("pending"),
+    ACCEPTED("accepted"),
+    DECLINED("declined"),
     ;
 
     /** Returns the lowercase string stored in the database enum column. */
-    fun toDbValue(): String = name.lowercase()
+    fun toDbValue(): String = pgValue
 
     companion object {
         /** Parses a database enum string (case-insensitive) back to [FriendshipStatus]. */
         fun fromDbValue(value: String): FriendshipStatus =
-            entries.first { it.name.equals(value, ignoreCase = true) }
+            entries.first { it.pgValue.equals(value, ignoreCase = true) }
     }
 }
 
@@ -88,11 +140,11 @@ object Friendships : Table("friendships") {
 
     /**
      * Stored as the PostgreSQL `friendship_status` enum.
-     * Exposed does not have built-in support for custom PG enums, so the
-     * column is mapped to [String].  Use [FriendshipStatus] for type-safe
-     * access in application code.
+     * Mapped via [pgEnum] so Exposed sends the value as a typed PGobject
+     * rather than a plain varchar -- this satisfies PostgreSQL's strict
+     * operator type-matching (`friendship_status = friendship_status`).
      */
-    val status      = varchar("status", 16)
+    val status = pgEnum<FriendshipStatus>("status", "friendship_status")
 
     val createdAt   = timestampWithTimeZone("created_at")
     val updatedAt   = timestampWithTimeZone("updated_at")
@@ -108,18 +160,18 @@ object Friendships : Table("friendships") {
  *   FRIEND_REQUEST  -- a user sent a friend request to the recipient
  *   FRIEND_ACCEPTED -- the recipient accepted a friend request
  */
-enum class NotificationType {
-    FRIEND_REQUEST,
-    FRIEND_ACCEPTED,
+enum class NotificationType(override val pgValue: String) : PgEnumValue {
+    FRIEND_REQUEST("friend_request"),
+    FRIEND_ACCEPTED("friend_accepted"),
     ;
 
     /** Returns the snake_case string stored in the database enum column. */
-    fun toDbValue(): String = name.lowercase()
+    fun toDbValue(): String = pgValue
 
     companion object {
         /** Parses a database enum string (case-insensitive) back to [NotificationType]. */
         fun fromDbValue(value: String): NotificationType =
-            entries.first { it.name.equals(value, ignoreCase = true) }
+            entries.first { it.pgValue.equals(value, ignoreCase = true) }
     }
 }
 
@@ -136,7 +188,7 @@ enum class NotificationType {
 object Notifications : Table("notifications") {
     val id        = uuid("id")
     val userId    = uuid("user_id").references(Users.id)
-    val type      = varchar("type", 32)
+    val type      = pgEnum<NotificationType>("type", "notification_type")
     val actorId   = uuid("actor_id").references(Users.id).nullable()
     val payload   = text("payload")
     val isRead    = bool("is_read")

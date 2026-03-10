@@ -81,7 +81,7 @@ open class FriendActivityStatsService {
         // ------------------------------------------------------------------
         val friendshipExists = Friendships.selectAll()
             .where {
-                (Friendships.status eq FriendshipStatus.ACCEPTED.toDbValue()) and (
+                (Friendships.status eq FriendshipStatus.ACCEPTED) and (
                     (
                         (Friendships.requesterId eq callerId) and
                         (Friendships.receiverId  eq friendId)

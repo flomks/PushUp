@@ -87,7 +87,7 @@ open class UserSearchService {
                 } else {
                     row[Friendships.requesterId]
                 }
-                peerId to FriendshipStatus.fromDbValue(row[Friendships.status])
+                peerId to row[Friendships.status]
             }
 
             // Collect the IDs of users the caller has DECLINED (blocked) so
