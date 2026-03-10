@@ -563,26 +563,32 @@ struct LeaderboardView: View {
 
     // MARK: Leaderboard list
 
-    private var leaderboardList: some View {
-        List {
-            ForEach(Array(viewModel.leaderboard.enumerated()), id: \.element.id) { index, entry in
-                NavigationLink {
-                    FriendStatsView(
-                        viewModel: viewModel,
-                        friendId: entry.id,
-                        friendName: entry.displayLabel
-                    )
-                } label: {
-                    LeaderboardRow(rank: index + 1, entry: entry)
-                }
-                .listRowBackground(AppColors.backgroundSecondary)
-            }
-        }
-        .listStyle(.plain)
-        .refreshable {
-            viewModel.loadLeaderboard()
-        }
-    }
+     private var leaderboardList: some View {
+         List {
+             ForEach(Array(viewModel.leaderboard.enumerated()), id: \.element.id) { index, entry in
+                 if entry.isCurrentUser {
+                     // Own entry: not tappable, highlighted with a subtle primary tint.
+                     LeaderboardRow(rank: index + 1, entry: entry)
+                         .listRowBackground(AppColors.primary.opacity(0.12))
+                 } else {
+                     NavigationLink {
+                         FriendStatsView(
+                             viewModel: viewModel,
+                             friendId: entry.id,
+                             friendName: entry.displayLabel
+                         )
+                     } label: {
+                         LeaderboardRow(rank: index + 1, entry: entry)
+                     }
+                     .listRowBackground(AppColors.backgroundSecondary)
+                 }
+             }
+         }
+         .listStyle(.plain)
+         .refreshable {
+             viewModel.loadLeaderboard()
+         }
+     }
 
     // MARK: States
 
@@ -651,11 +657,22 @@ private struct LeaderboardRow: View {
             // Avatar
             FriendAvatar(label: entry.displayLabel, color: rankColor)
 
-            // Name
+            // Name + optional "You" badge
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.displayLabel)
-                    .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                HStack(spacing: AppSpacing.xs) {
+                    Text(entry.isCurrentUser ? currentUserDisplayName : entry.displayLabel)
+                        .font(entry.isCurrentUser ? AppTypography.bodySemibold : AppTypography.bodySemibold)
+                        .foregroundStyle(entry.isCurrentUser ? AppColors.primary : AppColors.textPrimary)
+
+                    if entry.isCurrentUser {
+                        Text("You")
+                            .font(AppTypography.caption2)
+                            .foregroundStyle(AppColors.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AppColors.primary.opacity(0.15), in: Capsule())
+                    }
+                }
                 if let sub = entry.usernameLabel {
                     Text(sub)
                         .font(AppTypography.caption1)
@@ -669,13 +686,19 @@ private struct LeaderboardRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(entry.pushupCount)")
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(entry.isCurrentUser ? AppColors.primary : AppColors.textPrimary)
                 Text("push-ups")
                     .font(AppTypography.caption2)
                     .foregroundStyle(AppColors.textSecondary)
             }
         }
         .padding(.vertical, AppSpacing.xs)
+    }
+
+    /// Strips the " (You)" suffix that was appended in the ViewModel so the
+    /// "You" badge in the row handles the labelling instead.
+    private var currentUserDisplayName: String {
+        entry.displayLabel.replacingOccurrences(of: " (You)", with: "")
     }
 
     private var rankBadge: some View {
