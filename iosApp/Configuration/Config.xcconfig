@@ -26,7 +26,7 @@ SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 GOOGLE_IOS_CLIENT_ID=932071108818-rooftfsunvngflbn61geqkdtpf0vk3gv.apps.googleusercontent.com
 
 // ---------------------------------------------------------------------------
-// Custom Ktor backend base URL (optional)
-// Leave empty to run in offline-only mode.
+// Custom Ktor backend base URL
+// Required for friends, notifications, and other backend-powered features.
 // ---------------------------------------------------------------------------
-BACKEND_BASE_URL=
+BACKEND_BASE_URL=https://pushup.weareo.fun
