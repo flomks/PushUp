@@ -142,7 +142,13 @@ class UseCaseTests {
     }
 
     private fun makeFinishUseCase(tz: TimeZone = TimeZone.UTC) = FinishWorkoutUseCase(
-        sessionRepo, recordRepo, timeCreditRepo, settingsRepo, fixedClock, tz,
+        sessionRepository = sessionRepo,
+        recordRepository = recordRepo,
+        timeCreditRepository = timeCreditRepo,
+        settingsRepository = settingsRepo,
+        levelRepository = null,
+        clock = fixedClock,
+        timeZone = tz,
     )
 
     // =========================================================================
