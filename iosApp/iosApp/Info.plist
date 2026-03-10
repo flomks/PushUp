@@ -28,7 +28,7 @@
 	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bGxlbmtpemVpcGlucHVxYXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNzAzNTksImV4cCI6MjA4ODY0NjM1OX0.yK-LoeQeEqkk1YTyy0T0JC85l1XiR65av9kdAnjp3s0</string>
 
 	<key>BackendBaseURL</key>
-	<string></string>
+	<string>https://pushup.weareo.fun</string>
 
 	<!-- Google Sign-In iOS Client ID -->
 	<key>GIDClientID</key>

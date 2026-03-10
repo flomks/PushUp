@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -48,6 +49,17 @@ kotlin {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Read Supabase credentials from local.properties (never committed to VCS).
+// Fall back to empty strings so the project builds without the file.
+// ---------------------------------------------------------------------------
+val localProps = Properties().also { props ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) props.load(f.inputStream())
+}
+val supabaseUrl: String = localProps.getProperty("SUPABASE_URL", "")
+val supabaseAnonKey: String = localProps.getProperty("SUPABASE_ANON_KEY", "")
+
 android {
     namespace = "com.flomks.pushup"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -58,6 +70,14 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+
+        // Supabase credentials injected at build time from local.properties.
+        // Add SUPABASE_URL and SUPABASE_ANON_KEY to your local.properties file.
+        buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+    }
+    buildFeatures {
+        buildConfig = true
     }
     packaging {
         resources {
