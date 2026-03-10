@@ -4,15 +4,17 @@ import SwiftUI
 
 /// Root view for the Friends tab.
 ///
-/// Contains three sub-screens selectable via a Picker (segmented control):
-///   0 – Find Friends  (user search + send request)
-///   1 – Requests      (incoming pending requests with accept/decline)
-///   2 – Friends       (accepted friends list with remove)
+/// Contains four sub-screens selectable via a segmented Picker:
+///   0 – Find        (user search + send request)
+///   1 – Requests    (incoming pending requests with accept / decline)
+///   2 – Friends     (accepted friends list with remove + tap-to-stats)
+///   3 – Leaderboard (friends ranked by push-up count for a chosen period)
 struct FriendsView: View {
 
-    /// Injected from MainTabView so the tab-bar badge and this view share
+    /// Injected from `MainTabView` so the tab-bar badge and this view share
     /// the same ViewModel instance and are always in sync.
     @ObservedObject var viewModel: FriendsViewModel
+
     @State private var selectedSegment: Int = 0
 
     var body: some View {
@@ -23,6 +25,7 @@ struct FriendsView: View {
                     Text("Find").tag(0)
                     requestsLabel.tag(1)
                     Text("Friends").tag(2)
+                    Text("Leaderboard").tag(3)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, AppSpacing.screenHorizontal)
@@ -38,6 +41,8 @@ struct FriendsView: View {
                     FriendRequestsView(viewModel: viewModel)
                 case 2:
                     FriendsListView(viewModel: viewModel)
+                case 3:
+                    LeaderboardView(viewModel: viewModel)
                 default:
                     EmptyView()
                 }
@@ -52,7 +57,8 @@ struct FriendsView: View {
         }
     }
 
-    // Badge on "Requests" segment label
+    // MARK: Requests badge label
+
     private var requestsLabel: some View {
         HStack(spacing: 4) {
             Text("Requests")
@@ -175,15 +181,7 @@ private struct UserSearchRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            // Avatar placeholder
-            Circle()
-                .fill(AppColors.primary.opacity(0.15))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(String(user.displayLabel.prefix(1)).uppercased())
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.primary)
-                }
+            FriendAvatar(label: user.displayLabel, color: AppColors.primary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.displayLabel)
@@ -198,7 +196,6 @@ private struct UserSearchRow: View {
 
             Spacer()
 
-            // Action button
             switch user.friendshipStatus {
             case "friend":
                 Label("Friends", systemImage: "checkmark")
@@ -321,15 +318,7 @@ private struct FriendRequestRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            // Avatar
-            Circle()
-                .fill(AppColors.primary.opacity(0.15))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(String(request.displayLabel.prefix(1)).uppercased())
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.primary)
-                }
+            FriendAvatar(label: request.displayLabel, color: AppColors.primary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.displayLabel)
@@ -348,7 +337,6 @@ private struct FriendRequestRow: View {
                 ProgressView().scaleEffect(0.8)
             } else {
                 HStack(spacing: AppSpacing.xs) {
-                    // Decline
                     Button(action: onDecline) {
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .bold))
@@ -358,7 +346,6 @@ private struct FriendRequestRow: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Accept
                     Button(action: onAccept) {
                         Image(systemName: "checkmark")
                             .font(.system(size: 14, weight: .bold))
@@ -391,11 +378,19 @@ struct FriendsListView: View {
                 emptyState
             } else {
                 List(viewModel.friends) { friend in
-                    FriendRow(
-                        friend: friend,
-                        isRemoving: viewModel.removingIds.contains(friend.id),
-                        onRemove: { friendToRemove = friend }
-                    )
+                    NavigationLink {
+                        FriendStatsView(
+                            viewModel: viewModel,
+                            friendId: friend.id,
+                            friendName: friend.displayLabel
+                        )
+                    } label: {
+                        FriendRowLabel(
+                            friend: friend,
+                            isRemoving: viewModel.removingIds.contains(friend.id),
+                            onRemove: { friendToRemove = friend }
+                        )
+                    }
                     .listRowBackground(AppColors.backgroundSecondary)
                 }
                 .listStyle(.plain)
@@ -458,9 +453,10 @@ struct FriendsListView: View {
     }
 }
 
-// MARK: - FriendRow
+// MARK: - FriendRowLabel
 
-private struct FriendRow: View {
+/// The label content for a friend row (used in both FriendsListView and LeaderboardView).
+private struct FriendRowLabel: View {
 
     let friend: FriendItem
     let isRemoving: Bool
@@ -468,14 +464,7 @@ private struct FriendRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            Circle()
-                .fill(AppColors.success.opacity(0.15))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Text(String(friend.displayLabel.prefix(1)).uppercased())
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.success)
-                }
+            FriendAvatar(label: friend.displayLabel, color: AppColors.success)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(friend.displayLabel)
@@ -502,6 +491,236 @@ private struct FriendRow: View {
             }
         }
         .padding(.vertical, AppSpacing.xs)
+    }
+}
+
+// MARK: - LeaderboardView
+
+/// Displays friends ranked by push-up count for a selectable time period.
+///
+/// Tapping a row navigates to that friend's full stats detail screen.
+struct LeaderboardView: View {
+
+    @ObservedObject var viewModel: FriendsViewModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Period selector
+            periodPicker
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.vertical, AppSpacing.xs)
+
+            Divider()
+
+            // Content
+            if viewModel.isLoadingLeaderboard || (viewModel.isLoadingFriends && viewModel.leaderboard.isEmpty) {
+                loadingView
+            } else if let error = viewModel.leaderboardError {
+                errorState(message: error)
+            } else if viewModel.leaderboard.isEmpty {
+                emptyState
+            } else {
+                leaderboardList
+            }
+        }
+        .onAppear {
+            // If friends are already loaded, populate the leaderboard immediately.
+            // If not, loadFriends() is called from FriendsView.onAppear and
+            // loadLeaderboardIfReady() will be triggered once friends arrive.
+            viewModel.loadLeaderboard()
+        }
+    }
+
+    // MARK: Period picker
+
+    private var periodPicker: some View {
+        HStack(spacing: AppSpacing.xs) {
+            ForEach(FriendStatsPeriod.allCases) { period in
+                periodChip(period)
+            }
+            Spacer()
+        }
+    }
+
+    private func periodChip(_ period: FriendStatsPeriod) -> some View {
+        let isSelected = viewModel.leaderboardPeriod == period
+        return Button {
+            viewModel.selectLeaderboardPeriod(period)
+        } label: {
+            Text(period.label)
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.textPrimary)
+                .padding(.horizontal, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.xxs + 2)
+                .background(
+                    isSelected ? AppColors.primary : AppColors.backgroundTertiary,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
+    }
+
+    // MARK: Leaderboard list
+
+    private var leaderboardList: some View {
+        List {
+            ForEach(Array(viewModel.leaderboard.enumerated()), id: \.element.id) { index, entry in
+                NavigationLink {
+                    FriendStatsView(
+                        viewModel: viewModel,
+                        friendId: entry.id,
+                        friendName: entry.displayLabel
+                    )
+                } label: {
+                    LeaderboardRow(rank: index + 1, entry: entry)
+                }
+                .listRowBackground(AppColors.backgroundSecondary)
+            }
+        }
+        .listStyle(.plain)
+        .refreshable {
+            viewModel.loadLeaderboard()
+        }
+    }
+
+    // MARK: States
+
+    private var loadingView: some View {
+        VStack(spacing: AppSpacing.md) {
+            Spacer()
+            ProgressView()
+            Text("Loading leaderboard…")
+                .font(AppTypography.subheadline)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.md) {
+            Spacer()
+            Image(systemName: "trophy")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(AppColors.textTertiary)
+            VStack(spacing: AppSpacing.xs) {
+                Text("No leaderboard yet")
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+                Text("Add friends to see how you compare.")
+                    .font(AppTypography.body)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, AppSpacing.xl)
+    }
+
+    private func errorState(message: String) -> some View {
+        VStack(spacing: AppSpacing.md) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48, weight: .light))
+                .foregroundStyle(AppColors.error)
+            Text(message)
+                .font(AppTypography.body)
+                .foregroundStyle(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+            Button("Retry") { viewModel.loadLeaderboard() }
+                .buttonStyle(.bordered)
+            Spacer()
+        }
+        .padding(.horizontal, AppSpacing.xl)
+    }
+}
+
+// MARK: - LeaderboardRow
+
+private struct LeaderboardRow: View {
+
+    let rank: Int
+    let entry: LeaderboardEntry
+
+    var body: some View {
+        HStack(spacing: AppSpacing.sm) {
+            // Rank badge
+            rankBadge
+
+            // Avatar
+            FriendAvatar(label: entry.displayLabel, color: rankColor)
+
+            // Name
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.displayLabel)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+                if let sub = entry.usernameLabel {
+                    Text(sub)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            // Push-up count
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(entry.pushupCount)")
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+                Text("push-ups")
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+        }
+        .padding(.vertical, AppSpacing.xs)
+    }
+
+    private var rankBadge: some View {
+        ZStack {
+            Circle()
+                .fill(rankColor.opacity(0.15))
+                .frame(width: 28, height: 28)
+            Text("\(rank)")
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(rankColor)
+        }
+    }
+
+    /// Gold for 1st, silver for 2nd, bronze for 3rd, default for the rest.
+    private var rankColor: Color {
+        switch rank {
+        case 1: return Color(light: "#FFD700", dark: "#FFD700")   // gold
+        case 2: return Color(light: "#C0C0C0", dark: "#A8A8A8")   // silver
+        case 3: return Color(light: "#CD7F32", dark: "#CD7F32")   // bronze
+        default: return AppColors.primary
+        }
+    }
+}
+
+// MARK: - FriendAvatar
+
+/// Reusable circular avatar showing the first letter of a name.
+///
+/// Extracted from the inline `Circle().overlay { Text(...) }` pattern that
+/// was duplicated across `UserSearchRow`, `FriendRequestRow`, and `FriendRow`.
+struct FriendAvatar: View {
+
+    let label: String
+    let color: Color
+    var size: CGFloat = 40
+
+    var body: some View {
+        Circle()
+            .fill(color.opacity(0.15))
+            .frame(width: size, height: size)
+            .overlay {
+                Text(String(label.prefix(1)).uppercased())
+                    .font(AppTypography.headline)
+                    .foregroundStyle(color)
+            }
     }
 }
 
