@@ -5,6 +5,7 @@ import com.flomks.pushup.db.JvmDatabaseDriverFactory
 import com.pushup.data.storage.TokenStorage
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 /**
@@ -22,6 +23,10 @@ import org.koin.dsl.module
 val jvmModule = module {
     single<DatabaseDriverFactory> { JvmDatabaseDriverFactory() }
     single { TokenStorage() }
+
+    // Custom Ktor backend base URL -- hardcoded so it persists across builds
+    // without requiring manual configuration or GitHub secrets.
+    single<String>(named(BACKEND_BASE_URL)) { "https://pushup.weareo.fun" }
 }
 
 /**
