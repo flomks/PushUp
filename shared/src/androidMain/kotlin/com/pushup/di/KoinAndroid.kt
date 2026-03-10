@@ -5,8 +5,10 @@ import com.flomks.pushup.db.AndroidDatabaseDriverFactory
 import com.flomks.pushup.db.DatabaseDriverFactory
 import com.pushup.data.api.JwtTokenProvider
 import com.pushup.data.storage.TokenStorage
+import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.usecase.sync.AndroidNetworkMonitor
 import com.pushup.domain.usecase.sync.NetworkMonitor
+import kotlinx.datetime.Clock
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -52,18 +54,31 @@ fun androidModule(
 
     // JWT token provider: reads the stored access token from TokenStorage.
     //
+    // Automatically refreshes the token when it is expired or within a
+    // 60-second buffer window before expiry. This prevents 401 errors caused
+    // by sending an expired Supabase JWT to the backend.
+    //
     // Throws IllegalStateException when the user is not authenticated.
-    // This is intentional: callers that invoke authenticated API endpoints
-    // without a valid session should receive an explicit error rather than
-    // silently sending an empty Bearer token to the backend.
     single<JwtTokenProvider>(named(JWT_TOKEN_PROVIDER)) {
         val storage = get<TokenStorage>()
+        val authRepository = get<AuthRepository>()
         JwtTokenProvider {
-            storage.load()?.accessToken
+            val token = storage.load()
                 ?: error(
                     "JwtTokenProvider: no authenticated session found. " +
                         "Call LoginWithEmailUseCase or a social login use case first."
                 )
+            // Refresh proactively if the token expires within 60 seconds.
+            val nowSeconds = Clock.System.now().epochSeconds
+            val isExpiredOrExpiringSoon = token.expiresAt - nowSeconds < 60L
+            if (isExpiredOrExpiringSoon) {
+                // refreshToken() stores the new token in TokenStorage and returns it.
+                // If the refresh token itself is expired, this throws AuthException.SessionExpired
+                // which will propagate as an error to the caller (correct behaviour).
+                authRepository.refreshToken().accessToken
+            } else {
+                token.accessToken
+            }
         }
     }
 

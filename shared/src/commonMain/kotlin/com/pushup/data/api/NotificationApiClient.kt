@@ -23,17 +23,33 @@ import io.ktor.client.request.patch
  * Every request includes `Authorization: Bearer <jwt>`. The token is fetched
  * lazily via [tokenProvider] on every call so it is always fresh.
  *
- * @property httpClient     Configured [HttpClient] (from [createHttpClient]).
- * @property backendBaseUrl Ktor backend base URL, e.g. `https://api.pushup.com`.
- * @property tokenProvider  Returns the current JWT access token.
- * @property maxRetries     Max retry attempts for transient errors (default 3).
+ * When a 401 is received, [onRefreshToken] is called (if provided) to force a
+ * token refresh, and the request is retried once.
+ *
+ * @property httpClient      Configured [HttpClient] (from [createHttpClient]).
+ * @property backendBaseUrl  Ktor backend base URL, e.g. `https://api.pushup.com`.
+ * @property tokenProvider   Returns the current JWT access token.
+ * @property onRefreshToken  Optional callback to force a token refresh on 401.
+ * @property maxRetries      Max retry attempts for transient errors (default 3).
  */
 class NotificationApiClient(
     private val httpClient: HttpClient,
     private val backendBaseUrl: String,
     private val tokenProvider: suspend () -> String,
+    private val onRefreshToken: (suspend () -> Unit)? = null,
     maxRetries: Int = 3,
 ) : ApiClientBase(maxRetries) {
+
+    /**
+     * Executes [block] with retry logic. Uses [withRetryAndTokenRefresh] when
+     * [onRefreshToken] is configured, otherwise falls back to [withRetry].
+     */
+    private suspend fun <T> retrying(block: suspend () -> T): T =
+        if (onRefreshToken != null) {
+            withRetryAndTokenRefresh(onRefreshToken, block)
+        } else {
+            withRetry(block)
+        }
 
     /**
      * Returns all in-app notifications for the authenticated user, ordered
@@ -43,7 +59,7 @@ class NotificationApiClient(
      *
      * @return List of [AppNotification]s.
      */
-    suspend fun getNotifications(): List<AppNotification> = withRetry {
+    suspend fun getNotifications(): List<AppNotification> = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/notifications") {
             bearerAuth(token)
@@ -65,7 +81,7 @@ class NotificationApiClient(
         require(UUID_REGEX.matches(notificationId)) {
             "notificationId must be a valid UUID, got: $notificationId"
         }
-        return withRetry {
+        return retrying {
             val token = tokenProvider()
             httpClient.patch("$backendBaseUrl/api/notifications/$notificationId/read") {
                 bearerAuth(token)
@@ -82,7 +98,7 @@ class NotificationApiClient(
      *
      * @return Number of notifications updated.
      */
-    suspend fun markAllNotificationsRead(): Int = withRetry {
+    suspend fun markAllNotificationsRead(): Int = retrying {
         val token = tokenProvider()
         httpClient.patch("$backendBaseUrl/api/notifications/read-all") {
             bearerAuth(token)

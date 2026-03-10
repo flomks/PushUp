@@ -39,17 +39,36 @@ import io.ktor.http.contentType
  * Every request includes `Authorization: Bearer <jwt>`. The token is fetched
  * lazily via [tokenProvider] on every call so it is always fresh.
  *
- * @property httpClient     Configured [HttpClient] (from [createHttpClient]).
- * @property backendBaseUrl Ktor backend base URL, e.g. `https://api.pushup.com`.
- * @property tokenProvider  Returns the current JWT access token.
- * @property maxRetries     Max retry attempts for transient errors (default 3).
+ * When a 401 is received, [onRefreshToken] is called (if provided) to force a
+ * token refresh, and the request is retried once. This handles the race condition
+ * where a token expires between the proactive expiry check and the server response.
+ *
+ * @property httpClient      Configured [HttpClient] (from [createHttpClient]).
+ * @property backendBaseUrl  Ktor backend base URL, e.g. `https://api.pushup.com`.
+ * @property tokenProvider   Returns the current JWT access token.
+ * @property onRefreshToken  Optional callback to force a token refresh on 401.
+ *                           When provided, a single reactive retry is performed
+ *                           after the refresh. When null, 401s are rethrown immediately.
+ * @property maxRetries      Max retry attempts for transient errors (default 3).
  */
 class FriendshipApiClient(
     private val httpClient: HttpClient,
     private val backendBaseUrl: String,
     private val tokenProvider: suspend () -> String,
+    private val onRefreshToken: (suspend () -> Unit)? = null,
     maxRetries: Int = 3,
 ) : ApiClientBase(maxRetries) {
+
+    /**
+     * Executes [block] with retry logic. Uses [withRetryAndTokenRefresh] when
+     * [onRefreshToken] is configured, otherwise falls back to [withRetry].
+     */
+    private suspend fun <T> retrying(block: suspend () -> T): T =
+        if (onRefreshToken != null) {
+            withRetryAndTokenRefresh(onRefreshToken, block)
+        } else {
+            withRetry(block)
+        }
 
     /**
      * Searches for users whose username or display name contains [query].
@@ -59,7 +78,7 @@ class FriendshipApiClient(
      * @param query Search term (minimum 2 characters).
      * @return List of matching [UserSearchResult]s.
      */
-    suspend fun searchUsers(query: String): List<UserSearchResult> = withRetry {
+    suspend fun searchUsers(query: String): List<UserSearchResult> = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/users/search") {
             bearerAuth(token)
@@ -77,7 +96,7 @@ class FriendshipApiClient(
      *
      * @return List of [FriendRequest]s.
      */
-    suspend fun getIncomingFriendRequests(): List<FriendRequest> = withRetry {
+    suspend fun getIncomingFriendRequests(): List<FriendRequest> = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/friends/requests/incoming") {
             bearerAuth(token)
@@ -95,7 +114,7 @@ class FriendshipApiClient(
      * @param receiverId UUID of the target user.
      * @return The created [Friendship] record.
      */
-    suspend fun sendFriendRequest(receiverId: String): Friendship = withRetry {
+    suspend fun sendFriendRequest(receiverId: String): Friendship = retrying {
         val token = tokenProvider()
         httpClient.post("$backendBaseUrl/api/friends/request") {
             bearerAuth(token)
@@ -113,7 +132,7 @@ class FriendshipApiClient(
      *
      * @return List of [Friend]s with basic profile data.
      */
-    suspend fun getFriends(): List<Friend> = withRetry {
+    suspend fun getFriends(): List<Friend> = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/friends") {
             bearerAuth(token)
@@ -137,7 +156,7 @@ class FriendshipApiClient(
         require(UUID_REGEX.matches(friendId)) {
             "friendId must be a valid UUID, got: $friendId"
         }
-        return withRetry {
+        return retrying {
             val token = tokenProvider()
             httpClient.get("$backendBaseUrl/api/friends/$friendId/stats") {
                 bearerAuth(token)
@@ -160,7 +179,7 @@ class FriendshipApiClient(
         require(UUID_REGEX.matches(friendId)) {
             "friendId must be a valid UUID, got: $friendId"
         }
-        withRetry {
+        retrying {
             val token = tokenProvider()
             httpClient.delete("$backendBaseUrl/api/friends/$friendId") {
                 bearerAuth(token)
@@ -185,7 +204,7 @@ class FriendshipApiClient(
         require(UUID_REGEX.matches(friendshipId)) {
             "friendshipId must be a valid UUID, got: $friendshipId"
         }
-        return withRetry {
+        return retrying {
             val token = tokenProvider()
             val status = if (accept) "accepted" else "declined"
             httpClient.patch("$backendBaseUrl/api/friends/request/$friendshipId") {
