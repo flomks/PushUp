@@ -233,7 +233,10 @@ final class PushUpTrackingManager: ObservableObject {
     /// 1. Validates that no session is already active.
     /// 2. Resets the detection pipeline and clears any previous error.
     /// 3. Wires the delegate chain (camera -> pose detector -> push-up detector).
-    /// 4. Starts the camera (requests permission if needed).
+    /// 4. Starts the camera if it is not already running (e.g. from `startCameraPreview`).
+    ///    If the camera is already running from the idle preview, we reuse the existing
+    ///    session to avoid reconfiguring a live `AVCaptureSession`, which causes a crash
+    ///    on iOS when inputs/outputs are removed and re-added while the session is running.
     /// 5. Calls `StartWorkoutUseCase` (KMP) to open a new workout session.
     /// 6. Starts the session timer.
     ///
@@ -254,7 +257,15 @@ final class PushUpTrackingManager: ObservableObject {
         // stopTracking() clears the delegates to release camera resources.
         wireDetectionPipeline()
 
-        cameraManager.setupAndStart(position: FacingDirection.front)
+        // If the camera is already running from the idle preview (startCameraPreview),
+        // reuse the existing session instead of calling setupAndStart() again.
+        // Calling setupAndStart() on a running session triggers configureSession(),
+        // which removes and re-adds the shared videoOutput while the session is live,
+        // causing an AVFoundation crash on iOS.
+        if cameraManager.state != .running {
+            cameraManager.setupAndStart(position: FacingDirection.front)
+        }
+
         isTracking = true
         sessionStartDate = Date()
         startSessionTimer()
