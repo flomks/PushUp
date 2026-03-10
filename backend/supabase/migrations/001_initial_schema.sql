@@ -169,25 +169,51 @@ CREATE TRIGGER trg_user_settings_updated_at
 -- AUTH INTEGRATION: auto-create user profile on sign-up
 -- =============================================================================
 
--- When a new user signs up via Supabase Auth, automatically insert a row in
--- public.users so that FK constraints are satisfied from the start.
+-- When a new user signs up via Supabase Auth, automatically upsert a row in
+-- public.users and copy display_name / avatar_url from the OAuth provider
+-- metadata (Google: raw_user_meta_data->>'full_name', Apple: 'full_name').
+-- Falls back to the email local-part when no name is available.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_display_name TEXT;
+  v_avatar_url   TEXT;
 BEGIN
-  INSERT INTO public.users (id, email, created_at, updated_at)
+  -- Resolve display_name from OAuth provider metadata.
+  -- Priority: full_name (Google/Apple) -> name -> email local-part fallback.
+  -- NULLIF(..., '') treats empty strings the same as NULL.
+  v_display_name := COALESCE(
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+    NULLIF(TRIM(NEW.raw_user_meta_data->>'name'),      ''),
+    SPLIT_PART(NEW.email, '@', 1)
+  );
+
+  v_avatar_url := NULLIF(TRIM(NEW.raw_user_meta_data->>'avatar_url'), '');
+
+  -- Upsert the user profile row.
+  -- ON CONFLICT DO UPDATE so re-running (e.g. on next login) keeps data fresh.
+  -- Only overwrites display_name / avatar_url when the new value is non-NULL,
+  -- so a user who manually updated their name is not overwritten by the provider.
+  INSERT INTO public.users (id, email, display_name, avatar_url, created_at, updated_at)
   VALUES (
     NEW.id,
     NEW.email,
+    v_display_name,
+    v_avatar_url,
     NOW(),
     NOW()
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET
+    email        = EXCLUDED.email,
+    display_name = COALESCE(EXCLUDED.display_name, public.users.display_name),
+    avatar_url   = COALESCE(EXCLUDED.avatar_url,   public.users.avatar_url),
+    updated_at   = NOW();
 
-  -- Also create default time_credits and user_settings rows
+  -- Ensure companion rows exist (idempotent).
   INSERT INTO public.time_credits (user_id)
   VALUES (NEW.id)
   ON CONFLICT (user_id) DO NOTHING;
