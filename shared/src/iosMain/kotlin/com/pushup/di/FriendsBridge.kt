@@ -1,6 +1,7 @@
 package com.pushup.di
 
 import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.UserSearchResult
@@ -141,6 +142,35 @@ object FriendsBridge : KoinComponent {
                 withContext(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
                 val msg = "Could not remove friend: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
+            }
+        }
+    }
+
+    // =========================================================================
+    // Friend stats
+    // =========================================================================
+
+    /**
+     * Fetches activity statistics for a specific friend over a given period.
+     *
+     * @param friendId UUID of the friend whose stats are requested.
+     * @param period   One of "day", "week", or "month".
+     * @param onResult Called on the main thread with the [FriendActivityStats] result.
+     * @param onError  Called on the main thread with a user-facing error message.
+     */
+    fun getFriendStats(
+        friendId: String,
+        period: String,
+        onResult: (FriendActivityStats) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val stats = get<FriendshipRepository>().getFriendStats(friendId, period)
+                withContext(Dispatchers.Main) { onResult(stats) }
+            } catch (e: Exception) {
+                val msg = "Could not load stats: ${e.message ?: e::class.simpleName ?: "unknown error"}"
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }
