@@ -37,8 +37,8 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<FriendshipRepository>().searchUsers(query))
-            } catch (_: Exception) {
-                onError("Search failed. Please try again.")
+            } catch (e: Exception) {
+                onError("Search failed: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -55,8 +55,8 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<FriendshipRepository>().sendFriendRequest(receiverId))
-            } catch (_: Exception) {
-                onError("Could not send friend request. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not send friend request: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -72,8 +72,8 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<FriendshipRepository>().getIncomingFriendRequests())
-            } catch (_: Exception) {
-                onError("Could not load friend requests. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not load friend requests: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -91,8 +91,8 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<FriendshipRepository>().respondToFriendRequest(friendshipId, accept))
-            } catch (_: Exception) {
-                onError("Could not respond to the request. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not respond to the request: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -108,8 +108,8 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<FriendshipRepository>().getFriends())
-            } catch (_: Exception) {
-                onError("Could not load friends. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not load friends: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -127,8 +127,8 @@ object FriendsBridge : KoinComponent {
             try {
                 get<FriendshipRepository>().removeFriend(friendId)
                 onSuccess()
-            } catch (_: Exception) {
-                onError("Could not remove friend. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not remove friend: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }

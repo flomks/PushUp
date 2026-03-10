@@ -33,8 +33,8 @@ object NotificationsBridge : KoinComponent {
         scope.launch {
             try {
                 onResult(get<NotificationRepository>().getNotifications())
-            } catch (_: Exception) {
-                onError("Could not load notifications. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not load notifications: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -52,8 +52,8 @@ object NotificationsBridge : KoinComponent {
             try {
                 get<NotificationRepository>().markNotificationRead(notificationId)
                 onSuccess()
-            } catch (_: Exception) {
-                onError("Could not mark notification as read. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not mark notification as read: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
@@ -70,8 +70,8 @@ object NotificationsBridge : KoinComponent {
             try {
                 get<NotificationRepository>().markAllNotificationsRead()
                 onSuccess()
-            } catch (_: Exception) {
-                onError("Could not mark all notifications as read. Please try again.")
+            } catch (e: Exception) {
+                onError("Could not mark all notifications as read: ${e.message ?: e::class.simpleName ?: "unknown error"}")
             }
         }
     }
