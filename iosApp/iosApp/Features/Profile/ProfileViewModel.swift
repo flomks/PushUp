@@ -43,6 +43,22 @@ struct ProfileStats: Equatable {
     let totalEarnedMinutes: Int
 }
 
+// MARK: - LevelInfo
+
+/// XP / level state shown in the level card on the profile screen.
+struct LevelInfo: Equatable {
+    /// Current level (1-based).
+    let level: Int
+    /// Total XP accumulated across all time.
+    let totalXp: Int64
+    /// XP accumulated within the current level.
+    let xpIntoLevel: Int64
+    /// XP needed to advance to the next level.
+    let xpRequiredForNextLevel: Int64
+    /// Progress fraction within the current level, in [0.0, 1.0).
+    let levelProgress: Double
+}
+
 // MARK: - Validation Constants
 
 private enum ProfileValidation {
@@ -96,6 +112,9 @@ final class ProfileViewModel: ObservableObject {
 
     /// Lifetime account statistics.
     @Published private(set) var stats: ProfileStats? = nil
+
+    /// Current XP / level state. `nil` while loading or when not authenticated.
+    @Published private(set) var levelInfo: LevelInfo? = nil
 
     /// Whether the initial data load is in progress.
     @Published private(set) var isLoading: Bool = false
@@ -211,15 +230,23 @@ final class ProfileViewModel: ObservableObject {
         if let user = await AuthService.shared.getCurrentUser() {
             applyUserData(user)
             startObservingStats(userId: user.id)
+            await loadLevel(userId: user.id)
         } else {
             displayName = ""
             savedDisplayName = ""
             email = ""
             memberSinceText = ""
             stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+            levelInfo = nil
         }
 
         isLoading = false
+    }
+
+    /// Refreshes the level card. Can be called after a workout to show updated XP.
+    func refreshLevel() async {
+        guard let user = await AuthService.shared.getCurrentUser() else { return }
+        await loadLevel(userId: user.id)
     }
 
     /// Saves the edited display name to the backend.
@@ -454,6 +481,34 @@ final class ProfileViewModel: ObservableObject {
         // Show zero initially until the first emission arrives.
         if stats == nil {
             stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+        }
+    }
+
+    /// Fetches the current XP / level state from the KMP LevelBridge.
+    ///
+    /// Uses a continuation to bridge the callback-based KMP API into async/await.
+    /// On failure the level card is simply hidden (levelInfo stays nil) rather
+    /// than surfacing an error -- level data is non-critical.
+    private func loadLevel(userId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            LevelBridge.shared.getUserLevel(
+                userId: userId,
+                onResult: { [weak self] result in
+                    self?.levelInfo = LevelInfo(
+                        level: Int(result.level),
+                        totalXp: result.totalXp,
+                        xpIntoLevel: result.xpIntoLevel,
+                        xpRequiredForNextLevel: result.xpRequiredForNextLevel,
+                        levelProgress: result.levelProgress
+                    )
+                    continuation.resume()
+                },
+                onError: { [weak self] _ in
+                    // Non-critical: hide the level card silently on error.
+                    self?.levelInfo = nil
+                    continuation.resume()
+                }
+            )
         }
     }
 

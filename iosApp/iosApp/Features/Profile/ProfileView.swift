@@ -122,6 +122,7 @@ struct ProfileView: View {
         ScrollView {
             LazyVStack(spacing: AppSpacing.md) {
                 headerCard
+                levelCard
                 statsSection
                 achievementsSection
                 accountActionsSection
@@ -296,6 +297,98 @@ struct ProfileView: View {
 
             Spacer()
         }
+    }
+
+    // MARK: - Level Card
+
+    /// Hero card showing the user's current level, XP progress bar, and totals.
+    /// Matches the Compose `LevelCard` design from ProfileScreen.kt.
+    @ViewBuilder
+    private var levelCard: some View {
+        if let info = viewModel.levelInfo {
+            levelCardContent(info)
+        } else if viewModel.isLoading {
+            // Skeleton placeholder while loading
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .fill(AppColors.primary.opacity(0.12))
+                .frame(height: 160)
+                .redacted(reason: .placeholder)
+        }
+        // When levelInfo is nil and not loading (e.g. not authenticated), show nothing.
+    }
+
+    private func levelCardContent(_ info: LevelInfo) -> some View {
+        ZStack {
+            // Gradient background matching the primary container feel from Compose
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .fill(
+                    LinearGradient(
+                        colors: [AppColors.primary.opacity(0.85), AppColors.primary],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+
+                // Top row: "Level N" label + star badge
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Level")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(.white.opacity(0.75))
+
+                        Text("\(info.level)")
+                            .font(.system(size: 52, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    // Star badge circle
+                    ZStack {
+                        Circle()
+                            .fill(.white.opacity(0.2))
+                            .frame(width: 56, height: 56)
+
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                }
+
+                // XP progress label
+                Text("XP Progress")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(.white.opacity(0.75))
+
+                // Progress bar
+                LevelProgressBar(progress: info.levelProgress)
+
+                // XP numbers row
+                HStack {
+                    Text("\(info.xpIntoLevel) XP")
+                        .font(AppTypography.caption2)
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    Spacer()
+
+                    Text("\(info.xpRequiredForNextLevel) XP to next level")
+                        .font(AppTypography.caption2)
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+
+                // Total XP
+                Text("Total XP: \(info.totalXp)")
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(.white)
+            }
+            .padding(AppSpacing.md)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Level \(info.level). \(info.xpIntoLevel) of \(info.xpRequiredForNextLevel) XP to next level. Total XP: \(info.totalXp).")
     }
 
     // MARK: - Stats Section
@@ -495,6 +588,39 @@ struct ProfileView: View {
             return m > 0 ? "\(h)h \(m)m" : "\(h)h"
         }
         return "\(minutes)m"
+    }
+}
+
+// MARK: - LevelProgressBar
+
+/// Thin rounded progress bar used inside the level card.
+///
+/// Renders a track with a filled indicator whose width is proportional to
+/// [progress] (0.0 = empty, 1.0 = full). Animates smoothly when the value changes.
+struct LevelProgressBar: View {
+
+    /// Progress fraction in [0.0, 1.0).
+    let progress: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // Track
+                Capsule()
+                    .fill(.white.opacity(0.2))
+                    .frame(height: 10)
+
+                // Fill
+                Capsule()
+                    .fill(.white)
+                    .frame(
+                        width: max(0, geo.size.width * CGFloat(min(progress, 1.0))),
+                        height: 10
+                    )
+                    .animation(.easeInOut(duration: 0.4), value: progress)
+            }
+        }
+        .frame(height: 10)
     }
 }
 
