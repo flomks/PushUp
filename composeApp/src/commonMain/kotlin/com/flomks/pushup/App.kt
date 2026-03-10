@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -37,6 +38,8 @@ import com.flomks.pushup.friends.UserSearchScreen
 import com.flomks.pushup.friends.UserSearchViewModel
 import com.flomks.pushup.notifications.NotificationCenterScreen
 import com.flomks.pushup.notifications.NotificationViewModel
+import com.flomks.pushup.profile.ProfileScreen
+import com.flomks.pushup.profile.ProfileViewModel
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -50,7 +53,52 @@ fun App() {
                 .safeContentPadding(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            FriendsSection()
+            MainScreen()
+        }
+    }
+}
+
+/**
+ * Top-level screen with two main sections:
+ * - "Profile" tab: shows the user's level, XP progress, and lifetime stats.
+ * - "Social" tab: the existing friends / notifications section.
+ */
+@Composable
+fun MainScreen(
+    profileViewModel: ProfileViewModel = koinViewModel(),
+) {
+    var selectedMainTab by remember { mutableIntStateOf(0) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Top-level tab row
+        TabRow(selectedTabIndex = selectedMainTab) {
+            Tab(
+                selected = selectedMainTab == 0,
+                onClick = { selectedMainTab = 0 },
+                text = { Text("Profile") },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "Profile",
+                    )
+                },
+            )
+            Tab(
+                selected = selectedMainTab == 1,
+                onClick = { selectedMainTab = 1 },
+                text = { Text("Social") },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Group,
+                        contentDescription = "Social",
+                    )
+                },
+            )
+        }
+
+        when (selectedMainTab) {
+            0 -> ProfileScreen(viewModel = profileViewModel)
+            1 -> FriendsSection()
         }
     }
 }

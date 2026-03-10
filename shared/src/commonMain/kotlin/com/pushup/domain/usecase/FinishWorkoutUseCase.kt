@@ -1,9 +1,11 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.model.WorkoutSummary
+import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserSettingsRepository
@@ -37,6 +39,8 @@ import kotlinx.datetime.toLocalDateTime
  * @property recordRepository Repository for reading push-up records.
  * @property timeCreditRepository Repository for updating the user's credit balance.
  * @property settingsRepository Repository for reading user settings.
+ * @property levelRepository Optional repository for updating the user's XP / level.
+ *   When `null`, the level system is skipped and [WorkoutSummary.earnedXp] will be 0.
  * @property clock Clock used to set the session end timestamp.
  * @property timeZone Timezone used to determine the current calendar day for the daily cap.
  *   Defaults to the system default timezone.
@@ -46,6 +50,7 @@ class FinishWorkoutUseCase(
     private val recordRepository: PushUpRecordRepository,
     private val timeCreditRepository: TimeCreditRepository,
     private val settingsRepository: UserSettingsRepository,
+    private val levelRepository: LevelRepository? = null,
     private val clock: Clock = Clock.System,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
@@ -112,6 +117,14 @@ class FinishWorkoutUseCase(
             timeCreditRepository.addEarnedSeconds(session.userId, earnedCredits)
         }
 
+        // Award XP for the completed session (quality multiplier applied by LevelCalculator).
+        val earnedXp = LevelCalculator.calculateXp(session.pushUpCount, session.quality)
+        val updatedLevel = if (earnedXp > 0) {
+            levelRepository?.addXp(session.userId, earnedXp)
+        } else {
+            levelRepository?.getOrCreate(session.userId)
+        }
+
         val records = recordRepository.getBySessionId(sessionId)
         // Re-read the session from the DB to ensure the returned summary reflects
         // exactly what was persisted (avoids stale-snapshot inconsistencies).
@@ -122,6 +135,8 @@ class FinishWorkoutUseCase(
             session = finishedSession,
             records = records,
             earnedCredits = earnedCredits,
+            earnedXp = earnedXp,
+            updatedLevel = updatedLevel,
         )
     }
 

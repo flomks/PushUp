@@ -8,6 +8,7 @@ import com.pushup.data.api.SupabaseAuthClient
 import com.pushup.data.api.SupabaseClient
 import com.pushup.data.api.createHttpClient
 import com.pushup.data.repository.AuthRepositoryImpl
+import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -16,12 +17,14 @@ import com.pushup.data.repository.UserSettingsRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.repository.AuthRepository
+import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.AwardWorkoutXpUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
@@ -29,6 +32,7 @@ import com.pushup.domain.usecase.GetMonthlyStatsUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
+import com.pushup.domain.usecase.GetUserLevelUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.IdGenerator
@@ -185,6 +189,14 @@ val repositoryModule: Module = module {
     single<NotificationRepository> {
         NotificationRepositoryImpl(apiClient = get())
     }
+
+    single<LevelRepository> {
+        LevelRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+        )
+    }
 }
 
 /**
@@ -213,6 +225,7 @@ val useCaseModule: Module = module {
             recordRepository = get(),
             timeCreditRepository = get(),
             settingsRepository = get(),
+            levelRepository = get(),
             clock = get(),
         )
     }
@@ -224,6 +237,8 @@ val useCaseModule: Module = module {
     factory { GetWeeklyStatsUseCase(statsRepository = get()) }
     factory { GetMonthlyStatsUseCase(statsRepository = get()) }
     factory { GetTotalStatsUseCase(statsRepository = get()) }
+    factory { GetUserLevelUseCase(levelRepository = get()) }
+    factory { AwardWorkoutXpUseCase(levelRepository = get()) }
 
     // Auth use-cases (Task 1B.8)
     factory { RegisterWithEmailUseCase(authRepository = get()) }

@@ -315,3 +315,44 @@ WHERE userId = ?;
 upsertUserSettings:
 INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
 VALUES (?, ?, ?, ?, ?);
+
+-- =============================================================================
+-- UserLevel
+-- Tracks accumulated XP and derived level for each user (one row per user).
+-- The level and xpIntoLevel are derived from totalXp but stored for fast reads.
+-- =============================================================================
+
+CREATE TABLE UserLevel (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    userId        TEXT    NOT NULL UNIQUE REFERENCES User(id) ON DELETE CASCADE,
+    totalXp       INTEGER NOT NULL DEFAULT 0,
+    lastUpdatedAt INTEGER NOT NULL
+);
+
+CREATE INDEX idx_user_level_user_id ON UserLevel(userId);
+
+-- =============================================================================
+-- UserLevel Queries
+-- =============================================================================
+
+insertUserLevel:
+INSERT INTO UserLevel (id, userId, totalXp, lastUpdatedAt)
+VALUES (?, ?, ?, ?);
+
+selectUserLevelByUserId:
+SELECT *
+FROM UserLevel
+WHERE userId = ?;
+
+upsertUserLevel:
+INSERT OR REPLACE INTO UserLevel (id, userId, totalXp, lastUpdatedAt)
+VALUES (?, ?, ?, ?);
+
+updateUserLevelXp:
+UPDATE UserLevel
+SET totalXp = ?, lastUpdatedAt = ?
+WHERE userId = ?;
+
+deleteUserLevel:
+DELETE FROM UserLevel
+WHERE userId = ?;

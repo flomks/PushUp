@@ -5,8 +5,12 @@ import com.flomks.pushup.friends.FriendsListViewModel
 import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
 import com.flomks.pushup.notifications.NotificationViewModel
+import com.flomks.pushup.profile.ProfileViewModel
 import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.repository.NotificationRepository
+import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
+import com.pushup.domain.usecase.GetTotalStatsUseCase
+import com.pushup.domain.usecase.GetUserLevelUseCase
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
@@ -45,5 +49,13 @@ val presentationModule = module {
 
     viewModel {
         NotificationViewModel(repository = get<NotificationRepository>())
+    }
+
+    viewModel {
+        ProfileViewModel(
+            getUserUseCase = get<GetOrCreateLocalUserUseCase>(),
+            getUserLevelUseCase = get<GetUserLevelUseCase>(),
+            getTotalStatsUseCase = get<GetTotalStatsUseCase>(),
+        )
     }
 }
