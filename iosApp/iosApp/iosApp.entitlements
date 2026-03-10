@@ -2,13 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Push Notifications capability.
-	     "development" is used for debug builds (personal team / free account).
-	     When you archive for App Store / TestFlight, Xcode automatically
-	     switches this to "production" via the distribution provisioning profile.
-	     Without this key the app binary has inadequate entitlements and iOS
-	     refuses to launch it with the "invalid code signature" error. -->
-	<key>aps-environment</key>
-	<string>development</string>
+	<!-- Push Notifications (aps-environment) is intentionally omitted here.
+	
+	     Free / Personal Apple Developer accounts do NOT support the Push
+	     Notifications capability and cannot create a provisioning profile
+	     that includes aps-environment. Adding the key causes Xcode to fail
+	     with "Personal development teams do not support the Push Notifications
+	     capability."
+	
+	     The runtime call to registerForRemoteNotifications() in AppDelegate
+	     will simply fail silently on a free-account build (iOS calls
+	     didFailToRegisterForRemoteNotificationsWithError, which is handled
+	     gracefully). All other app functionality is unaffected.
+	
+	     When you upgrade to a paid Apple Developer account ($99/year):
+	       1. Add the Push Notifications capability in Xcode
+	          (Signing & Capabilities tab of the iosApp target).
+	       Xcode will re-add aps-environment=development here automatically.
+	-->
 </dict>
 </plist>
