@@ -12,8 +12,9 @@ import kotlinx.datetime.Clock
  * all counters at zero, and [SyncStatus.PENDING] sync status. The session is persisted
  * via [WorkoutSessionRepository] and returned to the caller.
  *
- * Throws [WorkoutAlreadyActiveException] if the user already has an active session
- * (i.e. a session with [WorkoutSession.endedAt] == `null`).
+ * If the user already has an active session (endedAt == null), that session is returned
+ * instead of creating a new one. This makes the use-case idempotent and prevents crashes
+ * caused by dangling sessions left open after an app crash or force-quit.
  *
  * @property sessionRepository Repository used to persist and query workout sessions.
  * @property clock Clock used to generate the session start timestamp.
@@ -28,9 +29,16 @@ class StartWorkoutUseCase(
     /**
      * Starts a new workout session for the given [userId].
      *
+     * If the user already has an active session (i.e. a session with
+     * [WorkoutSession.endedAt] == `null`), that existing session is returned
+     * instead of creating a new one. This makes the use-case idempotent and
+     * prevents [WorkoutAlreadyActiveException] from crashing the iOS app when
+     * the previous session was not cleanly finished (e.g. due to a crash or
+     * force-quit before [FinishWorkoutUseCase] could run).
+     *
      * @param userId The ID of the user starting the workout.
-     * @return The newly created and persisted [WorkoutSession].
-     * @throws WorkoutAlreadyActiveException if an active session already exists for this user.
+     * @return The newly created [WorkoutSession], or the existing active session
+     *         if one is already open for this user.
      */
     suspend operator fun invoke(userId: String): WorkoutSession {
         require(userId.isNotBlank()) { "userId must not be blank" }
@@ -38,9 +46,11 @@ class StartWorkoutUseCase(
         val activeSessions = sessionRepository.getAllByUserId(userId)
             .filter { it.isActive }
         if (activeSessions.isNotEmpty()) {
-            throw WorkoutAlreadyActiveException(
-                "User '$userId' already has an active workout session: ${activeSessions.first().id}",
-            )
+            // Return the existing active session instead of throwing.
+            // This handles the case where the app crashed or was force-quit
+            // before the previous session was finished, leaving a dangling
+            // open session in the local database.
+            return activeSessions.first()
         }
 
         val now = clock.now()

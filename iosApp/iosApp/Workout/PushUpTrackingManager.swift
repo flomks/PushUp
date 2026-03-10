@@ -475,10 +475,24 @@ final class PushUpTrackingManager: ObservableObject {
     /// Called from a cancellable `Task` after the camera has started.
     /// On failure: stops the camera, resets `isTracking`, and sets `lastError`.
     /// On cancellation: returns early without setting `activeSessionId`.
+    ///
+    /// **Idempotency:** `StartWorkoutUseCase` returns the existing active session
+    /// when one is already open (e.g. after an app crash). The session ID is
+    /// stored in `activeSessionId` regardless of whether it is new or resumed.
     private func startKMPWorkout() async {
         do {
-            let user: User = try await withKMPSuspend { handler in
+            // GetCurrentUserUseCase returns User? (nullable). Use the nullable
+            // variant of withKMPSuspend so that a nil result (not logged in)
+            // is surfaced as a clear "not authenticated" error rather than a
+            // generic "nil result with no error" KMPBridge error.
+            guard let user: User = try await withKMPSuspendOptional({ handler in
                 self.getCurrentUser.invoke(completionHandler: handler)
+            }) else {
+                throw NSError(
+                    domain: "PushUpTrackingManager",
+                    code: 401,
+                    userInfo: [NSLocalizedDescriptionKey: "No authenticated user found. Please log in."]
+                )
             }
 
             // Check cancellation between the two KMP calls. If stopTracking()
@@ -685,6 +699,41 @@ private func withKMPSuspend<T>(
                         ]
                     )
                 )
+            }
+        }
+    }
+}
+
+/// Variant of `withKMPSuspend` for KMP suspend functions that return a nullable
+/// type (`T?`). Returns `nil` when the KMP function completes with no result and
+/// no error (e.g. `GetCurrentUserUseCase` when no user is logged in), instead of
+/// throwing a "nil result with no error" error.
+///
+/// Use this when the KMP function legitimately returns `null` as a valid result.
+private func withKMPSuspendOptional<T>(
+    _ body: @escaping (@escaping (T?, Error?) -> Void) -> Void
+) async throws -> T? {
+    try await withCheckedThrowingContinuation { continuation in
+        let lock = NSLock()
+        var hasResumed = false
+
+        body { result, error in
+            lock.lock()
+            guard !hasResumed else {
+                lock.unlock()
+                #if DEBUG
+                print("[KMPBridge] WARNING: completion handler called more than once -- ignored")
+                #endif
+                return
+            }
+            hasResumed = true
+            lock.unlock()
+
+            if let error {
+                continuation.resume(throwing: error)
+            } else {
+                // result may be nil (e.g. no logged-in user) -- that is valid here.
+                continuation.resume(returning: result)
             }
         }
     }
