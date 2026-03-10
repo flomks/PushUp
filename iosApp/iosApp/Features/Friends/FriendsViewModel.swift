@@ -165,7 +165,7 @@ final class FriendsViewModel: ObservableObject {
     /// The currently logged-in user, resolved once on first leaderboard load.
     private var currentUser: User? = nil
     /// All local workout sessions for the current user, kept in sync via DataBridge.
-    private var localSessions: [WorkoutSession] = []
+    private var localSessions: [Shared.WorkoutSession] = []
     /// KMP Flow observation job for local sessions (cancelled on deinit).
     private var sessionObservationJob: Kotlinx_coroutines_coreJob? = nil
 
@@ -510,11 +510,11 @@ final class FriendsViewModel: ObservableObject {
             cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
         }
 
-        let cutoffMs = Int64(cutoff.timeIntervalSince1970 * 1000)
+        let cutoffEpochSeconds = Int64(cutoff.timeIntervalSince1970)
 
         let filtered = localSessions.filter { session in
             guard session.endedAt != nil else { return false }   // completed only
-            return session.startedAt >= cutoffMs
+            return session.startedAt.epochSeconds >= cutoffEpochSeconds
         }
 
         let pushups = filtered.reduce(0) { $0 + Int($1.pushUpCount) }
