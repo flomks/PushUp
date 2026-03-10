@@ -2,6 +2,7 @@ package com.pushup.plugins
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
+import com.auth0.jwt.exceptions.JWTVerificationException
 import com.pushup.models.ErrorResponse
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -86,11 +87,20 @@ fun Application.configureAuth() {
         )
     }
 
+    // Log the configured issuer at startup so mismatches are immediately visible.
+    log.info("JWT auth: issuer='${jwtIssuer ?: "(not set -- issuer check disabled)"}' audience='authenticated'")
+
     install(Authentication) {
         jwt(JWT_AUTH) {
             realm = "pushup-backend"
 
-            val verifierBuilder = JWT.require(Algorithm.HMAC256(jwtSecret))
+            val algorithm = Algorithm.HMAC256(jwtSecret)
+
+            // Build a verifier WITHOUT audience/issuer first so we can decode
+            // the token for diagnostic logging when verification fails.
+            val diagnosticDecoder = JWT.require(algorithm).build()
+
+            val verifierBuilder = JWT.require(algorithm)
             if (!jwtIssuer.isNullOrBlank()) {
                 verifierBuilder.withIssuer(jwtIssuer)
             }
@@ -104,7 +114,47 @@ fun Application.configureAuth() {
                 if (sub != null) JWTPrincipal(credential.payload) else null
             }
 
-            challenge { _, _ ->
+            challenge { defaultScheme, realm ->
+                // Attempt to decode the raw token (without full verification) so we
+                // can log exactly which claim caused the rejection. This is safe
+                // because we only log non-sensitive claims (iss, aud, sub, exp).
+                val authHeader = call.request.headers["Authorization"]
+                val rawToken = authHeader?.removePrefix("Bearer ")?.trim()
+                if (rawToken != null) {
+                    try {
+                        val decoded = diagnosticDecoder.verify(rawToken)
+                        // If we get here the signature is valid but issuer/audience failed.
+                        call.application.log.warn(
+                            "JWT rejected -- signature OK but claim mismatch. " +
+                                "iss='${decoded.issuer}' " +
+                                "aud=${decoded.audience} " +
+                                "sub='${decoded.subject}' " +
+                                "exp=${decoded.expiresAt} " +
+                                "configured_issuer='$jwtIssuer'"
+                        )
+                    } catch (e: JWTVerificationException) {
+                        // Signature or expiry failed -- log the reason without the token value.
+                        try {
+                            val unverified = JWT.decode(rawToken)
+                            call.application.log.warn(
+                                "JWT rejected -- ${e.javaClass.simpleName}: ${e.message}. " +
+                                    "iss='${unverified.issuer}' " +
+                                    "aud=${unverified.audience} " +
+                                    "sub='${unverified.subject}' " +
+                                    "exp=${unverified.expiresAt} " +
+                                    "configured_issuer='$jwtIssuer'"
+                            )
+                        } catch (_: Exception) {
+                            call.application.log.warn(
+                                "JWT rejected -- ${e.javaClass.simpleName}: ${e.message}. " +
+                                    "Token could not be decoded for diagnostics."
+                            )
+                        }
+                    }
+                } else {
+                    call.application.log.warn("JWT rejected -- no Authorization header present")
+                }
+
                 call.respond(
                     HttpStatusCode.Unauthorized,
                     ErrorResponse(

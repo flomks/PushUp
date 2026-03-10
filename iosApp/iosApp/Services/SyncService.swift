@@ -1,5 +1,6 @@
 import Foundation
 import os.log
+import Shared
 
 // MARK: - SyncState
 
@@ -165,7 +166,7 @@ final class SyncService: ObservableObject {
         logger.info("SyncService started.")
     }
 
-    /// Triggers a manual sync operation.
+    /// Triggers a manual sync operation (upload pending data + pull from cloud).
     ///
     /// This is the primary entry point for:
     /// - The manual "Sync Now" button in Settings.
@@ -188,60 +189,67 @@ final class SyncService: ObservableObject {
         syncState = .syncing
         logger.info("Starting sync operation...")
 
-        do {
-            // -------------------------------------------------------------------
-            // KMP SyncManager integration point.
-            //
-            // When Supabase credentials are configured, replace the simulation
-            // below with real KMP calls, e.g.:
-            //
-            //   let syncManager = DIHelper.shared.syncManager()
-            //   let result = try await withCheckedThrowingContinuation { cont in
-            //       syncManager.syncAll { result, error in
-            //           if let error { cont.resume(throwing: error) }
-            //           else { cont.resume(returning: result!) }
-            //       }
-            //   }
-            //   if !result.isFullSuccess { throw SyncError.partialFailure }
-            //
-            // For now, simulate a sync operation with a short delay.
-            // -------------------------------------------------------------------
-            try await Task.sleep(nanoseconds: 1_500_000_000)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            SyncBridge.shared.syncAll(
+                onSuccess: { [weak self] errorSummary in
+                    guard let self else { continuation.resume(); return }
+                    Task { @MainActor in
+                        self.unsyncedCount = 0
+                        self.persistUnsyncedCount()
+                        self.lastSyncDate = Date()
+                        UserDefaults.standard.set(self.lastSyncDate, forKey: Self.lastSyncDateKey)
 
-            // Simulate successful sync: clear unsynced count.
-            unsyncedCount = 0
-            persistUnsyncedCount()
+                        if errorSummary.isEmpty {
+                            self.syncState = .success
+                            self.logger.info("Sync completed successfully.")
+                        } else {
+                            // Partial success — some use-cases failed (e.g. offline for one)
+                            self.syncState = .success
+                            self.logger.warning("Sync completed with partial errors: \(errorSummary, privacy: .private)")
+                        }
 
-            lastSyncDate = Date()
-            UserDefaults.standard.set(lastSyncDate, forKey: Self.lastSyncDateKey)
+                        Task {
+                            try? await Task.sleep(nanoseconds: Self.successDisplayDuration)
+                            if self.syncState == .success { self.syncState = .idle }
+                        }
+                        continuation.resume()
+                    }
+                },
+                onError: { [weak self] errorMessage in
+                    guard let self else { continuation.resume(); return }
+                    Task { @MainActor in
+                        let userMessage = "Sync failed. Please try again."
+                        self.syncState = .error(userMessage)
+                        self.logger.error("Sync failed: \(errorMessage, privacy: .private)")
 
-            syncState = .success
-            logger.info("Sync completed successfully.")
-
-            // Return to idle after a brief success display.
-            try? await Task.sleep(nanoseconds: Self.successDisplayDuration)
-            if syncState == .success {
-                syncState = .idle
-            }
-
-        } catch is CancellationError {
-            // Task was cancelled (e.g. app backgrounded). Reset quietly.
-            syncState = .idle
-            logger.debug("Sync cancelled.")
-        } catch {
-            // Map the internal error to a generic user-facing message so that
-            // raw `localizedDescription` strings (which may contain technical
-            // details or even sensitive path information) are never shown in UI.
-            let userMessage = "Sync failed. Please try again."
-            syncState = .error(userMessage)
-            logger.error("Sync failed: \(error.localizedDescription, privacy: .private)")
-
-            // Return to idle after displaying the error briefly.
-            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
-            if case .error = syncState {
-                syncState = .idle
-            }
+                        Task {
+                            try? await Task.sleep(nanoseconds: Self.errorDisplayDuration)
+                            if case .error = self.syncState { self.syncState = .idle }
+                        }
+                        continuation.resume()
+                    }
+                }
+            )
         }
+    }
+
+    /// Pulls all cloud data into the local database after a successful login.
+    ///
+    /// Call this immediately after login to restore the user's workout history,
+    /// time credits, and other data that was cleared on logout.
+    /// Does NOT change `syncState` — runs silently in the background.
+    func syncFromCloudAfterLogin() {
+        logger.info("Triggering post-login cloud sync to restore user data.")
+        SyncBridge.shared.syncFromCloud(
+            onSuccess: { [weak self] in
+                self?.logger.info("Post-login cloud sync completed.")
+            },
+            onError: { [weak self] errorMessage in
+                self?.logger.warning("Post-login cloud sync failed: \(errorMessage, privacy: .private)")
+                // Non-fatal: the user can still use the app with empty local data.
+                // The periodic sync will retry automatically.
+            }
+        )
     }
 
     /// Records that a workout was completed locally and has not yet been synced.

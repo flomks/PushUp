@@ -194,6 +194,10 @@ final class AuthViewModel: NSObject, ObservableObject {
         isLoading = false
         if result.isSuccess {
             authState = .authenticated
+            // Restore cloud data immediately after login so the user sees
+            // their history, stats, and time credits without waiting for
+            // the next periodic sync.
+            SyncService.shared.syncFromCloudAfterLogin()
         } else {
             authState = .unauthenticated
             errorMessage = result.errorMessage ?? "Login failed."
@@ -219,6 +223,9 @@ final class AuthViewModel: NSObject, ObservableObject {
         isLoading = false
         if result.isSuccess {
             authState = .authenticated
+            // New account: pull any existing cloud data (e.g. if the user
+            // registered on another device previously).
+            SyncService.shared.syncFromCloudAfterLogin()
         } else {
             authState = .unauthenticated
             errorMessage = result.errorMessage ?? "Registration failed."
@@ -270,6 +277,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             if result.isSuccess {
                 authState = .authenticated
+                SyncService.shared.syncFromCloudAfterLogin()
             } else {
                 authState = .unauthenticated
                 errorMessage = result.errorMessage ?? "Apple Sign-In failed."
@@ -318,6 +326,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             if result.errorMessage == nil {
                 // Success — user record created and token stored for both PKCE and implicit flows
                 authState = .authenticated
+                SyncService.shared.syncFromCloudAfterLogin()
             } else {
                 authState = .unauthenticated
                 errorMessage = result.errorMessage
@@ -350,6 +359,10 @@ final class AuthViewModel: NSObject, ObservableObject {
     func restoreSession() async {
         if let _ = await AuthService.shared.getCurrentUser() {
             authState = .authenticated
+            // Trigger a background sync on app relaunch so local data is
+            // refreshed from the cloud (picks up changes from other devices
+            // or sessions since the last time the app was open).
+            SyncService.shared.syncFromCloudAfterLogin()
         } else {
             authState = .unauthenticated
         }
