@@ -234,14 +234,15 @@ class UseCaseTests {
     }
 
     @Test
-    fun startWorkout_throwsWhenActiveSessionExists() = runTest {
+    fun startWorkout_returnsExistingSessionWhenActiveSessionExists() = runTest {
         insertUser()
         insertSession(id = "active-session", userId = "user-1", endedAt = null)
         val useCase = StartWorkoutUseCase(sessionRepo, fixedClock, sequentialIdGenerator)
 
-        assertFailsWith<WorkoutAlreadyActiveException> {
-            useCase("user-1")
-        }
+        // Should return the existing active session instead of throwing.
+        val result = useCase("user-1")
+        assertEquals("active-session", result.id)
+        assertTrue(result.isActive)
     }
 
     @Test
