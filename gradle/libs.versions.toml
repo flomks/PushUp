@@ -24,6 +24,7 @@ ktor = "3.4.0"
 logback = "1.5.18"
 material3 = "1.10.0-alpha05"
 postgresql = "42.7.5"
+auth0-jwks-rsa = "0.23.0"
 sqldelight = "2.2.1"
 
 [libraries]
@@ -90,6 +91,8 @@ hikari-cp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 postgresql-driver = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
 # Logging
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+# Auth0 JWKS provider (for RS256 JWT verification via Supabase JWKS endpoint)
+auth0-jwks-rsa = { module = "com.auth0:jwks-rsa", version.ref = "auth0-jwks-rsa" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

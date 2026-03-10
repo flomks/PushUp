@@ -54,10 +54,15 @@ fun Application.module() {
     configureAuth()
     configureRouting(databaseReady = databaseReady)
 
+    val authMode = when {
+        !System.getenv("SUPABASE_URL").isNullOrBlank() -> "ENABLED (RS256/JWKS)"
+        !System.getenv("SUPABASE_JWT_SECRET").isNullOrBlank() -> "ENABLED (HS256/legacy)"
+        else -> "DISABLED (set SUPABASE_URL or SUPABASE_JWT_SECRET)"
+    }
     log.info("=".repeat(60))
     log.info("PushUp backend ready")
     log.info("  Database: {}", if (databaseReady) "CONNECTED" else "DISABLED (no DATABASE_URL)")
-    log.info("  Auth:     {}", if (System.getenv("SUPABASE_JWT_SECRET").isNullOrBlank()) "DISABLED (no JWT secret)" else "ENABLED")
+    log.info("  Auth:     {}", authMode)
     log.info("  Env:      {}", System.getenv("KTOR_ENV") ?: "development")
     log.info("=".repeat(60))
 }
