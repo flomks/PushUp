@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push Notifications capability.
+	     "development" is used for debug builds (personal team / free account).
+	     When you archive for App Store / TestFlight, Xcode automatically
+	     switches this to "production" via the distribution provisioning profile.
+	     Without this key the app binary has inadequate entitlements and iOS
+	     refuses to launch it with the "invalid code signature" error. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
