@@ -1,5 +1,6 @@
 import Shared
 import UIKit
+import UserNotifications
 
 /// UIApplicationDelegate that initialises the Koin dependency-injection graph
 /// before any KMP-managed object is accessed.
@@ -35,6 +36,41 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    // MARK: - Remote Notification Registration
+
+    /// Called by iOS after a successful APNs registration.
+    /// Forwards the token to the backend so the server can deliver pushes.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task {
+            await PushNotificationService.shared.registerToken(tokenString)
+        }
+    }
+
+    /// Called by iOS when APNs registration fails (e.g. no network, simulator).
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        // Non-fatal: the app works without push notifications.
+        // The next launch will retry registration automatically.
+        print("[PushNotifications] APNs registration failed: \(error.localizedDescription)")
+    }
+
+    /// Called when the user taps a push notification while the app is in the
+    /// background or terminated. Forwards to NotificationManager for routing.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        NotificationManager.shared.handleRemotePush(userInfo: userInfo)
+        completionHandler(.newData)
+    }
+
     // MARK: - Notification Setup
 
     /// Requests notification authorisation on first launch and reschedules
@@ -42,6 +78,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ///
     /// Also suppresses today's recurring notifications if the user has
     /// already completed a workout, and clears the badge count.
+    /// Registers for remote (APNs) notifications so the backend can deliver
+    /// push notifications for friend requests and other social events.
     @MainActor
     private func setupNotifications() async {
         let manager = NotificationManager.shared
@@ -53,11 +91,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // subsequent calls are no-ops when the status is already determined.
         let granted = await manager.requestAuthorisationIfNeeded()
 
-        // If permission is granted and the user had previously enabled
-        // notifications in Settings, reschedule all recurring notifications.
-        // This handles the case where the OS purged pending notifications
-        // (e.g. after a device restart or app update).
         if granted {
+            // Register for remote (APNs) push notifications.
+            // The token is delivered to AppDelegate.didRegisterForRemoteNotifications.
+            UIApplication.shared.registerForRemoteNotifications()
+
             let defaults = UserDefaults.standard
             let notificationsEnabled = defaults.bool(forKey: SettingsKeys.notificationsEnabled)
             if notificationsEnabled {

@@ -6,9 +6,11 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.log
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
 import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.vendors.currentDialect
 import org.jetbrains.exposed.sql.IColumnType
 import org.postgresql.util.PGobject
@@ -252,6 +254,26 @@ object Notifications : Table("notifications") {
 
 
 /**
+ * Stores APNs device tokens for push notification delivery.
+ *
+ * One row per (user, token) pair. A user may have multiple devices.
+ * Tokens are upserted on each app launch so stale tokens are replaced
+ * automatically when Apple rotates them.
+ *
+ * The [platform] column is reserved for future Android (FCM) support.
+ */
+object DeviceTokens : Table("device_tokens") {
+    val id        = uuid("id")
+    val userId    = uuid("user_id").references(Users.id)
+    val token     = text("token")
+    val platform  = text("platform")   // "apns" | "fcm"
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
  *
@@ -305,5 +327,15 @@ fun Application.configureDatabase(): Boolean {
     Database.connect(dataSource)
 
     log.info("Database connection pool ready (pool size: ${hikariConfig.maximumPoolSize})")
+
+    // Create any missing tables that are not yet in the Supabase schema.
+    // This is idempotent -- existing tables are not modified.
+    // Currently only DeviceTokens needs this; all other tables were created
+    // via Supabase migrations before this code was added.
+    transaction {
+        SchemaUtils.createMissingTablesAndColumns(DeviceTokens)
+    }
+    log.info("Schema check complete (device_tokens table ensured)")
+
     return true
 }
