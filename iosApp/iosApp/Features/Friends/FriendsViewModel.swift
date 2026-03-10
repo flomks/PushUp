@@ -59,6 +59,8 @@ struct LeaderboardEntry: Identifiable {
     let pushupCount: Int
     let totalSessions: Int
     let totalEarnedSeconds: Int64
+    /// `true` when this entry represents the currently logged-in user.
+    let isCurrentUser: Bool
 }
 
 // MARK: - Friend stats period
@@ -160,6 +162,13 @@ final class FriendsViewModel: ObservableObject {
     private var leaderboardTask: Task<Void, Never>? = nil
     private var pushObservers: [NSObjectProtocol] = []
 
+    /// The currently logged-in user, resolved once on first leaderboard load.
+    private var currentUser: User? = nil
+    /// All local workout sessions for the current user, kept in sync via DataBridge.
+    private var localSessions: [WorkoutSession] = []
+    /// KMP Flow observation job for local sessions (cancelled on deinit).
+    private var sessionObservationJob: Kotlinx_coroutines_coreJob? = nil
+
     // MARK: Init / deinit
 
     init() {
@@ -176,10 +185,15 @@ final class FriendsViewModel: ObservableObject {
         ) { [weak self] _ in self?.loadFriends() }
 
         pushObservers = [requestObserver, acceptedObserver]
+
+        // Resolve the current user and start observing local sessions so the
+        // self-entry in the leaderboard always reflects up-to-date local data.
+        Task { await self.startObservingOwnSessions() }
     }
 
     deinit {
         pushObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        sessionObservationJob?.cancel(cause: nil)
     }
 
     // MARK: - Search
@@ -410,7 +424,7 @@ final class FriendsViewModel: ObservableObject {
     }
 
     /// Fetches stats for every friend in parallel using async/await + TaskGroup,
-    /// then sorts the results by push-up count descending.
+    /// prepends the current user's own entry, then sorts by push-up count descending.
     ///
     /// - Caps concurrent requests at the current friends count (no artificial limit
     ///   needed since the list is bounded by the API's 20-result search cap).
@@ -434,7 +448,8 @@ final class FriendsViewModel: ObservableObject {
                         return LeaderboardEntry(
                             id: friend.id, displayLabel: friend.displayLabel,
                             usernameLabel: friend.usernameLabel,
-                            pushupCount: 0, totalSessions: 0, totalEarnedSeconds: 0
+                            pushupCount: 0, totalSessions: 0, totalEarnedSeconds: 0,
+                            isCurrentUser: false
                         )
                     }
                     return await self.fetchStatsEntry(for: friend, period: period)
@@ -447,9 +462,74 @@ final class FriendsViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
+        // Add the current user's own entry so they appear in their own leaderboard.
+        let userName = currentUser?.displayName ?? "You"
+        if let own = selfEntry(for: period, displayName: userName) {
+            entries.append(own)
+        }
+
         entries.sort { $0.pushupCount > $1.pushupCount }
         leaderboard = entries
         isLoadingLeaderboard = false
+    }
+
+    // MARK: - Own session observation
+
+    /// Resolves the current user once and starts a live Flow observation of
+    /// their local workout sessions. Called from `init()`.
+    private func startObservingOwnSessions() async {
+        guard let user = await AuthService.shared.getCurrentUser() else { return }
+        currentUser = user
+        sessionObservationJob = DataBridge.shared.observeSessions(userId: user.id) { [weak self] sessions in
+            self?.localSessions = sessions
+        }
+    }
+
+    /// Builds a `LeaderboardEntry` for the current user by summing their local
+    /// sessions that fall within the given [period] window.
+    ///
+    /// Uses the same period definitions as `FriendsBridge.getFriendStats`:
+    ///   - "day"   → today (midnight … now)
+    ///   - "week"  → last 7 days
+    ///   - "month" → last 30 days
+    private func selfEntry(for period: String, displayName: String) -> LeaderboardEntry? {
+        guard let user = currentUser else { return nil }
+
+        let now = Date()
+        let calendar = Calendar.current
+
+        let cutoff: Date
+        switch period {
+        case "day":
+            cutoff = calendar.startOfDay(for: now)
+        case "week":
+            cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        case "month":
+            cutoff = calendar.date(byAdding: .day, value: -30, to: now) ?? now
+        default:
+            cutoff = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+        }
+
+        let cutoffMs = Int64(cutoff.timeIntervalSince1970 * 1000)
+
+        let filtered = localSessions.filter { session in
+            guard session.endedAt != nil else { return false }   // completed only
+            return session.startedAt >= cutoffMs
+        }
+
+        let pushups = filtered.reduce(0) { $0 + Int($1.pushUpCount) }
+        let sessions = filtered.count
+        let earnedSeconds = filtered.reduce(Int64(0)) { $0 + $1.earnedTimeCreditSeconds }
+
+        return LeaderboardEntry(
+            id: user.id,
+            displayLabel: displayName + " (You)",
+            usernameLabel: nil,
+            pushupCount: pushups,
+            totalSessions: sessions,
+            totalEarnedSeconds: earnedSeconds,
+            isCurrentUser: true
+        )
     }
 
     /// Wraps the callback-based `FriendsBridge.getFriendStats` in async/await.
@@ -465,7 +545,8 @@ final class FriendsViewModel: ObservableObject {
                         usernameLabel: friend.usernameLabel,
                         pushupCount: Int(stats.pushupCount),
                         totalSessions: Int(stats.totalSessions),
-                        totalEarnedSeconds: stats.totalEarnedSeconds
+                        totalEarnedSeconds: stats.totalEarnedSeconds,
+                        isCurrentUser: false
                     ))
                 },
                 onError: { _ in
@@ -477,7 +558,8 @@ final class FriendsViewModel: ObservableObject {
                         usernameLabel: friend.usernameLabel,
                         pushupCount: 0,
                         totalSessions: 0,
-                        totalEarnedSeconds: 0
+                        totalEarnedSeconds: 0,
+                        isCurrentUser: false
                     ))
                 }
             )
