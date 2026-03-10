@@ -28,7 +28,7 @@ import org.koin.dsl.module
  * - [JwtTokenProvider] that reads the stored access token from [TokenStorage].
  *   Throws [IllegalStateException] when the user is not authenticated, which
  *   prevents unauthenticated requests from being sent silently.
- * - [SUPABASE_URL] and [SUPABASE_ANON_KEY] injected via [BuildConfig] fields
+ * - [SUPABASE_URL] and [SUPABASE_PUBLISHABLE_KEY] injected via [BuildConfig] fields
  *   (set from `local.properties` at build time).
  * - [BACKEND_BASE_URL] hardcoded to the production server URL.
  * - [IS_DEBUG] set from [android.BuildConfig.DEBUG].
@@ -38,7 +38,7 @@ import org.koin.dsl.module
  */
 fun androidModule(
     supabaseUrl: String,
-    supabaseAnonKey: String,
+    supabasePublishableKey: String,
     isDebug: Boolean,
 ) = module {
     // Platform database driver
@@ -85,8 +85,8 @@ fun androidModule(
     // Supabase project URL -- injected from local.properties via BuildConfig.
     single<String>(named(SUPABASE_URL)) { supabaseUrl }
 
-    // Supabase anon (public) API key -- injected from local.properties via BuildConfig.
-    single<String>(named(SUPABASE_ANON_KEY)) { supabaseAnonKey }
+    // Supabase publishable (public) API key -- injected from local.properties via BuildConfig.
+    single<String>(named(SUPABASE_PUBLISHABLE_KEY)) { supabasePublishableKey }
 
     // Custom Ktor backend base URL -- hardcoded so it persists across builds
     // without requiring manual configuration or GitHub secrets.
@@ -108,7 +108,7 @@ fun androidModule(
  *         initKoin(
  *             context = this,
  *             supabaseUrl = BuildConfig.SUPABASE_URL,
- *             supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY,
+ *             supabasePublishableKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
  *             isDebug = BuildConfig.DEBUG,
  *         )
  *     }
@@ -123,7 +123,7 @@ fun androidModule(
  * @param context        The application [Context] used to initialise the Android
  *                       Koin extension and to create the SQLite driver.
  * @param supabaseUrl    Supabase project URL (from BuildConfig / local.properties).
- * @param supabaseAnonKey Supabase anon key (from BuildConfig / local.properties).
+ * @param supabasePublishableKey Supabase publishable key (from BuildConfig / local.properties).
  * @param isDebug        When `true`, Koin logs at [Level.DEBUG] to surface binding
  *                       warnings during development.
  * @param extraModules   Additional Koin modules (e.g. the presentation module).
@@ -131,7 +131,7 @@ fun androidModule(
 fun initKoin(
     context: Context,
     supabaseUrl: String = "",
-    supabaseAnonKey: String = "",
+    supabasePublishableKey: String = "",
     isDebug: Boolean = false,
     vararg extraModules: Module,
 ) {
@@ -139,7 +139,7 @@ fun initKoin(
         androidLogger(if (isDebug) Level.DEBUG else Level.ERROR)
         androidContext(context)
         modules(
-            listOf(androidModule(supabaseUrl, supabaseAnonKey, isDebug)) +
+            listOf(androidModule(supabaseUrl, supabasePublishableKey, isDebug)) +
                 sharedModules +
                 extraModules.toList()
         )

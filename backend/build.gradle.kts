@@ -50,6 +50,11 @@ dependencies {
     implementation(libs.ktor.serialization.json)
     implementation(libs.kotlinx.serialization.json)
 
+    // Auth0 JWKS provider -- for RS256 JWT verification via Supabase JWKS endpoint.
+    // Already a transitive dependency of ktor-server-auth-jwt; declared explicitly
+    // so the import is stable and the version is pinned in libs.versions.toml.
+    implementation(libs.auth0.jwks.rsa)
+
     // Logging
     implementation(libs.logback.classic)
 

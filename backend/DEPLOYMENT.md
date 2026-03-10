@@ -45,8 +45,14 @@ KTOR_ENV=production
 PORT=8080
 HOST=0.0.0.0
 
-# Supabase -- aus Supabase Dashboard > Settings > API > JWT Settings
-SUPABASE_JWT_SECRET=dein-jwt-secret-hier
+# Supabase Projekt-URL (fuer JWKS/RS256 -- neue Projekte 2025+)
+# Supabase Dashboard > Project Settings > API > Project URL
+SUPABASE_URL=https://dein-ref.supabase.co
+
+# JWT Secret (nur fuer Legacy-Projekte mit HS256 -- vor 2025)
+# Supabase Dashboard > Settings > API > JWT Settings > JWT Secret
+# Bei neuen Projekten (RS256) weglassen oder auskommentieren:
+# SUPABASE_JWT_SECRET=dein-jwt-secret-hier
 
 # Format: https://<ref>.supabase.co/auth/v1
 JWT_ISSUER=https://dein-ref.supabase.co/auth/v1
@@ -234,10 +240,17 @@ Alle Variablen stehen in `/opt/pushup/.env` auf dem Server.
 | Variable | Beschreibung | Wo finden |
 |----------|-------------|-----------|
 | `KTOR_ENV` | `production` | Fester Wert |
-| `SUPABASE_JWT_SECRET` | JWT Secret fuer Token-Validierung | Supabase > Settings > API > JWT Settings |
+| `SUPABASE_URL` | Projekt-URL fuer JWKS-Endpoint (neue Projekte, RS256) | Supabase > Project Settings > API |
+| `SUPABASE_JWT_SECRET` | JWT Secret (nur Legacy-Projekte mit HS256) | Supabase > Settings > API > JWT Settings |
 | `JWT_ISSUER` | `https://<ref>.supabase.co/auth/v1` | Supabase Projekt-URL |
 | `DATABASE_URL` | JDBC Connection String | Supabase > Settings > Database > JDBC |
 | `CORS_ALLOWED_HOSTS` | `pushup.weareo.fun` | Deine Domain |
+
+**JWT-Verifikation -- welche Variable setzen?**
+
+- **Neues Projekt (2025+, RS256):** Nur `SUPABASE_URL` setzen. Der Backend holt die Public Keys automatisch vom JWKS-Endpoint. `SUPABASE_JWT_SECRET` weglassen.
+- **Legacy-Projekt (vor 2025, HS256):** Nur `SUPABASE_JWT_SECRET` setzen. `SUPABASE_URL` ist optional.
+- Wenn beide gesetzt sind, hat `SUPABASE_URL` (JWKS) Vorrang.
 
 Nach Aenderung der `.env` Datei Container neu starten:
 ```bash

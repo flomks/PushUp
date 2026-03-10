@@ -39,18 +39,19 @@ import kotlinx.serialization.json.Json
  * | POST   | /auth/v1/token?grant_type=refresh_token       | Token refresh                |
  *
  * ## Authentication
- * Every request includes the `apikey` header (Supabase anon key). Authenticated
- * requests additionally include `Authorization: Bearer <token>`.
+ * Every request includes the `apikey` header (Supabase publishable key).
+ * Authenticated requests additionally include `Authorization: Bearer <token>`.
  *
- * @property httpClient      Configured [HttpClient].
- * @property supabaseUrl     Supabase project base URL, e.g. `https://<ref>.supabase.co`.
- * @property supabaseAnonKey Supabase anon (public) API key.
- * @property clock           Used to compute token expiry timestamps.
+ * @property httpClient             Configured [HttpClient].
+ * @property supabaseUrl            Supabase project base URL, e.g. `https://<ref>.supabase.co`.
+ * @property supabasePublishableKey Supabase publishable (public) API key.
+ *                                  Previously called the "anon key".
+ * @property clock                  Used to compute token expiry timestamps.
  */
 class SupabaseAuthClient(
     private val httpClient: HttpClient,
     private val supabaseUrl: String,
-    private val supabaseAnonKey: String,
+    private val supabasePublishableKey: String,
     private val clock: Clock = Clock.System,
 ) : AuthClient {
 
@@ -70,7 +71,7 @@ class SupabaseAuthClient(
      */
     override suspend fun signUpWithEmail(email: String, password: String): AuthToken {
         val response = httpClient.post("$authBase/signup") {
-            header("apikey", supabaseAnonKey)
+            header("apikey", supabasePublishableKey)
             contentType(ContentType.Application.Json)
             setBody(EmailPasswordRequest(email = email, password = password))
         }
@@ -91,7 +92,7 @@ class SupabaseAuthClient(
      */
     override suspend fun signInWithEmail(email: String, password: String): AuthToken {
         val response = httpClient.post("$authBase/token") {
-            header("apikey", supabaseAnonKey)
+            header("apikey", supabasePublishableKey)
             url.parameters.append("grant_type", "password")
             contentType(ContentType.Application.Json)
             setBody(EmailPasswordRequest(email = email, password = password))
@@ -115,7 +116,7 @@ class SupabaseAuthClient(
      */
     override suspend fun signInWithIdToken(provider: SocialProvider, idToken: String): AuthToken {
         val response = httpClient.post("$authBase/token") {
-            header("apikey", supabaseAnonKey)
+            header("apikey", supabasePublishableKey)
             url.parameters.append("grant_type", "id_token")
             contentType(ContentType.Application.Json)
             setBody(IdTokenRequest(provider = provider.apiValue, idToken = idToken))
@@ -138,7 +139,7 @@ class SupabaseAuthClient(
      */
     override suspend fun exchangeOAuthCode(code: String): AuthToken {
         val response = httpClient.post("$authBase/token") {
-            header("apikey", supabaseAnonKey)
+            header("apikey", supabasePublishableKey)
             url.parameters.append("grant_type", "pkce")
             contentType(ContentType.Application.Json)
             setBody(OAuthCodeRequest(authCode = code))
@@ -160,7 +161,7 @@ class SupabaseAuthClient(
      */
     override suspend fun refreshToken(refreshToken: String): AuthToken {
         val response = httpClient.post("$authBase/token") {
-            header("apikey", supabaseAnonKey)
+            header("apikey", supabasePublishableKey)
             url.parameters.append("grant_type", "refresh_token")
             contentType(ContentType.Application.Json)
             setBody(RefreshTokenRequest(refreshToken = refreshToken))

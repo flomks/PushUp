@@ -25,9 +25,9 @@ import platform.Foundation.NSBundle
  * - [JwtTokenProvider] that reads the stored access token from [TokenStorage].
  *   Throws [IllegalStateException] when the user is not authenticated, which
  *   prevents unauthenticated requests from being sent silently.
- * - [SUPABASE_URL] and [SUPABASE_ANON_KEY] read from the app bundle's
- *   Info.plist (keys: `SupabaseURL` and `SupabaseAnonKey`). These values are
- *   injected at build time via `Config.xcconfig` so they are never hardcoded
+ * - [SUPABASE_URL] and [SUPABASE_PUBLISHABLE_KEY] read from the app bundle's
+ *   Info.plist (keys: `SupabaseURL` and `SupabasePublishableKey`). These values
+ *   are injected at build time via `Config.xcconfig` so they are never hardcoded
  *   in source code.
  * - [IS_DEBUG] hardcoded to `false`. Kotlin/Native has no `BuildConfig`
  *   equivalent. Enable verbose HTTP logging by overriding this binding in a
@@ -83,10 +83,10 @@ val iosModule = module {
             ?: ""
     }
 
-    // Supabase anon (public) API key — read from Info.plist key "SupabaseAnonKey".
-    // Set via SUPABASE_ANON_KEY in Config.xcconfig.
-    single<String>(named(SUPABASE_ANON_KEY)) {
-        NSBundle.mainBundle.objectForInfoDictionaryKey("SupabaseAnonKey") as? String
+    // Supabase publishable (public) API key — read from Info.plist key "SupabasePublishableKey".
+    // Set via SUPABASE_PUBLISHABLE_KEY in Config.xcconfig.
+    single<String>(named(SUPABASE_PUBLISHABLE_KEY)) {
+        NSBundle.mainBundle.objectForInfoDictionaryKey("SupabasePublishableKey") as? String
             ?: ""
     }
 

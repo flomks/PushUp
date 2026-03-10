@@ -19,7 +19,7 @@ class PushUpApplication : Application() {
         initKoin(
             context = this,
             supabaseUrl = BuildConfig.SUPABASE_URL,
-            supabaseAnonKey = BuildConfig.SUPABASE_ANON_KEY,
+            supabasePublishableKey = BuildConfig.SUPABASE_PUBLISHABLE_KEY,
             isDebug = BuildConfig.DEBUG,
             presentationModule,
         )
