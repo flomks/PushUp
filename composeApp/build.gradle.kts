@@ -58,7 +58,9 @@ val localProps = Properties().also { props ->
     if (f.exists()) props.load(f.inputStream())
 }
 val supabaseUrl: String = localProps.getProperty("SUPABASE_URL", "")
-val supabaseAnonKey: String = localProps.getProperty("SUPABASE_ANON_KEY", "")
+// Supabase publishable key (previously called "anon key").
+// Set SUPABASE_PUBLISHABLE_KEY in local.properties.
+val supabasePublishableKey: String = localProps.getProperty("SUPABASE_PUBLISHABLE_KEY", "")
 
 android {
     namespace = "com.flomks.pushup"
@@ -72,9 +74,9 @@ android {
         versionName = "1.0"
 
         // Supabase credentials injected at build time from local.properties.
-        // Add SUPABASE_URL and SUPABASE_ANON_KEY to your local.properties file.
+        // Add SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY to your local.properties file.
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"$supabasePublishableKey\"")
     }
     buildFeatures {
         buildConfig = true

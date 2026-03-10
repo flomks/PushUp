@@ -11,12 +11,14 @@ IPHONEOS_DEPLOYMENT_TARGET=17.0
 // ---------------------------------------------------------------------------
 // Supabase configuration
 // Fill in the values from your Supabase project dashboard:
-//   Authentication > API Settings
+//   Project Settings > API
 // These are injected into Info.plist at build time and read by KoinIOS.kt.
 // NEVER commit real credentials to version control.
 // ---------------------------------------------------------------------------
 SUPABASE_URL=https://ptllenkizeipinpuqapl.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bGxlbmtpemVpcGlucHVxYXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNzAzNTksImV4cCI6MjA4ODY0NjM1OX0.yK-LoeQeEqkk1YTyy0T0JC85l1XiR65av9kdAnjp3s0
+// Supabase publishable key (previously called "anon key").
+// Found in: Supabase Dashboard > Project Settings > API > Project API keys > publishable
+SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bGxlbmtpemVpcGlucHVxYXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNzAzNTksImV4cCI6MjA4ODY0NjM1OX0.yK-LoeQeEqkk1YTyy0T0JC85l1XiR65av9kdAnjp3s0
 
 // ---------------------------------------------------------------------------
 // Google Sign-In

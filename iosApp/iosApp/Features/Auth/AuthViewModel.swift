@@ -39,7 +39,7 @@ enum AuthError: LocalizedError {
         case .googleSignInCancelled:
             return nil
         case .notConfigured:
-            return "Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in Config.xcconfig."
+            return "Supabase is not configured. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in Config.xcconfig."
         case .unknown(let msg):
             return "An error occurred: \(msg)"
         }

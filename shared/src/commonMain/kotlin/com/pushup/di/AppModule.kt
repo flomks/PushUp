@@ -278,14 +278,18 @@ val useCaseModule: Module = module {
 const val SUPABASE_URL = "supabase_url"
 
 /**
- * Named Koin qualifier for the Supabase anon (public) API key.
+ * Named Koin qualifier for the Supabase publishable (public) API key.
+ *
+ * Previously called the "anon key". Supabase renamed it to "publishable key"
+ * in their new key design. The key is still sent as the `apikey` header on
+ * every Supabase request and is safe to embed in client-side code.
  *
  * Bind this in your platform-specific module (or override in tests):
  * ```kotlin
- * single<String>(named(SUPABASE_ANON_KEY)) { BuildConfig.SUPABASE_ANON_KEY }
+ * single<String>(named(SUPABASE_PUBLISHABLE_KEY)) { BuildConfig.SUPABASE_PUBLISHABLE_KEY }
  * ```
  */
-const val SUPABASE_ANON_KEY = "supabase_anon_key"
+const val SUPABASE_PUBLISHABLE_KEY = "supabase_publishable_key"
 
 /**
  * Named Koin qualifier for the Ktor backend base URL.
@@ -342,7 +346,7 @@ const val NETWORK_MONITOR = "network_monitor"
  * Requires the following named bindings to be provided by the platform-specific
  * module before this module is used:
  * - `String` named [SUPABASE_URL]
- * - `String` named [SUPABASE_ANON_KEY]
+ * - `String` named [SUPABASE_PUBLISHABLE_KEY]
  * - `String` named [BACKEND_BASE_URL]
  * - [JwtTokenProvider] named [JWT_TOKEN_PROVIDER]
  *
@@ -367,7 +371,7 @@ val apiModule: Module = module {
         SupabaseClient(
             httpClient = get(),
             supabaseUrl = get(named(SUPABASE_URL)),
-            supabaseAnonKey = get(named(SUPABASE_ANON_KEY)),
+            supabasePublishableKey = get(named(SUPABASE_PUBLISHABLE_KEY)),
             tokenProvider = { tokenProvider.getToken() },
             clock = get(),
         )
@@ -379,7 +383,7 @@ val apiModule: Module = module {
         SupabaseAuthClient(
             httpClient = get(),
             supabaseUrl = get(named(SUPABASE_URL)),
-            supabaseAnonKey = get(named(SUPABASE_ANON_KEY)),
+            supabasePublishableKey = get(named(SUPABASE_PUBLISHABLE_KEY)),
             clock = get(),
         )
     }
@@ -428,7 +432,7 @@ val apiModule: Module = module {
  * list together with their platform-specific module to `startKoin`.
  *
  * Note: [apiModule] is included here but requires the platform-specific module
- * to provide the named string bindings ([SUPABASE_URL], [SUPABASE_ANON_KEY],
+ * to provide the named string bindings ([SUPABASE_URL], [SUPABASE_PUBLISHABLE_KEY],
  * [BACKEND_BASE_URL]) and the JWT token provider ([JWT_TOKEN_PROVIDER]).
  * If you are not yet integrating the API layer, you can exclude [apiModule]
  * from the list and add it later.

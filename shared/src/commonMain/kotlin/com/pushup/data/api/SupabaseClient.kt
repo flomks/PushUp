@@ -32,7 +32,7 @@ import kotlinx.datetime.Instant
  *
  * ## Authentication
  * Every request includes two headers:
- * - `apikey`: the Supabase anon key (required for all PostgREST requests)
+ * - `apikey`: the Supabase publishable key (required for all PostgREST requests)
  * - `Authorization: Bearer <jwt>`: the user's JWT (required for RLS-protected tables)
  *
  * The JWT is fetched lazily on every request via [tokenProvider] so it is always
@@ -48,17 +48,18 @@ import kotlinx.datetime.Instant
  * - Ordering: `?order=column.desc`
  * - `Prefer: return=representation` on POST/PATCH to get the created/updated row back
  *
- * @property httpClient      Configured [HttpClient] (from [createHttpClient]).
- * @property supabaseUrl     Supabase project base URL, e.g. `https://<ref>.supabase.co`.
- * @property supabaseAnonKey Supabase anon (public) API key.
- * @property tokenProvider   Returns the current JWT access token (called on every request).
- * @property clock           Used for timestamp fallbacks when the server omits `updated_at`.
- * @property maxRetries      Max retry attempts for transient errors (default 3).
+ * @property httpClient             Configured [HttpClient] (from [createHttpClient]).
+ * @property supabaseUrl            Supabase project base URL, e.g. `https://<ref>.supabase.co`.
+ * @property supabasePublishableKey Supabase publishable (public) API key.
+ *                                  Previously called the "anon key".
+ * @property tokenProvider          Returns the current JWT access token (called on every request).
+ * @property clock                  Used for timestamp fallbacks when the server omits `updated_at`.
+ * @property maxRetries             Max retry attempts for transient errors (default 3).
  */
 class SupabaseClient(
     private val httpClient: HttpClient,
     private val supabaseUrl: String,
-    private val supabaseAnonKey: String,
+    private val supabasePublishableKey: String,
     private val tokenProvider: suspend () -> String,
     private val clock: Clock = Clock.System,
     maxRetries: Int = 3,
@@ -295,7 +296,7 @@ class SupabaseClient(
      * - `Authorization: Bearer <token>`: proves the user's identity for RLS
      */
     private fun HttpRequestBuilder.supabaseHeaders(token: String) {
-        header("apikey", supabaseAnonKey)
+        header("apikey", supabasePublishableKey)
         bearerAuth(token)
     }
 }
