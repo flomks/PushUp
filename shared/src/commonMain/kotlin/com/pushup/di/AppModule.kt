@@ -387,30 +387,36 @@ val apiModule: Module = module {
     // Custom Ktor backend client
     single {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        val authRepository: AuthRepository = get()
         KtorApiClient(
             httpClient = get(),
             backendBaseUrl = get(named(BACKEND_BASE_URL)),
             tokenProvider = { tokenProvider.getToken() },
+            onRefreshToken = { authRepository.refreshToken() },
         )
     }
 
     // Friendship / user-search API client
     single {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        val authRepository: AuthRepository = get()
         FriendshipApiClient(
             httpClient = get(),
             backendBaseUrl = get(named(BACKEND_BASE_URL)),
             tokenProvider = { tokenProvider.getToken() },
+            onRefreshToken = { authRepository.refreshToken() },
         )
     }
 
     // Notification API client
     single {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        val authRepository: AuthRepository = get()
         NotificationApiClient(
             httpClient = get(),
             backendBaseUrl = get(named(BACKEND_BASE_URL)),
             tokenProvider = { tokenProvider.getToken() },
+            onRefreshToken = { authRepository.refreshToken() },
         )
     }
 }

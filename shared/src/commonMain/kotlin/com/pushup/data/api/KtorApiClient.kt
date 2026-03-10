@@ -38,21 +38,37 @@ import kotlinx.datetime.LocalDate
  * Every request includes `Authorization: Bearer <jwt>`. The token is fetched
  * lazily via [tokenProvider] on every call so it is always fresh.
  *
+ * When a 401 is received, [onRefreshToken] is called (if provided) to force a
+ * token refresh, and the request is retried once.
+ *
  * ## Error handling
  * All HTTP and network errors are mapped to [ApiException] subclasses.
  * Transient errors are retried automatically (see [ApiClientBase.withRetry]).
  *
- * @property httpClient     Configured [HttpClient] (from [createHttpClient]).
- * @property backendBaseUrl Ktor backend base URL, e.g. `https://api.pushup.com`.
- * @property tokenProvider  Returns the current JWT access token.
- * @property maxRetries     Max retry attempts for transient errors (default 3).
+ * @property httpClient      Configured [HttpClient] (from [createHttpClient]).
+ * @property backendBaseUrl  Ktor backend base URL, e.g. `https://api.pushup.com`.
+ * @property tokenProvider   Returns the current JWT access token.
+ * @property onRefreshToken  Optional callback to force a token refresh on 401.
+ * @property maxRetries      Max retry attempts for transient errors (default 3).
  */
 class KtorApiClient(
     private val httpClient: HttpClient,
     private val backendBaseUrl: String,
     private val tokenProvider: suspend () -> String,
+    private val onRefreshToken: (suspend () -> Unit)? = null,
     maxRetries: Int = 3,
 ) : ApiClientBase(maxRetries) {
+
+    /**
+     * Executes [block] with retry logic. Uses [withRetryAndTokenRefresh] when
+     * [onRefreshToken] is configured, otherwise falls back to [withRetry].
+     */
+    private suspend fun <T> retrying(block: suspend () -> T): T =
+        if (onRefreshToken != null) {
+            withRetryAndTokenRefresh(onRefreshToken, block)
+        } else {
+            withRetry(block)
+        }
 
     // =========================================================================
     // Public API
@@ -63,7 +79,7 @@ class KtorApiClient(
      *
      * Calls `GET /api/stats/daily?date=<YYYY-MM-DD>`.
      */
-    suspend fun getDailyStats(date: LocalDate): DailyStats = withRetry {
+    suspend fun getDailyStats(date: LocalDate): DailyStats = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/stats/daily") {
             bearerAuth(token)
@@ -80,7 +96,7 @@ class KtorApiClient(
      *
      * @param weekStart The Monday that starts the ISO week.
      */
-    suspend fun getWeeklyStats(weekStart: LocalDate): WeeklyStats = withRetry {
+    suspend fun getWeeklyStats(weekStart: LocalDate): WeeklyStats = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/stats/weekly") {
             bearerAuth(token)
@@ -95,7 +111,7 @@ class KtorApiClient(
      *
      * Calls `GET /api/stats/monthly?month=<1-12>&year=<YYYY>`.
      */
-    suspend fun getMonthlyStats(month: Int, year: Int): MonthlyStats = withRetry {
+    suspend fun getMonthlyStats(month: Int, year: Int): MonthlyStats = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/stats/monthly") {
             bearerAuth(token)
@@ -131,7 +147,7 @@ class KtorApiClient(
      *
      * Calls `GET /api/stats/streak`.
      */
-    suspend fun getStreak(): StreakDTO = withRetry {
+    suspend fun getStreak(): StreakDTO = retrying {
         fetchStreak()
     }
 
@@ -139,7 +155,7 @@ class KtorApiClient(
     // Private helpers
     // =========================================================================
 
-    private suspend fun fetchTotalStats(): TotalStatsDTO = withRetry {
+    private suspend fun fetchTotalStats(): TotalStatsDTO = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/stats/total") {
             bearerAuth(token)
@@ -147,7 +163,7 @@ class KtorApiClient(
             .body<TotalStatsDTO>()
     }
 
-    private suspend fun fetchStreak(): StreakDTO = withRetry {
+    private suspend fun fetchStreak(): StreakDTO = retrying {
         val token = tokenProvider()
         httpClient.get("$backendBaseUrl/api/stats/streak") {
             bearerAuth(token)

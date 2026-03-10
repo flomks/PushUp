@@ -17,6 +17,9 @@ import kotlinx.serialization.SerializationException
  *
  * - [withRetry]: executes a suspending block with exponential back-off retry
  *   logic for transient [ApiException]s.
+ * - [withRetryAndTokenRefresh]: like [withRetry] but also retries once on
+ *   [ApiException.Unauthorized] by invoking [onRefreshToken] first. Use this
+ *   in clients that have access to a token-refresh callback.
  * - [HttpResponse.expectSuccess]: maps non-2xx HTTP responses to typed
  *   [ApiException] subclasses.
  * - [HttpRequestBuilder.bearerAuth]: convenience extension to add an
@@ -73,6 +76,49 @@ abstract class ApiClientBase(
             }
         }
         throw lastException ?: ApiException.Unknown("All retry attempts exhausted")
+    }
+
+    /**
+     * Executes [block] with automatic retry for transient errors AND a single
+     * reactive retry on [ApiException.Unauthorized].
+     *
+     * When a 401 is received, [onRefreshToken] is called to obtain a fresh token
+     * (the [JwtTokenProvider] implementation will call the auth server). The
+     * [block] is then retried once with the new token. If the second attempt also
+     * returns 401, the exception is rethrown immediately (the session is truly
+     * invalid and the user must log in again).
+     *
+     * This handles the race condition where a token passes the proactive expiry
+     * check in [JwtTokenProvider] but expires before the server processes the
+     * request (e.g. clock skew or a request that takes longer than the remaining
+     * token lifetime).
+     *
+     * @param onRefreshToken Suspend callback that forces a token refresh and
+     *   returns the new access token. Typically delegates to
+     *   [com.pushup.domain.repository.AuthRepository.refreshToken].
+     * @param block The suspending operation to execute. Should call [onRefreshToken]
+     *   (or the token provider) internally to pick up the refreshed token.
+     * @return The result of [block] on success.
+     * @throws ApiException if all retry attempts fail or a non-transient error occurs.
+     */
+    protected suspend fun <T> withRetryAndTokenRefresh(
+        onRefreshToken: suspend () -> Unit,
+        block: suspend () -> T,
+    ): T {
+        return try {
+            withRetry(block)
+        } catch (e: ApiException.Unauthorized) {
+            // Attempt a single token refresh and retry.
+            try {
+                onRefreshToken()
+            } catch (_: Exception) {
+                // If the refresh itself fails, surface the original 401.
+                throw e
+            }
+            // Retry once after refresh -- do NOT wrap in withRetry again to
+            // avoid masking a genuine 401 with repeated refresh attempts.
+            block()
+        }
     }
 
     // =========================================================================
