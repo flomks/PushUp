@@ -115,27 +115,21 @@ open class NotificationService {
         notificationId: UUID,
     ): MarkNotificationReadResult = newSuspendedTransaction {
 
-        // Verify the notification exists and belongs to this user.
-        val exists = Notifications.selectAll()
-            .where {
-                (Notifications.id eq notificationId) and
-                (Notifications.userId eq userId)
-            }
-            .count() > 0
-
-        if (!exists) {
-            return@newSuspendedTransaction MarkNotificationReadResult.NotFound
-        }
-
-        val updated = Notifications.update({
-            (Notifications.id eq notificationId) and
-            (Notifications.userId eq userId) and
-            (Notifications.isRead eq false)
+        // A single UPDATE is sufficient: if the row doesn't exist or doesn't
+        // belong to this user, affected == 0 and we return NotFound.
+        // This avoids a separate SELECT round-trip.
+        val affected = Notifications.update({
+            (Notifications.id     eq notificationId) and
+            (Notifications.userId eq userId)
         }) {
             it[isRead] = true
         }
 
-        MarkNotificationReadResult.Success(MarkReadResponse(updatedCount = updated))
+        if (affected == 0) {
+            MarkNotificationReadResult.NotFound
+        } else {
+            MarkNotificationReadResult.Success(MarkReadResponse(updatedCount = affected))
+        }
     }
 
     /**

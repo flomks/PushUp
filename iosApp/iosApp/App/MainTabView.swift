@@ -12,6 +12,7 @@ enum Tab: Int, CaseIterable, Identifiable {
     case workout
     case history
     case stats
+    case friends
     case profile
     case settings
 
@@ -28,6 +29,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return .figureStrengthTraining
         case .history:   return .rectangleStackFill
         case .stats:     return .chartBarFill
+        case .friends:   return .person2Fill
         case .profile:   return .personFill
         case .settings:  return .gearshapeFill
         }
@@ -41,6 +43,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "Workout"
         case .history:   return "History"
         case .stats:     return "Stats"
+        case .friends:   return "Friends"
         case .profile:   return "Profile"
         case .settings:  return "Settings"
         }
@@ -54,6 +57,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "Start a workout here and count your push-ups in real time."
         case .history:   return "All your past workouts will appear here."
         case .stats:     return "Daily, weekly, and monthly statistics will appear here."
+        case .friends:   return "Find friends, manage requests, and see your friends list."
         case .profile:   return "Your profile, avatar, and account information will appear here."
         case .settings:  return "Push-up rate, notifications, and other settings will appear here."
         }
@@ -66,6 +70,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .workout:   return "tab_workout"
         case .history:   return "tab_history"
         case .stats:     return "tab_stats"
+        case .friends:   return "tab_friends"
         case .profile:   return "tab_profile"
         case .settings:  return "tab_settings"
         }
@@ -76,16 +81,29 @@ enum Tab: Int, CaseIterable, Identifiable {
 
 /// Root navigation container for the PushUp app.
 ///
-/// Renders a `TabView` with six tabs. Each tab owns its own `NavigationStack`
+/// Renders a `TabView` with seven tabs. Each tab owns its own `NavigationStack`
 /// so that navigation state is independent per tab. The selected tab is
 /// intentionally **not** persisted -- the app always opens on the Dashboard
 /// tab after a cold launch, as required by Task 3.3.
+///
+/// A single `FriendsViewModel` instance is owned here and passed into
+/// `FriendsView` so that the tab-bar badge and the list share the same data.
+/// Similarly, `NotificationsViewModel` is owned here so the in-app banner
+/// overlay is driven by the same state as the notification list.
 struct MainTabView: View {
 
     /// The currently selected tab. Defaults to `.dashboard` and is never
     /// written to persistent storage, satisfying the "Tab-Auswahl nicht
     /// persistent" acceptance criterion.
     @State private var selectedTab: Tab = .dashboard
+
+    /// Single source of truth for friends data -- shared between the tab-bar
+    /// badge and the FriendsView so they always reflect the same state.
+    @StateObject private var friendsViewModel = FriendsViewModel()
+
+    /// Single source of truth for notifications -- shared between the in-app
+    /// banner overlay and the NotificationsView.
+    @StateObject private var notificationsViewModel = NotificationsViewModel()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -128,6 +146,16 @@ struct MainTabView: View {
                 .tag(Tab.stats)
                 .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
+                // Friends tab -- passes the shared ViewModel so the badge and
+                // the list are always in sync.
+                FriendsView(viewModel: friendsViewModel)
+                    .tabItem {
+                        Label(Tab.friends.label, icon: Tab.friends.icon)
+                    }
+                    .tag(Tab.friends)
+                    .badge(friendsViewModel.pendingRequestCount)
+                    .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
+
                 // Profile tab -- real implementation (Task 3.10)
                 NavigationStack {
                     ProfileView()
@@ -153,6 +181,20 @@ struct MainTabView: View {
             // Offline banner overlay (Task 3.14) -- slides in from the top
             // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
+
+            // In-app notification banner -- slides in when a new unread
+            // notification arrives while the user is in the app.
+            if let banner = notificationsViewModel.banner {
+                NotificationBannerOverlay(item: banner) {
+                    notificationsViewModel.dismissBanner()
+                }
+                .padding(.top, 8)
+                .zIndex(10)
+            }
+        }
+        .onAppear {
+            friendsViewModel.loadIncomingRequests()
+            notificationsViewModel.loadNotifications()
         }
     }
 }
@@ -164,10 +206,6 @@ struct MainTabView: View {
 ///
 /// All display data (icon, title, description) is derived from the `Tab`
 /// enum so there is a single source of truth for tab metadata.
-///
-/// Replace individual cases in `MainTabView.body` with the real feature
-/// views as they are implemented (Task 3.5 Dashboard, Task 3.6 Workout,
-/// Task 3.8 Stats, Task 3.10 Profile, Task 3.11 Settings).
 struct TabPlaceholderView: View {
 
     let tab: Tab

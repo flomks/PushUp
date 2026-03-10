@@ -27,8 +27,10 @@ enum AppIcon: String {
     case chartBarFill       = "chart.bar.fill"
     case person             = "person"
     case personFill         = "person.fill"
+    case person2Fill        = "person.2.fill"
     case gearshape          = "gearshape"
     case gearshapeFill      = "gearshape.fill"
+    case bellBadge          = "bell.badge.fill"
 
     // MARK: - Workout
 
