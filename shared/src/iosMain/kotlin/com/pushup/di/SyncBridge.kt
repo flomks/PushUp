@@ -6,13 +6,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 
 /**
  * iOS-facing bridge that exposes [SyncManager] operations to Swift.
  *
- * All callbacks are dispatched on [Dispatchers.Main] so Swift can update
+ * Sync work runs on [Dispatchers.Default] to keep the main thread free.
+ * All callbacks are dispatched back on [Dispatchers.Main] so Swift can update
  * `@Published` properties directly without `DispatchQueue.main.async`.
  *
  * ## Usage from Swift
@@ -25,7 +27,7 @@ import org.koin.core.component.get
  */
 object SyncBridge : KoinComponent {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // =========================================================================
     // Full sync (upload pending + pull from cloud)
@@ -48,18 +50,19 @@ object SyncBridge : KoinComponent {
             try {
                 val result = get<SyncManager>().syncAll()
                 when (result) {
-                    is SyncResult.Skipped -> onSuccess("")
+                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onSuccess("") }
                     is SyncResult.Completed -> {
                         val errors = listOfNotNull(
                             result.workoutsError?.message,
                             result.timeCreditError?.message,
                             result.fromCloudError?.message,
                         )
-                        onSuccess(errors.joinToString("; "))
+                        withContext(Dispatchers.Main) { onSuccess(errors.joinToString("; ")) }
                     }
                 }
             } catch (e: Exception) {
-                onError(e.message ?: "Sync failed")
+                val msg = e.message ?: "Sync failed"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -85,11 +88,12 @@ object SyncBridge : KoinComponent {
             try {
                 val result = get<SyncManager>().syncFromCloud()
                 when (result) {
-                    is SyncResult.Skipped -> onSuccess()
-                    is SyncResult.Completed -> onSuccess()
+                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onSuccess() }
+                    is SyncResult.Completed -> withContext(Dispatchers.Main) { onSuccess() }
                 }
             } catch (e: Exception) {
-                onError(e.message ?: "Cloud sync failed")
+                val msg = e.message ?: "Cloud sync failed"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -111,9 +115,10 @@ object SyncBridge : KoinComponent {
         scope.launch {
             try {
                 get<SyncManager>().syncAfterWorkout()
-                onSuccess()
+                withContext(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
-                onError(e.message ?: "Post-workout sync failed")
+                val msg = e.message ?: "Post-workout sync failed"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }

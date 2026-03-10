@@ -344,10 +344,11 @@ final class AuthViewModel: NSObject, ObservableObject {
     // MARK: - Sign Out
 
     /// Signs the current user out and returns to the unauthenticated state.
-    func signOut() {
-        Task {
-            await AuthService.shared.logout()
-        }
+    ///
+    /// Awaits the KMP logout (token clear + local DB cleanup) before
+    /// transitioning state so the UI does not freeze while waiting.
+    func signOut() async {
+        await AuthService.shared.logout()
         authState = .unauthenticated
         clearAllFields()
         clearMessages()

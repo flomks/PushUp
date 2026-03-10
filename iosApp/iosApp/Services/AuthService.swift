@@ -24,8 +24,11 @@ struct AuthServiceResult {
 /// Uses SafeAuthBridge (Kotlin object) which catches ALL exceptions in Kotlin
 /// and returns SafeAuthResult. This prevents Kotlin exceptions from crashing
 /// the iOS app when they cross the Kotlin/Swift boundary.
-@MainActor
-final class AuthService {
+///
+/// All methods are NOT @MainActor — they run on a background thread so that
+/// network I/O does not block the main thread and freeze the UI.
+/// Callers that need to update UI state must hop back to @MainActor themselves.
+final class AuthService: Sendable {
 
     static let shared = AuthService()
     private init() {}
@@ -118,47 +121,52 @@ final class AuthService {
 
     /// Bridges a SafeAuthBridge completionHandler call to async/await.
     ///
+    /// Explicitly runs on a background thread (Task.detached) so that the
+    /// KMP network I/O does not block the main thread and freeze the UI.
+    ///
     /// SafeAuthBridge methods NEVER throw — they always return SafeAuthResult.
     /// The completionHandler signature is: (SafeAuthResult?, Error?) -> Void
     /// Since SafeAuthBridge catches all exceptions, error is always nil.
     private func callSafeBridge(
         _ call: @escaping (@escaping (SafeAuthResult?, Error?) -> Void) -> Void
     ) async -> AuthServiceResult {
-        do {
-            let kmpResult: SafeAuthResult = try await withCheckedThrowingContinuation { continuation in
-                let lock = NSLock()
-                var hasResumed = false
-                call { result, error in
-                    lock.lock()
-                    guard !hasResumed else { lock.unlock(); return }
-                    hasResumed = true
-                    lock.unlock()
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else if let result = result {
-                        continuation.resume(returning: result)
-                    } else {
-                        continuation.resume(throwing: NSError(
-                            domain: "AuthService",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
-                        ))
+        // Hop off the main thread so network I/O does not block the UI.
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let kmpResult: SafeAuthResult = try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    call { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else if let result = result {
+                            continuation.resume(returning: result)
+                        } else {
+                            continuation.resume(throwing: NSError(
+                                domain: "AuthService",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
+                            ))
+                        }
                     }
                 }
+                // Map SafeAuthResult -> AuthServiceResult
+                if let user = kmpResult.user {
+                    return .success(user)
+                } else if let errorMsg = kmpResult.errorMessage {
+                    return .failure(errorMsg)
+                } else {
+                    // No user and no error — e.g. getCurrentUser when not logged in
+                    return AuthServiceResult(user: nil, errorMessage: nil)
+                }
+            } catch {
+                // This should never happen since SafeAuthBridge catches all exceptions.
+                return .failure("An unexpected error occurred: \(error.localizedDescription)")
             }
-            // Map SafeAuthResult -> AuthServiceResult
-            if let user = kmpResult.user {
-                return .success(user)
-            } else if let errorMsg = kmpResult.errorMessage {
-                return .failure(errorMsg)
-            } else {
-                // No user and no error — e.g. getCurrentUser when not logged in
-                return AuthServiceResult(user: nil, errorMessage: nil)
-            }
-        } catch {
-            // This should never happen since SafeAuthBridge catches all exceptions.
-            // But just in case:
-            return .failure("An unexpected error occurred: \(error.localizedDescription)")
-        }
+        }.value
     }
 }

@@ -108,7 +108,7 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
             // ProfileViewModel posts this notification when the user signs out
             // or deletes their account. Transition back to the auth flow.
-            authViewModel.signOut()
+            Task { await authViewModel.signOut() }
         }
     }
 }
