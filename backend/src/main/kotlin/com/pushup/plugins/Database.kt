@@ -8,12 +8,48 @@ import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
+import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
 import org.jetbrains.exposed.sql.vendors.currentDialect
+import org.jetbrains.exposed.sql.IColumnType
 import org.postgresql.util.PGobject
 
 // ---------------------------------------------------------------------------
 // PostgreSQL custom enum column helper
 // ---------------------------------------------------------------------------
+
+/**
+ * Exposed [IColumnType] for PostgreSQL `jsonb` columns.
+ *
+ * Stores and retrieves JSON as a plain [String] in Kotlin, but wraps it in a
+ * [PGobject] with type `"jsonb"` when sending to PostgreSQL so the driver
+ * uses the correct wire type instead of `character varying`.
+ */
+class JsonbColumnType : IColumnType<String> {
+    override var nullable: Boolean = false
+
+    override fun sqlType(): String = "jsonb"
+
+    override fun valueFromDB(value: Any): String = when (value) {
+        is PGobject -> value.value ?: "{}"
+        is String   -> value
+        else        -> value.toString()
+    }
+
+    override fun notNullValueToDB(value: String): Any =
+        PGobject().apply {
+            type = "jsonb"
+            this.value = value
+        }
+
+    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+        val pgObj = if (value == null) {
+            PGobject().apply { type = "jsonb"; this.value = null }
+        } else {
+            PGobject().apply { type = "jsonb"; this.value = value.toString() }
+        }
+        stmt[index] = pgObj
+    }
+}
 
 /**
  * Creates an Exposed column that maps to a PostgreSQL custom enum type.
@@ -59,6 +95,22 @@ inline fun <reified T> Table.pgEnum(
 interface PgEnumValue {
     val pgValue: String
 }
+
+/**
+ * Creates an Exposed column that maps to a PostgreSQL `jsonb` column.
+ *
+ * Exposed's built-in [text] column sends values as `character varying`, which
+ * PostgreSQL rejects when the target column type is `jsonb`:
+ * "column is of type jsonb but expression is of type character varying".
+ *
+ * This helper wraps the string value in a [PGobject] with type `"jsonb"` so
+ * the JDBC driver sends it with the correct PostgreSQL type, satisfying the
+ * strict type-matching requirement without requiring explicit SQL casts.
+ *
+ * @param columnName The database column name.
+ */
+fun Table.jsonb(columnName: String): Column<String> =
+    registerColumn(columnName, JsonbColumnType())
 
 // ---------------------------------------------------------------------------
 // Friendship status values -- mirror the public.friendship_status PostgreSQL enum
@@ -190,7 +242,7 @@ object Notifications : Table("notifications") {
     val userId    = uuid("user_id").references(Users.id)
     val type      = pgEnum<NotificationType>("type", "notification_type")
     val actorId   = uuid("actor_id").references(Users.id).nullable()
-    val payload   = text("payload")
+    val payload   = jsonb("payload")
     val isRead    = bool("is_read")
     val createdAt = timestampWithTimeZone("created_at")
     val updatedAt = timestampWithTimeZone("updated_at")
