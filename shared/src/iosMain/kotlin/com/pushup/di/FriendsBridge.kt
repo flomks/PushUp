@@ -9,21 +9,23 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 
 /**
  * iOS-facing bridge that exposes friendship operations to Swift.
  *
- * All callbacks are dispatched on [Dispatchers.Main] so Swift ViewModels
- * can update @Published properties directly.
+ * Network/IO work runs on [Dispatchers.Default] to keep the main thread free.
+ * All callbacks are dispatched back on [Dispatchers.Main] so Swift ViewModels
+ * can update @Published properties directly without DispatchQueue.main.async.
  *
  * Error messages passed to [onError] are user-facing strings only --
  * internal exception details are never forwarded to the UI layer.
  */
 object FriendsBridge : KoinComponent {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // =========================================================================
     // User search
@@ -36,9 +38,11 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                onResult(get<FriendshipRepository>().searchUsers(query))
+                val results = get<FriendshipRepository>().searchUsers(query)
+                withContext(Dispatchers.Main) { onResult(results) }
             } catch (e: Exception) {
-                onError("Search failed: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Search failed: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -54,9 +58,11 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                onResult(get<FriendshipRepository>().sendFriendRequest(receiverId))
+                val friendship = get<FriendshipRepository>().sendFriendRequest(receiverId)
+                withContext(Dispatchers.Main) { onResult(friendship) }
             } catch (e: Exception) {
-                onError("Could not send friend request: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Could not send friend request: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -71,9 +77,11 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                onResult(get<FriendshipRepository>().getIncomingFriendRequests())
+                val requests = get<FriendshipRepository>().getIncomingFriendRequests()
+                withContext(Dispatchers.Main) { onResult(requests) }
             } catch (e: Exception) {
-                onError("Could not load friend requests: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Could not load friend requests: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -90,9 +98,11 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                onResult(get<FriendshipRepository>().respondToFriendRequest(friendshipId, accept))
+                val friendship = get<FriendshipRepository>().respondToFriendRequest(friendshipId, accept)
+                withContext(Dispatchers.Main) { onResult(friendship) }
             } catch (e: Exception) {
-                onError("Could not respond to the request: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Could not respond to the request: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -107,9 +117,11 @@ object FriendsBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                onResult(get<FriendshipRepository>().getFriends())
+                val friends = get<FriendshipRepository>().getFriends()
+                withContext(Dispatchers.Main) { onResult(friends) }
             } catch (e: Exception) {
-                onError("Could not load friends: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Could not load friends: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }
@@ -126,9 +138,10 @@ object FriendsBridge : KoinComponent {
         scope.launch {
             try {
                 get<FriendshipRepository>().removeFriend(friendId)
-                onSuccess()
+                withContext(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
-                onError("Could not remove friend: ${e.message ?: e::class.simpleName ?: "unknown error"}")
+                val msg = "Could not remove friend: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
             }
         }
     }

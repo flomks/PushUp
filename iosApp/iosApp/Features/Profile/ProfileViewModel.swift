@@ -337,14 +337,14 @@ final class ProfileViewModel: ObservableObject {
 
     /// Signs the current user out and returns to the unauthenticated state.
     ///
-    /// Clears the stored Supabase session token via the KMP LogoutUseCase,
-    /// then posts a notification so the root view transitions back to the
-    /// login screen.
+    /// Awaits the KMP logout (token clear + local DB cleanup) before posting
+    /// the sign-out notification so the root view transitions back to the
+    /// login screen only after the session is fully cleared.
     func signOut() {
         Task {
             await AuthService.shared.logout()
+            NotificationCenter.default.post(name: .userDidSignOut, object: nil)
         }
-        NotificationCenter.default.post(name: .userDidSignOut, object: nil)
     }
 
     /// Permanently deletes the user's account after confirmation.

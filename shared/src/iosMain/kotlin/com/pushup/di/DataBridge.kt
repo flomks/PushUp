@@ -16,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -35,8 +36,9 @@ import org.koin.core.component.get
  *   call a completion handler when done.
  *
  * ## Threading
- * All callbacks are dispatched on [Dispatchers.Main] so Swift ViewModels
- * can update `@Published` properties directly without `DispatchQueue.main.async`.
+ * IO/network work runs on [Dispatchers.Default] to keep the main thread free.
+ * All callbacks are dispatched back on [Dispatchers.Main] so Swift ViewModels
+ * can update `@Published` properties without `DispatchQueue.main.async`.
  *
  * ## Usage from Swift
  * ```swift
@@ -50,7 +52,7 @@ import org.koin.core.component.get
  */
 object DataBridge : KoinComponent {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // =========================================================================
     // Session observation
@@ -71,7 +73,9 @@ object DataBridge : KoinComponent {
         get<WorkoutSessionRepository>()
             .observeAllByUserId(userId)
             .catch { /* ignore errors — best-effort live updates */ }
-            .collect { sessions -> onUpdate(sessions) }
+            .collect { sessions ->
+                withContext(Dispatchers.Main) { onUpdate(sessions) }
+            }
     }
 
     // =========================================================================
@@ -93,7 +97,9 @@ object DataBridge : KoinComponent {
         get<TimeCreditRepository>()
             .observeCredit(userId)
             .catch { /* ignore errors — best-effort live updates */ }
-            .collect { credit -> onUpdate(credit) }
+            .collect { credit ->
+                withContext(Dispatchers.Main) { onUpdate(credit) }
+            }
     }
 
     // =========================================================================
@@ -113,9 +119,9 @@ object DataBridge : KoinComponent {
         scope.launch {
             try {
                 val records = get<PushUpRecordRepository>().getBySessionId(sessionId)
-                onResult(records)
+                withContext(Dispatchers.Main) { onResult(records) }
             } catch (_: Exception) {
-                onResult(emptyList())
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
             }
         }
     }
@@ -136,9 +142,9 @@ object DataBridge : KoinComponent {
         scope.launch {
             try {
                 val credit = get<GetTimeCreditUseCase>().invoke(userId)
-                onResult(credit)
+                withContext(Dispatchers.Main) { onResult(credit) }
             } catch (_: Exception) {
-                onResult(null)
+                withContext(Dispatchers.Main) { onResult(null) }
             }
         }
     }
@@ -158,18 +164,17 @@ object DataBridge : KoinComponent {
             try {
                 val localDate = LocalDate.parse(date)
                 val stats = get<GetDailyStatsUseCase>().invoke(userId, localDate)
-                onResult(
-                    DailyStatsResult(
-                        totalPushUps = stats?.totalPushUps ?: 0,
-                        totalSessions = stats?.totalSessions ?: 0,
-                        totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
-                        averageQuality = stats?.averageQuality?.toDouble() ?: 0.0,
-                        averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
-                        bestSession = stats?.bestSession ?: 0,
-                    )
+                val result = DailyStatsResult(
+                    totalPushUps = stats?.totalPushUps ?: 0,
+                    totalSessions = stats?.totalSessions ?: 0,
+                    totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
+                    averageQuality = stats?.averageQuality?.toDouble() ?: 0.0,
+                    averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
+                    bestSession = stats?.bestSession ?: 0,
                 )
+                withContext(Dispatchers.Main) { onResult(result) }
             } catch (_: Exception) {
-                onResult(DailyStatsResult(0, 0, 0L, 0.0, 0.0, 0))
+                withContext(Dispatchers.Main) { onResult(DailyStatsResult(0, 0, 0L, 0.0, 0.0, 0)) }
             }
         }
     }
@@ -199,18 +204,17 @@ object DataBridge : KoinComponent {
                         bestSession = day.bestSession,
                     )
                 } ?: emptyList()
-                onResult(
-                    WeeklyStatsResult(
-                        totalPushUps = stats?.totalPushUps ?: 0,
-                        totalSessions = stats?.totalSessions ?: 0,
-                        totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
-                        averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
-                        bestSession = stats?.bestSession ?: 0,
-                        dailyBreakdown = dailyList,
-                    )
+                val result = WeeklyStatsResult(
+                    totalPushUps = stats?.totalPushUps ?: 0,
+                    totalSessions = stats?.totalSessions ?: 0,
+                    totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
+                    averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
+                    bestSession = stats?.bestSession ?: 0,
+                    dailyBreakdown = dailyList,
                 )
+                withContext(Dispatchers.Main) { onResult(result) }
             } catch (_: Exception) {
-                onResult(WeeklyStatsResult(0, 0, 0L, 0.0, 0, emptyList()))
+                withContext(Dispatchers.Main) { onResult(WeeklyStatsResult(0, 0, 0L, 0.0, 0, emptyList())) }
             }
         }
     }
@@ -227,21 +231,20 @@ object DataBridge : KoinComponent {
         scope.launch {
             try {
                 val stats = get<GetTotalStatsUseCase>().invoke(userId)
-                onResult(
-                    TotalStatsResult(
-                        totalPushUps = stats?.totalPushUps ?: 0,
-                        totalSessions = stats?.totalSessions ?: 0,
-                        totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
-                        totalSpentSeconds = stats?.totalSpentSeconds ?: 0L,
-                        averageQuality = stats?.averageQuality?.toDouble() ?: 0.0,
-                        averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
-                        bestSession = stats?.bestSession ?: 0,
-                        currentStreakDays = stats?.currentStreakDays ?: 0,
-                        longestStreakDays = stats?.longestStreakDays ?: 0,
-                    )
+                val result = TotalStatsResult(
+                    totalPushUps = stats?.totalPushUps ?: 0,
+                    totalSessions = stats?.totalSessions ?: 0,
+                    totalEarnedSeconds = stats?.totalEarnedSeconds ?: 0L,
+                    totalSpentSeconds = stats?.totalSpentSeconds ?: 0L,
+                    averageQuality = stats?.averageQuality?.toDouble() ?: 0.0,
+                    averagePushUpsPerSession = stats?.averagePushUpsPerSession?.toDouble() ?: 0.0,
+                    bestSession = stats?.bestSession ?: 0,
+                    currentStreakDays = stats?.currentStreakDays ?: 0,
+                    longestStreakDays = stats?.longestStreakDays ?: 0,
                 )
+                withContext(Dispatchers.Main) { onResult(result) }
             } catch (_: Exception) {
-                onResult(TotalStatsResult(0, 0, 0L, 0L, 0.0, 0.0, 0, 0, 0))
+                withContext(Dispatchers.Main) { onResult(TotalStatsResult(0, 0, 0L, 0L, 0.0, 0.0, 0, 0, 0)) }
             }
         }
     }

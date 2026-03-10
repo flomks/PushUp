@@ -109,7 +109,13 @@ final class FriendsViewModel: ObservableObject {
 
     private func performSearch(query: String) async {
         isSearching = true
-        return await withCheckedContinuation { continuation in
+        searchError = nil
+
+        // Bridge the KMP callback into async/await.
+        // FriendsBridge dispatches callbacks on Dispatchers.Main so the
+        // continuation is always resumed on the main thread — safe for
+        // @MainActor ViewModels.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             FriendsBridge.shared.searchUsers(
                 query: query,
                 onResult: { [weak self] results in
