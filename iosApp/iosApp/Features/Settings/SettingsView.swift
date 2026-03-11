@@ -625,7 +625,7 @@ struct SettingsView: View {
 // MARK: - SettingsSectionHeader
 
 /// Styled section header matching iOS grouped list style.
-private struct SettingsSectionHeader: View {
+struct SettingsSectionHeader: View {
     let title: String
 
     init(_ title: String) {
