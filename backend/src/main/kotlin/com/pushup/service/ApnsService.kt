@@ -147,12 +147,14 @@ object ApnsService {
                 setBody(payload)
             }
 
-            if (response.status == HttpStatusCode.OK) {
+            val statusCode = response.status
+            val responseBody = try { response.bodyAsText() } catch (e: Exception) { "<unreadable: ${e.message}>" }
+
+            if (statusCode == HttpStatusCode.OK) {
                 logger.info("APNs push delivered to token=${deviceToken.take(8)}...")
             } else {
-                val responseBody = response.bodyAsText()
                 logger.warn(
-                    "APNs push failed: status=${response.status} " +
+                    "APNs push failed: status=$statusCode " +
                     "token=${deviceToken.take(8)}... body=$responseBody"
                 )
             }
