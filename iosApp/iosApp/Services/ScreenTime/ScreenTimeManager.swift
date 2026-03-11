@@ -195,27 +195,40 @@ final class ScreenTimeManager: ObservableObject {
         // Store available seconds so the Extension can read it.
         sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.availableSeconds)
 
-        // Snapshot the credit at the start of monitoring for today so the
-        // DeviceActivity Extension can calculate how many seconds were consumed.
-        // Only set if not already set for today (avoid overwriting mid-day).
-        let todayKey = ScreenTimeConstants.Keys.startOfDaySeconds
+        // Snapshot the credit at the start of today so the DeviceActivity
+        // Extension can calculate how many seconds were consumed.
+        // Only set once per calendar day to avoid overwriting mid-day.
         let calendar = Calendar.current
         let lastSnapshotDate = sharedDefaults?.object(forKey: "screentime.startOfDayDate") as? Date
         if lastSnapshotDate == nil || !calendar.isDateInToday(lastSnapshotDate!) {
-            sharedDefaults?.set(availableSeconds, forKey: todayKey)
+            sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.startOfDaySeconds)
             sharedDefaults?.set(Date(), forKey: "screentime.startOfDayDate")
         }
+
+        // IMPORTANT: DeviceActivityEvent.threshold measures CUMULATIVE usage
+        // since midnight, not remaining time. To block after `availableSeconds`
+        // more usage, we must add the usage already accumulated today.
+        //
+        // alreadyUsedToday = startOfDayCredit - currentCredit
+        // limitThreshold   = alreadyUsedToday + availableSeconds
+        //
+        // Example: started day with 30 min, now have 3 min left.
+        //   alreadyUsedToday = 1800 - 180 = 1620s (27 min)
+        //   limitThreshold   = 1620 + 180 = 1800s (30 min total)
+        // The system fires when cumulative usage hits 30 min, which is
+        // exactly 3 more minutes from now.
+        let startOfDaySeconds = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.startOfDaySeconds) ?? availableSeconds
+        let alreadyUsedToday = max(0, startOfDaySeconds - availableSeconds)
+        let cumulativeLimitSeconds = alreadyUsedToday + availableSeconds
+
+        // Warning threshold: 5 minutes before the limit (minimum 1 minute).
+        let cumulativeWarningSeconds = max(60, cumulativeLimitSeconds - 300)
 
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
             intervalEnd: DateComponents(hour: 23, minute: 59),
             repeats: true
         )
-
-        // Warning threshold: 5 minutes before credit runs out (or 80%, whichever is less).
-        let warningSeconds = min(availableSeconds - 300, Int(Double(availableSeconds) * 0.8))
-        let warningThreshold = makeComponents(seconds: max(60, warningSeconds))
-        let limitThreshold = makeComponents(seconds: availableSeconds)
 
         do {
             try activityCenter.startMonitoring(
@@ -226,19 +239,19 @@ final class ScreenTimeManager: ObservableObject {
                         applications: selection.applicationTokens,
                         categories: selection.categoryTokens,
                         webDomains: selection.webDomainTokens,
-                        threshold: warningThreshold
+                        threshold: makeComponents(seconds: cumulativeWarningSeconds)
                     ),
                     ScreenTimeConstants.Events.limitReached: DeviceActivityEvent(
                         applications: selection.applicationTokens,
                         categories: selection.categoryTokens,
                         webDomains: selection.webDomainTokens,
-                        threshold: limitThreshold
+                        threshold: makeComponents(seconds: cumulativeLimitSeconds)
                     )
                 ]
             )
         } catch {
-            // DeviceActivityCenter throws if monitoring is already active
-            // for this activity name -- that is fine, we just update the stored value.
+            // startMonitoring throws if the activity is already registered.
+            // Callers must call stopMonitoring() first to update the threshold.
         }
     }
 
