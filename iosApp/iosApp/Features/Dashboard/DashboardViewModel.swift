@@ -102,11 +102,32 @@ final class DashboardViewModel: ObservableObject {
         }
         let userId = user.id
 
-        // Observe time credit — updates availableSeconds and totalEarnedSeconds
+        // Observe time credit — updates availableSeconds and totalEarnedSeconds,
+        // and drives app blocking state via ScreenTimeManager.
         creditObservationJob = DataBridge.shared.observeTimeCredit(userId: userId) { [weak self] credit in
             guard let self else { return }
-            self.availableSeconds   = Int(credit?.availableSeconds ?? 0)
+            let available = Int(credit?.availableSeconds ?? 0)
+            self.availableSeconds   = available
             self.totalEarnedSeconds = Int(credit?.totalEarnedSeconds ?? 0)
+
+            // Sync app-blocking state with the current credit balance.
+            // When credit reaches zero, activate the shield. When credit is
+            // positive again (e.g. after a workout), remove the shield.
+            let screenTime = ScreenTimeManager.shared
+            if available <= 0 {
+                // Only block if Screen Time is authorized and a selection exists.
+                if screenTime.authorizationStatus == .authorized,
+                   screenTime.activitySelection != nil {
+                    if !screenTime.isBlocking {
+                        screenTime.blockApps()
+                    }
+                }
+            } else {
+                // Credit is available — ensure apps are unblocked.
+                if screenTime.isBlocking {
+                    screenTime.unblockApps()
+                }
+            }
         }
 
         // Observe sessions — rebuilds daily stats, weekly chart, and last session
