@@ -208,7 +208,13 @@ open class FriendshipService(
 
         if (existingRow != null) {
             val status = existingRow[Friendships.status]
-            return@newSuspendedTransaction SendFriendRequestResult.AlreadyExists(status.pgValue)
+            // A previously declined request can be retried: delete the stale
+            // row and fall through to create a fresh pending request below.
+            // Active (pending) or accepted friendships are still blocked.
+            if (status != FriendshipStatus.DECLINED) {
+                return@newSuspendedTransaction SendFriendRequestResult.AlreadyExists(status.pgValue)
+            }
+            Friendships.deleteWhere { Friendships.id eq existingRow[Friendships.id] }
         }
 
         // ------------------------------------------------------------------

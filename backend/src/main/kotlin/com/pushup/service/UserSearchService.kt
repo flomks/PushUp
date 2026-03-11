@@ -28,8 +28,8 @@ import java.util.UUID
  *     - [FriendshipStatusResponse.friend]  -- accepted friendship exists
  *     - [FriendshipStatusResponse.pending] -- a pending request exists in
  *                                             either direction
- *     - [FriendshipStatusResponse.none]    -- no relationship
- * - Blocked users (status = DECLINED) are excluded from the results entirely.
+ *     - [FriendshipStatusResponse.none]    -- no relationship (including
+ *                                             previously declined requests)
  * - Results are capped at [MAX_RESULTS] entries.
  *
  * All database access is performed inside a single suspended transaction so
@@ -90,15 +90,11 @@ open class UserSearchService {
                 peerId to row[Friendships.status]
             }
 
-            // Collect the IDs of users the caller has DECLINED (blocked) so
-            // they can be excluded from search results.
-            val excludedIds: Set<UUID> = friendshipByPeer
-                .filterValues { it == FriendshipStatus.DECLINED }
-                .keys
-
             // ------------------------------------------------------------------
             // 2. Query users matching the search term.
-            //    Exclude: the caller themselves, and any blocked users.
+            //    Exclude only the caller themselves.
+            //    Previously declined requests are shown with status = none so
+            //    the user can find and re-request them.
             // ------------------------------------------------------------------
             val userRows = Users.selectAll()
                 .where {
@@ -110,14 +106,7 @@ open class UserSearchService {
                     // Exclude the caller
                     val notSelf: Op<Boolean> = Users.id neq callerId
 
-                    // Exclude blocked peers
-                    val notBlocked: Op<Boolean> = if (excludedIds.isEmpty()) {
-                        Op.TRUE
-                    } else {
-                        Users.id notInList excludedIds
-                    }
-
-                    matchesQuery and notSelf and notBlocked
+                    matchesQuery and notSelf
                 }
                 .limit(MAX_RESULTS)
                 .toList()
@@ -130,6 +119,8 @@ open class UserSearchService {
                 val status = when (friendshipByPeer[userId]) {
                     FriendshipStatus.ACCEPTED -> FriendshipStatusResponse.friend
                     FriendshipStatus.PENDING  -> FriendshipStatusResponse.pending
+                    // DECLINED and no relationship both map to "none" so the
+                    // user can find and re-request previously declined contacts.
                     else                      -> FriendshipStatusResponse.none
                 }
                 UserSearchResult(
