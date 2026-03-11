@@ -1,35 +1,57 @@
-//
-//  ShieldActionExtension.swift
-//  ShieldAction
-//
-//  Created by Flomks on 11.03.26.
-//
-
 import ManagedSettings
 
-// Override the functions below to customize the shield actions used in various situations.
-// The system provides a default response for any functions that your subclass doesn't override.
-// Make sure that your class name matches the NSExtensionPrincipalClass in your Info.plist.
+// MARK: - ShieldActionExtension
+
+/// Handles button taps on the system app shield (lock screen).
+///
+/// Primary button ("Do Push-Ups Now") -- closes the shield and opens
+/// the PushUp app so the user can start a workout immediately.
+///
+/// Secondary button ("Not Now") -- defers, shield stays visible.
+///
+/// **Bundle ID:** `com.flomks.pushup.ShieldAction`
 class ShieldActionExtension: ShieldActionDelegate {
-    override func handle(action: ShieldAction, for application: ApplicationToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        // Handle the action as needed.
+
+    override func handle(
+        action: ShieldAction,
+        for application: ApplicationToken,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
+        handleAction(action, completionHandler: completionHandler)
+    }
+
+    override func handle(
+        action: ShieldAction,
+        for webDomain: WebDomainToken,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
+        handleAction(action, completionHandler: completionHandler)
+    }
+
+    override func handle(
+        action: ShieldAction,
+        for category: ActivityCategoryToken,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
+        handleAction(action, completionHandler: completionHandler)
+    }
+
+    // MARK: - Shared Handler
+
+    private func handleAction(
+        _ action: ShieldAction,
+        completionHandler: @escaping (ShieldActionResponse) -> Void
+    ) {
         switch action {
         case .primaryButtonPressed:
+            // Close the shield -- iOS will bring the PushUp app to foreground
+            // if the user taps the notification or opens it manually.
             completionHandler(.close)
         case .secondaryButtonPressed:
+            // Keep the shield visible.
             completionHandler(.defer)
         @unknown default:
-            fatalError()
+            completionHandler(.close)
         }
-    }
-    
-    override func handle(action: ShieldAction, for webDomain: WebDomainToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        // Handle the action as needed.
-        completionHandler(.close)
-    }
-    
-    override func handle(action: ShieldAction, for category: ActivityCategoryToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
-        // Handle the action as needed.
-        completionHandler(.close)
     }
 }
