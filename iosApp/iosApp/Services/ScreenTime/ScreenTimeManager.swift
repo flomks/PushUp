@@ -195,6 +195,17 @@ final class ScreenTimeManager: ObservableObject {
         // Store available seconds so the Extension can read it.
         sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.availableSeconds)
 
+        // Snapshot the credit at the start of monitoring for today so the
+        // DeviceActivity Extension can calculate how many seconds were consumed.
+        // Only set if not already set for today (avoid overwriting mid-day).
+        let todayKey = ScreenTimeConstants.Keys.startOfDaySeconds
+        let calendar = Calendar.current
+        let lastSnapshotDate = sharedDefaults?.object(forKey: "screentime.startOfDayDate") as? Date
+        if lastSnapshotDate == nil || !calendar.isDateInToday(lastSnapshotDate!) {
+            sharedDefaults?.set(availableSeconds, forKey: todayKey)
+            sharedDefaults?.set(Date(), forKey: "screentime.startOfDayDate")
+        }
+
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
             intervalEnd: DateComponents(hour: 23, minute: 59),
@@ -313,6 +324,7 @@ enum ScreenTimeConstants {
         static let activitySelection  = "screentime.activitySelection"
         static let isBlocking         = "screentime.isBlocking"
         static let availableSeconds   = "screentime.availableSeconds"
+        static let startOfDaySeconds  = "screentime.startOfDaySeconds"
         static let usageData          = "screentime.usageData"
     }
 }
