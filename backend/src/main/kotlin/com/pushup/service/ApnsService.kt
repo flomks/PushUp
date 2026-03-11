@@ -71,10 +71,16 @@ object ApnsService {
     private const val TOKEN_TTL_SECONDS = 55 * 60L
 
     // -------------------------------------------------------------------------
-    // HTTP client (CIO supports HTTP/2 natively)
+    // HTTP client factory
+    //
+    // A new HttpClient is created for every APNs request and closed immediately
+    // after. This avoids the Ktor CIO HTTP/2 connection-reuse bug that causes
+    // an EOFException ("Unexpected end of stream") when Apple closes the
+    // connection after the first response. Creating a fresh client per request
+    // is slightly less efficient but completely reliable.
     // -------------------------------------------------------------------------
 
-    private val httpClient = HttpClient(CIO) {
+    private fun newHttpClient() = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = 10_000
             connectTimeoutMillis = 5_000
@@ -127,8 +133,12 @@ object ApnsService {
         val payload = buildPayload(title, body, category, data)
         val url = "https://$apnsHost/3/device/$deviceToken"
 
+        // A fresh client is created and closed for each request to avoid the
+        // Ktor CIO HTTP/2 EOFException that occurs when Apple closes the
+        // connection after the first response on a reused connection.
+        val client = newHttpClient()
         try {
-            val response = httpClient.post(url) {
+            val response = client.post(url) {
                 header("authorization", "bearer $token")
                 header("apns-topic", bundleId)
                 header("apns-push-type", "alert")
@@ -138,7 +148,7 @@ object ApnsService {
             }
 
             if (response.status == HttpStatusCode.OK) {
-                logger.debug("APNs push delivered to token=${deviceToken.take(8)}...")
+                logger.info("APNs push delivered to token=${deviceToken.take(8)}...")
             } else {
                 val responseBody = response.bodyAsText()
                 logger.warn(
@@ -150,6 +160,8 @@ object ApnsService {
             logger.error(
                 "APNs HTTP request failed for token=${deviceToken.take(8)}...: ${e.message}", e
             )
+        } finally {
+            client.close()
         }
     }
 
