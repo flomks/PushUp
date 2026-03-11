@@ -9,5 +9,15 @@
 	     Xcode switches this automatically via the distribution provisioning profile. -->
 	<key>aps-environment</key>
 	<string>development</string>
+
+	<!-- Sign In with Apple capability.
+	     Requires the "Sign In with Apple" capability to be enabled for the
+	     App ID in the Apple Developer Portal (Certificates, Identifiers & Profiles).
+	     The value "Default" means the app uses its own App ID as the primary.
+	     This entitlement is required for ASAuthorizationAppleIDProvider to work. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

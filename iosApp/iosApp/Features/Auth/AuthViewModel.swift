@@ -282,6 +282,8 @@ final class AuthViewModel: NSObject, ObservableObject {
             if result.isSuccess {
                 authState = .authenticated
                 SyncService.shared.syncFromCloudAfterLogin()
+                // Register any APNs token that arrived before authentication.
+                await PushNotificationService.shared.registerPendingTokenIfNeeded()
             } else {
                 authState = .unauthenticated
                 errorMessage = result.errorMessage ?? "Apple Sign-In failed."

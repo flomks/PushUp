@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 // MARK: - RegisterView
@@ -31,6 +32,11 @@ struct RegisterView: View {
                 headerSection
                     .padding(.top, AppSpacing.xl)
                     .padding(.bottom, AppSpacing.xl)
+
+                // Quick sign-up with Apple (above the form for discoverability)
+                quickSignUpSection
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.bottom, AppSpacing.lg)
 
                 // Form
                 formCard
@@ -95,6 +101,35 @@ struct RegisterView: View {
             }
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
+    }
+
+    // MARK: - Quick Sign-Up Section
+
+    /// Shows the Apple Sign-In button above the email form so users can
+    /// register with one tap instead of filling out the full form.
+    private var quickSignUpSection: some View {
+        VStack(spacing: AppSpacing.sm) {
+            // Apple Sign-In -- official button required by App Store Guidelines
+            AppleSignInButton {
+                Task { await viewModel.loginWithApple() }
+            }
+            .disabled(viewModel.isLoading)
+            .opacity(viewModel.isLoading ? 0.6 : 1.0)
+
+            // Divider
+            HStack(spacing: AppSpacing.md) {
+                Rectangle()
+                    .fill(AppColors.separator)
+                    .frame(height: 1)
+                Text("or register with email")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textTertiary)
+                    .fixedSize()
+                Rectangle()
+                    .fill(AppColors.separator)
+                    .frame(height: 1)
+            }
+        }
     }
 
     // MARK: - Form Card

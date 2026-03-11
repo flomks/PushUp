@@ -151,10 +151,18 @@
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1620;
 				LastUpgradeCheck = 1620;
-				TargetAttributes = {
-					04A4CCDABCE9EF2600F9039F = {
-						CreatedOnToolsVersion = 16.2;
+			TargetAttributes = {
+				04A4CCDABCE9EF2600F9039F = {
+					CreatedOnToolsVersion = 16.2;
+					SystemCapabilities = {
+						com.apple.Push = {
+							enabled = 1;
+						};
+						com.apple.developer.applesignin = {
+							enabled = 1;
+						};
 					};
+				};
 					A1B2C3D4E5F60004A1B2C3D4 = {
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = 04A4CCDABCE9EF2600F9039F;
