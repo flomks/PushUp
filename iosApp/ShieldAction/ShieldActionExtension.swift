@@ -1,16 +1,26 @@
 import ManagedSettings
+import Foundation
 
 // MARK: - ShieldActionExtension
 
 /// Handles button taps on the system app shield (lock screen).
 ///
-/// Primary button ("Do Push-Ups Now") -- closes the shield and opens
-/// the PushUp app so the user can start a workout immediately.
+/// Primary button ("Do Push-Ups Now") -- sets a flag in the shared App Group
+/// UserDefaults so the main app navigates directly to the Workout tab when
+/// it next becomes active, then closes the shield.
+///
+/// Note: ShieldActionDelegate runs in a sandboxed extension process.
+/// UIApplication.shared is not available, so we cannot open a URL directly.
+/// Instead we write a flag to the shared App Group container. The main app
+/// reads this flag in onReceive(.willEnterForeground) and switches to the
+/// Workout tab automatically.
 ///
 /// Secondary button ("Not Now") -- defers, shield stays visible.
 ///
 /// **Bundle ID:** `com.flomks.pushup.ShieldAction`
 class ShieldActionExtension: ShieldActionDelegate {
+
+    private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
 
     override func handle(
         action: ShieldAction,
@@ -44,12 +54,15 @@ class ShieldActionExtension: ShieldActionDelegate {
     ) {
         switch action {
         case .primaryButtonPressed:
-            // Close the shield -- iOS will bring the PushUp app to foreground
-            // if the user taps the notification or opens it manually.
+            // Signal the main app to navigate to the Workout tab.
+            // The main app reads this flag when it enters the foreground.
+            sharedDefaults?.set(true, forKey: "shield.shouldOpenWorkout")
+            sharedDefaults?.synchronize()
             completionHandler(.close)
+
         case .secondaryButtonPressed:
-            // Keep the shield visible.
             completionHandler(.defer)
+
         @unknown default:
             completionHandler(.close)
         }
