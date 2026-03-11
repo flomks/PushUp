@@ -45,6 +45,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             syncSection
+            screenTimeSection
             timeCreditSection
             cameraSection
             notificationsSection
@@ -226,6 +227,18 @@ struct SettingsView: View {
             Image(icon: .wifiSlash)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(AppColors.textSecondary)
+        }
+    }
+
+    // MARK: - Screen Time Section
+
+    private var screenTimeSection: some View {
+        Section {
+            ScreenTimeSettingsRow()
+        } header: {
+            SettingsSectionHeader("Screen Time")
+        } footer: {
+            Text("Block selected apps when your time credit runs out. Earn credit by doing push-ups.")
         }
     }
 

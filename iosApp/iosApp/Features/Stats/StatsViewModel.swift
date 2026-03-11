@@ -4,19 +4,21 @@ import Shared
 // MARK: - StatsTab
 
 enum StatsTab: Int, CaseIterable, Identifiable {
-    case daily   = 0
-    case weekly  = 1
-    case monthly = 2
-    case total   = 3
+    case daily      = 0
+    case weekly     = 1
+    case monthly    = 2
+    case total      = 3
+    case screenTime = 4
 
     var id: Int { rawValue }
 
     var label: String {
         switch self {
-        case .daily:   return "Daily"
-        case .weekly:  return "Weekly"
-        case .monthly: return "Monthly"
-        case .total:   return "Total"
+        case .daily:      return "Daily"
+        case .weekly:     return "Weekly"
+        case .monthly:    return "Monthly"
+        case .total:      return "Total"
+        case .screenTime: return "Screen"
         }
     }
 }

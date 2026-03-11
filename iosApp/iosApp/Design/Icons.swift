@@ -140,6 +140,26 @@ enum AppIcon: String {
     case icloudAndArrowUp   = "icloud.and.arrow.up"
     case exclamationmarkArrowTriangle2Circlepath = "exclamationmark.arrow.triangle.2.circlepath"
 
+    // MARK: - Screen Time
+
+    case hourglass              = "hourglass"
+    case hourglassFill          = "hourglass.fill"
+    case hourglassBottomHalf    = "hourglass.bottomhalf.filled"
+    case appBadge               = "app.badge"
+    case appBadgeFill           = "app.badge.fill"
+    case lockApp                = "lock.app.dashed"
+    case shieldSlash            = "shield.slash"
+    case shieldSlashFill        = "shield.slash.fill"
+    case phoneAndArrowUp        = "phone.and.waveform"
+    case chartLineUptrendXYAxis = "chart.line.uptrend.xyaxis"
+    case clockArrowForward      = "clock.arrow.2.circlepath"
+    case appWindowBadgePlus     = "macwindow.badge.plus"
+    case listBulletRectangle    = "list.bullet.rectangle"
+    case checkmarkShield        = "checkmark.shield"
+    case checkmarkShieldFill    = "checkmark.shield.fill"
+    case xmarkShield            = "xmark.shield"
+    case xmarkShieldFill        = "xmark.shield.fill"
+
     // MARK: - Misc
 
     case minus              = "minus"
