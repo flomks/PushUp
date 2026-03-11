@@ -251,13 +251,21 @@ final class ScreenTimeManager: ObservableObject {
     }
 
     private func loadPersistedState() {
-        // Restore blocking state
-        isBlocking = sharedDefaults?.bool(forKey: ScreenTimeConstants.Keys.isBlocking) ?? false
-
-        // Restore saved selection
+        // Restore saved selection first so it is available when we re-apply the shield.
         if let data = sharedDefaults?.data(forKey: ScreenTimeConstants.Keys.activitySelection),
            let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
             activitySelection = selection
+        }
+
+        // Restore blocking state. If the app was killed while blocking was active,
+        // the ManagedSettingsStore shield is reset by the system. Re-apply it now
+        // so the shield is immediately active again after relaunch.
+        let wasBlocking = sharedDefaults?.bool(forKey: ScreenTimeConstants.Keys.isBlocking) ?? false
+        if wasBlocking, let selection = activitySelection {
+            applyShield(selection: selection)
+            isBlocking = true
+        } else {
+            isBlocking = false
         }
     }
 
