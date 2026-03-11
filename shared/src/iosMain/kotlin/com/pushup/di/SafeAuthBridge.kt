@@ -90,7 +90,13 @@ object SafeAuthBridge : KoinComponent {
     } catch (e: AuthException.NetworkError) {
         SafeAuthResult(user = null, errorMessage = "Network error. Please check your connection.")
     } catch (e: AuthException.ServerError) {
-        SafeAuthResult(user = null, errorMessage = "Server error (${e.statusCode}). Please try again.")
+        // Surface the real Supabase error message so the cause is visible.
+        // e.serverMessage contains the raw body from Supabase (e.g. "Apple provider is not enabled").
+        // e.message contains the formatted message from mapAuthError.
+        val detail = e.serverMessage?.takeIf { it.isNotBlank() }
+            ?: e.message?.takeIf { it.isNotBlank() }
+            ?: "Please try again."
+        SafeAuthResult(user = null, errorMessage = "Server error (${e.statusCode}): $detail")
     } catch (e: AuthException) {
         SafeAuthResult(user = null, errorMessage = e.message ?: "Authentication failed.")
     } catch (e: Exception) {
