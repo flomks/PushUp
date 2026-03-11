@@ -136,7 +136,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             store.shield.applicationCategories = .specific(selection.categoryTokens)
         }
         if !selection.webDomainTokens.isEmpty {
-            store.shield.webDomainCategories = .specific(selection.webDomainTokens)
+            store.shield.webDomains = selection.webDomainTokens
         }
     }
 
