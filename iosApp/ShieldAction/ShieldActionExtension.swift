@@ -1,63 +1,35 @@
+//
+//  ShieldActionExtension.swift
+//  ShieldAction
+//
+//  Created by Flomks on 11.03.26.
+//
+
 import ManagedSettings
 
-// MARK: - ShieldActionExtension
-
-/// Shield Action Extension.
-///
-/// Handles button taps on the system shield (app lock screen).
-///
-/// **Primary button** ("Do Push-Ups to Earn More"):
-///   Opens the PushUp app via a custom URL scheme so the user can
-///   immediately start a workout to earn more time credit.
-///
-/// **Secondary button** ("Not Now"):
-///   Defers the action -- the shield remains visible.
-///
-/// **Bundle ID:** `com.flomks.pushup.ShieldAction`
-class ShieldActionExtension: ShieldActionDataSource {
-
-    override func handle(
-        action: ShieldAction,
-        for application: Application,
-        completionHandler: @escaping (ShieldActionResponse) -> Void
-    ) {
-        handleAction(action, completionHandler: completionHandler)
-    }
-
-    override func handle(
-        action: ShieldAction,
-        for webDomain: WebDomain,
-        completionHandler: @escaping (ShieldActionResponse) -> Void
-    ) {
-        handleAction(action, completionHandler: completionHandler)
-    }
-
-    override func handle(
-        action: ShieldAction,
-        for category: ActivityCategory,
-        completionHandler: @escaping (ShieldActionResponse) -> Void
-    ) {
-        handleAction(action, completionHandler: completionHandler)
-    }
-
-    // MARK: - Shared Handler
-
-    private func handleAction(
-        _ action: ShieldAction,
-        completionHandler: @escaping (ShieldActionResponse) -> Void
-    ) {
+// Override the functions below to customize the shield actions used in various situations.
+// The system provides a default response for any functions that your subclass doesn't override.
+// Make sure that your class name matches the NSExtensionPrincipalClass in your Info.plist.
+class ShieldActionExtension: ShieldActionDelegate {
+    override func handle(action: ShieldAction, for application: ApplicationToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
+        // Handle the action as needed.
         switch action {
         case .primaryButtonPressed:
-            // Open the PushUp app at the Workout tab.
-            // The URL scheme `pushup://workout` must be registered in Info.plist.
             completionHandler(.close)
-
         case .secondaryButtonPressed:
-            // User tapped "Not Now" -- keep the shield visible.
             completionHandler(.defer)
-
         @unknown default:
-            completionHandler(.close)
+            fatalError()
         }
+    }
+    
+    override func handle(action: ShieldAction, for webDomain: WebDomainToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
+        // Handle the action as needed.
+        completionHandler(.close)
+    }
+    
+    override func handle(action: ShieldAction, for category: ActivityCategoryToken, completionHandler: @escaping (ShieldActionResponse) -> Void) {
+        // Handle the action as needed.
+        completionHandler(.close)
     }
 }
