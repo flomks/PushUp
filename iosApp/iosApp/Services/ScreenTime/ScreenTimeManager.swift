@@ -172,7 +172,7 @@ final class ScreenTimeManager: ObservableObject {
     func unblockApps() {
         store.shield.applications = nil
         store.shield.applicationCategories = nil
-        store.shield.webDomainCategories = nil
+        store.shield.webDomains = nil
         isBlocking = false
         sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.isBlocking)
     }
@@ -245,9 +245,9 @@ final class ScreenTimeManager: ObservableObject {
         store.shield.applicationCategories = selection.categoryTokens.isEmpty
             ? nil
             : ShieldSettings.ActivityCategoryPolicy.specific(selection.categoryTokens)
-        store.shield.webDomainCategories = selection.webDomainTokens.isEmpty
+        store.shield.webDomains = selection.webDomainTokens.isEmpty
             ? nil
-            : ShieldSettings.ActivityCategoryPolicy.specific(selection.webDomainTokens)
+            : selection.webDomainTokens
     }
 
     private func loadPersistedState() {
