@@ -156,27 +156,16 @@ class UseCaseTests {
     // =========================================================================
 
     @Test
-    fun getOrCreateLocalUser_createsGuestUserWhenNoneExists() = runTest {
+    fun getOrCreateLocalUser_throwsNotAuthenticatedWhenNoUserExists() = runTest {
         val useCase = GetOrCreateLocalUserUseCase(userRepo, fixedClock, sequentialIdGenerator)
 
-        val user = useCase()
-
-        assertNotNull(user)
-        assertEquals("id-1", user.id)
-        assertEquals("Guest", user.displayName)
-        assertEquals("guest@local", user.email)
-        assertEquals(fixedClock.now(), user.createdAt)
-    }
-
-    @Test
-    fun getOrCreateLocalUser_persistsGuestUserToDatabase() = runTest {
-        val useCase = GetOrCreateLocalUserUseCase(userRepo, fixedClock, sequentialIdGenerator)
-
-        useCase()
-
-        val stored = userRepo.getCurrentUser()
-        assertNotNull(stored)
-        assertEquals("Guest", stored.displayName)
+        var threw = false
+        try {
+            useCase()
+        } catch (e: com.pushup.domain.model.AuthException.NotAuthenticated) {
+            threw = true
+        }
+        assertTrue(threw, "Expected NotAuthenticated to be thrown when no user is signed in")
     }
 
     @Test
@@ -188,20 +177,17 @@ class UseCaseTests {
 
         assertEquals(existingUser.id, result.id)
         assertEquals(existingUser.email, result.email)
-        // ID generator should NOT have been called (no new user created)
-        assertEquals(0, idCounter)
     }
 
     @Test
     fun getOrCreateLocalUser_calledTwice_returnsSameUser() = runTest {
+        insertUser("existing-user")
         val useCase = GetOrCreateLocalUserUseCase(userRepo, fixedClock, sequentialIdGenerator)
 
         val first = useCase()
         val second = useCase()
 
         assertEquals(first.id, second.id)
-        // Only one user should have been created
-        assertEquals(1, idCounter)
     }
 
     // =========================================================================

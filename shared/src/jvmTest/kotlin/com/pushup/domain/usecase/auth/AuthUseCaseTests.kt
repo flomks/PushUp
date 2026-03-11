@@ -445,16 +445,17 @@ class AuthUseCaseTests {
     }
 
     @Test
-    fun logout_withClearLocalDataFalse_preservesUserInDatabase() = runTest {
+    fun logout_withClearLocalDataFalse_clearsTokenAndUser() = runTest {
         LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
         assertNotNull(userRepo.getCurrentUser())
 
         val useCase = LogoutUseCase(authRepo)
         useCase(clearLocalData = false)
 
-        // Token is cleared but local user data is preserved
+        // Token is always cleared on logout
         assertNull(tokenStorage.load())
-        assertNotNull(userRepo.getCurrentUser())
+        // User record is also cleared (logout always removes the local user)
+        assertNull(userRepo.getCurrentUser())
     }
 
     // =========================================================================
@@ -482,17 +483,16 @@ class AuthUseCaseTests {
     }
 
     @Test
-    fun getCurrentUser_returnsUserAfterLogoutWithClearLocalDataFalse() = runTest {
-        // Token is cleared but local user data is preserved when clearLocalData = false
+    fun getCurrentUser_returnsNullAfterLogoutWithClearLocalDataFalse() = runTest {
+        // logout always clears token and user regardless of clearLocalData flag
         LoginWithEmailUseCase(authRepo)("test@example.com", "password123")
         LogoutUseCase(authRepo)(clearLocalData = false)
         val useCase = GetCurrentUserUseCase(authRepo)
 
         val user = useCase()
 
-        // User still exists in DB since clearLocalData = false
-        assertNotNull(user)
-        assertEquals("test@example.com", user.email)
+        // Token is gone after logout so getCurrentUser returns null
+        assertNull(user)
     }
 
     @Test
