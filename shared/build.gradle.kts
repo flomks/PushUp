@@ -88,6 +88,12 @@ android {
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
+    lint {
+        // The shared module has no AndroidManifest with permissions -- the app
+        // module's manifest declares ACCESS_NETWORK_STATE. Lint cannot verify
+        // this cross-module, so we suppress the false-positive here.
+        disable += "MissingPermission"
+    }
 }
 
 sqldelight {
