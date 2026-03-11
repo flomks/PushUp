@@ -30,6 +30,11 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // New day started -- unblock apps so the user starts fresh.
         unblockApps()
         sharedDefaults?.set(false, forKey: "screentime.isBlocking")
+
+        // Snapshot the credit balance at the start of the day so we can
+        // calculate how many seconds were actually consumed during the day.
+        let currentCredit = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
+        sharedDefaults?.set(currentCredit, forKey: "screentime.startOfDaySeconds")
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
@@ -151,23 +156,32 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     private func updateTodayUsageRecord(creditExhausted: Bool) {
         let today = isoDateString(from: Date())
         let triggerKey = "screentime.shieldTriggers.\(today)"
-        let current = sharedDefaults?.integer(forKey: triggerKey) ?? 0
-        sharedDefaults?.set(current + 1, forKey: triggerKey)
+        let currentTriggerCount = (sharedDefaults?.integer(forKey: triggerKey) ?? 0) + 1
+        sharedDefaults?.set(currentTriggerCount, forKey: triggerKey)
 
+        // Calculate how many seconds were actually consumed today.
+        // startOfDaySeconds is snapshotted in intervalDidStart; if missing
+        // (e.g. first run before a full day cycle), fall back to availableSeconds.
+        let availableNow = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
+        let startOfDay   = sharedDefaults?.integer(forKey: "screentime.startOfDaySeconds") ?? availableNow
+        let usedToday    = max(0, startOfDay - availableNow)
+
+        // Build a Codable-compatible record matching AppUsageRecord in the main app.
+        // Keys must match the CodingKeys of AppUsageRecord exactly.
+        let record: [String: Any] = [
+            "date": today,
+            "totalSeconds": usedToday,
+            "categoryBreakdown": [String: Int](),
+            "shieldTriggerCount": currentTriggerCount,
+            "creditExhausted": creditExhausted
+        ]
+
+        // Read existing records (written by this extension or the main app).
         var records: [[String: Any]] = []
         if let data = sharedDefaults?.data(forKey: "screentime.usageData"),
            let existing = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             records = existing
         }
-
-        let availableSeconds = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
-        let record: [String: Any] = [
-            "date": today,
-            "totalSeconds": availableSeconds,
-            "categoryBreakdown": [:] as [String: Int],
-            "shieldTriggerCount": current + 1,
-            "creditExhausted": creditExhausted
-        ]
 
         records.removeAll { ($0["date"] as? String) == today }
         records.append(record)

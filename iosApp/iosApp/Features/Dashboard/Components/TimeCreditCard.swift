@@ -149,22 +149,35 @@ struct DashboardTimeCreditCard: View {
 
     // MARK: - Footer
 
+    @ViewBuilder
     private var footerRow: some View {
-        HStack(spacing: AppSpacing.xs) {
-            Image(systemName: AppIcon.checkmarkCircleFill.rawValue)
-                .foregroundStyle(AppColors.success)
-                .font(.system(size: AppSpacing.iconSizeSmall))
+        if totalEarnedSeconds > 0 {
+            HStack(spacing: AppSpacing.xs) {
+                Image(systemName: AppIcon.checkmarkCircleFill.rawValue)
+                    .foregroundStyle(AppColors.success)
+                    .font(.system(size: AppSpacing.iconSizeSmall))
 
-            Text("Total earned: \(formattedTotalEarned)")
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                Text("Total earned: \(formattedTotalEarned)")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
 
-            Spacer()
+                Spacer()
 
-            if totalEarnedSeconds > 0 {
                 Text(String(format: "%.0f%%", progressFraction * 100) + " remaining")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
+            }
+        } else {
+            HStack(spacing: AppSpacing.xs) {
+                Image(systemName: AppIcon.figureStrengthTraining.rawValue)
+                    .foregroundStyle(AppColors.textTertiary)
+                    .font(.system(size: AppSpacing.iconSizeSmall))
+
+                Text("Complete a workout to earn time credit")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textTertiary)
+
+                Spacer()
             }
         }
     }

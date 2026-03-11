@@ -103,30 +103,40 @@ final class DashboardViewModel: ObservableObject {
         let userId = user.id
 
         // Observe time credit — updates availableSeconds and totalEarnedSeconds,
-        // and drives app blocking state via ScreenTimeManager.
+        // drives app blocking state, and keeps the DeviceActivity threshold
+        // in sync with the current balance.
         creditObservationJob = DataBridge.shared.observeTimeCredit(userId: userId) { [weak self] credit in
             guard let self else { return }
             let available = Int(credit?.availableSeconds ?? 0)
             self.availableSeconds   = available
             self.totalEarnedSeconds = Int(credit?.totalEarnedSeconds ?? 0)
 
-            // Sync app-blocking state with the current credit balance.
-            // When credit reaches zero, activate the shield. When credit is
-            // positive again (e.g. after a workout), remove the shield.
             let screenTime = ScreenTimeManager.shared
+
             if available <= 0 {
-                // Only block if Screen Time is authorized and a selection exists.
+                // Credit exhausted — activate the shield immediately.
                 if screenTime.authorizationStatus == .authorized,
                    screenTime.activitySelection != nil {
                     if !screenTime.isBlocking {
                         screenTime.blockApps()
                     }
                 }
+                // Stop DeviceActivity monitoring — no threshold needed when
+                // already blocked.
+                screenTime.stopMonitoring()
             } else {
-                // Credit is available — ensure apps are unblocked.
+                // Credit is positive — ensure apps are unblocked and the
+                // DeviceActivity threshold is set to the current balance so
+                // the system blocks automatically when the user exhausts it.
                 if screenTime.isBlocking {
                     screenTime.unblockApps()
                 }
+                // Always restart monitoring with the fresh threshold.
+                // stopMonitoring() first so startMonitoring() can register
+                // the updated threshold (DeviceActivityCenter throws if the
+                // same activity name is already being monitored).
+                screenTime.stopMonitoring()
+                screenTime.startMonitoring(availableSeconds: available)
             }
         }
 
