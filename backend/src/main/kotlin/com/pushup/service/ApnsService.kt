@@ -1,27 +1,26 @@
 package com.pushup.service
 
-// APNs provider service -- token-based auth (JWT/ES256), HTTP/2 via Ktor CIO.
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
+// APNs provider service -- token-based auth (JWT/ES256), HTTP/2 via java.net.http.HttpClient.
+// We use the JDK built-in HTTP client instead of Ktor CIO because Ktor CIO has a known
+// bug with APNs: it falls back to HTTP/1.1 or fails to read the response body correctly,
+// causing EOFException("Unexpected end of stream after reading 165 characters").
+// java.net.http.HttpClient (Java 11+) negotiates HTTP/2 via ALPN natively and is stable.
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.security.KeyFactory
 import java.security.interfaces.ECPrivateKey
 import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Duration
 import java.time.Instant
 import java.util.Base64
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Sends Apple Push Notification service (APNs) pushes via the HTTP/2 provider API.
@@ -72,26 +71,18 @@ object ApnsService {
     private const val TOKEN_TTL_SECONDS = 55 * 60L
 
     // -------------------------------------------------------------------------
-    // HTTP client factory
+    // HTTP/2 client (java.net.http.HttpClient -- JDK 11+)
     //
-    // A new HttpClient is created for every APNs request and closed immediately
-    // after. This avoids the Ktor CIO HTTP/2 connection-reuse bug that causes
-    // an EOFException ("Unexpected end of stream") when Apple closes the
-    // connection after the first response. Creating a fresh client per request
-    // is slightly less efficient but completely reliable.
+    // A single shared client is fine here: java.net.http.HttpClient is
+    // thread-safe and manages its own connection pool. HTTP/2 multiplexing
+    // means multiple pushes can share one connection without the EOFException
+    // that plagued the Ktor CIO engine.
     // -------------------------------------------------------------------------
 
-    private fun newHttpClient() = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = 10_000
-            connectTimeoutMillis = 5_000
-        }
-        engine {
-            https {
-                // CIO uses the JVM's default TLS provider which supports TLS 1.2+
-            }
-        }
-    }
+    private val httpClient: HttpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_2)
+        .connectTimeout(Duration.ofSeconds(5))
+        .build()
 
     // -------------------------------------------------------------------------
     // Public API
@@ -134,37 +125,36 @@ object ApnsService {
         val payload = buildPayload(title, body, category, data)
         val url = "https://$apnsHost/3/device/$deviceToken"
 
-        // A fresh client is created and closed for each request to avoid the
-        // Ktor CIO HTTP/2 EOFException that occurs when Apple closes the
-        // connection after the first response on a reused connection.
-        val client = newHttpClient()
         try {
-            val response = client.post(url) {
-                header("authorization", "bearer $token")
-                header("apns-topic", bundleId)
-                header("apns-push-type", "alert")
-                header("apns-priority", "10")
-                contentType(ContentType.Application.Json)
-                setBody(payload)
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .version(HttpClient.Version.HTTP_2)
+                .timeout(Duration.ofSeconds(10))
+                .header("authorization", "bearer $token")
+                .header("apns-topic", bundleId!!)
+                .header("apns-push-type", "alert")
+                .header("apns-priority", "10")
+                .header("content-type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload))
+                .build()
+
+            // sendAsync on IO dispatcher to avoid blocking a coroutine thread
+            val response = withContext(Dispatchers.IO) {
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString())
             }
 
-            val statusCode = response.status
-            val responseBody = try { response.bodyAsText() } catch (e: Exception) { "<unreadable: ${e.message}>" }
-
-            if (statusCode == HttpStatusCode.OK) {
+            if (response.statusCode() == 200) {
                 logger.info("APNs push delivered to token=${deviceToken.take(8)}...")
             } else {
                 logger.warn(
-                    "APNs push failed: status=$statusCode " +
-                    "token=${deviceToken.take(8)}... body=$responseBody"
+                    "APNs push failed: status=${response.statusCode()} " +
+                    "token=${deviceToken.take(8)}... body=${response.body()}"
                 )
             }
         } catch (e: Exception) {
             logger.error(
                 "APNs HTTP request failed for token=${deviceToken.take(8)}...: ${e.message}", e
             )
-        } finally {
-            client.close()
         }
     }
 
