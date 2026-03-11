@@ -176,13 +176,17 @@ final class FriendsViewModel: ObservableObject {
             forName: .didReceiveFriendRequestPush,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.loadIncomingRequests() }
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.loadIncomingRequests() }
+        }
 
         let acceptedObserver = NotificationCenter.default.addObserver(
             forName: .didReceiveFriendAcceptedPush,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.loadFriends() }
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.loadFriends() }
+        }
 
         pushObservers = [requestObserver, acceptedObserver]
 

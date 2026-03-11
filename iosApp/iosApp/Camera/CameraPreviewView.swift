@@ -205,11 +205,11 @@ struct CameraContainerView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
-        .onChange(of: onSampleBuffer != nil) { _ in
+        .onChange(of: onSampleBuffer != nil) {
             attachDelegate()
         }
-        .onChange(of: cameraManager.currentPosition) { newPosition in
-            onPositionChange?(newPosition)
+        .onChange(of: cameraManager.currentPosition) {
+            onPositionChange?(cameraManager.currentPosition)
         }
     }
 
