@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 // MARK: - LoginView
@@ -190,16 +191,13 @@ struct LoginView: View {
 
     private var socialButtons: some View {
         VStack(spacing: AppSpacing.sm) {
-            // Apple Sign-In
-            SocialSignInButton(
-                title: "Sign in with Apple",
-                icon: .appleLogo,
-                backgroundColor: AppColors.textPrimary,
-                foregroundColor: AppColors.backgroundPrimary
-            ) {
+            // Apple Sign-In -- uses the official ASAuthorizationAppleIDButton
+            // as required by Apple's App Store Review Guidelines (Section 4.8).
+            AppleSignInButton {
                 Task { await viewModel.loginWithApple() }
             }
             .disabled(viewModel.isLoading)
+            .opacity(viewModel.isLoading ? 0.6 : 1.0)
 
             // Google Sign-In
             SocialSignInButton(
