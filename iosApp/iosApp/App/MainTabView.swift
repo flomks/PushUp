@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Tab
 
@@ -195,7 +196,24 @@ struct MainTabView: View {
         .onAppear {
             friendsViewModel.loadIncomingRequests()
             notificationsViewModel.loadNotifications()
+            handleShieldWorkoutFlag()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            handleShieldWorkoutFlag()
+        }
+    }
+
+    // MARK: - Shield Deep Link
+
+    /// Checks whether the ShieldActionExtension requested a direct jump to the
+    /// Workout tab (user tapped "Do Push-Ups Now" on the shield). If so,
+    /// switches to the Workout tab and clears the flag.
+    private func handleShieldWorkoutFlag() {
+        let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+        guard defaults?.bool(forKey: "shield.shouldOpenWorkout") == true else { return }
+        defaults?.removeObject(forKey: "shield.shouldOpenWorkout")
+        defaults?.synchronize()
+        selectedTab = .workout
     }
 }
 
