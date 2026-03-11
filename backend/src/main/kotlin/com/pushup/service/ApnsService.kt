@@ -1,5 +1,6 @@
 package com.pushup.service
 
+// APNs provider service -- token-based auth (JWT/ES256), HTTP/2 via Ktor CIO.
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
