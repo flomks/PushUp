@@ -60,6 +60,9 @@ struct DashboardView: View {
                     isLoading: viewModel.isLoading
                 )
 
+                // 1b. Screen Time status (only shown when authorized + selection exists)
+                ScreenTimeStatusCard()
+
                 // 2. Daily stats
                 DailyStatsCard(
                     stats: viewModel.dailyStats,

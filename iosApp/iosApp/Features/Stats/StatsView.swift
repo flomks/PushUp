@@ -124,6 +124,8 @@ struct StatsView: View {
                     monthlyContent
                 case .total:
                     totalContent
+                case .screenTime:
+                    screenTimeContent
                 }
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
@@ -202,6 +204,14 @@ struct StatsView: View {
             stats: viewModel.totalStats,
             isLoading: viewModel.isLoading
         )
+    }
+
+    // MARK: - Screen Time Content
+
+    @ViewBuilder
+    private var screenTimeContent: some View {
+        // Embed the ScreenTimeStatsView content inline (without its own NavigationStack)
+        ScreenTimeStatsInlineView()
     }
 
     // MARK: - Initial Loading View

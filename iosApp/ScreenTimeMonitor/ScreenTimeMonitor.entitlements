@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Family Controls -- required for DeviceActivityMonitor subclass.
+	     Must match the main app's entitlement. -->
+	<key>com.apple.developer.family-controls</key>
+	<true/>
+
+	<!-- App Group -- shared UserDefaults with the main app.
+	     Used to read the saved FamilyActivitySelection and write usage records. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.flomks.pushup</string>
+	</array>
+</dict>
+</plist>
