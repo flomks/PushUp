@@ -26,9 +26,8 @@ dependencies {
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
 
-    // Ktor Client (CIO engine -- used by ApnsService for HTTP/2 APNs requests)
+    // Ktor Client core (used transitively; APNs now uses java.net.http.HttpClient directly)
     implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
     implementation(libs.ktor.server.contentNegotiation)
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth)
