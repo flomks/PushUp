@@ -33,6 +33,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             SyncService.shared.start()
         }
 
+        // Re-arm the DeviceActivity threshold on every launch so the system
+        // blocks apps at the correct remaining credit even if the app was
+        // killed and restarted. The credit value is read from the shared
+        // App Group UserDefaults (written by ScreenTimeManager.startMonitoring
+        // and updated on every credit change). If no value is stored yet the
+        // call is a no-op because startMonitoring guards on authorization and
+        // a non-empty app selection.
+        Task { @MainActor in
+            let screenTime = ScreenTimeManager.shared
+            let stored = UserDefaults(suiteName: "group.com.flomks.pushup")?
+                .integer(forKey: "screentime.availableSeconds") ?? 0
+            if stored > 0 {
+                screenTime.stopMonitoring()
+                screenTime.startMonitoring(availableSeconds: stored)
+            }
+        }
+
         return true
     }
 
