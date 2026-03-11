@@ -342,6 +342,7 @@ class StatsRepositoryImpl(
      * Returns the Monday of the ISO week containing [date].
      */
     private fun mondayOf(date: LocalDate): LocalDate {
+        @Suppress("REDUNDANT_ELSE_IN_WHEN")
         val daysFromMonday = when (date.dayOfWeek) {
             DayOfWeek.MONDAY -> 0
             DayOfWeek.TUESDAY -> 1
@@ -350,7 +351,7 @@ class StatsRepositoryImpl(
             DayOfWeek.FRIDAY -> 4
             DayOfWeek.SATURDAY -> 5
             DayOfWeek.SUNDAY -> 6
-            else -> 0
+            else -> 0 // required for commonMain: expect enum cannot be exhaustive without else
         }
         return date.minus(daysFromMonday, DateTimeUnit.DAY)
     }

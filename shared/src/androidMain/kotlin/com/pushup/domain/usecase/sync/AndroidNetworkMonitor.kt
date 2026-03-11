@@ -1,5 +1,6 @@
 package com.pushup.domain.usecase.sync
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -18,6 +19,9 @@ import android.net.NetworkCapabilities
  */
 class AndroidNetworkMonitor(private val context: Context) : NetworkMonitor {
 
+    // ACCESS_NETWORK_STATE is declared in the app's AndroidManifest.xml.
+    // The shared module has no manifest so Lint cannot verify it here.
+    @SuppressLint("MissingPermission")
     override suspend fun isConnected(): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return false
