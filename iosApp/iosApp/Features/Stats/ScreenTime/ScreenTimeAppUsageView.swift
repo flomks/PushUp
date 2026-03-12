@@ -144,7 +144,7 @@ struct ScreenTimeAppUsageView: View {
                         if index > 0 {
                             Divider().padding(.leading, 48)
                         }
-                        fallbackRow(record: record, maxSeconds: maxSeconds)
+                        fallbackRow(record, maxSeconds: maxSeconds)
                     }
                 }
 
