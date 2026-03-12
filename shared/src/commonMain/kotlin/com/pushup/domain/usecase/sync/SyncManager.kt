@@ -12,9 +12,9 @@ import kotlinx.coroutines.launch
  * Orchestrates all sync operations for the authenticated user.
  *
  * [SyncManager] is the single entry point for triggering synchronisation.
- * It coordinates [SyncWorkoutsUseCase], [SyncTimeCreditUseCase], and
- * [SyncFromCloudUseCase] in the correct order and handles the common
- * lifecycle concerns:
+ * It coordinates [SyncWorkoutsUseCase], [SyncTimeCreditUseCase],
+ * [SyncLevelUseCase], and [SyncFromCloudUseCase] in the correct order and
+ * handles the common lifecycle concerns:
  *
  * - **Auth check**: reads the current user from [AuthRepository]; skips sync
  *   if no user is authenticated (guest mode).
@@ -33,7 +33,8 @@ import kotlinx.coroutines.launch
  * 1. [SyncWorkoutsUseCase] -- upload pending sessions first so the server has
  *    the latest workout data before we pull aggregated stats.
  * 2. [SyncTimeCreditUseCase] -- upload pending credit changes.
- * 3. [SyncFromCloudUseCase] -- pull the authoritative state from the server.
+ * 3. [SyncLevelUseCase] -- sync XP / level data (highest value wins).
+ * 4. [SyncFromCloudUseCase] -- pull the authoritative state from the server.
  *
  * ## Thread safety
  * All public `suspend` functions are safe to call from any coroutine context.
@@ -42,6 +43,7 @@ import kotlinx.coroutines.launch
  *
  * @property syncWorkoutsUseCase   Uploads pending workout sessions.
  * @property syncTimeCreditUseCase Uploads pending time-credit changes.
+ * @property syncLevelUseCase      Syncs XP / level data with Supabase.
  * @property syncFromCloudUseCase  Downloads the latest data from Supabase.
  * @property authRepository        Provides the current authenticated user ID.
  * @property scope                 [CoroutineScope] used for periodic sync jobs.
@@ -52,6 +54,7 @@ import kotlinx.coroutines.launch
 class SyncManager(
     private val syncWorkoutsUseCase: SyncWorkoutsUseCase,
     private val syncTimeCreditUseCase: SyncTimeCreditUseCase,
+    private val syncLevelUseCase: SyncLevelUseCase,
     private val syncFromCloudUseCase: SyncFromCloudUseCase,
     private val authRepository: AuthRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
@@ -83,6 +86,7 @@ class SyncManager(
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
+        val levelResult = runCatching { syncLevelUseCase(userId) }
         val fromCloudResult = runCatching { syncFromCloudUseCase(userId) }
 
         return SyncResult.Completed(
@@ -90,6 +94,8 @@ class SyncManager(
             workoutsError = workoutsResult.exceptionOrNull(),
             timeCredit = creditResult.getOrNull(),
             timeCreditError = creditResult.exceptionOrNull(),
+            level = levelResult.getOrNull(),
+            levelError = levelResult.exceptionOrNull(),
             fromCloud = fromCloudResult.getOrNull(),
             fromCloudError = fromCloudResult.exceptionOrNull(),
         )
@@ -111,12 +117,15 @@ class SyncManager(
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
+        val levelResult = runCatching { syncLevelUseCase(userId) }
 
         return SyncResult.Completed(
             workouts = workoutsResult.getOrNull(),
             workoutsError = workoutsResult.exceptionOrNull(),
             timeCredit = creditResult.getOrNull(),
             timeCreditError = creditResult.exceptionOrNull(),
+            level = levelResult.getOrNull(),
+            levelError = levelResult.exceptionOrNull(),
             fromCloud = null,
             fromCloudError = null,
         )
@@ -134,6 +143,7 @@ class SyncManager(
         val userId = resolveUserId()
             ?: return SyncResult.Skipped(reason = "User not authenticated")
 
+        val levelResult = runCatching { syncLevelUseCase(userId) }
         val fromCloudResult = runCatching { syncFromCloudUseCase(userId) }
 
         return SyncResult.Completed(
@@ -141,6 +151,8 @@ class SyncManager(
             workoutsError = null,
             timeCredit = null,
             timeCreditError = null,
+            level = levelResult.getOrNull(),
+            levelError = levelResult.exceptionOrNull(),
             fromCloud = fromCloudResult.getOrNull(),
             fromCloudError = fromCloudResult.exceptionOrNull(),
         )
@@ -226,6 +238,8 @@ sealed class SyncResult {
      * @property workoutsError  Exception from [SyncWorkoutsUseCase], or `null` on success.
      * @property timeCredit     Result of [SyncTimeCreditUseCase], or `null` if not run.
      * @property timeCreditError Exception from [SyncTimeCreditUseCase], or `null` on success.
+     * @property level          Result of [SyncLevelUseCase], or `null` if not run.
+     * @property levelError     Exception from [SyncLevelUseCase], or `null` on success.
      * @property fromCloud      Result of [SyncFromCloudUseCase], or `null` if not run.
      * @property fromCloudError Exception from [SyncFromCloudUseCase], or `null` on success.
      */
@@ -234,6 +248,8 @@ sealed class SyncResult {
         val workoutsError: Throwable?,
         val timeCredit: SyncTimeCreditResult?,
         val timeCreditError: Throwable?,
+        val level: SyncLevelResult?,
+        val levelError: Throwable?,
         val fromCloud: SyncFromCloudResult?,
         val fromCloudError: Throwable?,
     ) : SyncResult() {
@@ -242,6 +258,7 @@ sealed class SyncResult {
         val isFullSuccess: Boolean
             get() = workoutsError == null &&
                 timeCreditError == null &&
+                levelError == null &&
                 fromCloudError == null &&
                 workouts?.isFullSuccess != false &&
                 fromCloud?.isFullSuccess != false

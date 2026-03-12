@@ -70,6 +70,7 @@ class AuthUseCaseTests {
             authClient = fakeAuthClient,
             tokenStorage = tokenStorage,
             userRepository = userRepo,
+            database = database,
             clock = fixedClock,
             dispatcher = testDispatcher,
         )

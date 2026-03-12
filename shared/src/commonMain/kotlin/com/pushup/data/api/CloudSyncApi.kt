@@ -2,8 +2,12 @@ package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
+import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.domain.model.TimeCredit
+import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.WorkoutSession
 
 /**
@@ -67,4 +71,36 @@ interface CloudSyncApi {
         userId: String,
         request: UpdateTimeCreditRequest,
     ): TimeCredit
+
+    /**
+     * Returns the user profile (display name, email) for [userId] from Supabase,
+     * or `null` if no profile row exists yet.
+     */
+    suspend fun getUserProfile(userId: String): UserProfileDTO?
+
+    /**
+     * Updates the display name for [userId] in the Supabase public.users table.
+     *
+     * @throws ApiException.NotFound if no user row exists for [userId].
+     */
+    suspend fun updateUserProfile(
+        userId: String,
+        request: UpdateUserProfileRequest,
+    ): UserProfileDTO
+
+    /**
+     * Returns the user_levels record for [userId], or `null` if none exists yet.
+     */
+    suspend fun getUserLevel(userId: String): UserLevel?
+
+    /**
+     * Upserts the user_levels record for [userId] with the given [request].
+     *
+     * Creates the row if it does not exist, or updates [total_xp] if the
+     * remote value is lower than the local value (local wins on conflict).
+     */
+    suspend fun upsertUserLevel(
+        userId: String,
+        request: UpsertUserLevelRequest,
+    ): UserLevel
 }

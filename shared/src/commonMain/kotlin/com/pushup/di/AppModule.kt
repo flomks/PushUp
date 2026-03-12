@@ -53,6 +53,7 @@ import com.pushup.data.repository.FriendshipRepositoryImpl
 import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
+import com.pushup.domain.usecase.sync.SyncLevelUseCase
 import com.pushup.domain.usecase.sync.SyncManager
 import com.pushup.domain.usecase.sync.SyncTimeCreditUseCase
 import com.pushup.domain.usecase.sync.SyncWorkoutsUseCase
@@ -174,6 +175,7 @@ val repositoryModule: Module = module {
             authClient = get(),
             tokenStorage = get(),
             userRepository = get(),
+            database = get(),
             clock = get(),
             dispatcher = get(named(DB_DISPATCHER)),
         )
@@ -258,9 +260,17 @@ val useCaseModule: Module = module {
         )
     }
     factory {
+        SyncLevelUseCase(
+            levelRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
         SyncFromCloudUseCase(
             sessionRepository = get(),
             timeCreditRepository = get(),
+            userRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
         )
@@ -269,6 +279,7 @@ val useCaseModule: Module = module {
         SyncManager(
             syncWorkoutsUseCase = get(),
             syncTimeCreditUseCase = get(),
+            syncLevelUseCase = get(),
             syncFromCloudUseCase = get(),
             authRepository = get(),
         )

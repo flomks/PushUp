@@ -2,6 +2,7 @@ package com.pushup.data.repository
 
 import com.pushup.data.api.AuthClient
 import com.pushup.data.storage.TokenStorage
+import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.AuthToken
 import com.pushup.domain.model.User
@@ -35,6 +36,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * @property authClient     Auth API client (production: [com.pushup.data.api.SupabaseAuthClient]).
  * @property tokenStorage   Platform-specific secure token storage.
  * @property userRepository Local user database repository.
+ * @property database       SQLDelight database used for explicit data wipe on logout.
  * @property clock          Used to generate [User.createdAt] / [User.lastSyncedAt] timestamps.
  * @property dispatcher     Coroutine dispatcher for I/O operations.
  */
@@ -42,6 +44,7 @@ class AuthRepositoryImpl(
     private val authClient: AuthClient,
     private val tokenStorage: TokenStorage,
     private val userRepository: UserRepository,
+    private val database: PushUpDatabase,
     private val clock: Clock = Clock.System,
     private val dispatcher: CoroutineDispatcher,
 ) : AuthRepository {
@@ -129,14 +132,29 @@ class AuthRepositoryImpl(
 
     override suspend fun logout(clearLocalData: Boolean): Unit =
         withContext(dispatcher) {
-            // Always clear the token first.
+            // Always clear the token first so no further authenticated calls can be made.
             tokenStorage.clear()
-            // Always delete the local user record on logout to prevent stale
-            // DB entries from being mistaken for an authenticated session.
+
+            // Wipe ALL local user data to prevent stale rows from appearing after
+            // a re-login with the same account (same UUID).
+            //
+            // Background: SQLite foreign-key cascades only fire when
+            // `PRAGMA foreign_keys = ON` is set. Even with that pragma enabled,
+            // we delete child tables explicitly first to guarantee correctness on
+            // all existing database instances (including those opened before the
+            // pragma was added). The order matters: child rows must be deleted
+            // before the parent User row to satisfy FK constraints.
             runCatching {
-                val userId = userRepository.getCurrentUser()?.id
-                if (userId != null) {
-                    userRepository.deleteUser(userId)
+                val userId = userRepository.getCurrentUser()?.id ?: return@runCatching
+                val queries = database.databaseQueries
+                queries.transaction {
+                    // Delete child rows first (FK order).
+                    queries.deleteWorkoutSessionsByUserId(userId)
+                    queries.deleteTimeCreditByUserId(userId)
+                    queries.deleteUserSettingsByUserId(userId)
+                    queries.deleteUserLevel(userId)          // deleteUserLevel uses userId column
+                    // Delete the parent User row last.
+                    queries.deleteUser(id = userId)
                 }
             }
         }

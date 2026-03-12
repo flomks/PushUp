@@ -272,6 +272,10 @@ deleteTimeCredit:
 DELETE FROM TimeCredit
 WHERE id = ?;
 
+deleteTimeCreditByUserId:
+DELETE FROM TimeCredit
+WHERE userId = ?;
+
 selectTimeCreditByUserId:
 SELECT *
 FROM TimeCredit
@@ -306,6 +310,10 @@ WHERE id = ?;
 deleteUserSettings:
 DELETE FROM UserSettings
 WHERE id = ?;
+
+deleteUserSettingsByUserId:
+DELETE FROM UserSettings
+WHERE userId = ?;
 
 selectUserSettingsByUserId:
 SELECT *

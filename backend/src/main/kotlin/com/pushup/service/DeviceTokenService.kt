@@ -1,8 +1,8 @@
 package com.pushup.service
 
 import com.pushup.plugins.DeviceTokens
+import com.pushup.plugins.Users
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -10,6 +10,18 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import org.jetbrains.exposed.sql.update
 import java.time.OffsetDateTime
 import java.util.UUID
+
+/**
+ * Thrown by [DeviceTokenService.upsertToken] when the [userId] does not exist
+ * in the [Users] table.
+ *
+ * This happens when a user has been deleted from Supabase but the iOS app
+ * still holds a valid JWT and attempts to register a device token. The route
+ * handler catches this and returns 404 instead of letting the foreign-key
+ * violation propagate as a 500.
+ */
+class UserNotFoundException(userId: UUID) :
+    Exception("User not found: $userId")
 
 /**
  * Manages APNs (and future FCM) device tokens for push notification delivery.
@@ -26,11 +38,14 @@ open class DeviceTokenService {
      *
      * If a row with the same [token] already exists for this user, its
      * [updatedAt] timestamp is refreshed. If the token belongs to a different
-     * user (device hand-off), the old row is deleted and a new one is inserted.
+     * user (device hand-off), the old row is re-assigned to the new user.
      *
      * @param userId   UUID of the authenticated user.
      * @param token    The APNs device token hex string.
      * @param platform "apns" for iOS, "fcm" for Android (reserved).
+     * @throws UserNotFoundException if [userId] does not exist in the users table.
+     *   This occurs when a user has been deleted from Supabase but the device
+     *   still holds a valid JWT. The caller should return 404 to the client.
      */
     open suspend fun upsertToken(
         userId: UUID,
@@ -38,6 +53,20 @@ open class DeviceTokenService {
         platform: String = "apns",
     ): Unit = newSuspendedTransaction {
         val now = OffsetDateTime.now()
+
+        // Guard: verify the user exists before touching device_tokens.
+        // Without this check, the INSERT below would throw a PostgreSQL
+        // foreign-key violation (23503) when the user row has been deleted
+        // (e.g. all users cleared in the Supabase dashboard) while the device
+        // still holds a valid JWT. We surface this as a typed exception so the
+        // route handler can return 404 instead of 500.
+        val userExists = Users.selectAll()
+            .where { Users.id eq userId }
+            .count() > 0
+
+        if (!userExists) {
+            throw UserNotFoundException(userId)
+        }
 
         // Check if this exact token already exists (for any user).
         val existing = DeviceTokens.selectAll()
@@ -48,12 +77,12 @@ open class DeviceTokenService {
             existing == null -> {
                 // New token -- insert a fresh row.
                 DeviceTokens.insert {
-                    it[id]               = UUID.randomUUID()
+                    it[id]                    = UUID.randomUUID()
                     it[DeviceTokens.userId]   = userId
                     it[DeviceTokens.token]    = token
                     it[DeviceTokens.platform] = platform
-                    it[createdAt]        = now
-                    it[updatedAt]        = now
+                    it[createdAt]             = now
+                    it[updatedAt]             = now
                 }
             }
 

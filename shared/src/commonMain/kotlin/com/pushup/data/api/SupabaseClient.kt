@@ -5,12 +5,18 @@ import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.PushUpRecordDTO
 import com.pushup.data.api.dto.TimeCreditDTO
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
+import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UserLevelDTO
+import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
+import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
+import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.WorkoutSession
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -287,6 +293,99 @@ class SupabaseClient(
     }
 
     // =========================================================================
+    // User Profile CRUD
+    // =========================================================================
+
+    /**
+     * Returns the user profile row for [userId] from public.users, or `null` if not found.
+     */
+    override suspend fun getUserProfile(userId: String): UserProfileDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/users") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$userId")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<UserProfileDTO>>()
+            .firstOrNull()
+    }
+
+    /**
+     * Updates the display name for [userId] in public.users.
+     *
+     * @throws ApiException.NotFound if no user row exists for [userId].
+     */
+    override suspend fun updateUserProfile(
+        userId: String,
+        request: UpdateUserProfileRequest,
+    ): UserProfileDTO = withRetry {
+        val token = tokenProvider()
+        val list = httpClient.patch("$restBase/users") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("id", "eq.$userId")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<UserProfileDTO>>()
+
+        list.firstOrNull()
+            ?: throw ApiException.NotFound(
+                message = "User profile not found: $userId",
+                resourceType = "User",
+                resourceId = userId,
+            )
+    }
+
+    // =========================================================================
+    // UserLevel CRUD
+    // =========================================================================
+
+    /**
+     * Returns the user_levels record for [userId], or `null` if none exists yet.
+     */
+    override suspend fun getUserLevel(userId: String): UserLevel? = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/user_levels") {
+            supabaseHeaders(token)
+            url.parameters.append("user_id", "eq.$userId")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<UserLevelDTO>>()
+            .firstOrNull()
+            ?.toUserLevelDomain()
+    }
+
+    /**
+     * Upserts the user_levels record for [userId].
+     *
+     * Uses Supabase's upsert endpoint (POST with `Prefer: resolution=merge-duplicates`)
+     * so the row is created on first sync and updated on subsequent syncs.
+     *
+     * @throws ApiException.NotFound if the upsert returns an empty list (should not happen).
+     */
+    override suspend fun upsertUserLevel(
+        userId: String,
+        request: UpsertUserLevelRequest,
+    ): UserLevel = withRetry {
+        val token = tokenProvider()
+        val list = httpClient.post("$restBase/user_levels") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation,resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<UserLevelDTO>>()
+
+        list.firstOrNull()?.toUserLevelDomain()
+            ?: throw ApiException.NotFound(
+                message = "UserLevel upsert returned empty for user: $userId",
+                resourceType = "UserLevel",
+                resourceId = userId,
+            )
+    }
+
+    // =========================================================================
     // Private helpers
     // =========================================================================
 
@@ -323,3 +422,12 @@ private fun TimeCreditDTO.toTimeCreditDomain(clock: Clock): TimeCredit = TimeCre
         ?: clock.now(),
     syncStatus = SyncStatus.SYNCED,
 )
+
+/**
+ * Maps a [UserLevelDTO] to a [UserLevel] domain model.
+ *
+ * The level and progress fields are derived from [totalXp] via
+ * [LevelCalculator.fromTotalXp] — they are not stored in the remote DB.
+ */
+private fun UserLevelDTO.toUserLevelDomain(): UserLevel =
+    LevelCalculator.fromTotalXp(userId = userId, totalXp = totalXp)
