@@ -8,8 +8,8 @@ import FamilyControls
 // and renders a per-app usage list with real app icons, names, and usage bars.
 //
 // App names come from localizedDisplayName (set in makeConfiguration).
-// Real app icons are rendered via Label("name", application: token) which
-// uses FamilyControls to display the actual app icon from the OS.
+// Real app icons are rendered via Label(applicationToken) which uses
+// FamilyControls to display the actual app icon from the OS.
 //
 // This view is injected directly into the main app's view hierarchy by the
 // system and blends seamlessly in light/dark mode.
@@ -47,11 +47,11 @@ struct AppUsageReportView: View {
 
     private func appRow(_ entry: AppUsageEntry) -> some View {
         HStack(spacing: 12) {
-            // Real app icon rendered by FamilyControls via Label.
-            // Label("name", application: token) renders the actual app icon
-            // from the OS -- this is the only supported way to show real icons
-            // inside a DeviceActivityReport extension.
-            Label(entry.displayName, application: entry.application)
+            // Real app icon rendered by FamilyControls via Label(token).
+            // Label(applicationToken) renders the actual app icon from the OS
+            // -- this is the only supported way to show real icons inside a
+            // DeviceActivityReport extension.
+            Label(entry.token)
                 .labelStyle(AppIconLabelStyle())
 
             VStack(alignment: .leading, spacing: 4) {
@@ -143,8 +143,8 @@ struct AppUsageReportView: View {
 
 /// A LabelStyle that renders only the icon part of a Label at 36x36 pt.
 ///
-/// Used with `Label(name, application: token)` to display the real app icon
-/// from FamilyControls without showing the text title (the title is rendered
+/// Used with `Label(applicationToken)` to display the real app icon from
+/// FamilyControls without showing the text title (the title is rendered
 /// separately in the row layout).
 private struct AppIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {

@@ -143,7 +143,7 @@ enum AppIcon: String {
     // MARK: - Screen Time
 
     case hourglass              = "hourglass"
-    case hourglassFill          = "hourglass.fill"
+    case hourglassFill          = "hourglass.tophalf.filled"
     case hourglassBottomHalf    = "hourglass.bottomhalf.filled"
     case appBadge               = "app.badge"
     case appBadgeFill           = "app.badge.fill"

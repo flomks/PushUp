@@ -29,10 +29,10 @@ struct AppUsageConfiguration: Sendable {
 
 /// A single app's usage data for display in the report view.
 ///
-/// Stores the `ManagedSettings.Application` token so `TotalActivityView` can
-/// render the real app icon via `Label("name", application: token)`.
-/// `ManagedSettings.Application` conforms to `Sendable` so it is safe to pass
-/// across the actor boundary between `makeConfiguration` and the SwiftUI view.
+/// Stores an `ApplicationToken` so `TotalActivityView` can render the real
+/// app icon via `Label(token)`. `ApplicationToken` is `Token<Application>`,
+/// which is `Codable`, `Hashable`, and safe to pass across the actor boundary
+/// between `makeConfiguration` and the SwiftUI view.
 struct AppUsageEntry: Identifiable, Sendable {
     /// The app's bundle identifier (used as stable ID).
     let id: String
@@ -42,9 +42,9 @@ struct AppUsageEntry: Identifiable, Sendable {
     let duration: TimeInterval
     /// The category this app belongs to (e.g. "Social Networking").
     let categoryName: String
-    /// The opaque Application token -- used to render the real app icon
-    /// via `Label` inside the DeviceActivityReport extension view.
-    let application: ManagedSettings.Application
+    /// The opaque application token -- used to render the real app icon
+    /// via `Label(token)` inside the DeviceActivityReport extension view.
+    let token: ApplicationToken
 }
 
 // MARK: - AppUsageReport
@@ -74,6 +74,9 @@ struct AppUsageReport: DeviceActivityReportScene {
                     for await appActivity in category.applications {
                         let duration = appActivity.totalActivityDuration
                         let app = appActivity.application
+                        // ApplicationToken is required to render the app icon via
+                        // Label(token). Skip entries where the token is unavailable.
+                        guard let appToken = app.token else { continue }
                         let bundleID = app.bundleIdentifier ?? UUID().uuidString
                         let displayName = app.localizedDisplayName ?? bundleID
 
@@ -88,7 +91,7 @@ struct AppUsageReport: DeviceActivityReportScene {
                             displayName: displayName,
                             duration: duration,
                             categoryName: categoryName,
-                            application: app
+                            token: appToken
                         ))
 
                         if duration > 0 {
