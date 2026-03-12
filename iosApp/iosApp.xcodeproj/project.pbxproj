@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B1C2D3E4F5A60003B1C2D3E4 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */; };
+		DE317FA42F62CE6A00180053 /* DeviceActivityReport.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = DE317F982F62CE6A00180053 /* DeviceActivityReport.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DED110672F62000200C3B230 /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DED110662F62000200C3B230 /* DeviceActivity.framework */; };
 		DED1106F2F62000200C3B230 /* ScreenTimeMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = DED110652F62000200C3B230 /* ScreenTimeMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DED1107D2F62002300C3B230 /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DED1107C2F62002300C3B230 /* ManagedSettings.framework */; };
@@ -24,6 +25,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 04A4CCDABCE9EF2600F9039F;
 			remoteInfo = iosApp;
+		};
+		DE317FA22F62CE6A00180053 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2BE3E43641C769565DBF55D0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DE317F972F62CE6A00180053;
+			remoteInfo = DeviceActivityReport;
 		};
 		DED1106D2F62000200C3B230 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -49,6 +57,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		DE317FA92F62CE6A00180053 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				DE317FA42F62CE6A00180053 /* DeviceActivityReport.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DED110702F62000200C3B230 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -68,6 +87,7 @@
 		762F76641E8CA1A01EE35518 /* PushUp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PushUp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001A1B2C3D4 /* PushUp.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PushUp.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C2D3E4F5A60001B1C2D3E4 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		DE317F982F62CE6A00180053 /* DeviceActivityReport.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = DeviceActivityReport.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DED110652F62000200C3B230 /* ScreenTimeMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ScreenTimeMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		DED110662F62000200C3B230 /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 		DED1107B2F62002300C3B230 /* ShieldConfiguration.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShieldConfiguration.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -77,6 +97,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DE317FA82F62CE6A00180053 /* Exceptions for "DeviceActivityReport" folder in "DeviceActivityReport" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = DE317F972F62CE6A00180053 /* DeviceActivityReport */;
+		};
 		DED110742F62000200C3B230 /* Exceptions for "ScreenTimeMonitor" folder in "ScreenTimeMonitor" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -126,6 +153,14 @@
 			path = iosAppTests;
 			sourceTree = "<group>";
 		};
+		DE317F992F62CE6A00180053 /* DeviceActivityReport */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DE317FA82F62CE6A00180053 /* Exceptions for "DeviceActivityReport" folder in "DeviceActivityReport" target */,
+			);
+			path = DeviceActivityReport;
+			sourceTree = "<group>";
+		};
 		DED110682F62000200C3B230 /* ScreenTimeMonitor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -162,6 +197,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A1B2C3D4E5F60003A1B2C3D4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DE317F952F62CE6A00180053 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -205,6 +247,7 @@
 				DED110682F62000200C3B230 /* ScreenTimeMonitor */,
 				DED110802F62002300C3B230 /* ShieldConfiguration */,
 				DED110922F62004A00C3B230 /* ShieldAction */,
+				DE317F992F62CE6A00180053 /* DeviceActivityReport */,
 				B1C2D3E4F5A60002B1C2D3E4 /* Frameworks */,
 				DFB462212BE42F5B86961EF7 /* Products */,
 			);
@@ -229,6 +272,7 @@
 				DED110652F62000200C3B230 /* ScreenTimeMonitor.appex */,
 				DED1107B2F62002300C3B230 /* ShieldConfiguration.appex */,
 				DED110902F62004A00C3B230 /* ShieldAction.appex */,
+				DE317F982F62CE6A00180053 /* DeviceActivityReport.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -245,6 +289,7 @@
 				1DFEE6EFC19AC9F6EBBA3F8D /* Frameworks */,
 				B93642CFFB530314EDD7FEE8 /* Resources */,
 				DED110702F62000200C3B230 /* Embed Foundation Extensions */,
+				DE317FA92F62CE6A00180053 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
@@ -252,6 +297,7 @@
 				DED1106E2F62000200C3B230 /* PBXTargetDependency */,
 				DED110862F62002300C3B230 /* PBXTargetDependency */,
 				DED110982F62004A00C3B230 /* PBXTargetDependency */,
+				DE317FA32F62CE6A00180053 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				654BDDC85199D44B8C4EFBC8 /* iosApp */,
@@ -284,6 +330,28 @@
 			productName = iosAppTests;
 			productReference = A1B2C3D4E5F60001A1B2C3D4 /* PushUp.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		DE317F972F62CE6A00180053 /* DeviceActivityReport */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DE317FA52F62CE6A00180053 /* Build configuration list for PBXNativeTarget "DeviceActivityReport" */;
+			buildPhases = (
+				DE317F942F62CE6A00180053 /* Sources */,
+				DE317F952F62CE6A00180053 /* Frameworks */,
+				DE317F962F62CE6A00180053 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DE317F992F62CE6A00180053 /* DeviceActivityReport */,
+			);
+			name = DeviceActivityReport;
+			packageProductDependencies = (
+			);
+			productName = DeviceActivityReport;
+			productReference = DE317F982F62CE6A00180053 /* DeviceActivityReport.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
 		};
 		DED110642F62000200C3B230 /* ScreenTimeMonitor */ = {
 			isa = PBXNativeTarget;
@@ -376,6 +444,9 @@
 						CreatedOnToolsVersion = 16.2;
 						TestTargetID = 04A4CCDABCE9EF2600F9039F;
 					};
+					DE317F972F62CE6A00180053 = {
+						CreatedOnToolsVersion = 16.0;
+					};
 					DED110642F62000200C3B230 = {
 						CreatedOnToolsVersion = 16.0;
 					};
@@ -406,12 +477,20 @@
 				DED110642F62000200C3B230 /* ScreenTimeMonitor */,
 				DED1107A2F62002300C3B230 /* ShieldConfiguration */,
 				DED1108F2F62004A00C3B230 /* ShieldAction */,
+				DE317F972F62CE6A00180053 /* DeviceActivityReport */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B93642CFFB530314EDD7FEE8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DE317F962F62CE6A00180053 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -471,6 +550,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DE317F942F62CE6A00180053 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DED110612F62000200C3B230 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -507,6 +593,11 @@
 			target = 04A4CCDABCE9EF2600F9039F /* iosApp */;
 			targetProxy = A1B2C3D4E5F60007A1B2C3D4 /* PBXContainerItemProxy */;
 		};
+		DE317FA32F62CE6A00180053 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DE317F972F62CE6A00180053 /* DeviceActivityReport */;
+			targetProxy = DE317FA22F62CE6A00180053 /* PBXContainerItemProxy */;
+		};
 		DED1106E2F62000200C3B230 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = DED110642F62000200C3B230 /* ScreenTimeMonitor */;
@@ -535,7 +626,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
@@ -646,6 +737,64 @@
 			};
 			name = Release;
 		};
+		DE317FA62F62CE6A00180053 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DeviceActivityReport/DeviceActivityReport.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2986PL676H;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DeviceActivityReport/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DeviceActivityReport;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flomks.pushup.DeviceActivityReport;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DE317FA72F62CE6A00180053 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = DeviceActivityReport/DeviceActivityReport.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2986PL676H;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DeviceActivityReport/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DeviceActivityReport;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.flomks.pushup.DeviceActivityReport;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		DED110712F62000200C3B230 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -653,7 +802,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ScreenTimeMonitor/Info.plist;
@@ -682,7 +831,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ScreenTimeMonitor/Info.plist;
@@ -711,7 +860,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfiguration/Info.plist;
@@ -740,7 +889,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfiguration/Info.plist;
@@ -769,7 +918,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldAction/Info.plist;
@@ -798,7 +947,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldAction/Info.plist;
@@ -895,7 +1044,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 2986PL676H;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
@@ -931,6 +1080,15 @@
 			buildConfigurations = (
 				E954600675D39052456CF8F9 /* Debug */,
 				D101C5FC0A8A96F96178EC6D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DE317FA52F62CE6A00180053 /* Build configuration list for PBXNativeTarget "DeviceActivityReport" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE317FA62F62CE6A00180053 /* Debug */,
+				DE317FA72F62CE6A00180053 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
