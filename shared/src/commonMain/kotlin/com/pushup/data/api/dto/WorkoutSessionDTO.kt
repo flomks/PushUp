@@ -147,6 +147,70 @@ data class UpdateTimeCreditRequest(
 )
 
 // =============================================================================
+// UserProfile DTO
+// =============================================================================
+
+/**
+ * DTO for the public.users row as returned by the Supabase REST API.
+ *
+ * Only the fields relevant for sync are included here.
+ *
+ * @property id          UUID of the user.
+ * @property displayName The user's display name (may be null if not yet set).
+ * @property email       The user's email address.
+ * @property updatedAt   ISO-8601 timestamp of last update (server-managed).
+ */
+@Serializable
+data class UserProfileDTO(
+    @SerialName("id")           val id: String,
+    @SerialName("display_name") val displayName: String? = null,
+    @SerialName("email")        val email: String? = null,
+    @SerialName("updated_at")   val updatedAt: String? = null,
+)
+
+/**
+ * Request body for updating the user's display name in public.users.
+ */
+@Serializable
+data class UpdateUserProfileRequest(
+    @SerialName("display_name") val displayName: String,
+)
+
+// =============================================================================
+// UserLevel DTOs
+// =============================================================================
+
+/**
+ * DTO for the user_levels row as returned by the Supabase REST API.
+ *
+ * There is exactly one row per user (UNIQUE on user_id).
+ *
+ * @property id           UUID of the record.
+ * @property userId       UUID of the owning user.
+ * @property totalXp      Total XP accumulated across all time.
+ * @property updatedAt    ISO-8601 timestamp of last update.
+ */
+@Serializable
+data class UserLevelDTO(
+    @SerialName("id")          val id: String,
+    @SerialName("user_id")     val userId: String,
+    @SerialName("total_xp")    val totalXp: Long,
+    @SerialName("updated_at")  val updatedAt: String? = null,
+)
+
+/**
+ * Request body for upserting the user_levels row.
+ *
+ * Uses Supabase upsert (POST with Prefer: resolution=merge-duplicates) so that
+ * the row is created on first sync and updated on subsequent syncs.
+ */
+@Serializable
+data class UpsertUserLevelRequest(
+    @SerialName("user_id")     val userId: String,
+    @SerialName("total_xp")    val totalXp: Long,
+)
+
+// =============================================================================
 // Domain model mappers
 // =============================================================================
 

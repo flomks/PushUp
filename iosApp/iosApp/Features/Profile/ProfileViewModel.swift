@@ -249,7 +249,11 @@ final class ProfileViewModel: ObservableObject {
         await loadLevel(userId: user.id)
     }
 
-    /// Saves the edited display name to the backend.
+    /// Saves the edited display name to the local database via the KMP layer.
+    ///
+    /// Writes the new name to the local SQLDelight User record immediately so
+    /// it is never lost even if the app is killed before a cloud sync runs.
+    /// The next sync cycle will propagate the change to the server.
     func saveDisplayName() async {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -266,20 +270,15 @@ final class ProfileViewModel: ObservableObject {
         isSavingName = true
         errorMessage = nil
 
-        do {
-            // Replace with real Supabase update:
-            //   try await supabaseClient.from("profiles")
-            //       .update(["display_name": trimmed])
-            //       .eq("id", value: currentUserId)
-            //       .execute()
-            try await Task.sleep(nanoseconds: 600_000_000)
+        let result = await AuthService.shared.updateDisplayName(trimmed)
+        if result.isSuccess {
             savedDisplayName = trimmed
             displayName = trimmed
             showSuccess("Display name updated.")
-        } catch is CancellationError {
-            // Silently ignore cancellation.
-        } catch {
-            errorMessage = ProfileError.saveFailed(error.localizedDescription).errorDescription
+        } else {
+            errorMessage = ProfileError.saveFailed(
+                result.errorMessage ?? "Unknown error"
+            ).errorDescription
         }
 
         isSavingName = false

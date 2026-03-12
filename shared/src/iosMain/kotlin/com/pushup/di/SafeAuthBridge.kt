@@ -1,5 +1,7 @@
 package com.pushup.di
 
+import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.UserRepository
@@ -8,9 +10,11 @@ import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
 import com.pushup.domain.usecase.auth.LoginWithEmailUseCase
 import com.pushup.domain.usecase.auth.LoginWithGoogleUseCase
 import com.pushup.domain.usecase.auth.LogoutUseCase
+import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
+import org.koin.core.component.getOrNull
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -73,22 +77,33 @@ object SafeAuthBridge : KoinComponent {
     }
 
     /**
-     * Updates the display name of the currently authenticated user in the local DB.
+     * Updates the display name of the currently authenticated user.
      *
-     * Called after the user completes the "Choose your display name" screen that
-     * is shown on first social sign-in. The name is written to the local SQLDelight
-     * database immediately so it is never NULL, even if the app is killed before
-     * the cloud sync runs.
+     * Writes to the local SQLDelight database immediately so the name is never
+     * NULL even if the app is killed before the cloud sync runs. Also attempts
+     * to push the change to Supabase (public.users) right away so other devices
+     * see the new name on their next sync. The cloud push is best-effort: if it
+     * fails (e.g. offline), the next [SyncFromCloudUseCase] run will reconcile.
      *
      * Returns a [SafeAuthResult] with the updated [User] on success, or an error
      * message on failure. Never throws.
      */
     suspend fun safeUpdateDisplayName(displayName: String): SafeAuthResult = try {
+        val trimmed = displayName.trim()
         val userRepo = get<UserRepository>()
         val user = userRepo.getCurrentUser()
             ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
-        val updated = user.copy(displayName = displayName.trim())
+        val updated = user.copy(displayName = trimmed)
+        // 1. Persist locally first (always succeeds even when offline).
         userRepo.updateUser(updated)
+        // 2. Best-effort push to Supabase. Errors are swallowed so the local
+        //    update is never rolled back due to a network failure.
+        runCatching {
+            getOrNull<CloudSyncApi>()?.updateUserProfile(
+                userId = user.id,
+                request = UpdateUserProfileRequest(displayName = trimmed),
+            )
+        }
         SafeAuthResult(user = updated, errorMessage = null)
     } catch (_: CancellationException) {
         throw CancellationException()

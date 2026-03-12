@@ -5,16 +5,23 @@ import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
+import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UserProfileDTO
+import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
 import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
+import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.AuthRepository
+import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -62,6 +69,7 @@ class SyncUseCaseTests {
     private lateinit var userRepo: UserRepository
     private lateinit var sessionRepo: WorkoutSessionRepository
     private lateinit var timeCreditRepo: TimeCreditRepository
+    private lateinit var levelRepo: LevelRepository
     private lateinit var fakeSupabase: FakeCloudSyncApi
     private lateinit var fakeAuthRepo: FakeAuthRepository
 
@@ -77,6 +85,7 @@ class SyncUseCaseTests {
         userRepo = UserRepositoryImpl(database, testDispatcher)
         sessionRepo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
         timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
+        levelRepo = LevelRepositoryImpl(database, testDispatcher, fixedClock)
         fakeSupabase = FakeCloudSyncApi()
         fakeAuthRepo = FakeAuthRepository()
     }
@@ -183,11 +192,22 @@ class SyncUseCaseTests {
         baseDelayMs = 0L,
     )
 
+    private fun makeSyncLevelUseCase(
+        networkMonitor: NetworkMonitor = AlwaysConnectedNetworkMonitor,
+    ) = SyncLevelUseCase(
+        levelRepository = levelRepo,
+        supabaseClient = fakeSupabase,
+        networkMonitor = networkMonitor,
+        maxRetries = 2,
+        baseDelayMs = 0L,
+    )
+
     private fun makeSyncFromCloudUseCase(
         networkMonitor: NetworkMonitor = AlwaysConnectedNetworkMonitor,
     ) = SyncFromCloudUseCase(
         sessionRepository = sessionRepo,
         timeCreditRepository = timeCreditRepo,
+        userRepository = userRepo,
         supabaseClient = fakeSupabase,
         networkMonitor = networkMonitor,
         maxRetries = 2,
@@ -199,6 +219,7 @@ class SyncUseCaseTests {
     ) = SyncManager(
         syncWorkoutsUseCase = makeSyncWorkoutsUseCase(networkMonitor),
         syncTimeCreditUseCase = makeSyncTimeCreditUseCase(networkMonitor),
+        syncLevelUseCase = makeSyncLevelUseCase(networkMonitor),
         syncFromCloudUseCase = makeSyncFromCloudUseCase(networkMonitor),
         authRepository = fakeAuthRepo,
     )
@@ -794,6 +815,7 @@ class SyncUseCaseTests {
         assertIs<SyncResult.Completed>(result)
         assertIs<SyncException.NoNetwork>((result as SyncResult.Completed).workoutsError)
         assertIs<SyncException.NoNetwork>(result.timeCreditError)
+        assertIs<SyncException.NoNetwork>(result.levelError)
         assertIs<SyncException.NoNetwork>(result.fromCloudError)
         assertFalse(result.isFullSuccess)
     }
@@ -959,6 +981,13 @@ class FakeCloudSyncApi : CloudSyncApi {
     var getTimeCreditErrorCount: Int = 0
     var updateTimeCreditCalled: Boolean = false
 
+    // UserProfile
+    var getUserProfileResult: UserProfileDTO? = null
+
+    // UserLevel
+    var getUserLevelResult: UserLevel? = null
+    var upsertUserLevelCalled: Boolean = false
+
     private var createSessionCallsSoFar = 0
     private var getTimeCreditCallsSoFar = 0
 
@@ -1032,6 +1061,28 @@ class FakeCloudSyncApi : CloudSyncApi {
             lastUpdatedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(1_700_000_000_000L),
             syncStatus = SyncStatus.SYNCED,
         )
+    }
+
+    override suspend fun getUserProfile(userId: String): UserProfileDTO? = getUserProfileResult
+
+    override suspend fun updateUserProfile(
+        userId: String,
+        request: UpdateUserProfileRequest,
+    ): UserProfileDTO = UserProfileDTO(
+        id = userId,
+        displayName = request.displayName,
+        email = null,
+        updatedAt = null,
+    )
+
+    override suspend fun getUserLevel(userId: String): UserLevel? = getUserLevelResult
+
+    override suspend fun upsertUserLevel(
+        userId: String,
+        request: UpsertUserLevelRequest,
+    ): UserLevel {
+        upsertUserLevelCalled = true
+        return LevelCalculator.fromTotalXp(userId = userId, totalXp = request.totalXp)
     }
 }
 

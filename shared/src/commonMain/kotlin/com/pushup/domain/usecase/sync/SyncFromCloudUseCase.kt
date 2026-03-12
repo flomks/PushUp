@@ -7,6 +7,7 @@ import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.TimeCreditRepository
+import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
@@ -42,6 +43,7 @@ import kotlinx.coroutines.delay
  *
  * @property sessionRepository    Local repository for workout sessions.
  * @property timeCreditRepository Local repository for time credits.
+ * @property userRepository       Local repository for the user profile (display name).
  * @property supabaseClient       Remote API client for Supabase PostgREST operations.
  * @property networkMonitor       Checks whether the device has internet connectivity.
  * @property maxRetries           Maximum retry attempts (default 3).
@@ -50,6 +52,7 @@ import kotlinx.coroutines.delay
 class SyncFromCloudUseCase(
     private val sessionRepository: WorkoutSessionRepository,
     private val timeCreditRepository: TimeCreditRepository,
+    private val userRepository: UserRepository,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
     private val maxRetries: Int = 3,
@@ -73,6 +76,9 @@ class SyncFromCloudUseCase(
 
         val sessionsResult = fetchAndMergeSessions()
         val timeCreditSynced = fetchAndMergeTimeCredit(userId)
+        // Pull the user's display name from Supabase and update locally if it changed.
+        // Errors are swallowed so a profile fetch failure does not block the rest of the sync.
+        runCatching { fetchAndMergeUserProfile(userId) }
 
         return SyncFromCloudResult(
             sessionsDownloaded = sessionsResult.downloaded,
@@ -161,6 +167,42 @@ class SyncFromCloudUseCase(
             }
             else -> {
                 false
+            }
+        }
+    }
+
+    // =========================================================================
+    // User profile pull (display name)
+    // =========================================================================
+
+    /**
+     * Fetches the user profile from Supabase and updates the local User record
+     * if the remote display name differs from the local one.
+     *
+     * This ensures that a display name changed on another device (or via the
+     * web dashboard) is reflected locally after the next sync.
+     *
+     * [CancellationException] is always re-thrown to preserve structured concurrency.
+     */
+    private suspend fun fetchAndMergeUserProfile(userId: String) {
+        repeat(maxRetries) { attempt ->
+            try {
+                val remote = supabaseClient.getUserProfile(userId) ?: return
+                val remoteDisplayName = remote.displayName?.trim()
+                    ?.takeIf { it.isNotBlank() } ?: return
+
+                val local = userRepository.getCurrentUser() ?: return
+                if (local.displayName != remoteDisplayName) {
+                    userRepository.updateUser(local.copy(displayName = remoteDisplayName))
+                }
+                return
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (!e.isTransient) return
+                delay(baseDelayMs * (1L shl attempt))
+            } catch (_: Exception) {
+                delay(baseDelayMs * (1L shl attempt))
             }
         }
     }
