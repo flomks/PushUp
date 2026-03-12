@@ -69,6 +69,11 @@ struct WorkoutView: View {
         }
         .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
+        // Give the tab bar a solid material background so it is clearly
+        // visible over the camera feed. Without this the tab bar is
+        // transparent and blends into the camera image.
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .onAppear {
             // Start the camera preview so the user can see themselves
             // before tapping "Start". The tracking pipeline (pose detection
@@ -141,28 +146,35 @@ struct WorkoutView: View {
                 }
 
                 Spacer()
-
-                Button {
-                    viewModel.startWorkout()
-                } label: {
-                    HStack(spacing: AppSpacing.xs) {
-                        Image(icon: .playFill)
-                            .font(.system(size: AppSpacing.iconSizeStandard, weight: .bold))
-                        Text("Start")
-                            .font(AppTypography.buttonPrimary)
-
-                    }
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: AppSpacing.buttonHeightPrimary)
-                    .background(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                }
-                .buttonStyle(ScaleButtonStyle())
-                .padding(.horizontal, AppSpacing.xl)
-                .padding(.bottom, AppSpacing.xxl)
+            }
+            // Pin the Start button above the tab bar using safeAreaInset
+            // so it is never hidden behind the tab bar regardless of device.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                startButton
             }
         }
+    }
+
+    private var startButton: some View {
+        Button {
+            viewModel.startWorkout()
+        } label: {
+            HStack(spacing: AppSpacing.xs) {
+                Image(icon: .playFill)
+                    .font(.system(size: AppSpacing.iconSizeStandard, weight: .bold))
+                Text("Start")
+                    .font(AppTypography.buttonPrimary)
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: AppSpacing.buttonHeightPrimary + 8)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+        }
+        .buttonStyle(ScaleButtonStyle())
+        .padding(.horizontal, AppSpacing.xl)
+        .padding(.bottom, AppSpacing.lg)
+        .padding(.top, AppSpacing.md)
     }
 
     // MARK: - Active Overlay

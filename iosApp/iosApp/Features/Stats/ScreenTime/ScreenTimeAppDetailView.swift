@@ -259,14 +259,20 @@ struct ScreenTimeAppDetailView: View {
 
                 // The DeviceActivityReport view is rendered by our extension.
                 // It shows real app names, icons, and usage durations from the OS.
-                // The filter restricts it to today's data for the selected apps.
+                // Passing applicationTokens + categoryTokens ensures ALL selected
+                // apps appear, not only those that triggered a threshold event.
                 DeviceActivityReport(
                     .init("com.flomks.pushup.usageReport"),
                     filter: DeviceActivityFilter(
                         segment: .daily(
                             during: Calendar.current.dateInterval(of: .day, for: Date())
                                 ?? DateInterval(start: Date(), duration: 86400)
-                        )
+                        ),
+                        users: .all,
+                        devices: .init([.iPhone, .iPad]),
+                        applications: manager.activitySelection?.applicationTokens ?? [],
+                        categories: manager.activitySelection?.categoryTokens ?? [],
+                        webDomains: manager.activitySelection?.webDomainTokens ?? []
                     )
                 )
                 // Let the content determine its own height

@@ -1,4 +1,5 @@
 import DeviceActivity
+import FamilyControls
 import SwiftUI
 
 // MARK: - DeviceActivityReport.Context
@@ -16,9 +17,6 @@ extension DeviceActivityReport.Context {
 /// `makeConfiguration` runs in the extension process with full access to
 /// OS usage data. It extracts per-app entries and writes them to the
 /// shared App Group container for the main app to use in threshold calculations.
-///
-/// All fields are plain value types so `AppUsageConfiguration` is trivially
-/// `Sendable` across the actor boundary between `makeConfiguration` and the view.
 struct AppUsageConfiguration: Sendable {
     /// Per-app usage entries, sorted by duration descending.
     let entries: [AppUsageEntry]
@@ -30,10 +28,10 @@ struct AppUsageConfiguration: Sendable {
 
 /// A single app's usage data for display in the report view.
 ///
-/// Uses only plain `String` and `TimeInterval` values so the struct is
-/// trivially `Sendable`. The `Application` token from DeviceActivity is
-/// NOT stored here -- it lives in `FamilyControls` and cannot be reliably
-/// passed across the `makeConfiguration` actor boundary.
+/// Stores the `Application` token so `TotalActivityView` can render the
+/// real app icon via `Label("name", application: token)`. `Application`
+/// conforms to `Sendable` so it is safe to pass across the actor boundary
+/// between `makeConfiguration` and the SwiftUI view.
 struct AppUsageEntry: Identifiable, Sendable {
     /// The app's bundle identifier (used as stable ID).
     let id: String
@@ -43,6 +41,9 @@ struct AppUsageEntry: Identifiable, Sendable {
     let duration: TimeInterval
     /// The category this app belongs to (e.g. "Social Networking").
     let categoryName: String
+    /// The opaque Application token -- used to render the real app icon
+    /// via `Label` inside the DeviceActivityReport extension view.
+    let application: Application
 }
 
 // MARK: - AppUsageReport
@@ -71,26 +72,31 @@ struct AppUsageReport: DeviceActivityReportScene {
                     let categoryName = category.category.localizedDisplayName ?? ""
                     for await appActivity in category.applications {
                         let duration = appActivity.totalActivityDuration
-                        guard duration > 0 else { continue }
-
                         let app = appActivity.application
                         let bundleID = app.bundleIdentifier ?? UUID().uuidString
                         let displayName = app.localizedDisplayName ?? bundleID
 
-                        totalDuration += duration
+                        // Include all apps (even 0-duration) so the full selected
+                        // list is shown. Only add to totalDuration if actually used.
+                        if duration > 0 {
+                            totalDuration += duration
+                        }
 
                         entries.append(AppUsageEntry(
                             id: bundleID,
                             displayName: displayName,
                             duration: duration,
-                            categoryName: categoryName
+                            categoryName: categoryName,
+                            application: app
                         ))
 
-                        perAppJSON.append([
-                            "bundleID": bundleID,
-                            "seconds": Int(duration),
-                            "categoryToken": categoryName
-                        ])
+                        if duration > 0 {
+                            perAppJSON.append([
+                                "bundleID": bundleID,
+                                "seconds": Int(duration),
+                                "categoryToken": categoryName
+                            ])
+                        }
                     }
                 }
             }
