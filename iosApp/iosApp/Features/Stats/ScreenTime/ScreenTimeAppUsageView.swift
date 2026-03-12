@@ -95,9 +95,7 @@ struct ScreenTimeAppUsageView: View {
                     segment: .daily(
                         during: Calendar.current.dateInterval(of: .day, for: Date())
                             ?? DateInterval(start: Date(), duration: 86400)
-                    ),
-                    users: .all,
-                    devices: .init([.iPhone, .iPad])
+                    )
                 )
             )
             // Limit height in inline mode; full view available via "See All"
