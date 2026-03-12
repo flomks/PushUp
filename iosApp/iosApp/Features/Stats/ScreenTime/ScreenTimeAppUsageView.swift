@@ -4,16 +4,17 @@ import FamilyControls
 
 // MARK: - ScreenTimeAppUsageView
 
-/// Displays per-app usage for today using the DeviceActivityReport framework.
+/// Inline card showing per-app usage for today.
 ///
-/// This view embeds a `DeviceActivityReport` which is rendered by the
-/// `DeviceActivityReport` extension in a system-provided container.
-/// The extension has access to the actual per-app usage data from the OS.
+/// Designed to be embedded inside a ScrollView / LazyVStack.
+/// Shows a compact summary with a "See All" link to `ScreenTimeAppDetailView`.
 ///
-/// **iOS 16.4+ required** for `DeviceActivityReport`.
+/// On iOS 16.4+ the card embeds a `DeviceActivityReport` which is rendered
+/// by the `DeviceActivityReport` extension. The extension has privileged
+/// access to real app names, icons, and usage durations from the OS.
 ///
-/// Falls back to a simple list from the App Group store on older iOS versions
-/// or when the extension has not yet written data.
+/// On older iOS versions the card shows a list from the App Group store
+/// (bundle IDs only, no real icons).
 struct ScreenTimeAppUsageView: View {
 
     @ObservedObject private var manager = ScreenTimeManager.shared
@@ -37,14 +38,43 @@ struct ScreenTimeAppUsageView: View {
     // MARK: - Main Content
 
     private var content: some View {
-        VStack(spacing: AppSpacing.md) {
-            // System DeviceActivityReport (iOS 16.4+)
-            if #available(iOS 16.4, *) {
-                systemReportCard
-            }
+        Card(padding: 0) {
+            VStack(spacing: 0) {
+                // Header row
+                HStack {
+                    Label("Apps Used Today", systemImage: "app.badge.fill")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
 
-            // Per-app usage list from App Group store
-            perAppUsageCard
+                    Spacer()
+
+                    // "See All" navigation link to full detail view
+                    NavigationLink {
+                        ScreenTimeAppDetailView()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("See All")
+                                .font(AppTypography.captionSemibold)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(AppColors.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, AppSpacing.md)
+                .padding(.bottom, AppSpacing.sm)
+
+                Divider()
+
+                // Per-app usage content
+                if #available(iOS 16.4, *) {
+                    systemReportContent
+                } else {
+                    fallbackContent
+                }
+            }
         }
         .task { viewModel.loadData() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -52,85 +82,97 @@ struct ScreenTimeAppUsageView: View {
         }
     }
 
-    // MARK: - System Report Card (iOS 16.4+)
+    // MARK: - System Report (iOS 16.4+)
 
     @available(iOS 16.4, *)
-    private var systemReportCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                HStack {
-                    Label("Today's App Usage", icon: .hourglassFill)
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
-                    Spacer()
-                    Text("Live")
-                        .font(AppTypography.caption2)
-                        .foregroundStyle(AppColors.success)
-                        .padding(.horizontal, AppSpacing.xs)
-                        .padding(.vertical, 3)
-                        .background(AppColors.success.opacity(0.1), in: Capsule())
-                }
-
-                // Embed the system DeviceActivityReport view.
-                // This is rendered by our DeviceActivityReport extension and
-                // shows the actual per-app usage data from the OS.
-                DeviceActivityReport(
-                    .init("com.flomks.pushup.usageReport"),
-                    filter: DeviceActivityFilter(
-                        segment: .daily(
-                            during: Calendar.current.dateInterval(of: .day, for: Date()) ?? DateInterval()
-                        ),
-                        users: .all,
-                        devices: .init([.iPhone, .iPad])
-                    )
+    private var systemReportContent: some View {
+        VStack(spacing: 0) {
+            // Embed the DeviceActivityReport -- rendered by our extension
+            // with real app names, icons, and durations from the OS.
+            DeviceActivityReport(
+                .init("com.flomks.pushup.usageReport"),
+                filter: DeviceActivityFilter(
+                    segment: .daily(
+                        during: Calendar.current.dateInterval(of: .day, for: Date())
+                            ?? DateInterval(start: Date(), duration: 86400)
+                    ),
+                    users: .all,
+                    devices: .init([.iPhone, .iPad])
                 )
-                .frame(minHeight: 200)
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            )
+            // Limit height in inline mode; full view available via "See All"
+            .frame(maxHeight: 320)
+            .clipped()
+
+            // Footer: total + "See All" hint
+            Divider()
+            HStack {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppColors.success)
+                Text("Live data from iOS Screen Time")
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(AppColors.textSecondary)
+                Spacer()
+                NavigationLink {
+                    ScreenTimeAppDetailView()
+                } label: {
+                    Text("Full Overview")
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.primary)
+                }
+                .buttonStyle(.plain)
             }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
         }
     }
 
-    // MARK: - Per-App Usage List (from App Group store)
+    // MARK: - Fallback Content (pre-iOS 16.4)
 
-    private var perAppUsageCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                HStack {
-                    Label("Tracked Apps Today", icon: .appBadgeFill)
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
-                    Spacer()
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.7)
+    private var fallbackContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.perAppUsage.isEmpty {
+                emptyState
+            } else {
+                // Show top 5 apps
+                let topApps = Array(viewModel.perAppUsage.prefix(5))
+                let maxSeconds = topApps.first?.seconds ?? 1
+
+                VStack(spacing: 0) {
+                    ForEach(Array(topApps.enumerated()), id: \.element.id) { index, record in
+                        if index > 0 {
+                            Divider().padding(.leading, 48)
+                        }
+                        fallbackRow(record: record, maxSeconds: maxSeconds)
                     }
                 }
 
-                if viewModel.perAppUsage.isEmpty {
-                    emptyPerAppState
-                } else {
-                    perAppList
-                }
-            }
-        }
-    }
-
-    private var perAppList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(viewModel.perAppUsage.enumerated()), id: \.element.id) { index, record in
-                if index > 0 {
+                if viewModel.perAppUsage.count > 5 {
                     Divider()
-                        .padding(.leading, AppSpacing.md)
+                    NavigationLink {
+                        ScreenTimeAppDetailView()
+                    } label: {
+                        HStack {
+                            Text("Show \(viewModel.perAppUsage.count - 5) more apps")
+                                .font(AppTypography.captionSemibold)
+                                .foregroundStyle(AppColors.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(AppColors.primary)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                    }
+                    .buttonStyle(.plain)
                 }
-                perAppRow(record: record, maxSeconds: viewModel.perAppUsage.first?.seconds ?? 1)
             }
         }
     }
 
-    private func perAppRow(_ record: PerAppUsageRecord, maxSeconds: Int) -> some View {
+    private func fallbackRow(_ record: PerAppUsageRecord, maxSeconds: Int) -> some View {
         HStack(spacing: AppSpacing.sm) {
-            // App icon placeholder (bundle ID based)
             RoundedRectangle(cornerRadius: 8)
                 .fill(AppColors.backgroundTertiary)
                 .frame(width: 36, height: 36)
@@ -140,7 +182,7 @@ struct ScreenTimeAppUsageView: View {
                         .foregroundStyle(AppColors.textTertiary)
                 )
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(displayName(for: record.bundleID))
                     .font(AppTypography.bodySemibold)
                     .foregroundStyle(AppColors.textPrimary)
@@ -152,15 +194,13 @@ struct ScreenTimeAppUsageView: View {
                         .foregroundStyle(AppColors.textSecondary)
                 }
 
-                // Usage bar
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(AppColors.backgroundTertiary)
                             .frame(height: 4)
-
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(usageBarColor(seconds: record.seconds))
+                            .fill(barColor(seconds: record.seconds, maxSeconds: maxSeconds))
                             .frame(
                                 width: geo.size.width * CGFloat(record.seconds) / CGFloat(max(1, maxSeconds)),
                                 height: 4
@@ -178,25 +218,27 @@ struct ScreenTimeAppUsageView: View {
                 .monospacedDigit()
         }
         .padding(.vertical, AppSpacing.xs)
+        .padding(.horizontal, AppSpacing.md)
     }
 
-    private var emptyPerAppState: some View {
+    private var emptyState: some View {
         HStack(spacing: AppSpacing.sm) {
-            Image(icon: .infoCircle)
+            Image(systemName: "info.circle")
                 .font(.system(size: AppSpacing.iconSizeSmall))
                 .foregroundStyle(AppColors.info)
             VStack(alignment: .leading, spacing: 2) {
-                Text("No per-app data yet")
+                Text("No app usage data yet today")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
-                Text("Data appears after the first usage threshold is reached.")
+                Text("Data appears once you start using the tracked apps.")
                     .font(AppTypography.caption2)
                     .foregroundStyle(AppColors.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
-        .padding(.vertical, AppSpacing.xs)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
     }
 
     // MARK: - Not Authorized / No Selection
@@ -204,7 +246,7 @@ struct ScreenTimeAppUsageView: View {
     private var notAuthorizedCard: some View {
         Card {
             HStack(spacing: AppSpacing.sm) {
-                Image(icon: .xmarkShieldFill)
+                Image(systemName: "xmark.shield.fill")
                     .font(.system(size: AppSpacing.iconSizeStandard))
                     .foregroundStyle(AppColors.textTertiary)
                 Text("Enable Screen Time to see per-app usage.")
@@ -218,12 +260,22 @@ struct ScreenTimeAppUsageView: View {
     private var noSelectionCard: some View {
         Card {
             HStack(spacing: AppSpacing.sm) {
-                Image(icon: .appBadgeFill)
+                Image(systemName: "app.badge.fill")
                     .font(.system(size: AppSpacing.iconSizeStandard))
                     .foregroundStyle(AppColors.textTertiary)
-                Text("Select apps to track in Screen Time Settings.")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No apps selected for tracking")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                    NavigationLink {
+                        ScreenTimeSettingsView()
+                    } label: {
+                        Text("Select apps in Screen Time Settings")
+                            .font(AppTypography.caption2)
+                            .foregroundStyle(AppColors.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer()
             }
         }
@@ -232,23 +284,20 @@ struct ScreenTimeAppUsageView: View {
     // MARK: - Helpers
 
     private func displayName(for bundleID: String) -> String {
-        // Extract a readable name from the bundle ID.
-        // e.g. "com.apple.mobilesafari" -> "mobilesafari" -> "Mobilesafari"
-        // In production, you'd use LSApplicationWorkspace or a lookup table.
         let parts = bundleID.split(separator: ".")
         let last = parts.last.map(String.init) ?? bundleID
         return last.prefix(1).uppercased() + last.dropFirst()
     }
 
-    private func usageBarColor(seconds: Int) -> Color {
-        let fraction = Double(seconds) / 7200.0  // 2 hours = "full"
-        if fraction >= 1.0 { return AppColors.error }
-        if fraction >= 0.6 { return AppColors.warning }
+    private func barColor(seconds: Int, maxSeconds: Int) -> Color {
+        let fraction = Double(seconds) / Double(max(1, maxSeconds))
+        if fraction >= 0.7 { return AppColors.error }
+        if fraction >= 0.4 { return AppColors.warning }
         return AppColors.primary
     }
 
     private func formatSeconds(_ seconds: Int) -> String {
-        if seconds == 0 { return "0m" }
+        if seconds <= 0 { return "0m" }
         if seconds < 60 { return "\(seconds)s" }
         let h = seconds / 3600
         let m = (seconds % 3600) / 60

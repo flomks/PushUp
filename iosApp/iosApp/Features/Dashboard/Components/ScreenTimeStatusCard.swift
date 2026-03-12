@@ -4,10 +4,11 @@ import SwiftUI
 
 /// Dashboard card showing the current Screen Time / App Blocking status.
 ///
-/// Displayed on the Dashboard when Screen Time is authorized.
+/// Displayed on the Dashboard when Screen Time is authorized and apps are selected.
 /// Shows:
 /// - Current blocking state (active / inactive)
 /// - Today's app usage time (OS-tracked, reinstall-proof)
+/// - Quick link to per-app usage detail (ScreenTimeAppDetailView)
 /// - Quick link to Screen Time settings
 ///
 /// Hidden entirely when Screen Time is not set up (not authorized).
@@ -18,13 +19,11 @@ struct ScreenTimeStatusCard: View {
 
     /// Today's total usage in seconds.
     /// Prefers the OS-tracked system usage value (reinstall-proof).
-    /// Falls back to the App Group store value if system usage is not available.
     private var todayUsageSeconds: Int {
         usageStore.todayUsageSeconds
     }
 
     var body: some View {
-        // Only show when Screen Time is authorized and has a selection
         if manager.authorizationStatus == .authorized, hasSelection {
             cardContent
         }
@@ -40,7 +39,7 @@ struct ScreenTimeStatusCard: View {
     private var cardContent: some View {
         Card {
             VStack(spacing: AppSpacing.sm) {
-                // Header
+                // Header row
                 HStack {
                     Label("Screen Time", icon: .hourglassFill)
                         .font(AppTypography.headline)
@@ -48,35 +47,52 @@ struct ScreenTimeStatusCard: View {
 
                     Spacer()
 
-                    // Status badge
                     statusBadge
                 }
 
                 Divider()
 
-                // Metrics row
+                // Metrics row: Used Today | App Access | App Usage Detail
                 HStack(spacing: AppSpacing.md) {
-                    // Today's usage
-                    metricItem(
-                        icon: .hourglassBottomHalf,
-                        value: formatSeconds(todayUsageSeconds),
-                        label: "Used Today",
-                        color: usageColor
-                    )
+                    // Today's usage -- tappable, navigates to per-app detail
+                    NavigationLink {
+                        ScreenTimeAppDetailView()
+                    } label: {
+                        VStack(spacing: AppSpacing.xxs) {
+                            Image(icon: .hourglassBottomHalf)
+                                .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                                .foregroundStyle(usageColor)
+                            Text(formatSeconds(todayUsageSeconds))
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                                .monospacedDigit()
+                            Text("Used Today")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
 
                     Divider().frame(height: 36)
 
                     // Blocking state
-                    metricItem(
-                        icon: manager.isBlocking ? .lockApp : .checkmarkShield,
-                        value: manager.isBlocking ? "Blocked" : "Open",
-                        label: "App Access",
-                        color: manager.isBlocking ? AppColors.error : AppColors.success
-                    )
+                    VStack(spacing: AppSpacing.xxs) {
+                        Image(icon: manager.isBlocking ? .lockApp : .checkmarkShield)
+                            .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                            .foregroundStyle(manager.isBlocking ? AppColors.error : AppColors.success)
+                        Text(manager.isBlocking ? "Blocked" : "Open")
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+                        Text("App Access")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
 
                     Divider().frame(height: 36)
 
-                    // Navigate to Screen Time settings
+                    // Settings link
                     NavigationLink {
                         ScreenTimeSettingsView()
                     } label: {
@@ -96,12 +112,34 @@ struct ScreenTimeStatusCard: View {
                     .buttonStyle(.plain)
                 }
 
+                // "View App Usage" shortcut row
+                NavigationLink {
+                    ScreenTimeAppDetailView()
+                } label: {
+                    HStack(spacing: AppSpacing.xs) {
+                        Image(systemName: "app.badge.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppColors.primary)
+                        Text("View per-app usage for today")
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+                    .padding(.horizontal, AppSpacing.xs)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(AppColors.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+                }
+                .buttonStyle(.plain)
+
                 // Warning banner when blocking is active
                 if manager.isBlocking {
                     blockingBanner
                 }
 
-                // System tracking indicator (shows when OS-tracked data is available)
+                // System tracking indicator
                 if usageStore.todaySystemUsageSeconds > 0 {
                     systemTrackingBadge
                 }
@@ -151,8 +189,6 @@ struct ScreenTimeStatusCard: View {
 
     // MARK: - System Tracking Badge
 
-    /// Shown when the OS-tracked usage value is available.
-    /// Indicates that the usage data is reinstall-proof.
     private var systemTrackingBadge: some View {
         HStack(spacing: AppSpacing.xxs) {
             Image(systemName: "checkmark.shield.fill")
@@ -165,36 +201,10 @@ struct ScreenTimeStatusCard: View {
         }
     }
 
-    // MARK: - Metric Item
-
-    private func metricItem(
-        icon: AppIcon,
-        value: String,
-        label: String,
-        color: Color
-    ) -> some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Image(icon: icon)
-                .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                .foregroundStyle(color)
-
-            Text(value)
-                .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimary)
-                .monospacedDigit()
-
-            Text(label)
-                .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
     // MARK: - Helpers
 
     private var usageColor: Color {
         if todayUsageSeconds == 0 { return AppColors.textSecondary }
-        // Color based on usage relative to a 2-hour "reasonable" daily limit
         let fraction = Double(todayUsageSeconds) / 7200.0
         if fraction >= 1.0 { return AppColors.error }
         if fraction >= 0.8 { return AppColors.warning }
