@@ -85,16 +85,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Only use system usage if it's from today.
         let validSystemUsage = systemUsageDate == today ? systemUsage : 0
 
+        guard screenTime.authorizationStatus == .authorized,
+              screenTime.activitySelection != nil else { return }
+
         if storedCredit > 0 {
+            // Credit available -- set threshold and start monitoring.
             screenTime.stopMonitoring()
             screenTime.startMonitoring(availableSeconds: storedCredit)
-        } else if validSystemUsage > 0 {
-            // System usage exists but no credit stored -- this means the user
-            // has used up all their credit. Ensure apps are blocked.
-            if screenTime.authorizationStatus == .authorized,
-               screenTime.activitySelection != nil {
-                screenTime.blockApps()
-            }
+        } else {
+            // Credit is zero (or not yet stored) -- block apps immediately
+            // and start monitoring with threshold=1 so the extension records
+            // usage data even while blocked.
+            screenTime.blockApps()
+            screenTime.stopMonitoring()
+            screenTime.startMonitoring(availableSeconds: 1)
         }
     }
 
