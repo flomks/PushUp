@@ -14,7 +14,6 @@ import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
-import org.koin.core.component.getOrNull
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -98,11 +97,14 @@ object SafeAuthBridge : KoinComponent {
         userRepo.updateUser(updated)
         // 2. Best-effort push to Supabase. Errors are swallowed so the local
         //    update is never rolled back due to a network failure.
-        runCatching {
-            getOrNull<CloudSyncApi>()?.updateUserProfile(
-                userId = user.id,
-                request = UpdateUserProfileRequest(displayName = trimmed),
-            )
+        val syncApi = runCatching { get<CloudSyncApi>() }.getOrNull()
+        if (syncApi != null) {
+            runCatching {
+                syncApi.updateUserProfile(
+                    userId = user.id,
+                    request = UpdateUserProfileRequest(displayName = trimmed),
+                )
+            }
         }
         SafeAuthResult(user = updated, errorMessage = null)
     } catch (_: CancellationException) {
