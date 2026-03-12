@@ -1,15 +1,14 @@
-import DeviceActivity
 import SwiftUI
 
 // MARK: - AppUsageReportView
 //
 // The SwiftUI view rendered inside the DeviceActivityReport container.
 // Receives an AppUsageConfiguration (processed by AppUsageReport.makeConfiguration)
-// and renders a per-app usage list with real app names, icons, and usage bars.
+// and renders a per-app usage list with app names, colored icons, and usage bars.
 //
-// Real app names and icons are rendered via Label(entry.application) --
-// the DeviceActivity framework provides this Label initializer in the view
-// layer. It renders the actual app icon and localized name from the OS.
+// App names come from localizedDisplayName (set in makeConfiguration).
+// Icons are generated from the bundle ID using a deterministic color -- the
+// real app icon is not accessible from the configuration value type.
 //
 // This view is injected directly into the main app's view hierarchy by the
 // system and blends seamlessly in light/dark mode.
@@ -42,18 +41,20 @@ struct AppUsageReportView: View {
 
     private func appRow(_ entry: AppUsageEntry) -> some View {
         HStack(spacing: 12) {
-            // Real app icon from the OS.
-            // Label(entry.application) is the DeviceActivity-provided initializer
-            // that renders the actual app icon and localized display name.
-            Label(entry.application)
-                .labelStyle(.iconOnly)
+            // App icon: colored rounded square with first letter of app name.
+            // Deterministic color derived from bundle ID for visual consistency.
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(iconColor(for: entry.id))
                 .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    Text(entry.displayName.prefix(1).uppercased())
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                )
 
             VStack(alignment: .leading, spacing: 4) {
-                // Real app name from the OS.
-                Label(entry.application)
-                    .labelStyle(.titleOnly)
+                // App name from localizedDisplayName
+                Text(entry.displayName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.primary)
                     .lineLimit(1)
@@ -124,6 +125,14 @@ struct AppUsageReportView: View {
         if fraction >= 0.5 { return .red }
         if fraction >= 0.3 { return .orange }
         return .blue
+    }
+
+    /// Deterministic icon background color derived from the bundle ID.
+    /// Produces a consistent color for each app across sessions.
+    private func iconColor(for bundleID: String) -> Color {
+        let palette: [Color] = [.blue, .purple, .pink, .orange, .green, .teal, .indigo, .cyan]
+        let hash = bundleID.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return palette[abs(hash) % palette.count]
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
