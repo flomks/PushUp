@@ -112,18 +112,25 @@ final class DashboardViewModel: ObservableObject {
             self.totalEarnedSeconds = Int(credit?.totalEarnedSeconds ?? 0)
 
             let screenTime = ScreenTimeManager.shared
+            guard screenTime.authorizationStatus == .authorized,
+                  screenTime.activitySelection != nil else { return }
 
             if available <= 0 {
                 // Credit exhausted — activate the shield immediately.
-                if screenTime.authorizationStatus == .authorized,
-                   screenTime.activitySelection != nil {
-                    if !screenTime.isBlocking {
-                        screenTime.blockApps()
-                    }
+                if !screenTime.isBlocking {
+                    screenTime.blockApps()
                 }
-                // Stop DeviceActivity monitoring — no threshold needed when
-                // already blocked.
+                // Keep DeviceActivity monitoring running even at 0 credit.
+                // This is critical for two reasons:
+                //   1. The extension tracks real usage so todaySystemUsageSeconds
+                //      stays accurate for the usage display.
+                //   2. When the user earns new credit via a workout, monitoring
+                //      is restarted with the new threshold. If we stopped it here
+                //      the extension would never write usage data.
+                // Use threshold = 1 second so the event fires immediately and
+                // the extension records the current usage snapshot.
                 screenTime.stopMonitoring()
+                screenTime.startMonitoring(availableSeconds: 1)
             } else {
                 // Credit is positive — ensure apps are unblocked and the
                 // DeviceActivity threshold is set to the current balance so

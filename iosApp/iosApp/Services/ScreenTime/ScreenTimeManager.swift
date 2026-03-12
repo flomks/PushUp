@@ -97,6 +97,11 @@ final class ScreenTimeManager: ObservableObject {
             try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
             authorizationStatus = .authorized
             sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isAuthorized)
+
+            // After authorization, immediately apply the correct state based on
+            // the stored credit balance. This ensures blocking/monitoring starts
+            // right away without requiring the user to reopen the app.
+            applyStateAfterAuthorization()
         } catch {
             authorizationStatus = .denied
             errorMessage = "Screen Time permission was denied. You can enable it in iOS Settings > Screen Time."
@@ -149,9 +154,29 @@ final class ScreenTimeManager: ObservableObject {
         }
         sharedDefaults?.set(data, forKey: ScreenTimeConstants.Keys.activitySelection)
 
-        // Restart monitoring with the new selection if we were already monitoring.
+        // Re-apply shield immediately if already blocking (e.g. selection changed
+        // while credit was already exhausted).
         if isBlocking {
             applyShield(selection: selection)
+            return
+        }
+
+        // Check current credit balance. If credit is zero, block immediately
+        // without waiting for DashboardViewModel to emit a credit update.
+        // This ensures apps are blocked the moment the user saves a selection
+        // when they have no credit -- no second app-open required.
+        let storedCredit = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.availableSeconds) ?? 0
+        if storedCredit <= 0 {
+            applyShield(selection: selection)
+            isBlocking = true
+            sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
+            // Start monitoring with threshold=1 so the extension records usage.
+            stopMonitoring()
+            startMonitoring(availableSeconds: 1)
+        } else {
+            // Credit available -- just (re)start monitoring with the new selection.
+            stopMonitoring()
+            startMonitoring(availableSeconds: storedCredit)
         }
     }
 
@@ -328,6 +353,53 @@ final class ScreenTimeManager: ObservableObject {
             isBlocking = true
         } else {
             isBlocking = false
+        }
+
+        // Note: applyStateAfterAuthorization() is NOT called here because
+        // loadPersistedState() runs in init() before the KMP database is ready.
+        // DashboardViewModel.startObserving() will call startMonitoring() with
+        // the correct credit value once the DB emits. AppDelegate.rearmScreenTimeMonitoring()
+        // handles the launch case using the stored credit from App Group UserDefaults.
+    }
+
+    /// Applies the correct blocking/monitoring state immediately after
+    /// authorization is granted or the app launches with authorization already set.
+    ///
+    /// Called from `requestAuthorization()` and `loadPersistedState()`.
+    /// Reads the stored credit balance and either:
+    ///   - Blocks apps + starts monitoring (credit = 0)
+    ///   - Starts monitoring with the correct threshold (credit > 0)
+    ///
+    /// This ensures the correct state is applied without waiting for
+    /// `DashboardViewModel` to emit a credit update.
+    private func applyStateAfterAuthorization() {
+        guard let selection = activitySelection,
+              !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+        else { return }
+
+        let storedCredit = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.availableSeconds) ?? 0
+
+        stopMonitoring()
+
+        if storedCredit <= 0 {
+            // No credit -- block immediately and monitor with threshold=1
+            // so the extension records usage data.
+            if !isBlocking {
+                applyShield(selection: selection)
+                isBlocking = true
+                sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
+            }
+            startMonitoring(availableSeconds: 1)
+        } else {
+            // Credit available -- ensure unblocked and start monitoring.
+            if isBlocking {
+                store.shield.applications = nil
+                store.shield.applicationCategories = nil
+                store.shield.webDomains = nil
+                isBlocking = false
+                sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.isBlocking)
+            }
+            startMonitoring(availableSeconds: storedCredit)
         }
     }
 

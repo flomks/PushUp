@@ -1,7 +1,5 @@
 import SwiftUI
 import Charts
-import DeviceActivity
-import FamilyControls
 
 // MARK: - ScreenTimeStatsView
 
