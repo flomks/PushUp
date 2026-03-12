@@ -74,17 +74,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
         let storedCredit = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
 
-        // Validate the stored credit against the system usage.
-        // If the system usage exceeds the stored credit, the user has used
-        // more time than they earned -- this can happen after a reinstall
-        // where the DB credit was restored but the system usage was not reset.
-        let systemUsage = sharedDefaults?.integer(forKey: "screentime.todaySystemUsageSeconds") ?? 0
-        let systemUsageDate = sharedDefaults?.string(forKey: "screentime.todaySystemUsageDate") ?? ""
-        let today = isoDateString(from: Date())
-
-        // Only use system usage if it's from today.
-        let validSystemUsage = systemUsageDate == today ? systemUsage : 0
-
         guard screenTime.authorizationStatus == .authorized,
               screenTime.activitySelection != nil else { return }
 

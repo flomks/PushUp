@@ -45,7 +45,7 @@ struct ScreenTimeSettingsView: View {
         .navigationTitle("Screen Time")
         .navigationBarTitleDisplayMode(.large)
         .familyActivityPicker(isPresented: $showAppPicker, selection: $pickerSelection)
-        .onChange(of: pickerSelection) { newSelection in
+        .onChange(of: pickerSelection) { _, newSelection in
             manager.saveSelection(newSelection)
         }
         .onAppear {
