@@ -34,7 +34,7 @@ struct AppUsageReportView: View {
                     Divider()
                         .padding(.leading, 52)
                 }
-                appRow(entry: entry)
+                appRow(entry)
             }
         }
     }
