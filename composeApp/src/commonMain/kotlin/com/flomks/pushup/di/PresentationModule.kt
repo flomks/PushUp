@@ -4,10 +4,8 @@ import com.flomks.pushup.friends.FriendRequestsViewModel
 import com.flomks.pushup.friends.FriendsListViewModel
 import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
-import com.flomks.pushup.notifications.NotificationViewModel
 import com.flomks.pushup.profile.ProfileViewModel
 import com.pushup.domain.repository.FriendshipRepository
-import com.pushup.domain.repository.NotificationRepository
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetUserLevelUseCase
@@ -45,10 +43,6 @@ val presentationModule = module {
             friendId   = params[0],
             friendName = params[1],
         )
-    }
-
-    viewModel {
-        NotificationViewModel(repository = get<NotificationRepository>())
     }
 
     viewModel {

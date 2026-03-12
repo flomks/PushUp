@@ -7,8 +7,6 @@ import com.pushup.models.IncomingFriendRequest
 import com.pushup.models.IncomingFriendRequestsResponse
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
-import com.pushup.plugins.NotificationType
-import com.pushup.plugins.Notifications
 import com.pushup.plugins.Users
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
@@ -136,7 +134,7 @@ open class FriendshipService(
      *    direction (regardless of status -- pending, accepted, or declined).
      *
      * On success, a new row is inserted into `friendships` with status `pending`
-     * and an in-app notification is created for the receiver.
+     * and an APNs push notification is sent to the receiver.
      *
      * @return [SendFriendRequestResult] describing the outcome.
      */
@@ -233,21 +231,7 @@ open class FriendshipService(
         }
 
         // ------------------------------------------------------------------
-        // 5. Create an in-app notification for the receiver
-        // ------------------------------------------------------------------
-        Notifications.insert {
-            it[id]        = UUID.randomUUID()
-            it[userId]    = receiverId
-            it[type]      = NotificationType.FRIEND_REQUEST
-            it[actorId]   = requesterId
-            it[payload]   = """{"friendship_id":"$newId"}"""
-            it[isRead]    = false
-            it[createdAt] = now
-            it[updatedAt] = now
-        }
-
-        // ------------------------------------------------------------------
-        // 6. Return the created friendship
+        // 5. Return the created friendship
         // ------------------------------------------------------------------
         SendFriendRequestResult.Success(
             FriendshipResponse(
@@ -273,8 +257,8 @@ open class FriendshipService(
      * On success:
      * - The `status` column is updated to [newStatus] and `updated_at` is
      *   refreshed.
-     * - If [newStatus] is `accepted`, an in-app notification of type
-     *   `friend_accepted` is created for the original requester.
+     * - If [newStatus] is `accepted`, an APNs push notification is sent to
+     *   the original requester.
      *
      * @param callerId     UUID of the authenticated user making the request.
      * @param friendshipId UUID of the friendship row to update.
@@ -357,23 +341,7 @@ open class FriendshipService(
         }
 
         // ------------------------------------------------------------------
-        // 5. Notify the requester when the request is accepted (in-app)
-        // ------------------------------------------------------------------
-        if (newStatus == FriendshipStatus.ACCEPTED) {
-            Notifications.insert {
-                it[id]        = UUID.randomUUID()
-                it[userId]    = rowRequesterId
-                it[type]      = NotificationType.FRIEND_ACCEPTED
-                it[actorId]   = callerId
-                it[payload]   = """{"friendship_id":"$friendshipId"}"""
-                it[isRead]    = false
-                it[Notifications.createdAt] = now
-                it[updatedAt] = now
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // 6. Return the updated friendship
+        // 5. Return the updated friendship
         // ------------------------------------------------------------------
         RespondFriendRequestResult.Success(
             FriendshipResponse(
