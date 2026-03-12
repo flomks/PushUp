@@ -121,43 +121,43 @@ struct WorkoutView: View {
     // MARK: - Idle Overlay
 
     private var idleOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
+        GeometryReader { geo in
+            ZStack {
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.xl) {
-                Spacer()
+                VStack(spacing: AppSpacing.xl) {
+                    Spacer()
 
-                VStack(spacing: AppSpacing.sm) {
-                    Image(icon: .figureStrengthTraining)
-                        .font(.system(size: 72, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .symbolRenderingMode(.hierarchical)
+                    VStack(spacing: AppSpacing.sm) {
+                        Image(icon: .figureStrengthTraining)
+                            .font(.system(size: 72, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .symbolRenderingMode(.hierarchical)
 
-                    Text("Start Workout")
-                        .font(AppTypography.roundedTitle)
-                        .foregroundStyle(.white)
+                        Text("Start Workout")
+                            .font(AppTypography.roundedTitle)
+                            .foregroundStyle(.white)
 
-                    Text("Position yourself sideways to the camera")
-                        .font(AppTypography.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppSpacing.xl)
+                        Text("Position yourself sideways to the camera")
+                            .font(AppTypography.subheadline)
+                            .foregroundStyle(.white.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppSpacing.xl)
+                    }
+
+                    Spacer()
+
+                    startButton(bottomInset: geo.safeAreaInsets.bottom)
                 }
-
-                Spacer()
-
-                // Start button sits above the tab bar.
-                // The view uses ignoresSafeArea() so the system safe area
-                // inset does not account for the tab bar (49pt). We read
-                // the bottom safe area for the home indicator and add the
-                // standard tab bar height on top of it.
-                startButton
             }
         }
     }
 
-    private var startButton: some View {
+    private func startButton(bottomInset: CGFloat) -> some View {
+        // bottomInset = home indicator safe area (~34pt Face ID, 0pt Home button).
+        // Tab bar height is always 49pt. We add a 16pt gap above the button.
+        // Total bottom padding = homeIndicator + tabBar + gap.
         Button {
             viewModel.startWorkout()
         } label: {
@@ -175,8 +175,7 @@ struct WorkoutView: View {
         }
         .buttonStyle(ScaleButtonStyle())
         .padding(.horizontal, AppSpacing.xl)
-        // 49pt tab bar + 16pt gap above it + home-indicator safe area
-        .padding(.bottom, 49 + AppSpacing.md)
+        .padding(.bottom, bottomInset + 49 + AppSpacing.md)
         .padding(.top, AppSpacing.md)
     }
 
