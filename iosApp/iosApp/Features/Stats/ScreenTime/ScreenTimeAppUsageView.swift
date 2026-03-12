@@ -89,20 +89,25 @@ struct ScreenTimeAppUsageView: View {
         VStack(spacing: 0) {
             // Embed the DeviceActivityReport -- rendered by our extension
             // with real app names, icons, and durations from the OS.
-            DeviceActivityReport(
-                .init("com.flomks.pushup.usageReport"),
-                filter: DeviceActivityFilter(
-                    segment: .daily(
-                        during: Calendar.current.dateInterval(of: .day, for: Date())
-                            ?? DateInterval(start: Date(), duration: 86400)
+            // Wrapped in a ScrollView so the full app list is accessible
+            // without navigating away.
+            ScrollView(.vertical, showsIndicators: true) {
+                DeviceActivityReport(
+                    .init("com.flomks.pushup.usageReport"),
+                    filter: DeviceActivityFilter(
+                        segment: .daily(
+                            during: Calendar.current.dateInterval(of: .day, for: Date())
+                                ?? DateInterval(start: Date(), duration: 86400)
+                        )
                     )
                 )
-            )
-            // Limit height in inline mode; full view available via "See All"
-            .frame(maxHeight: 320)
-            .clipped()
+                // Allow the report to grow to its natural height inside the scroll view
+                .frame(minHeight: 200)
+            }
+            // Taller inline frame so more apps are visible at a glance
+            .frame(minHeight: 260, maxHeight: 520)
 
-            // Footer: total + "See All" hint
+            // Footer: live indicator + "See All" hint
             Divider()
             HStack {
                 Image(systemName: "checkmark.shield.fill")

@@ -28,6 +28,9 @@ struct AppUsageReportView: View {
     // MARK: - App List
 
     private var appList: some View {
+        // Use a plain VStack so the DeviceActivityReport container
+        // (or the ScrollView wrapping it in the host app) controls scrolling.
+        // Each row has enough vertical padding to be comfortably tappable.
         VStack(spacing: 0) {
             ForEach(Array(configuration.entries.enumerated()), id: \.element.id) { index, entry in
                 if index > 0 {
@@ -37,6 +40,8 @@ struct AppUsageReportView: View {
                 appRow(entry)
             }
         }
+        // Expand to fill available width so the host ScrollView can measure height
+        .frame(maxWidth: .infinity)
     }
 
     private func appRow(_ entry: AppUsageEntry) -> some View {
@@ -90,7 +95,7 @@ struct AppUsageReportView: View {
                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Color.primary)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 13)
         .padding(.horizontal, 16)
     }
 
