@@ -58,9 +58,15 @@ struct RootView: View {
             Group {
                 switch authViewModel.authState {
                 case .authenticated:
-                    // Post-login destination: the full 6-tab main navigation
-                    // implemented in Task 3.3 (MainTabView.swift).
+                    // Post-login destination: the full 6-tab main navigation.
                     MainTabView()
+                        .transition(.opacity)
+
+                case .needsDisplayName:
+                    // First social sign-in: user must choose a display name
+                    // before entering the app. The auto-generated placeholder
+                    // is already saved in the DB so it is never NULL.
+                    SetDisplayNameView(viewModel: authViewModel)
                         .transition(.opacity)
 
                 case .unauthenticated, .loading:

@@ -117,6 +117,20 @@ final class AuthService: Sendable {
         }
     }
 
+    /// Updates the display name of the currently authenticated user in the local DB.
+    ///
+    /// Called after the user completes the "Choose your display name" screen on
+    /// first social sign-in. Writes to the local SQLDelight DB immediately so
+    /// the name is never NULL even if the app is killed before cloud sync runs.
+    func updateDisplayName(_ name: String) async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeUpdateDisplayName(
+                displayName: name,
+                completionHandler: handler
+            )
+        }
+    }
+
     // MARK: - Private
 
     /// Bridges a SafeAuthBridge completionHandler call to async/await.

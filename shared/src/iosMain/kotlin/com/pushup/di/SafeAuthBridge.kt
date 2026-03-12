@@ -2,6 +2,7 @@ package com.pushup.di
 
 import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.User
+import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
 import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
 import com.pushup.domain.usecase.auth.LoginWithEmailUseCase
@@ -69,6 +70,30 @@ object SafeAuthBridge : KoinComponent {
         throw CancellationException()
     } catch (_: Exception) {
         SafeAuthResult(user = null, errorMessage = null)
+    }
+
+    /**
+     * Updates the display name of the currently authenticated user in the local DB.
+     *
+     * Called after the user completes the "Choose your display name" screen that
+     * is shown on first social sign-in. The name is written to the local SQLDelight
+     * database immediately so it is never NULL, even if the app is killed before
+     * the cloud sync runs.
+     *
+     * Returns a [SafeAuthResult] with the updated [User] on success, or an error
+     * message on failure. Never throws.
+     */
+    suspend fun safeUpdateDisplayName(displayName: String): SafeAuthResult = try {
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser()
+            ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
+        val updated = user.copy(displayName = displayName.trim())
+        userRepo.updateUser(updated)
+        SafeAuthResult(user = updated, errorMessage = null)
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (e: Exception) {
+        SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to update display name.")
     }
 
     private suspend fun safeCall(block: suspend () -> User): SafeAuthResult = try {
