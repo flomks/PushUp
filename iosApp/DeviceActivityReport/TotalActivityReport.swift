@@ -16,7 +16,10 @@ extension DeviceActivityReport.Context {
 /// `makeConfiguration` runs in the extension process with full access to
 /// OS usage data. It extracts per-app entries and writes them to the
 /// shared App Group container for the main app to use in threshold calculations.
-struct AppUsageConfiguration {
+///
+/// `AppUsageConfiguration` must be `Sendable` because it crosses the
+/// actor boundary between `makeConfiguration` and the view.
+struct AppUsageConfiguration: Sendable {
     /// Per-app usage entries, sorted by duration descending.
     let entries: [AppUsageEntry]
     /// Total usage duration across all tracked apps.
@@ -26,11 +29,21 @@ struct AppUsageConfiguration {
 // MARK: - AppUsageEntry
 
 /// A single app's usage data for display in the report view.
-struct AppUsageEntry: Identifiable {
-    let id: String          // bundle ID
-    let label: Label<Text, Image>   // real app name + icon from OS
+///
+/// Stores the `Application` token directly so the view can call
+/// `Label(application)` to get the real app name and icon from the OS.
+/// `Application` is `Sendable` in the DeviceActivity framework.
+struct AppUsageEntry: Identifiable, Sendable {
+    /// The app's bundle identifier (used as stable ID).
+    let id: String
+    /// The `Application` token -- used in the view to render real name + icon.
+    let application: Application
+    /// Total usage duration for this app today.
     let duration: TimeInterval
+    /// The category this app belongs to (e.g. "Social Networking").
     let categoryName: String
+    /// Display name fallback (localizedDisplayName from the OS).
+    let displayName: String
 }
 
 // MARK: - AppUsageReport
@@ -57,21 +70,26 @@ struct AppUsageReport: DeviceActivityReportScene {
             for await segment in activityData.activitySegments {
                 for await category in segment.categories {
                     let categoryName = category.category.localizedDisplayName ?? ""
-                    for await app in category.applications {
-                        let duration = app.totalActivityDuration
+                    for await appActivity in category.applications {
+                        let duration = appActivity.totalActivityDuration
                         guard duration > 0 else { continue }
+
+                        let app = appActivity.application
+                        let bundleID = app.bundleIdentifier ?? UUID().uuidString
+                        let displayName = app.localizedDisplayName ?? bundleID
 
                         totalDuration += duration
 
                         entries.append(AppUsageEntry(
-                            id: app.application.bundleIdentifier ?? UUID().uuidString,
-                            label: app.application.label,
+                            id: bundleID,
+                            application: app,
                             duration: duration,
-                            categoryName: categoryName
+                            categoryName: categoryName,
+                            displayName: displayName
                         ))
 
                         perAppJSON.append([
-                            "bundleID": app.application.bundleIdentifier ?? "unknown",
+                            "bundleID": bundleID,
                             "seconds": Int(duration),
                             "categoryToken": categoryName
                         ])

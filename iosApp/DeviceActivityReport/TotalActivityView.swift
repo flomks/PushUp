@@ -1,3 +1,4 @@
+import DeviceActivity
 import SwiftUI
 
 // MARK: - AppUsageReportView
@@ -6,9 +7,12 @@ import SwiftUI
 // Receives an AppUsageConfiguration (processed by AppUsageReport.makeConfiguration)
 // and renders a per-app usage list with real app names, icons, and usage bars.
 //
-// This view is injected directly into the main app's view hierarchy by the system.
-// It uses the design language of the main app (system fonts, system colors) so it
-// blends seamlessly regardless of light/dark mode.
+// Real app names and icons are rendered via Label(entry.application) --
+// the DeviceActivity framework provides this Label initializer in the view
+// layer. It renders the actual app icon and localized name from the OS.
+//
+// This view is injected directly into the main app's view hierarchy by the
+// system and blends seamlessly in light/dark mode.
 
 struct AppUsageReportView: View {
 
@@ -38,15 +42,17 @@ struct AppUsageReportView: View {
 
     private func appRow(_ entry: AppUsageEntry) -> some View {
         HStack(spacing: 12) {
-            // Real app icon from the OS via Label.iconOnly
-            entry.label
+            // Real app icon from the OS.
+            // Label(entry.application) is the DeviceActivity-provided initializer
+            // that renders the actual app icon and localized display name.
+            Label(entry.application)
                 .labelStyle(.iconOnly)
                 .frame(width: 36, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                // Real app name from the OS via Label.titleOnly
-                entry.label
+                // Real app name from the OS.
+                Label(entry.application)
                     .labelStyle(.titleOnly)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.primary)
@@ -132,6 +138,6 @@ struct AppUsageReportView: View {
 
 // MARK: - Preview
 
-#Preview("AppUsageReportView") {
+#Preview("AppUsageReportView - Empty") {
     AppUsageReportView(configuration: AppUsageConfiguration(entries: [], totalDuration: 0))
 }
