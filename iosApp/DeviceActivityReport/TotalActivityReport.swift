@@ -17,8 +17,8 @@ extension DeviceActivityReport.Context {
 /// OS usage data. It extracts per-app entries and writes them to the
 /// shared App Group container for the main app to use in threshold calculations.
 ///
-/// `AppUsageConfiguration` must be `Sendable` because it crosses the
-/// actor boundary between `makeConfiguration` and the view.
+/// All fields are plain value types so `AppUsageConfiguration` is trivially
+/// `Sendable` across the actor boundary between `makeConfiguration` and the view.
 struct AppUsageConfiguration: Sendable {
     /// Per-app usage entries, sorted by duration descending.
     let entries: [AppUsageEntry]
@@ -30,20 +30,19 @@ struct AppUsageConfiguration: Sendable {
 
 /// A single app's usage data for display in the report view.
 ///
-/// Stores the `Application` token directly so the view can call
-/// `Label(application)` to get the real app name and icon from the OS.
-/// `Application` is `Sendable` in the DeviceActivity framework.
+/// Uses only plain `String` and `TimeInterval` values so the struct is
+/// trivially `Sendable`. The `Application` token from DeviceActivity is
+/// NOT stored here -- it lives in `FamilyControls` and cannot be reliably
+/// passed across the `makeConfiguration` actor boundary.
 struct AppUsageEntry: Identifiable, Sendable {
     /// The app's bundle identifier (used as stable ID).
     let id: String
-    /// The `Application` token -- used in the view to render real name + icon.
-    let application: Application
+    /// Localized display name from the OS (e.g. "Instagram").
+    let displayName: String
     /// Total usage duration for this app today.
     let duration: TimeInterval
     /// The category this app belongs to (e.g. "Social Networking").
     let categoryName: String
-    /// Display name fallback (localizedDisplayName from the OS).
-    let displayName: String
 }
 
 // MARK: - AppUsageReport
@@ -82,10 +81,9 @@ struct AppUsageReport: DeviceActivityReportScene {
 
                         entries.append(AppUsageEntry(
                             id: bundleID,
-                            application: app,
+                            displayName: displayName,
                             duration: duration,
-                            categoryName: categoryName,
-                            displayName: displayName
+                            categoryName: categoryName
                         ))
 
                         perAppJSON.append([
