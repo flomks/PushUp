@@ -3,103 +3,89 @@ import SwiftUI
 
 // MARK: - LoginView
 
-/// Login screen with email/password, Apple Sign-In, and Google Sign-In.
+/// Social-only sign-in screen.
 ///
-/// Observes `AuthViewModel` for loading states, validation errors, and
-/// the authenticated state that triggers navigation to `MainTabView`.
+/// Shows Apple Sign-In and Google Sign-In buttons. Email/password and
+/// registration flows are kept in the codebase but not exposed in the UI.
 struct LoginView: View {
 
     // MARK: - Properties
 
     @ObservedObject var viewModel: AuthViewModel
 
-    @State private var showPassword: Bool = false
-    @State private var showForgotPassword: Bool = false
-    @State private var showRegister: Bool = false
-    @FocusState private var focusedField: LoginField?
-
-    private enum LoginField: Hashable {
-        case email, password
-    }
-
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Hero section
-                    heroSection
-                        .padding(.top, AppSpacing.xxl)
-                        .padding(.bottom, AppSpacing.xl)
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                colors: [
+                    AppColors.backgroundPrimary,
+                    AppColors.backgroundSecondary,
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-                    // Form card
-                    formCard
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
+            VStack(spacing: 0) {
+                Spacer()
 
-                    // Divider with "oder"
-                    orDivider
-                        .padding(.vertical, AppSpacing.lg)
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                // Hero
+                heroSection
 
-                    // Social sign-in buttons
-                    socialButtons
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                Spacer()
+                Spacer()
 
-                    // Register link
-                    registerLink
-                        .padding(.top, AppSpacing.xl)
-                        .padding(.bottom, AppSpacing.screenVerticalBottom)
-                }
+                // Sign-in buttons
+                signInSection
+                    .padding(.horizontal, AppSpacing.xl)
+
+                // Legal note
+                legalNote
+                    .padding(.top, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
-            .background(AppColors.backgroundPrimary.ignoresSafeArea())
-            .scrollDismissesKeyboard(.interactively)
-            .navigationDestination(isPresented: $showForgotPassword) {
-                ForgotPasswordView(viewModel: viewModel)
-            }
-            .navigationDestination(isPresented: $showRegister) {
-                RegisterView(viewModel: viewModel)
-            }
-            .alert("Error", isPresented: .init(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.clearMessages() } }
-            )) {
-                Button("OK") { viewModel.clearMessages() }
-            } message: {
-                Text(viewModel.errorMessage ?? "")
-            }
+        }
+        .alert("Error", isPresented: .init(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.clearMessages() } }
+        )) {
+            Button("OK") { viewModel.clearMessages() }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
         }
     }
 
     // MARK: - Hero Section
 
     private var heroSection: some View {
-        VStack(spacing: AppSpacing.md) {
-            // App icon / logo
+        VStack(spacing: AppSpacing.lg) {
+            // App icon
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [AppColors.primary, AppColors.primary.opacity(0.7)],
+                            colors: [AppColors.primary, AppColors.primary.opacity(0.75)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 88, height: 88)
+                    .frame(width: 100, height: 100)
+                    .shadow(color: AppColors.primary.opacity(0.35), radius: 20, x: 0, y: 10)
 
                 Image(icon: .figureStrengthTraining)
-                    .font(.system(size: 40, weight: .semibold))
+                    .font(.system(size: 48, weight: .semibold))
                     .foregroundStyle(.white)
                     .symbolRenderingMode(.hierarchical)
             }
-            .shadow(color: AppColors.primary.opacity(0.3), radius: 16, x: 0, y: 8)
 
             VStack(spacing: AppSpacing.xs) {
-                Text("Welcome back")
+                Text("PushUp")
                     .font(AppTypography.title1)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Sign in and earn time credit")
+                Text("Earn your screen time")
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -108,91 +94,18 @@ struct LoginView: View {
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 
-    // MARK: - Form Card
+    // MARK: - Sign-In Section
 
-    private var formCard: some View {
-        Card(hasShadow: true) {
-            VStack(spacing: AppSpacing.md) {
-                // Email field
-                AuthTextField(
-                    title: "Email",
-                    placeholder: "name@example.com",
-                    text: $viewModel.loginEmail,
-                    keyboardType: .emailAddress,
-                    textContentType: .emailAddress,
-                    errorMessage: viewModel.loginEmailError,
-                    icon: .envelope
-                )
-                .focused($focusedField, equals: .email)
-                .submitLabel(.next)
-                .onSubmit { focusedField = .password }
-
-                // Password field
-                AuthSecureField(
-                    title: "Password",
-                    placeholder: "At least 8 characters",
-                    text: $viewModel.loginPassword,
-                    showPassword: $showPassword,
-                    errorMessage: viewModel.loginPasswordError
-                )
-                .focused($focusedField, equals: .password)
-                .submitLabel(.go)
-                .onSubmit {
-                    focusedField = nil
-                    Task { await viewModel.login() }
-                }
-
-                // Forgot password link
-                HStack {
-                    Spacer()
-                    Button("Forgot password?") {
-                        showForgotPassword = true
-                    }
-                    .font(AppTypography.buttonSecondary)
-                    .foregroundStyle(AppColors.primary)
-                }
-                .padding(.top, -AppSpacing.xs)
-
-                // Login button
-                PrimaryButton(
-                    "Sign In",
-                    icon: .arrowRight,
-                    isLoading: viewModel.isLoading
-                ) {
-                    focusedField = nil
-                    Task { await viewModel.login() }
-                }
-                .disabled(!viewModel.isLoginFormValid || viewModel.isLoading)
-                .padding(.top, AppSpacing.xs)
-            }
-        }
-    }
-
-    // MARK: - Or Divider
-
-    private var orDivider: some View {
-        HStack(spacing: AppSpacing.md) {
-            Rectangle()
-                .fill(AppColors.separator)
-                .frame(height: 1)
-
-            Text("or")
+    private var signInSection: some View {
+        VStack(spacing: AppSpacing.sm) {
+            // Section label
+            Text("Continue with")
                 .font(AppTypography.caption1)
                 .foregroundStyle(AppColors.textTertiary)
-                .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, AppSpacing.xxs)
 
-            Rectangle()
-                .fill(AppColors.separator)
-                .frame(height: 1)
-        }
-    }
-
-    // MARK: - Social Buttons
-
-    private var socialButtons: some View {
-        VStack(spacing: AppSpacing.sm) {
-            // Apple Sign-In -- uses the official ASAuthorizationAppleIDButton
-            // as required by Apple's App Store Review Guidelines (Section 4.8).
+            // Apple Sign-In -- official button required by App Store Guidelines (4.8)
             AppleSignInButton {
                 Task { await viewModel.loginWithApple() }
             }
@@ -201,7 +114,7 @@ struct LoginView: View {
 
             // Google Sign-In
             SocialSignInButton(
-                title: "Sign in with Google",
+                title: "Continue with Google",
                 icon: .globe,
                 backgroundColor: AppColors.backgroundSecondary,
                 foregroundColor: AppColors.textPrimary,
@@ -210,23 +123,32 @@ struct LoginView: View {
                 Task { await viewModel.loginWithGoogle() }
             }
             .disabled(viewModel.isLoading)
+            .opacity(viewModel.isLoading ? 0.6 : 1.0)
+
+            // Loading indicator shown while auth is in progress
+            if viewModel.isLoading {
+                HStack(spacing: AppSpacing.xs) {
+                    ProgressView()
+                        .tint(AppColors.textSecondary)
+                    Text("Signing in...")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+                .padding(.top, AppSpacing.xs)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
     }
 
-    // MARK: - Register Link
+    // MARK: - Legal Note
 
-    private var registerLink: some View {
-        HStack(spacing: AppSpacing.xxs) {
-            Text("Don't have an account?")
-                .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
-
-            Button("Sign Up") {
-                showRegister = true
-            }
-            .font(AppTypography.subheadlineSemibold)
-            .foregroundStyle(AppColors.primary)
-        }
+    private var legalNote: some View {
+        Text("By continuing you agree to our Terms of Service and Privacy Policy.")
+            .font(AppTypography.caption2)
+            .foregroundStyle(AppColors.textTertiary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, AppSpacing.xl)
     }
 }
 
@@ -235,5 +157,10 @@ struct LoginView: View {
 #if DEBUG
 #Preview("Login") {
     LoginView(viewModel: AuthViewModel())
+}
+
+#Preview("Login - Dark") {
+    LoginView(viewModel: AuthViewModel())
+        .preferredColorScheme(.dark)
 }
 #endif

@@ -52,6 +52,8 @@ enum AuthError: LocalizedError {
 enum AuthState: Equatable {
     case unauthenticated
     case loading
+    /// Authenticated but needs to set a display name (first social sign-in).
+    case needsDisplayName
     case authenticated
 }
 
@@ -98,6 +100,10 @@ final class AuthViewModel: NSObject, ObservableObject {
     @Published var errorMessage: String? = nil
     @Published var successMessage: String? = nil
     @Published var showPasswordResetConfirmation: Bool = false
+
+    // Display name setup (shown after first social sign-in)
+    @Published var displayNameInput: String = ""
+    @Published var isSavingDisplayName: Bool = false
 
     // MARK: - Private
 
@@ -277,13 +283,26 @@ final class AuthViewModel: NSObject, ObservableObject {
                   let idToken = String(data: tokenData, encoding: .utf8) else {
                 throw AuthError.unknown("Apple did not return an identity token.")
             }
+
+            // Extract the full name Apple provides on first sign-in.
+            // Apple only sends the name on the very first authorization --
+            // subsequent sign-ins return nil. We use it as the pre-filled
+            // suggestion in the display name screen.
+            let appleFullName: String? = {
+                guard let name = credential.fullName else { return nil }
+                let parts = [name.givenName, name.familyName]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                return parts.isEmpty ? nil : parts.joined(separator: " ")
+            }()
+
             let result = await AuthService.shared.loginWithApple(idToken: idToken)
             isLoading = false
             if result.isSuccess {
-                authState = .authenticated
-                SyncService.shared.syncFromCloudAfterLogin()
-                // Register any APNs token that arrived before authentication.
-                await PushNotificationService.shared.registerPendingTokenIfNeeded()
+                await handleSocialSignInSuccess(
+                    result: result,
+                    suggestedName: appleFullName
+                )
             } else {
                 authState = .unauthenticated
                 errorMessage = result.errorMessage ?? "Apple Sign-In failed."
@@ -330,9 +349,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             let result = try await handleOAuthCallback(url: callbackURL)
             isLoading = false
             if result.errorMessage == nil {
-                // Success — user record created and token stored for both PKCE and implicit flows
-                authState = .authenticated
-                SyncService.shared.syncFromCloudAfterLogin()
+                await handleSocialSignInSuccess(result: result, suggestedName: nil)
             } else {
                 authState = .unauthenticated
                 errorMessage = result.errorMessage
@@ -344,6 +361,31 @@ final class AuthViewModel: NSObject, ObservableObject {
             isLoading = false
             authState = .unauthenticated
             errorMessage = "Google Sign-In failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Display Name Setup
+
+    /// Saves the display name entered by the user after first social sign-in.
+    ///
+    /// Writes to the local DB immediately (via SafeAuthBridge) so the name is
+    /// never NULL even if the app is killed before cloud sync runs.
+    /// On success transitions to `.authenticated`.
+    func saveDisplayName() async {
+        let trimmed = displayNameInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            errorMessage = "Please enter a display name."
+            return
+        }
+        isSavingDisplayName = true
+        let result = await AuthService.shared.updateDisplayName(trimmed)
+        isSavingDisplayName = false
+        if result.isSuccess {
+            authState = .authenticated
+            SyncService.shared.syncFromCloudAfterLogin()
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
+        } else {
+            errorMessage = result.errorMessage ?? "Could not save display name."
         }
     }
 
@@ -378,6 +420,52 @@ final class AuthViewModel: NSObject, ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// Handles a successful social sign-in result.
+    ///
+    /// Detects whether this is a new user by checking if the stored display name
+    /// is auto-generated (equals the email prefix or a UUID prefix). If new,
+    /// pre-fills `displayNameInput` with the best available suggestion and
+    /// transitions to `.needsDisplayName` so the name screen is shown.
+    ///
+    /// For returning users, transitions directly to `.authenticated`.
+    ///
+    /// - Parameters:
+    ///   - result:        The successful auth result containing the User.
+    ///   - suggestedName: A name hint from the provider (e.g. Apple full name).
+    private func handleSocialSignInSuccess(
+        result: AuthServiceResult,
+        suggestedName: String?
+    ) async {
+        guard let user = result.user else {
+            authState = .unauthenticated
+            return
+        }
+
+        // Determine if this is a new user. The KMP makeUser() sets displayName
+        // to the email prefix (e.g. "john" from "john@gmail.com") or "User".
+        // We consider the user "new" if their display name matches the auto-
+        // generated pattern: equals the email local part, is "User", or is a
+        // UUID-like string (social.local placeholder).
+        let emailPrefix = user.email.components(separatedBy: "@").first ?? ""
+        let isAutoGenerated = user.displayName == emailPrefix
+            || user.displayName == "User"
+            || user.displayName.contains("@social.local")
+            || user.email.hasSuffix("@social.local")
+
+        if isAutoGenerated {
+            // New user: pre-fill the name field with the best available suggestion.
+            // Priority: provider name > email prefix > empty (user types from scratch).
+            displayNameInput = suggestedName
+                ?? (emailPrefix.count > 1 ? emailPrefix.capitalized : "")
+            authState = .needsDisplayName
+        } else {
+            // Returning user: go straight to the app.
+            authState = .authenticated
+            SyncService.shared.syncFromCloudAfterLogin()
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
+        }
+    }
 
     func clearMessages() {
         errorMessage = nil
