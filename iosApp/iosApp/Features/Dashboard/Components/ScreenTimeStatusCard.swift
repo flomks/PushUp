@@ -7,7 +7,7 @@ import SwiftUI
 /// Displayed on the Dashboard when Screen Time is authorized.
 /// Shows:
 /// - Current blocking state (active / inactive)
-/// - Today's app usage time
+/// - Today's app usage time (OS-tracked, reinstall-proof)
 /// - Quick link to Screen Time settings
 ///
 /// Hidden entirely when Screen Time is not set up (not authorized).
@@ -16,7 +16,9 @@ struct ScreenTimeStatusCard: View {
     @ObservedObject private var manager = ScreenTimeManager.shared
     private let usageStore = ScreenTimeUsageStore.shared
 
-    /// Today's total usage in seconds (read from App Group store).
+    /// Today's total usage in seconds.
+    /// Prefers the OS-tracked system usage value (reinstall-proof).
+    /// Falls back to the App Group store value if system usage is not available.
     private var todayUsageSeconds: Int {
         usageStore.todayUsageSeconds
     }
@@ -98,6 +100,11 @@ struct ScreenTimeStatusCard: View {
                 if manager.isBlocking {
                     blockingBanner
                 }
+
+                // System tracking indicator (shows when OS-tracked data is available)
+                if usageStore.todaySystemUsageSeconds > 0 {
+                    systemTrackingBadge
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -140,6 +147,22 @@ struct ScreenTimeStatusCard: View {
         }
         .padding(AppSpacing.xs)
         .background(AppColors.error.opacity(0.08), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+    }
+
+    // MARK: - System Tracking Badge
+
+    /// Shown when the OS-tracked usage value is available.
+    /// Indicates that the usage data is reinstall-proof.
+    private var systemTrackingBadge: some View {
+        HStack(spacing: AppSpacing.xxs) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(AppColors.success)
+            Text("Tracked by iOS Screen Time")
+                .font(AppTypography.caption2)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+        }
     }
 
     // MARK: - Metric Item
