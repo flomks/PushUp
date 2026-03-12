@@ -1,38 +1,119 @@
-//
-//  TotalActivityReport.swift
-//  DeviceActivityReport
-//
-//  Created by Flomks on 12.03.26.
-//
-
 import DeviceActivity
 import SwiftUI
 
+// MARK: - DeviceActivityReport.Context
+
 extension DeviceActivityReport.Context {
-    // If your app initializes a DeviceActivityReport with this context, then the system will use
-    // your extension's corresponding DeviceActivityReportScene to render the contents of the
-    // report.
-    static let totalActivity = Self("Total Activity")
+    /// The context name used by the main app when embedding the report:
+    ///   `DeviceActivityReport(.init("com.flomks.pushup.usageReport"), filter: ...)`
+    static let pushUpUsageReport = Self("com.flomks.pushup.usageReport")
 }
 
-struct TotalActivityReport: DeviceActivityReportScene {
-    // Define which context your scene will represent.
-    let context: DeviceActivityReport.Context = .totalActivity
-    
-    // Define the custom configuration and the resulting view for this report.
-    let content: (String) -> TotalActivityView
-    
-    func makeConfiguration(representing data: DeviceActivityResults<DeviceActivityData>) async -> String {
-        // Reformat the data into a configuration that can be used to create
-        // the report's view.
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = [.day, .hour, .minute, .second]
-        formatter.unitsStyle = .abbreviated
-        formatter.zeroFormattingBehavior = .dropAll
-        
-        let totalActivityDuration = await data.flatMap { $0.activitySegments }.reduce(0, {
-            $0 + $1.totalActivityDuration
-        })
-        return formatter.string(from: totalActivityDuration) ?? "No activity data"
+// MARK: - AppUsageConfiguration
+
+/// The processed usage data passed from the report scene to the view.
+///
+/// `makeConfiguration` runs in the extension process with full access to
+/// OS usage data. It extracts per-app entries and writes them to the
+/// shared App Group container for the main app to use in threshold calculations.
+struct AppUsageConfiguration {
+    /// Per-app usage entries, sorted by duration descending.
+    let entries: [AppUsageEntry]
+    /// Total usage duration across all tracked apps.
+    let totalDuration: TimeInterval
+}
+
+// MARK: - AppUsageEntry
+
+/// A single app's usage data for display in the report view.
+struct AppUsageEntry: Identifiable {
+    let id: String          // bundle ID
+    let label: Label<Text, Image>   // real app name + icon from OS
+    let duration: TimeInterval
+    let categoryName: String
+}
+
+// MARK: - AppUsageReport
+
+/// The DeviceActivityReportScene that processes OS usage data.
+///
+/// `makeConfiguration` is called by the system with the aggregated usage
+/// data. It runs asynchronously in the extension process and has full
+/// access to real app names, icons, and durations.
+struct AppUsageReport: DeviceActivityReportScene {
+
+    let context: DeviceActivityReport.Context = .pushUpUsageReport
+    let content: (AppUsageConfiguration) -> AppUsageReportView
+
+    func makeConfiguration(
+        representing data: DeviceActivityResults<DeviceActivityData>
+    ) async -> AppUsageConfiguration {
+
+        var entries: [AppUsageEntry] = []
+        var totalDuration: TimeInterval = 0
+        var perAppJSON: [[String: Any]] = []
+
+        for await activityData in data {
+            for await segment in activityData.activitySegments {
+                for await category in segment.categories {
+                    let categoryName = category.category.localizedDisplayName ?? ""
+                    for await app in category.applications {
+                        let duration = app.totalActivityDuration
+                        guard duration > 0 else { continue }
+
+                        totalDuration += duration
+
+                        entries.append(AppUsageEntry(
+                            id: app.application.bundleIdentifier ?? UUID().uuidString,
+                            label: app.application.label,
+                            duration: duration,
+                            categoryName: categoryName
+                        ))
+
+                        perAppJSON.append([
+                            "bundleID": app.application.bundleIdentifier ?? "unknown",
+                            "seconds": Int(duration),
+                            "categoryToken": categoryName
+                        ])
+                    }
+                }
+            }
+        }
+
+        // Sort by duration descending
+        entries.sort { $0.duration > $1.duration }
+
+        // Persist to App Group for main app threshold calculations.
+        // This is the authoritative OS-tracked usage value -- reinstall-proof.
+        persistToAppGroup(perAppJSON: perAppJSON, totalSeconds: Int(totalDuration))
+
+        return AppUsageConfiguration(entries: entries, totalDuration: totalDuration)
+    }
+
+    // MARK: - App Group Persistence
+
+    private func persistToAppGroup(perAppJSON: [[String: Any]], totalSeconds: Int) {
+        guard let defaults = UserDefaults(suiteName: "group.com.flomks.pushup") else { return }
+
+        if let data = try? JSONSerialization.data(withJSONObject: perAppJSON) {
+            defaults.set(data, forKey: "screentime.perAppUsageData")
+        }
+
+        let today = isoDateString(from: Date())
+        defaults.set(today, forKey: "screentime.todaySystemUsageDate")
+
+        if totalSeconds > 0 {
+            let existing = defaults.integer(forKey: "screentime.todaySystemUsageSeconds")
+            if totalSeconds > existing {
+                defaults.set(totalSeconds, forKey: "screentime.todaySystemUsageSeconds")
+            }
+        }
+    }
+
+    private func isoDateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
     }
 }
