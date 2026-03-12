@@ -28,10 +28,10 @@ struct AppUsageConfiguration: Sendable {
 
 /// A single app's usage data for display in the report view.
 ///
-/// Stores the `Application` token so `TotalActivityView` can render the
-/// real app icon via `Label("name", application: token)`. `Application`
-/// conforms to `Sendable` so it is safe to pass across the actor boundary
-/// between `makeConfiguration` and the SwiftUI view.
+/// Stores the `DeviceActivity.Application` token so `TotalActivityView` can
+/// render the real app icon via `Label("name", application: token)`.
+/// `DeviceActivity.Application` conforms to `Sendable` so it is safe to pass
+/// across the actor boundary between `makeConfiguration` and the SwiftUI view.
 struct AppUsageEntry: Identifiable, Sendable {
     /// The app's bundle identifier (used as stable ID).
     let id: String
@@ -43,7 +43,7 @@ struct AppUsageEntry: Identifiable, Sendable {
     let categoryName: String
     /// The opaque Application token -- used to render the real app icon
     /// via `Label` inside the DeviceActivityReport extension view.
-    let application: Application
+    let application: DeviceActivity.Application
 }
 
 // MARK: - AppUsageReport
