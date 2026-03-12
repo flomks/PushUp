@@ -6,6 +6,7 @@ import com.pushup.models.RegisterDeviceTokenResponse
 import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.DeviceTokenService
+import com.pushup.service.UserNotFoundException
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.log
 import io.ktor.server.auth.authenticate
@@ -103,6 +104,21 @@ fun Route.deviceTokenRoutes(
                         platform = body.platform.ifBlank { "apns" },
                     )
                     call.respond(HttpStatusCode.OK, RegisterDeviceTokenResponse(success = true))
+                } catch (e: UserNotFoundException) {
+                    // The JWT was valid but the user row no longer exists in the
+                    // database (e.g. deleted via the Supabase dashboard). Return
+                    // 404 so the client knows to re-authenticate rather than retry.
+                    call.application.log.warn(
+                        "Device token registration skipped: user=$userId not found in database. " +
+                            "The user may have been deleted while the device still holds a valid JWT."
+                    )
+                    call.respond(
+                        HttpStatusCode.NotFound,
+                        ErrorResponse(
+                            error   = "user_not_found",
+                            message = "No user profile found. Please sign in again.",
+                        ),
+                    )
                 } catch (e: Exception) {
                     call.application.log.error(
                         "Failed to register device token for user=$userId", e
