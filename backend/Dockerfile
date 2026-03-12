@@ -49,4 +49,5 @@ ENTRYPOINT ["java", \
     "-XX:+UseContainerSupport", \
     "-XX:MaxRAMPercentage=75.0", \
     "-XX:+UseG1GC", \
+    "-Djava.net.preferIPv4Stack=true", \
     "-jar", "pushup-backend.jar"]
