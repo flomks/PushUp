@@ -89,8 +89,6 @@ enum Tab: Int, CaseIterable, Identifiable {
 ///
 /// A single `FriendsViewModel` instance is owned here and passed into
 /// `FriendsView` so that the tab-bar badge and the list share the same data.
-/// Similarly, `NotificationsViewModel` is owned here so the in-app banner
-/// overlay is driven by the same state as the notification list.
 struct MainTabView: View {
 
     /// The currently selected tab. Defaults to `.dashboard` and is never
@@ -101,10 +99,6 @@ struct MainTabView: View {
     /// Single source of truth for friends data -- shared between the tab-bar
     /// badge and the FriendsView so they always reflect the same state.
     @StateObject private var friendsViewModel = FriendsViewModel()
-
-    /// Single source of truth for notifications -- shared between the in-app
-    /// banner overlay and the NotificationsView.
-    @StateObject private var notificationsViewModel = NotificationsViewModel()
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -182,20 +176,9 @@ struct MainTabView: View {
             // Offline banner overlay (Task 3.14) -- slides in from the top
             // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
-
-            // In-app notification banner -- slides in when a new unread
-            // notification arrives while the user is in the app.
-            if let banner = notificationsViewModel.banner {
-                NotificationBannerOverlay(item: banner) {
-                    notificationsViewModel.dismissBanner()
-                }
-                .padding(.top, 8)
-                .zIndex(10)
-            }
         }
         .onAppear {
             friendsViewModel.loadIncomingRequests()
-            notificationsViewModel.loadNotifications()
             handleShieldWorkoutFlag()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in

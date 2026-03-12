@@ -49,11 +49,8 @@ import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.FriendshipApiClient
-import com.pushup.data.api.NotificationApiClient
 import com.pushup.data.repository.FriendshipRepositoryImpl
-import com.pushup.data.repository.NotificationRepositoryImpl
 import com.pushup.domain.repository.FriendshipRepository
-import com.pushup.domain.repository.NotificationRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
 import com.pushup.domain.usecase.sync.SyncManager
@@ -184,10 +181,6 @@ val repositoryModule: Module = module {
 
     single<FriendshipRepository> {
         FriendshipRepositoryImpl(apiClient = get())
-    }
-
-    single<NotificationRepository> {
-        NotificationRepositoryImpl(apiClient = get())
     }
 
     single<LevelRepository> {
@@ -427,17 +420,6 @@ val apiModule: Module = module {
         )
     }
 
-    // Notification API client
-    single {
-        val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
-        val authRepository: AuthRepository = get()
-        NotificationApiClient(
-            httpClient = get(),
-            backendBaseUrl = get(named(BACKEND_BASE_URL)),
-            tokenProvider = { tokenProvider.getToken() },
-            onRefreshToken = { authRepository.refreshToken() },
-        )
-    }
 }
 
 /**
