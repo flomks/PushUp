@@ -146,10 +146,12 @@ struct WorkoutView: View {
                 }
 
                 Spacer()
-            }
-            // Pin the Start button above the tab bar using safeAreaInset
-            // so it is never hidden behind the tab bar regardless of device.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+
+                // Start button sits above the tab bar.
+                // The view uses ignoresSafeArea() so the system safe area
+                // inset does not account for the tab bar (49pt). We read
+                // the bottom safe area for the home indicator and add the
+                // standard tab bar height on top of it.
                 startButton
             }
         }
@@ -173,7 +175,8 @@ struct WorkoutView: View {
         }
         .buttonStyle(ScaleButtonStyle())
         .padding(.horizontal, AppSpacing.xl)
-        .padding(.bottom, AppSpacing.lg)
+        // 49pt tab bar + 16pt gap above it + home-indicator safe area
+        .padding(.bottom, 49 + AppSpacing.md)
         .padding(.top, AppSpacing.md)
     }
 

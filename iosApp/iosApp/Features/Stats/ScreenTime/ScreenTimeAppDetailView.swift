@@ -261,6 +261,13 @@ struct ScreenTimeAppDetailView: View {
                 // It shows real app names, icons, and usage durations from the OS.
                 // Passing applicationTokens + categoryTokens ensures ALL selected
                 // apps appear, not only those that triggered a threshold event.
+                //
+                // IMPORTANT: Do NOT constrain the height with .frame(height:) or
+                // .frame(maxHeight:). The DeviceActivityReport extension renders
+                // in a separate process and sizes itself to its content. A fixed
+                // frame clips the list to however many rows fit, which is why only
+                // 2 apps were visible. Using .fixedSize(horizontal: false,
+                // vertical: true) lets the report expand to show all apps.
                 DeviceActivityReport(
                     .init("com.flomks.pushup.usageReport"),
                     filter: DeviceActivityFilter(
@@ -275,8 +282,7 @@ struct ScreenTimeAppDetailView: View {
                         webDomains: manager.activitySelection?.webDomainTokens ?? []
                     )
                 )
-                // Let the content determine its own height
-                .frame(minHeight: 120)
+                .fixedSize(horizontal: false, vertical: true)
 
                 // Footer note
                 HStack(spacing: AppSpacing.xxs) {
