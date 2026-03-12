@@ -318,7 +318,7 @@ struct ScreenTimeAppDetailView: View {
                 if index > 0 {
                     Divider().padding(.leading, 48)
                 }
-                fallbackAppRow(record: record)
+                fallbackAppRow(record)
             }
         }
     }
