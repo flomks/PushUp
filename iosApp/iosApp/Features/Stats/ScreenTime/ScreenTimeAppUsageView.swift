@@ -89,6 +89,8 @@ struct ScreenTimeAppUsageView: View {
         VStack(spacing: 0) {
             // Embed the DeviceActivityReport -- rendered by our extension
             // with real app names, icons, and durations from the OS.
+            // Passing applicationTokens + categoryTokens ensures ALL selected
+            // apps appear, not only those that triggered a threshold event.
             // Wrapped in a ScrollView so the full app list is accessible
             // without navigating away.
             ScrollView(.vertical, showsIndicators: true) {
@@ -98,7 +100,12 @@ struct ScreenTimeAppUsageView: View {
                         segment: .daily(
                             during: Calendar.current.dateInterval(of: .day, for: Date())
                                 ?? DateInterval(start: Date(), duration: 86400)
-                        )
+                        ),
+                        users: .all,
+                        devices: .init([.iPhone, .iPad]),
+                        applications: manager.activitySelection?.applicationTokens ?? [],
+                        categories: manager.activitySelection?.categoryTokens ?? [],
+                        webDomains: manager.activitySelection?.webDomainTokens ?? []
                     )
                 )
                 // Allow the report to grow to its natural height inside the scroll view

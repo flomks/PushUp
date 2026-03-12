@@ -1,14 +1,15 @@
 import SwiftUI
+import FamilyControls
 
 // MARK: - AppUsageReportView
 //
 // The SwiftUI view rendered inside the DeviceActivityReport container.
 // Receives an AppUsageConfiguration (processed by AppUsageReport.makeConfiguration)
-// and renders a per-app usage list with app names, colored icons, and usage bars.
+// and renders a per-app usage list with real app icons, names, and usage bars.
 //
 // App names come from localizedDisplayName (set in makeConfiguration).
-// Icons are generated from the bundle ID using a deterministic color -- the
-// real app icon is not accessible from the configuration value type.
+// Real app icons are rendered via Label("name", application: token) which
+// uses FamilyControls to display the actual app icon from the OS.
 //
 // This view is injected directly into the main app's view hierarchy by the
 // system and blends seamlessly in light/dark mode.
@@ -46,16 +47,12 @@ struct AppUsageReportView: View {
 
     private func appRow(_ entry: AppUsageEntry) -> some View {
         HStack(spacing: 12) {
-            // App icon: colored rounded square with first letter of app name.
-            // Deterministic color derived from bundle ID for visual consistency.
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(iconColor(for: entry.id))
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Text(entry.displayName.prefix(1).uppercased())
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                )
+            // Real app icon rendered by FamilyControls via Label.
+            // Label("name", application: token) renders the actual app icon
+            // from the OS -- this is the only supported way to show real icons
+            // inside a DeviceActivityReport extension.
+            Label(entry.displayName, application: entry.application)
+                .labelStyle(AppIconLabelStyle())
 
             VStack(alignment: .leading, spacing: 4) {
                 // App name from localizedDisplayName
@@ -132,14 +129,6 @@ struct AppUsageReportView: View {
         return .blue
     }
 
-    /// Deterministic icon background color derived from the bundle ID.
-    /// Produces a consistent color for each app across sessions.
-    private func iconColor(for bundleID: String) -> Color {
-        let palette: [Color] = [.blue, .purple, .pink, .orange, .green, .teal, .indigo, .cyan]
-        let hash = bundleID.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
-        return palette[abs(hash) % palette.count]
-    }
-
     private func formatDuration(_ duration: TimeInterval) -> String {
         let seconds = Int(duration)
         if seconds < 60 { return "\(seconds)s" }
@@ -147,6 +136,21 @@ struct AppUsageReportView: View {
         let m = (seconds % 3600) / 60
         if h > 0 { return "\(h)h \(m)m" }
         return "\(m)m"
+    }
+}
+
+// MARK: - AppIconLabelStyle
+
+/// A LabelStyle that renders only the icon part of a Label at 36x36 pt.
+///
+/// Used with `Label(name, application: token)` to display the real app icon
+/// from FamilyControls without showing the text title (the title is rendered
+/// separately in the row layout).
+private struct AppIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.icon
+            .frame(width: 36, height: 36)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
