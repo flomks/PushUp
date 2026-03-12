@@ -8,6 +8,12 @@ import Charts
 /// Unlike `ScreenTimeStatsView` (which is a full navigation destination),
 /// this view is designed to be placed inside a `LazyVStack` within the
 /// Stats tab's `ScrollView`. It does not have its own navigation bar.
+///
+/// Shows:
+/// - Usage summary card with OS-tracked system usage (reinstall-proof)
+/// - Per-app usage breakdown for today
+/// - Daily usage chart
+/// - Day-by-day list
 struct ScreenTimeStatsInlineView: View {
 
     @StateObject private var viewModel = ScreenTimeStatsViewModel()
@@ -76,6 +82,11 @@ struct ScreenTimeStatsInlineView: View {
             // Summary card
             screenTimeSummaryCard
 
+            // Per-app usage (today only)
+            if viewModel.selectedPeriod == .today {
+                ScreenTimeAppUsageView()
+            }
+
             // Chart
             if !viewModel.chartData.isEmpty {
                 screenTimeChart
@@ -84,7 +95,7 @@ struct ScreenTimeStatsInlineView: View {
             // Day list
             if !viewModel.records.isEmpty {
                 screenTimeDayList
-            } else {
+            } else if viewModel.selectedPeriod != .today {
                 noDataCard
             }
         }
@@ -114,7 +125,7 @@ struct ScreenTimeStatsInlineView: View {
 
                 HStack(spacing: AppSpacing.md) {
                     inlineMetric(
-                        value: formatSeconds(viewModel.totalUsedSeconds),
+                        value: formatSeconds(viewModel.displayUsedSeconds),
                         label: "Total Used",
                         color: usageColor
                     )
@@ -130,6 +141,19 @@ struct ScreenTimeStatsInlineView: View {
                         label: "Blocked",
                         color: viewModel.totalShieldTriggers > 0 ? AppColors.error : AppColors.success
                     )
+                }
+
+                // System usage badge (reinstall-proof indicator)
+                if viewModel.selectedPeriod == .today && viewModel.todaySystemUsageSeconds > 0 {
+                    HStack(spacing: AppSpacing.xxs) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(AppColors.success)
+                        Text("iOS Screen Time tracking active")
+                            .font(AppTypography.caption2)
+                            .foregroundStyle(AppColors.textSecondary)
+                        Spacer()
+                    }
                 }
             }
         }

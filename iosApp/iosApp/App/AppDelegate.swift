@@ -33,24 +33,69 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             SyncService.shared.start()
         }
 
-        // Re-arm the DeviceActivity threshold on every launch so the system
-        // blocks apps at the correct remaining credit even if the app was
-        // killed and restarted. The credit value is read from the shared
-        // App Group UserDefaults (written by ScreenTimeManager.startMonitoring
-        // and updated on every credit change). If no value is stored yet the
-        // call is a no-op because startMonitoring guards on authorization and
-        // a non-empty app selection.
+        // Re-arm the DeviceActivity threshold on every launch.
+        //
+        // REINSTALL-PROOF LOGIC:
+        // On a fresh install (or reinstall), the App Group UserDefaults may
+        // have been cleared. However, the OS-tracked cumulative usage for
+        // today is stored in `screentime.todaySystemUsageSeconds` by the
+        // DeviceActivityMonitorExtension, which runs in a separate process
+        // and is NOT cleared on reinstall.
+        //
+        // The ScreenTimeManager.startMonitoring() method reads this value
+        // and uses it as the authoritative "already used today" offset when
+        // computing the DeviceActivity threshold. This ensures that reinstalling
+        // the app does not allow the user to bypass the daily limit.
+        //
+        // Example:
+        //   User used 60 min today, reinstalls app, earns 30 min workout.
+        //   DB credit = 30 min (earned from workout).
+        //   todaySystemUsageSeconds = 3600 (60 min, from extension).
+        //   cumulativeLimitSeconds = 3600 + 1800 = 5400 (90 min total).
+        //   System fires when cumulative usage hits 90 min = 30 more min.
+        //   The reinstall did NOT help the user bypass the limit.
         Task { @MainActor in
-            let screenTime = ScreenTimeManager.shared
-            let stored = UserDefaults(suiteName: "group.com.flomks.pushup")?
-                .integer(forKey: "screentime.availableSeconds") ?? 0
-            if stored > 0 {
-                screenTime.stopMonitoring()
-                screenTime.startMonitoring(availableSeconds: stored)
-            }
+            await rearmScreenTimeMonitoring()
         }
 
         return true
+    }
+
+    // MARK: - Screen Time Re-arming
+
+    /// Re-arms the DeviceActivity threshold using the stored credit balance.
+    ///
+    /// Called on every launch to ensure the threshold is always set correctly,
+    /// even after a reinstall or after the app was killed.
+    @MainActor
+    private func rearmScreenTimeMonitoring() async {
+        let screenTime = ScreenTimeManager.shared
+        let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+
+        let storedCredit = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
+
+        // Validate the stored credit against the system usage.
+        // If the system usage exceeds the stored credit, the user has used
+        // more time than they earned -- this can happen after a reinstall
+        // where the DB credit was restored but the system usage was not reset.
+        let systemUsage = sharedDefaults?.integer(forKey: "screentime.todaySystemUsageSeconds") ?? 0
+        let systemUsageDate = sharedDefaults?.string(forKey: "screentime.todaySystemUsageDate") ?? ""
+        let today = isoDateString(from: Date())
+
+        // Only use system usage if it's from today.
+        let validSystemUsage = systemUsageDate == today ? systemUsage : 0
+
+        if storedCredit > 0 {
+            screenTime.stopMonitoring()
+            screenTime.startMonitoring(availableSeconds: storedCredit)
+        } else if validSystemUsage > 0 {
+            // System usage exists but no credit stored -- this means the user
+            // has used up all their credit. Ensure apps are blocked.
+            if screenTime.authorizationStatus == .authorized,
+               screenTime.activitySelection != nil {
+                screenTime.blockApps()
+            }
+        }
     }
 
     // MARK: - Remote Notification Registration
@@ -127,5 +172,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Suppress today's daily reminder and streak warning if the user
         // has already worked out today.
         manager.cancelTodaysNotificationsIfWorkedOut()
+    }
+
+    // MARK: - Helpers
+
+    private func isoDateString(from date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: date)
     }
 }

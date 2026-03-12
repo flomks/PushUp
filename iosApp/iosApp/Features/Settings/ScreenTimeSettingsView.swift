@@ -195,6 +195,29 @@ struct ScreenTimeSettingsView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Select apps to block. \(selectionSummary)")
 
+            // Today's App Usage -- navigates to per-app detail view
+            if hasSelection {
+                NavigationLink {
+                    ScreenTimeAppDetailView()
+                } label: {
+                    HStack(spacing: AppSpacing.sm) {
+                        SettingsIconView(icon: .hourglassBottomHalf, color: AppColors.info)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Today's App Usage")
+                                .font(AppTypography.body)
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("See how long each app was used today")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.vertical, AppSpacing.xxs)
+                }
+            }
+
             // Clear selection button (only shown when selection exists)
             if hasSelection {
                 Button(role: .destructive) {

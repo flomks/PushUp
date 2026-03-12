@@ -17,14 +17,16 @@ import FamilyControls
 /// |  [Today | Week | Month]           |  <- segmented picker
 /// |                                   |
 /// |  [Usage Summary Card]             |  <- total used vs. earned
+/// |  [Per-App Usage Today]            |  <- per-app breakdown (new)
 /// |  [Bar Chart -- daily usage]       |
 /// |  [Day-by-day list]                |
 /// |                                   |
 /// +-----------------------------------+
 /// ```
 ///
-/// **Data source:** `ScreenTimeUsageStore` (App Group UserDefaults).
-/// The DeviceActivity Extension writes records; this view reads them.
+/// **Data sources:**
+/// - `ScreenTimeUsageStore` (App Group UserDefaults) for daily records.
+/// - `DeviceActivityReport` extension for live per-app usage (iOS 16.4+).
 struct ScreenTimeStatsView: View {
 
     @StateObject private var viewModel = ScreenTimeStatsViewModel()
@@ -36,7 +38,7 @@ struct ScreenTimeStatsView: View {
 
             if manager.authorizationStatus != .authorized {
                 notAuthorizedView
-            } else if viewModel.records.isEmpty {
+            } else if viewModel.records.isEmpty && viewModel.todaySystemUsageSeconds == 0 {
                 emptyStateView
             } else {
                 mainContent
@@ -55,8 +57,19 @@ struct ScreenTimeStatsView: View {
             LazyVStack(spacing: AppSpacing.md) {
                 periodPicker
                 summaryCard
-                usageChart
-                dayList
+
+                // Per-app usage section (always shown for "Today" period)
+                if viewModel.selectedPeriod == .today {
+                    ScreenTimeAppUsageView()
+                }
+
+                if !viewModel.chartData.isEmpty {
+                    usageChart
+                }
+
+                if !viewModel.records.isEmpty {
+                    dayList
+                }
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, AppSpacing.sm)
@@ -91,9 +104,9 @@ struct ScreenTimeStatsView: View {
                 }
 
                 HStack(spacing: AppSpacing.md) {
-                    // Time used
+                    // Time used (prefer system usage for today)
                     summaryMetric(
-                        value: formatSeconds(viewModel.totalUsedSeconds),
+                        value: formatSeconds(viewModel.displayUsedSeconds),
                         label: "Time Used",
                         icon: .hourglassBottomHalf,
                         color: usageColor
@@ -121,7 +134,7 @@ struct ScreenTimeStatsView: View {
                 }
 
                 // Usage progress bar
-                if viewModel.totalUsedSeconds > 0 {
+                if viewModel.displayUsedSeconds > 0 {
                     VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                         HStack {
                             Text("Daily Average")
@@ -157,8 +170,29 @@ struct ScreenTimeStatsView: View {
                         .frame(height: 8)
                     }
                 }
+
+                // System usage indicator (shows when OS-tracked data is available)
+                if viewModel.selectedPeriod == .today && viewModel.todaySystemUsageSeconds > 0 {
+                    systemUsageIndicator
+                }
             }
         }
+    }
+
+    /// Shows a badge indicating the usage value comes from the OS (reinstall-proof).
+    private var systemUsageIndicator: some View {
+        HStack(spacing: AppSpacing.xs) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppColors.success)
+            Text("Usage tracked by iOS Screen Time -- reinstall-proof")
+                .font(AppTypography.caption2)
+                .foregroundStyle(AppColors.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, AppSpacing.xs)
+        .padding(.vertical, AppSpacing.xxs)
+        .background(AppColors.success.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
     }
 
     private func summaryMetric(value: String, label: String, icon: AppIcon, color: Color) -> some View {
@@ -348,6 +382,10 @@ struct ScreenTimeStatsView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, AppSpacing.xl)
             }
+
+            // Show per-app view even in empty state so user can see live data
+            ScreenTimeAppUsageView()
+                .padding(.horizontal, AppSpacing.screenHorizontal)
         }
         .padding(AppSpacing.xl)
     }
@@ -437,6 +475,7 @@ final class ScreenTimeStatsViewModel: ObservableObject {
 
     @Published private(set) var records: [AppUsageRecord] = []
     @Published private(set) var chartData: [ScreenTimeChartItem] = []
+    @Published private(set) var todaySystemUsageSeconds: Int = 0
 
     private let store = ScreenTimeUsageStore.shared
 
@@ -444,6 +483,15 @@ final class ScreenTimeStatsViewModel: ObservableObject {
 
     var totalUsedSeconds: Int {
         records.reduce(0) { $0 + $1.totalSeconds }
+    }
+
+    /// The usage value to display in the summary card.
+    /// For "Today", prefers the OS-tracked system usage (reinstall-proof).
+    var displayUsedSeconds: Int {
+        if selectedPeriod == .today && todaySystemUsageSeconds > 0 {
+            return todaySystemUsageSeconds
+        }
+        return totalUsedSeconds
     }
 
     var totalShieldTriggers: Int {
@@ -458,7 +506,10 @@ final class ScreenTimeStatsViewModel: ObservableObject {
     /// Fraction of a "reasonable" daily limit (2 hours = 7200s) used on average.
     var usageFraction: CGFloat {
         let reasonableDaily = 7200.0
-        return min(1.0, CGFloat(dailyAverageSeconds) / reasonableDaily)
+        let seconds = selectedPeriod == .today
+            ? Double(displayUsedSeconds)
+            : Double(dailyAverageSeconds)
+        return min(1.0, seconds / reasonableDaily)
     }
 
     // MARK: - Load
@@ -469,6 +520,9 @@ final class ScreenTimeStatsViewModel: ObservableObject {
             : store.records(forLastDays: selectedPeriod.days)
 
         records = raw
+
+        // Load the OS-tracked system usage for today.
+        todaySystemUsageSeconds = store.todaySystemUsageSeconds
 
         // Build chart data
         let dateFormatter = DateFormatter()

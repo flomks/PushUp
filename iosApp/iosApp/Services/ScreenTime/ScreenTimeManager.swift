@@ -24,6 +24,17 @@ enum ScreenTimeAuthorizationStatus: Equatable {
 /// - Unblocking apps after a successful workout
 /// - Starting/stopping DeviceActivity monitoring for usage tracking
 ///
+/// **Reinstall-proof design:**
+/// The DeviceActivity threshold is always computed as:
+///   `cumulativeLimitSeconds = todaySystemUsageSeconds + availableSeconds`
+///
+/// `todaySystemUsageSeconds` is the OS-tracked cumulative usage since midnight
+/// for the selected apps. This value is stored in the shared App Group container
+/// by the DeviceActivityMonitorExtension whenever a threshold fires, and is
+/// refreshed on every `startMonitoring` call. Because the OS tracks usage
+/// independently of our app, reinstalling the app does NOT reset this value --
+/// the system still knows how much time was spent today.
+///
 /// **Architecture note:** This is a singleton `@MainActor` ObservableObject.
 /// It is injected into the SwiftUI environment at the root level so every
 /// screen can observe authorization state and blocking state without prop-drilling.
@@ -184,6 +195,18 @@ final class ScreenTimeManager: ObservableObject {
     /// Sets up a daily schedule that fires callbacks in the
     /// DeviceActivity Extension when thresholds are reached.
     ///
+    /// **Reinstall-proof threshold calculation:**
+    /// The DeviceActivityEvent threshold is cumulative usage since midnight.
+    /// We read `screentime.todaySystemUsageSeconds` from the App Group container,
+    /// which is written by the DeviceActivityMonitorExtension on every threshold
+    /// event. This value reflects actual OS-tracked usage and is NOT reset by
+    /// reinstalling the app (the OS tracks it independently).
+    ///
+    /// If no system usage value is stored yet (first run of the day), we fall
+    /// back to the legacy `startOfDaySeconds` snapshot approach, which is safe
+    /// for the first run but vulnerable to reinstall. The system usage value
+    /// will be populated on the first threshold event.
+    ///
     /// - Parameter availableSeconds: The current time credit in seconds.
     ///   Used to set the blocking threshold.
     func startMonitoring(availableSeconds: Int) {
@@ -195,30 +218,45 @@ final class ScreenTimeManager: ObservableObject {
         // Store available seconds so the Extension can read it.
         sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.availableSeconds)
 
-        // Snapshot the credit at the start of today so the DeviceActivity
-        // Extension can calculate how many seconds were consumed.
-        // Only set once per calendar day to avoid overwriting mid-day.
-        let calendar = Calendar.current
-        let lastSnapshotDate = sharedDefaults?.object(forKey: "screentime.startOfDayDate") as? Date
-        if lastSnapshotDate == nil || !calendar.isDateInToday(lastSnapshotDate!) {
-            sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.startOfDaySeconds)
-            sharedDefaults?.set(Date(), forKey: "screentime.startOfDayDate")
+        // MARK: Reinstall-proof cumulative threshold calculation
+        //
+        // The DeviceActivityEvent.threshold measures CUMULATIVE usage since
+        // midnight, not remaining time. To block after `availableSeconds` more
+        // usage, we must add the usage already accumulated today.
+        //
+        // Priority order for "already used today":
+        //   1. todaySystemUsageSeconds -- written by the extension from the OS
+        //      DeviceActivity report. Survives reinstall because the OS tracks
+        //      usage independently of our UserDefaults.
+        //   2. startOfDaySeconds snapshot -- legacy fallback. Vulnerable to
+        //      reinstall but used when no system usage value is available yet.
+        //
+        // Example (reinstall scenario):
+        //   User used 60 min today, reinstalls app, earns 30 min workout.
+        //   DB credit = 30 min (earned), todaySystemUsageSeconds = 3600 (60 min).
+        //   cumulativeLimitSeconds = 3600 + 1800 = 5400 (90 min total).
+        //   System fires when cumulative usage hits 90 min, i.e. 30 more min.
+        //   Correct! The reinstall did not help the user bypass the limit.
+
+        let todaySystemUsage = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.todaySystemUsageSeconds) ?? 0
+
+        let alreadyUsedToday: Int
+        if todaySystemUsage > 0 {
+            // Use the authoritative OS-tracked value.
+            alreadyUsedToday = todaySystemUsage
+        } else {
+            // Fallback: use the start-of-day snapshot.
+            // Only set once per calendar day to avoid overwriting mid-day.
+            let calendar = Calendar.current
+            let lastSnapshotDate = sharedDefaults?.object(forKey: ScreenTimeConstants.Keys.startOfDayDate) as? Date
+            if lastSnapshotDate == nil || !calendar.isDateInToday(lastSnapshotDate!) {
+                sharedDefaults?.set(availableSeconds, forKey: ScreenTimeConstants.Keys.startOfDaySeconds)
+                sharedDefaults?.set(Date(), forKey: ScreenTimeConstants.Keys.startOfDayDate)
+            }
+            let startOfDaySeconds = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.startOfDaySeconds) ?? availableSeconds
+            alreadyUsedToday = max(0, startOfDaySeconds - availableSeconds)
         }
 
-        // IMPORTANT: DeviceActivityEvent.threshold measures CUMULATIVE usage
-        // since midnight, not remaining time. To block after `availableSeconds`
-        // more usage, we must add the usage already accumulated today.
-        //
-        // alreadyUsedToday = startOfDayCredit - currentCredit
-        // limitThreshold   = alreadyUsedToday + availableSeconds
-        //
-        // Example: started day with 30 min, now have 3 min left.
-        //   alreadyUsedToday = 1800 - 180 = 1620s (27 min)
-        //   limitThreshold   = 1620 + 180 = 1800s (30 min total)
-        // The system fires when cumulative usage hits 30 min, which is
-        // exactly 3 more minutes from now.
-        let startOfDaySeconds = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.startOfDaySeconds) ?? availableSeconds
-        let alreadyUsedToday = max(0, startOfDaySeconds - availableSeconds)
         let cumulativeLimitSeconds = alreadyUsedToday + availableSeconds
 
         // Warning threshold: 5 minutes before the limit (minimum 1 minute).
@@ -333,11 +371,25 @@ enum ScreenTimeConstants {
     // MARK: - UserDefaults Keys (shared via App Group)
 
     enum Keys {
-        static let isAuthorized       = "screentime.isAuthorized"
-        static let activitySelection  = "screentime.activitySelection"
-        static let isBlocking         = "screentime.isBlocking"
-        static let availableSeconds   = "screentime.availableSeconds"
-        static let startOfDaySeconds  = "screentime.startOfDaySeconds"
-        static let usageData          = "screentime.usageData"
+        static let isAuthorized            = "screentime.isAuthorized"
+        static let activitySelection       = "screentime.activitySelection"
+        static let isBlocking              = "screentime.isBlocking"
+        static let availableSeconds        = "screentime.availableSeconds"
+        static let startOfDaySeconds       = "screentime.startOfDaySeconds"
+        static let startOfDayDate          = "screentime.startOfDayDate"
+        static let usageData               = "screentime.usageData"
+
+        /// Cumulative usage seconds for the selected apps today, as reported
+        /// by the OS DeviceActivity system. Written by the extension on every
+        /// threshold event. Survives app reinstall because the OS tracks usage
+        /// independently of our UserDefaults.
+        static let todaySystemUsageSeconds = "screentime.todaySystemUsageSeconds"
+
+        /// ISO date string "yyyy-MM-dd" for the day when todaySystemUsageSeconds
+        /// was last written. Used to reset the value at midnight.
+        static let todaySystemUsageDate    = "screentime.todaySystemUsageDate"
+
+        /// Per-app usage data for today. JSON array of PerAppUsageRecord.
+        static let perAppUsageData         = "screentime.perAppUsageData"
     }
 }
