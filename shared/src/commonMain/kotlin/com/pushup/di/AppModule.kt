@@ -175,6 +175,7 @@ val repositoryModule: Module = module {
             authClient = get(),
             tokenStorage = get(),
             userRepository = get(),
+            database = get(),
             clock = get(),
             dispatcher = get(named(DB_DISPATCHER)),
         )
