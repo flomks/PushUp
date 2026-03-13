@@ -17,6 +17,14 @@ struct AuthServiceResult {
     }
 }
 
+// MARK: - UsernameCheckResult
+
+/// Result of a username availability check.
+struct UsernameCheckResult {
+    let available: Bool
+    let errorMessage: String?
+}
+
 // MARK: - AuthService
 
 /// Swift-side wrapper around KMP auth operations.
@@ -126,6 +134,57 @@ final class AuthService: Sendable {
         await callSafeBridge { handler in
             SafeAuthBridge.shared.safeUpdateDisplayName(
                 displayName: name,
+                completionHandler: handler
+            )
+        }
+    }
+
+    // MARK: - Username
+
+    /// Checks whether a username is available (not taken by another user).
+    ///
+    /// Returns a UsernameCheckResult with available = true if the username is free.
+    func checkUsernameAvailability(_ username: String) async -> UsernameCheckResult {
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let result: SafeUsernameCheckResult = try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    SafeAuthBridge.shared.safeCheckUsernameAvailability(
+                        username: username
+                    ) { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else if let result = result {
+                            continuation.resume(returning: result)
+                        } else {
+                            continuation.resume(throwing: NSError(
+                                domain: "AuthService",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
+                            ))
+                        }
+                    }
+                }
+                return UsernameCheckResult(available: result.available, errorMessage: result.errorMessage)
+            } catch {
+                return UsernameCheckResult(available: false, errorMessage: error.localizedDescription)
+            }
+        }.value
+    }
+
+    /// Sets the username for the currently authenticated user.
+    ///
+    /// Validates the username, calls the backend to enforce uniqueness, and
+    /// persists the username locally.
+    func setUsername(_ username: String) async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeSetUsername(
+                username: username,
                 completionHandler: handler
             )
         }

@@ -8,6 +8,7 @@ import com.pushup.routes.statsRoutes
 import com.pushup.routes.userDataRoutes
 import com.pushup.routes.userRoutes
 import com.pushup.routes.userSearchRoutes
+import com.pushup.routes.usernameRoutes
 import com.pushup.service.DeviceTokenService
 import com.pushup.service.FriendActivityStatsService
 import com.pushup.service.FriendshipService
@@ -44,6 +45,7 @@ fun Application.configureRouting(
         statsRoutes(statsService)
         userDataRoutes(userDataService, databaseReady = databaseReady)
         userSearchRoutes(userSearchService, databaseReady = databaseReady)
+        usernameRoutes(databaseReady = databaseReady)
         deviceTokenRoutes(deviceTokenService, databaseReady = databaseReady)
         friendRoutes(friendshipService, databaseReady = databaseReady)
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)

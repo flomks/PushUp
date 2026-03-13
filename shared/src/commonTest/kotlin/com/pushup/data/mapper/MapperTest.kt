@@ -30,6 +30,7 @@ class MapperTest {
         val dbUser = DbUser(
             id = "user-123",
             email = "test@example.com",
+            username = "test_user",
             displayName = "Test User",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_001_000_000L,
@@ -49,6 +50,7 @@ class MapperTest {
         val dbUser = DbUser(
             id = "user-456",
             email = "null@example.com",
+            username = null,
             displayName = "Null Sync",
             createdAt = 1_700_000_000_000L,
             syncedAt = null,
@@ -547,6 +549,7 @@ class MapperTest {
         val dbUser = DbUser(
             id = "epoch-user",
             email = "epoch@example.com",
+            username = null,
             displayName = "Epoch User",
             createdAt = 0L,
             syncedAt = 0L,
@@ -565,6 +568,7 @@ class MapperTest {
         val dbUser = DbUser(
             id = "future-user",
             email = "future@example.com",
+            username = null,
             displayName = "Future User",
             createdAt = farFuture,
             syncedAt = farFuture,
@@ -618,8 +622,8 @@ class MapperTest {
     @Test
     fun list_dbUsers_toDomain_mapsAll() {
         val dbUsers = listOf(
-            DbUser("u1", "a@b.com", "A", 1_000L, 2_000L),
-            DbUser("u2", "c@d.com", "B", 3_000L, null),
+            DbUser("u1", "a@b.com", null, "A", 1_000L, 2_000L),
+            DbUser("u2", "c@d.com", null, "B", 3_000L, null),
         )
 
         val domainUsers = dbUsers.map { it.toDomain() }

@@ -68,10 +68,11 @@ class RepositoryTests {
     private fun testUser(
         id: String = "user-1",
         email: String = "test@example.com",
+        username: String? = null,
         displayName: String = "Test User",
         createdAt: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
         lastSyncedAt: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
-    ) = User(id, email, displayName, createdAt, lastSyncedAt)
+    ) = User(id, email, username, displayName, createdAt, lastSyncedAt)
 
     private fun testSession(
         id: String = "session-1",
@@ -167,6 +168,7 @@ class RepositoryTests {
         database.databaseQueries.insertUser(
             id = "user-1",
             email = "test@example.com",
+            username = null,
             displayName = "Test User",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_000_000_000L,

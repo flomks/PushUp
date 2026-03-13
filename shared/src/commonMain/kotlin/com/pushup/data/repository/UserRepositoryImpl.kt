@@ -42,6 +42,7 @@ class UserRepositoryImpl(
         queries.insertUser(
             id = user.id,
             email = user.email,
+            username = user.username,
             displayName = user.displayName,
             createdAt = user.createdAt.toEpochMilliseconds(),
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
@@ -54,6 +55,7 @@ class UserRepositoryImpl(
     ) {
         queries.updateUser(
             email = user.email,
+            username = user.username,
             displayName = user.displayName,
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
             id = user.id,
@@ -67,10 +69,18 @@ class UserRepositoryImpl(
         queries.upsertUser(
             id = user.id,
             email = user.email,
+            username = user.username,
             displayName = user.displayName,
             createdAt = user.createdAt.toEpochMilliseconds(),
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
         )
+    }
+
+    override suspend fun updateUserUsername(userId: String, username: String): Unit = safeDbCall(
+        dispatcher,
+        "Failed to update username for user '$userId'",
+    ) {
+        queries.updateUserUsername(username = username, id = userId)
     }
 
     override suspend fun deleteUser(userId: String): Unit = safeDbCall(

@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 data class UserResponse(
     val id: String,
     val email: String,
+    val username: String?,
     val displayName: String?,
     val avatarUrl: String?,
     val createdAt: String,
@@ -79,4 +80,36 @@ data class UserSearchResult(
 data class UserSearchResponse(
     val results: List<UserSearchResult>,
     val total: Int,
+)
+
+/**
+ * Response body returned by GET /api/users/username/check.
+ *
+ * @property username   The username that was checked.
+ * @property available  Whether the username is available (not taken by another user).
+ */
+@Serializable
+data class UsernameCheckResponse(
+    val username: String,
+    val available: Boolean,
+)
+
+/**
+ * Request body for PATCH /api/users/username.
+ *
+ * @property username  The desired username (3-20 characters, lowercase alphanumeric + underscores).
+ */
+@Serializable
+data class SetUsernameRequest(
+    val username: String,
+)
+
+/**
+ * Response body returned by PATCH /api/users/username.
+ *
+ * @property username  The username that was set.
+ */
+@Serializable
+data class SetUsernameResponse(
+    val username: String,
 )
