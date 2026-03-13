@@ -10,6 +10,10 @@ enum AuthError: LocalizedError {
     case passwordTooShort
     case passwordsDoNotMatch
     case displayNameEmpty
+    case usernameEmpty
+    case usernameTooShort
+    case usernameTooLong
+    case usernameInvalidChars
     case networkError(String)
     case invalidCredentials
     case emailAlreadyInUse
@@ -28,6 +32,14 @@ enum AuthError: LocalizedError {
             return "Passwords do not match."
         case .displayNameEmpty:
             return "Please enter a display name."
+        case .usernameEmpty:
+            return "Please enter a username."
+        case .usernameTooShort:
+            return "Username must be at least 3 characters long."
+        case .usernameTooLong:
+            return "Username must be at most 20 characters long."
+        case .usernameInvalidChars:
+            return "Username may only contain lowercase letters, digits, and underscores."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .invalidCredentials:
@@ -101,9 +113,21 @@ final class AuthViewModel: NSObject, ObservableObject {
     @Published var successMessage: String? = nil
     @Published var showPasswordResetConfirmation: Bool = false
 
-    // Display name setup (shown after first social sign-in)
+    // Username setup (shown after first social sign-in, only once)
+    @Published var usernameInput: String = ""
+    @Published var isSavingUsername: Bool = false
+
+    /// Whether the username entered is available (nil = not yet checked).
+    @Published var isUsernameAvailable: Bool? = nil
+    /// Whether an availability check is in progress.
+    @Published var isCheckingUsername: Bool = false
+
+    // Legacy: kept for backward compatibility with email registration display name
     @Published var displayNameInput: String = ""
     @Published var isSavingDisplayName: Bool = false
+
+    /// Debounce task for username availability checks.
+    private var usernameCheckTask: Task<Void, Never>? = nil
 
     // MARK: - Private
 
@@ -364,7 +388,99 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Display Name Setup
+    // MARK: - Username Setup
+
+    /// Validates the username input and returns a user-facing error string, or nil if valid.
+    var usernameValidationError: String? {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.count < 3 { return "At least 3 characters" }
+        if trimmed.count > 20 { return "At most 20 characters" }
+        let validPattern = #"^[a-z0-9_]+$"#
+        if trimmed.range(of: validPattern, options: .regularExpression) == nil {
+            return "Only letters, digits, and underscores"
+        }
+        return nil
+    }
+
+    /// Whether the username input passes local validation rules.
+    var isUsernameLocallyValid: Bool {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard trimmed.count >= 3, trimmed.count <= 20 else { return false }
+        let validPattern = #"^[a-z0-9_]+$"#
+        return trimmed.range(of: validPattern, options: .regularExpression) != nil
+    }
+
+    /// Called whenever the username input changes. Debounces availability checks.
+    func onUsernameInputChanged() {
+        // Reset availability state immediately when the input changes.
+        isUsernameAvailable = nil
+
+        // Cancel any pending check.
+        usernameCheckTask?.cancel()
+
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard isUsernameLocallyValid else { return }
+
+        // Debounce: wait 500ms before hitting the server.
+        usernameCheckTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await checkUsernameAvailability(trimmed)
+        }
+    }
+
+    /// Checks username availability against the backend.
+    private func checkUsernameAvailability(_ username: String) async {
+        isCheckingUsername = true
+        let result = await AuthService.shared.checkUsernameAvailability(username)
+        isCheckingUsername = false
+        // Only update if the input hasn't changed since we started the check.
+        let currentTrimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        if currentTrimmed == username {
+            isUsernameAvailable = result.available
+        }
+    }
+
+    /// Saves the username entered by the user after first social sign-in.
+    ///
+    /// Validates locally, calls the backend to enforce uniqueness, and persists
+    /// the username locally. On success transitions to `.authenticated`.
+    func saveUsername() async {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else {
+            errorMessage = AuthError.usernameEmpty.errorDescription
+            return
+        }
+        guard trimmed.count >= 3 else {
+            errorMessage = AuthError.usernameTooShort.errorDescription
+            return
+        }
+        guard trimmed.count <= 20 else {
+            errorMessage = AuthError.usernameTooLong.errorDescription
+            return
+        }
+        let validPattern = #"^[a-z0-9_]+$"#
+        guard trimmed.range(of: validPattern, options: .regularExpression) != nil else {
+            errorMessage = AuthError.usernameInvalidChars.errorDescription
+            return
+        }
+
+        isSavingUsername = true
+        let result = await AuthService.shared.setUsername(trimmed)
+        isSavingUsername = false
+        if result.isSuccess {
+            authState = .authenticated
+            SyncService.shared.syncFromCloudAfterLogin()
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
+        } else {
+            errorMessage = result.errorMessage ?? "Could not save username."
+            // Re-check availability in case it was taken between check and submit.
+            isUsernameAvailable = nil
+        }
+    }
+
+    // MARK: - Display Name Setup (legacy, kept for email registration)
 
     /// Saves the display name entered by the user after first social sign-in.
     ///
@@ -405,15 +521,26 @@ final class AuthViewModel: NSObject, ObservableObject {
     // MARK: - Session Restore
 
     /// Checks whether a valid Supabase token exists and restores the session.
+    ///
+    /// If the user is authenticated but has not yet set a username, transitions
+    /// to `.needsDisplayName` so the username setup screen is shown.
     func restoreSession() async {
-        if let _ = await AuthService.shared.getCurrentUser() {
-            authState = .authenticated
-            // Trigger a background sync on app relaunch so local data is
-            // refreshed from the cloud (picks up changes from other devices
-            // or sessions since the last time the app was open).
-            SyncService.shared.syncFromCloudAfterLogin()
-            // Register any APNs token that arrived before the session was restored.
-            await PushNotificationService.shared.registerPendingTokenIfNeeded()
+        if let user = await AuthService.shared.getCurrentUser() {
+            let needsUsername = (user.username == nil || user.username?.isEmpty == true)
+            if needsUsername {
+                // User is authenticated but hasn't set a username yet.
+                usernameInput = ""
+                isUsernameAvailable = nil
+                authState = .needsDisplayName
+            } else {
+                authState = .authenticated
+                // Trigger a background sync on app relaunch so local data is
+                // refreshed from the cloud (picks up changes from other devices
+                // or sessions since the last time the app was open).
+                SyncService.shared.syncFromCloudAfterLogin()
+                // Register any APNs token that arrived before the session was restored.
+                await PushNotificationService.shared.registerPendingTokenIfNeeded()
+            }
         } else {
             authState = .unauthenticated
         }
@@ -423,16 +550,16 @@ final class AuthViewModel: NSObject, ObservableObject {
 
     /// Handles a successful social sign-in result.
     ///
-    /// Detects whether this is a new user by checking if the stored display name
-    /// is auto-generated (equals the email prefix or a UUID prefix). If new,
-    /// pre-fills `displayNameInput` with the best available suggestion and
-    /// transitions to `.needsDisplayName` so the name screen is shown.
+    /// Detects whether this is a new user by checking if the stored username is
+    /// nil or empty. If the username has not been set yet, transitions to
+    /// `.needsDisplayName` (the username setup screen) so the user can choose one.
     ///
-    /// For returning users, transitions directly to `.authenticated`.
+    /// For returning users who already have a username, transitions directly to
+    /// `.authenticated`.
     ///
     /// - Parameters:
     ///   - result:        The successful auth result containing the User.
-    ///   - suggestedName: A name hint from the provider (e.g. Apple full name).
+    ///   - suggestedName: A name hint from the provider (not used for username).
     private func handleSocialSignInSuccess(
         result: AuthServiceResult,
         suggestedName: String?
@@ -442,25 +569,18 @@ final class AuthViewModel: NSObject, ObservableObject {
             return
         }
 
-        // Determine if this is a new user. The KMP makeUser() sets displayName
-        // to the email prefix (e.g. "john" from "john@gmail.com") or "User".
-        // We consider the user "new" if their display name matches the auto-
-        // generated pattern: equals the email local part, is "User", or is a
-        // UUID-like string (social.local placeholder).
-        let emailPrefix = user.email.components(separatedBy: "@").first ?? ""
-        let isAutoGenerated = user.displayName == emailPrefix
-            || user.displayName == "User"
-            || user.displayName.contains("@social.local")
-            || user.email.hasSuffix("@social.local")
+        // A user needs to set their username if they don't have one yet.
+        // This is the single, reliable signal: username is nil until the user
+        // explicitly completes the username setup screen.
+        let needsUsername = (user.username == nil || user.username?.isEmpty == true)
 
-        if isAutoGenerated {
-            // New user: pre-fill the name field with the best available suggestion.
-            // Priority: provider name > email prefix > empty (user types from scratch).
-            displayNameInput = suggestedName
-                ?? (emailPrefix.count > 1 ? emailPrefix.capitalized : "")
+        if needsUsername {
+            // New user (or user who hasn't set a username yet): show the username screen.
+            usernameInput = ""
+            isUsernameAvailable = nil
             authState = .needsDisplayName
         } else {
-            // Returning user: go straight to the app.
+            // Returning user with an existing username: go straight to the app.
             authState = .authenticated
             SyncService.shared.syncFromCloudAfterLogin()
             await PushNotificationService.shared.registerPendingTokenIfNeeded()

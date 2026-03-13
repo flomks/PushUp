@@ -10,6 +10,7 @@
 CREATE TABLE User (
     id          TEXT    NOT NULL PRIMARY KEY,
     email       TEXT    NOT NULL,
+    username    TEXT,
     displayName TEXT    NOT NULL,
     createdAt   INTEGER NOT NULL,
     syncedAt    INTEGER
@@ -87,8 +88,8 @@ CREATE INDEX idx_user_settings_user_id ON UserSettings(userId);
 -- =============================================================================
 
 insertUser:
-INSERT INTO User (id, email, displayName, createdAt, syncedAt)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO User (id, email, username, displayName, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?, ?);
 
 selectUserById:
 SELECT *
@@ -108,12 +109,17 @@ LIMIT 1;
 
 updateUser:
 UPDATE User
-SET email = ?, displayName = ?, syncedAt = ?
+SET email = ?, username = ?, displayName = ?, syncedAt = ?
+WHERE id = ?;
+
+updateUserUsername:
+UPDATE User
+SET username = ?
 WHERE id = ?;
 
 upsertUser:
-INSERT OR REPLACE INTO User (id, email, displayName, createdAt, syncedAt)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO User (id, email, username, displayName, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?, ?);
 
 deleteUser:
 DELETE FROM User

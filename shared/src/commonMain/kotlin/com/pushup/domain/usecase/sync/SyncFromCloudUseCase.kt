@@ -177,10 +177,10 @@ class SyncFromCloudUseCase(
 
     /**
      * Fetches the user profile from Supabase and updates the local User record
-     * if the remote display name differs from the local one.
+     * if the remote display name or username differs from the local one.
      *
-     * This ensures that a display name changed on another device (or via the
-     * web dashboard) is reflected locally after the next sync.
+     * This ensures that a display name or username changed on another device
+     * (or via the web dashboard) is reflected locally after the next sync.
      *
      * [CancellationException] is always re-thrown to preserve structured concurrency.
      */
@@ -188,12 +188,20 @@ class SyncFromCloudUseCase(
         repeat(maxRetries) { attempt ->
             try {
                 val remote = supabaseClient.getUserProfile(userId) ?: return
-                val remoteDisplayName = remote.displayName?.trim()
-                    ?.takeIf { it.isNotBlank() } ?: return
-
                 val local = userRepository.getCurrentUser() ?: return
-                if (local.displayName != remoteDisplayName) {
-                    userRepository.updateUser(local.copy(displayName = remoteDisplayName))
+
+                val remoteDisplayName = remote.displayName?.trim()?.takeIf { it.isNotBlank() }
+                val remoteUsername = remote.username?.trim()?.takeIf { it.isNotBlank() }
+
+                val needsUpdate = (remoteDisplayName != null && local.displayName != remoteDisplayName) ||
+                    (remoteUsername != null && local.username != remoteUsername)
+
+                if (needsUpdate) {
+                    val updated = local.copy(
+                        displayName = remoteDisplayName ?: local.displayName,
+                        username = remoteUsername ?: local.username,
+                    )
+                    userRepository.updateUser(updated)
                 }
                 return
             } catch (e: CancellationException) {

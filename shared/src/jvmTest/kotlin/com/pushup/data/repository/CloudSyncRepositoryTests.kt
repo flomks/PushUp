@@ -85,6 +85,7 @@ class CloudSyncRepositoryTests {
         database.databaseQueries.insertUser(
             id = "user-1",
             email = "test@example.com",
+            username = null,
             displayName = "Test User",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_000_000_000L,

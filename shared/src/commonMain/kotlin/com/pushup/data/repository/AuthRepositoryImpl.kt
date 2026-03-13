@@ -73,7 +73,7 @@ class AuthRepositoryImpl(
         withContext(dispatcher) {
             val token = wrapAuthCall { authClient.signInWithEmail(email, password) }
             tokenStorage.save(token)
-            val user = makeUser(token, emailOverride = email)
+            val user = makeUserPreservingUsername(token, emailOverride = email)
             userRepository.upsertUser(user)
             user
         }
@@ -84,7 +84,7 @@ class AuthRepositoryImpl(
                 authClient.signInWithIdToken(com.pushup.domain.model.SocialProvider.APPLE, idToken)
             }
             tokenStorage.save(token)
-            val user = makeUser(token, emailOverride = null)
+            val user = makeUserPreservingUsername(token, emailOverride = null)
             userRepository.upsertUser(user)
             user
         }
@@ -95,7 +95,7 @@ class AuthRepositoryImpl(
                 authClient.signInWithIdToken(com.pushup.domain.model.SocialProvider.GOOGLE, idToken)
             }
             tokenStorage.save(token)
-            val user = makeUser(token, emailOverride = null)
+            val user = makeUserPreservingUsername(token, emailOverride = null)
             userRepository.upsertUser(user)
             user
         }
@@ -104,7 +104,7 @@ class AuthRepositoryImpl(
         withContext(dispatcher) {
             val token = wrapAuthCall { authClient.exchangeOAuthCode(code) }
             tokenStorage.save(token)
-            val user = makeUser(token, emailOverride = null)
+            val user = makeUserPreservingUsername(token, emailOverride = null)
             userRepository.upsertUser(user)
             user
         }
@@ -125,7 +125,7 @@ class AuthRepositoryImpl(
             expiresAt = now.epochSeconds + expiresIn,
         )
         tokenStorage.save(token)
-        val user = makeUser(token, emailOverride = userEmail)
+        val user = makeUserPreservingUsername(token, emailOverride = userEmail)
         userRepository.upsertUser(user)
         user
     }
@@ -226,6 +226,21 @@ class AuthRepositoryImpl(
     }
 
     /**
+     * Constructs a [User] domain object from an [AuthToken], preserving the
+     * existing username from the local database if one has already been set.
+     *
+     * This prevents the username from being wiped on re-login (since
+     * `upsertUser` replaces the entire row).
+     *
+     * @param token         The auth token returned by the server.
+     * @param emailOverride Caller-supplied email (non-null for email/password flows).
+     */
+    private suspend fun makeUserPreservingUsername(token: AuthToken, emailOverride: String?): User {
+        val existingUsername = userRepository.getCurrentUser()?.username
+        return makeUser(token, emailOverride).copy(username = existingUsername)
+    }
+
+    /**
      * Constructs a [User] domain object from an [AuthToken].
      *
      * Email resolution priority:
@@ -250,6 +265,7 @@ class AuthRepositoryImpl(
         return User(
             id = token.userId,
             email = email,
+            username = null,
             displayName = displayName,
             createdAt = now,
             lastSyncedAt = now,

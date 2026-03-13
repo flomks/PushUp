@@ -2,8 +2,10 @@ package com.pushup.data.api
 
 import com.pushup.data.api.dto.DailyStatsDTO
 import com.pushup.data.api.dto.MonthlyStatsDTO
+import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.StreakDTO
 import com.pushup.data.api.dto.TotalStatsDTO
+import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WeeklyStatsDTO
 import com.pushup.data.api.dto.toDomain
 import com.pushup.domain.model.DailyStats
@@ -13,6 +15,10 @@ import com.pushup.domain.model.WeeklyStats
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.LocalDate
@@ -149,6 +155,45 @@ class KtorApiClient(
      */
     suspend fun getStreak(): StreakDTO = retrying {
         fetchStreak()
+    }
+
+    // =========================================================================
+    // Username API
+    // =========================================================================
+
+    /**
+     * Checks whether [username] is available (not taken by another user).
+     *
+     * Calls `GET /api/users/username/check?username=<username>`.
+     *
+     * @return [UsernameCheckResponse] with [available] = true if the username is free.
+     */
+    suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse = retrying {
+        val token = tokenProvider()
+        httpClient.get("$backendBaseUrl/api/users/username/check") {
+            bearerAuth(token)
+            url.parameters.append("username", username)
+        }.also { it.expectSuccess() }
+            .body<UsernameCheckResponse>()
+    }
+
+    /**
+     * Sets the username for the currently authenticated user.
+     *
+     * Calls `PATCH /api/users/username`.
+     *
+     * @return The username that was set.
+     * @throws ApiException if the username is taken (409) or invalid (400).
+     */
+    suspend fun setUsername(request: SetUsernameRequest): String = retrying {
+        val token = tokenProvider()
+        httpClient.patch("$backendBaseUrl/api/users/username") {
+            bearerAuth(token)
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<com.pushup.data.api.dto.SetUsernameResponse>()
+            .username
     }
 
     // =========================================================================

@@ -8,16 +8,19 @@ import kotlinx.serialization.Serializable
  *
  * All properties are immutable; create a new instance via [copy] to reflect changes.
  *
- * @property id Unique identifier for the user.
- * @property email The user's email address.
+ * @property id          Unique identifier for the user.
+ * @property email       The user's email address.
+ * @property username    Unique handle chosen by the user (e.g. "john_doe").
+ *                       Null until the user completes the username setup screen.
  * @property displayName Human-readable display name.
- * @property createdAt Timestamp when the user account was created.
+ * @property createdAt   Timestamp when the user account was created.
  * @property lastSyncedAt Timestamp of the last successful data synchronization with the server.
  */
 @Serializable
 data class User(
     val id: String,
     val email: String,
+    val username: String? = null,
     val displayName: String,
     val createdAt: Instant,
     val lastSyncedAt: Instant,

@@ -3,6 +3,7 @@ package com.pushup.data.api
 import com.pushup.data.api.dto.CreatePushUpRecordRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.PushUpRecordDTO
+import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.TimeCreditDTO
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
@@ -10,6 +11,7 @@ import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UserLevelDTO
 import com.pushup.data.api.dto.UserProfileDTO
+import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
 import com.pushup.domain.model.LevelCalculator
@@ -383,6 +385,30 @@ class SupabaseClient(
                 resourceType = "UserLevel",
                 resourceId = userId,
             )
+    }
+
+    // =========================================================================
+    // Username (delegated to Ktor backend -- not available via PostgREST)
+    // =========================================================================
+
+    /**
+     * Not implemented on SupabaseClient -- username operations go through the
+     * Ktor backend ([KtorApiClient]). Throws [UnsupportedOperationException].
+     */
+    override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse {
+        throw UnsupportedOperationException(
+            "checkUsernameAvailability must be called via KtorApiClient, not SupabaseClient"
+        )
+    }
+
+    /**
+     * Not implemented on SupabaseClient -- username operations go through the
+     * Ktor backend ([KtorApiClient]). Throws [UnsupportedOperationException].
+     */
+    override suspend fun setUsername(request: SetUsernameRequest): String {
+        throw UnsupportedOperationException(
+            "setUsername must be called via KtorApiClient, not SupabaseClient"
+        )
     }
 
     // =========================================================================

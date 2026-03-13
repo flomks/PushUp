@@ -1,10 +1,12 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.UserLevel
@@ -103,4 +105,19 @@ interface CloudSyncApi {
         userId: String,
         request: UpsertUserLevelRequest,
     ): UserLevel
+
+    /**
+     * Checks whether [username] is available (not taken by another user).
+     *
+     * @return [UsernameCheckResponse] with [available] = true if the username
+     *         is free to use, false if it is already taken.
+     */
+    suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse
+
+    /**
+     * Sets the username for the currently authenticated user.
+     *
+     * @throws ApiException if the username is taken or invalid.
+     */
+    suspend fun setUsername(request: SetUsernameRequest): String
 }

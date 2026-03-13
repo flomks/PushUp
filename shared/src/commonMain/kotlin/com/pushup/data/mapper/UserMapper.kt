@@ -14,6 +14,7 @@ import com.pushup.db.User as DbUser
 fun DbUser.toDomain(): User = User(
     id = id,
     email = email,
+    username = username,
     displayName = displayName,
     createdAt = Instant.fromEpochMilliseconds(createdAt),
     lastSyncedAt = Instant.fromEpochMilliseconds(syncedAt ?: createdAt),
@@ -28,6 +29,7 @@ fun DbUser.toDomain(): User = User(
 fun User.toDbEntity(): DbUser = DbUser(
     id = id,
     email = email,
+    username = username,
     displayName = displayName,
     createdAt = createdAt.toEpochMilliseconds(),
     syncedAt = lastSyncedAt.toEpochMilliseconds(),

@@ -69,6 +69,7 @@ class UserDataService(
             val userResponse = UserResponse(
                 id          = userRow[Users.id].toString(),
                 email       = userRow[Users.email],
+                username    = userRow[Users.username],
                 displayName = userRow[Users.displayName],
                 avatarUrl   = userRow[Users.avatarUrl],
                 createdAt   = userRow[Users.createdAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),

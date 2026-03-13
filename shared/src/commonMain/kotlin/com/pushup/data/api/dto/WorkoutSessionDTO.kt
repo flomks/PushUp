@@ -156,6 +156,7 @@ data class UpdateTimeCreditRequest(
  * Only the fields relevant for sync are included here.
  *
  * @property id          UUID of the user.
+ * @property username    The user's unique handle (may be null if not yet set).
  * @property displayName The user's display name (may be null if not yet set).
  * @property email       The user's email address.
  * @property updatedAt   ISO-8601 timestamp of last update (server-managed).
@@ -163,6 +164,7 @@ data class UpdateTimeCreditRequest(
 @Serializable
 data class UserProfileDTO(
     @SerialName("id")           val id: String,
+    @SerialName("username")     val username: String? = null,
     @SerialName("display_name") val displayName: String? = null,
     @SerialName("email")        val email: String? = null,
     @SerialName("updated_at")   val updatedAt: String? = null,
@@ -174,6 +176,31 @@ data class UserProfileDTO(
 @Serializable
 data class UpdateUserProfileRequest(
     @SerialName("display_name") val displayName: String,
+)
+
+/**
+ * Request body for setting the user's username via the Ktor backend.
+ */
+@Serializable
+data class SetUsernameRequest(
+    @SerialName("username") val username: String,
+)
+
+/**
+ * Response body returned by the username check endpoint.
+ */
+@Serializable
+data class UsernameCheckResponse(
+    @SerialName("username")  val username: String,
+    @SerialName("available") val available: Boolean,
+)
+
+/**
+ * Response body returned by the set-username endpoint.
+ */
+@Serializable
+data class SetUsernameResponse(
+    @SerialName("username") val username: String,
 )
 
 // =============================================================================
