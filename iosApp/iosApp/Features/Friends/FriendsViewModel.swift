@@ -262,6 +262,7 @@ final class FriendsViewModel: ObservableObject {
                             id: $0.id,
                             username: $0.username,
                             displayName: $0.displayName,
+                            avatarUrl: $0.avatarUrl,
                             friendshipStatus: $0.friendshipStatus.name.lowercased()
                         )
                     }
@@ -293,6 +294,7 @@ final class FriendsViewModel: ObservableObject {
                         id: $0.id,
                         username: $0.username,
                         displayName: $0.displayName,
+                        avatarUrl: $0.avatarUrl,
                         friendshipStatus: "pending"
                     )
                 }
@@ -318,6 +320,7 @@ final class FriendsViewModel: ObservableObject {
                         requesterId: $0.requesterId,
                         username: $0.username,
                         displayName: $0.displayName,
+                        avatarUrl: $0.avatarUrl,
                         createdAt: $0.createdAt
                     )
                 }
