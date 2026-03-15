@@ -211,12 +211,14 @@ private struct FriendHubView: View {
                 .foregroundStyle(AppColors.textSecondary)
                 .frame(width: 20, alignment: .center)
 
-            // Avatar
-            FriendAvatar(
-                label: entry.isCurrentUser
-                    ? entry.displayLabel.replacingOccurrences(of: " (You)", with: "")
-                    : entry.displayLabel,
-                color: AppColors.primary
+            // Avatar (leaderboard entries carry no URL; initials fallback is used)
+            AvatarView(
+                initials: FriendItem.makeInitials(
+                    entry.isCurrentUser
+                        ? entry.displayLabel.replacingOccurrences(of: " (You)", with: "")
+                        : entry.displayLabel
+                ),
+                size: 36
             )
 
             // Name
@@ -602,7 +604,11 @@ private struct FriendHubRow<Destination: View>: View {
     var body: some View {
         NavigationLink(destination: { destination() }) {
             HStack(spacing: AppSpacing.sm) {
-                FriendAvatar(label: friend.displayLabel, color: AppColors.success, size: 44)
+                AvatarView(
+                    url: friend.avatarUrl.flatMap { URL(string: $0) },
+                    initials: friend.initials,
+                    size: 44
+                )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(friend.displayLabel)
@@ -788,7 +794,11 @@ private struct AddFriendRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            FriendAvatar(label: user.displayLabel, color: AppColors.primary)
+            AvatarView(
+                url: user.avatarUrl.flatMap { URL(string: $0) },
+                initials: user.initials,
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.displayLabel)
@@ -945,7 +955,11 @@ private struct RequestRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            FriendAvatar(label: request.displayLabel, color: AppColors.primary)
+            AvatarView(
+                url: request.avatarUrl.flatMap { URL(string: $0) },
+                initials: request.initials,
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.displayLabel)
@@ -1021,31 +1035,6 @@ private struct ShimmerModifier: ViewModifier {
                 withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
                     phase = 1
                 }
-            }
-    }
-}
-
-// MARK: - FriendAvatar
-
-/// Reusable circular avatar showing the first letter(s) of a name.
-struct FriendAvatar: View {
-
-    let label: String
-    let color: Color
-    var size: CGFloat = 40
-
-    var body: some View {
-        Circle()
-            .fill(color.opacity(0.15))
-            .frame(width: size, height: size)
-            .overlay {
-                Text(String(label.prefix(1)).uppercased())
-                    .font(.system(
-                        size: size * 0.42,
-                        weight: .bold,
-                        design: .rounded
-                    ))
-                    .foregroundStyle(color)
             }
     }
 }
