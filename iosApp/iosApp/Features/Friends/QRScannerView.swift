@@ -222,14 +222,25 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
 
     private func extractCode(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let url = URL(string: trimmed),
-           url.scheme == "pushup",
-           url.host == "friend-code" {
-            return url.pathComponents
-                .filter { $0 != "/" }
-                .first?
-                .uppercased() ?? ""
+
+        if let url = URL(string: trimmed) {
+            // Universal Link: https://pushup.weareo.fun/friend/<CODE>
+            if url.scheme == "https",
+               url.host == "pushup.weareo.fun",
+               url.pathComponents.count >= 3,
+               url.pathComponents[1] == "friend" {
+                return url.pathComponents[2].uppercased()
+            }
+            // Legacy custom scheme: pushup://friend-code/<CODE>
+            if url.scheme == "pushup", url.host == "friend-code" {
+                return url.pathComponents
+                    .filter { $0 != "/" }
+                    .first?
+                    .uppercased() ?? ""
+            }
         }
+
+        // Bare code typed or printed directly on a QR
         let bare = trimmed.uppercased().filter { $0.isLetter || $0.isNumber }
         guard bare.count >= 4, bare.count <= 16 else { return "" }
         return bare
