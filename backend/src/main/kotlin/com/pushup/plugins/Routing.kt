@@ -79,24 +79,22 @@ fun Application.configureRouting(
             call.respondText(aasa, ContentType.Application.Json)
         }
 
-        // Universal Link landing page: /friend/<CODE>
+        // Friend code landing page: /friend/<CODE>
         //
-        // Strategy:
-        //   1. JavaScript immediately tries to open pushup://friend-code/<CODE>
-        //   2. A 1500ms timer fires -- if the app opened, the page is hidden
-        //      and the timer never redirects. If the app is NOT installed,
-        //      Safari cannot open the custom scheme and the timer redirects
-        //      straight to the App Store.
-        //   3. The user sees only a brief loading spinner -- no ugly web page.
+        // Shown when someone taps a shared friend-code link.
+        // Displays the code, an "Add Friend" button (opens the app via
+        // custom scheme), and store download buttons.
         //
-        // When Universal Links work (app installed + Associated Domains active),
-        // iOS intercepts the https:// link BEFORE the browser even loads this
-        // page, so this HTML is never shown at all.
+        // When Universal Links are active (Associated Domains + AASA),
+        // iOS intercepts the https:// link before Safari loads this page
+        // and opens the app directly -- this HTML is never shown.
         get("/friend/{code}") {
-            val code       = call.parameters["code"]?.uppercase()?.filter { it.isLetterOrDigit() } ?: ""
-            val appScheme  = "pushup://friend-code/$code"
-            // Replace with the real App Store ID once the app is published.
-            val appStoreUrl = "https://apps.apple.com/app/id0000000000"
+            val code      = call.parameters["code"]?.uppercase()?.filter { it.isLetterOrDigit() } ?: ""
+            val formatted = code.chunked(4).joinToString(" ")
+            val appScheme = "pushup://friend-code/$code"
+            // Replace id0000000000 with the real App Store ID once published.
+            val appStoreUrl  = "https://apps.apple.com/app/id0000000000"
+            val playStoreUrl = "https://play.google.com/store/apps/details?id=com.flomks.pushup"
 
             call.respondText(
                 contentType = ContentType.Text.Html,
@@ -106,51 +104,194 @@ fun Application.configureRouting(
                     <head>
                       <meta charset="UTF-8">
                       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-                      <title>Opening PushUp…</title>
+                      <title>Add Friend · PushUp</title>
                       <style>
                         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+                        :root {
+                          --bg:      #0a0a0a;
+                          --surface: #141414;
+                          --border:  #222;
+                          --text:    #f5f5f5;
+                          --muted:   #888;
+                          --accent:  #007AFF;
+                          --radius:  16px;
+                        }
+
                         html, body {
-                          height: 100%; background: #000; color: #fff;
-                          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                          min-height: 100%;
+                          background: var(--bg);
+                          color: var(--text);
+                          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          padding: 24px;
+                        }
+
+                        .card {
+                          width: 100%;
+                          max-width: 380px;
+                          background: var(--surface);
+                          border: 1px solid var(--border);
+                          border-radius: 24px;
+                          padding: 40px 32px 36px;
+                          text-align: center;
+                        }
+
+                        .icon {
+                          width: 72px; height: 72px;
+                          background: linear-gradient(135deg, #1a1a2e, #16213e);
+                          border-radius: 18px;
                           display: flex; align-items: center; justify-content: center;
-                        }
-                        .wrap { text-align: center; padding: 24px; }
-                        .spinner {
-                          width: 48px; height: 48px; border-radius: 50%;
-                          border: 4px solid rgba(255,255,255,.15);
-                          border-top-color: #007AFF;
-                          animation: spin .8s linear infinite;
                           margin: 0 auto 24px;
+                          font-size: 36px;
+                          border: 1px solid var(--border);
                         }
-                        @keyframes spin { to { transform: rotate(360deg); } }
-                        p { color: rgba(255,255,255,.5); font-size: 15px; }
+
+                        h1 {
+                          font-size: 22px;
+                          font-weight: 700;
+                          letter-spacing: -0.3px;
+                          margin-bottom: 6px;
+                        }
+
+                        .subtitle {
+                          color: var(--muted);
+                          font-size: 15px;
+                          margin-bottom: 28px;
+                          line-height: 1.4;
+                        }
+
+                        .code-box {
+                          background: var(--bg);
+                          border: 1px solid var(--border);
+                          border-radius: var(--radius);
+                          padding: 16px 20px;
+                          margin-bottom: 28px;
+                        }
+
+                        .code-label {
+                          font-size: 11px;
+                          font-weight: 600;
+                          letter-spacing: 1.2px;
+                          text-transform: uppercase;
+                          color: var(--muted);
+                          margin-bottom: 6px;
+                        }
+
+                        .code-value {
+                          font-family: "SF Mono", "Fira Code", monospace;
+                          font-size: 28px;
+                          font-weight: 700;
+                          letter-spacing: 6px;
+                          color: var(--text);
+                        }
+
+                        .btn {
+                          display: block;
+                          width: 100%;
+                          padding: 15px 20px;
+                          border-radius: var(--radius);
+                          font-size: 16px;
+                          font-weight: 600;
+                          text-decoration: none;
+                          cursor: pointer;
+                          border: none;
+                          transition: opacity .15s;
+                        }
+                        .btn:active { opacity: .75; }
+
+                        .btn-primary {
+                          background: var(--accent);
+                          color: #fff;
+                          margin-bottom: 10px;
+                        }
+
+                        .divider {
+                          display: flex;
+                          align-items: center;
+                          gap: 10px;
+                          margin: 20px 0 16px;
+                          color: var(--muted);
+                          font-size: 12px;
+                        }
+                        .divider::before, .divider::after {
+                          content: "";
+                          flex: 1;
+                          height: 1px;
+                          background: var(--border);
+                        }
+
+                        .store-row {
+                          display: flex;
+                          gap: 10px;
+                        }
+
+                        .btn-store {
+                          flex: 1;
+                          background: var(--bg);
+                          border: 1px solid var(--border);
+                          color: var(--text);
+                          font-size: 13px;
+                          padding: 12px 10px;
+                          border-radius: var(--radius);
+                          text-decoration: none;
+                          display: flex;
+                          flex-direction: column;
+                          align-items: center;
+                          gap: 4px;
+                          transition: border-color .15s;
+                        }
+                        .btn-store:active { border-color: var(--accent); }
+
+                        .store-icon { font-size: 20px; }
+                        .store-label { font-size: 10px; color: var(--muted); font-weight: 500; }
+                        .store-name  { font-size: 13px; font-weight: 600; }
+
+                        .footer {
+                          margin-top: 28px;
+                          font-size: 12px;
+                          color: var(--muted);
+                        }
                       </style>
                     </head>
                     <body>
-                      <div class="wrap">
-                        <div class="spinner"></div>
-                        <p>Opening PushUp…</p>
+                      <div class="card">
+                        <div class="icon">💪</div>
+
+                        <h1>You've been invited!</h1>
+                        <p class="subtitle">
+                          Someone wants to add you as a friend on PushUp.<br>
+                          Open the app to accept.
+                        </p>
+
+                        <div class="code-box">
+                          <div class="code-label">Friend Code</div>
+                          <div class="code-value">$formatted</div>
+                        </div>
+
+                        <a class="btn btn-primary" href="$appScheme">
+                          Add Friend in PushUp
+                        </a>
+
+                        <div class="divider">Don't have the app?</div>
+
+                        <div class="store-row">
+                          <a class="btn-store" href="$appStoreUrl">
+                            <span class="store-icon">🍎</span>
+                            <span class="store-label">Download on the</span>
+                            <span class="store-name">App Store</span>
+                          </a>
+                          <a class="btn-store" href="$playStoreUrl">
+                            <span class="store-icon">▶</span>
+                            <span class="store-label">Get it on</span>
+                            <span class="store-name">Google Play</span>
+                          </a>
+                        </div>
+
+                        <p class="footer">PushUp · Earn your screen time</p>
                       </div>
-                      <script>
-                        // 1. Try to open the app via custom scheme.
-                        window.location.href = '$appScheme';
-
-                        // 2. If the app is not installed, the browser stays on this
-                        //    page and the timer fires -> redirect to App Store.
-                        //    If the app DID open, the page goes to background and
-                        //    the timer is irrelevant (never causes a redirect).
-                        var t = setTimeout(function() {
-                          window.location.replace('$appStoreUrl');
-                        }, 1500);
-
-                        // 3. Cancel the timer if the user comes back to the page
-                        //    (e.g. they opened the app and then returned to Safari).
-                        document.addEventListener('visibilitychange', function() {
-                          if (document.visibilityState === 'hidden') {
-                            clearTimeout(t);
-                          }
-                        });
-                      </script>
                     </body>
                     </html>
                 """.trimIndent()
