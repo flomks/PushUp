@@ -64,7 +64,7 @@ fun Application.configureRouting(
                 "apps": [],
                 "details": [
                   {
-                    "appID": "XXXXXXXXXX.com.flomks.pushup",
+                    "appID": "2986PL676H.com.flomks.pushup",
                     "paths": [ "/friend/*" ]
                   }
                 ]
