@@ -72,7 +72,7 @@ sealed class UseFriendCodeResult {
  * access and can be reset (new random value) or deactivated via the privacy
  * setting.
  *
- * Deep-link format: `pushup://friend-code/<CODE>`
+ * Deep-link format: `https://pushup.weareo.fun/friend/<CODE>`
  */
 open class FriendCodeService(
     private val deviceTokenService: DeviceTokenService = DeviceTokenService(),
