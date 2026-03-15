@@ -4,10 +4,12 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -1084,6 +1086,11 @@ class FakeCloudSyncApi : CloudSyncApi {
         upsertUserLevelCalled = true
         return LevelCalculator.fromTotalXp(userId = userId, totalXp = request.totalXp)
     }
+
+    override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse =
+        UsernameCheckResponse(available = true)
+
+    override suspend fun setUsername(request: SetUsernameRequest): String = request.username
 }
 
 /**

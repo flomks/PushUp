@@ -12,6 +12,8 @@ struct FriendItem: Identifiable {
     var leaderboardRank: Int? = nil
     /// Current consecutive-day workout streak (nil until stats are loaded).
     var currentStreak: Int? = nil
+    /// Current XP level (nil until stats are loaded).
+    var currentLevel: Int? = nil
 
     var displayLabel: String { displayName ?? username ?? "Unknown" }
 
@@ -128,6 +130,8 @@ struct FriendStatsData: Equatable {
     let averageQuality: Double?
     /// Current consecutive-day workout streak.
     let currentStreak: Int
+    /// Current XP level (1-based).
+    let friendLevel: Int
 }
 
 // MARK: - FriendsViewModel
@@ -640,13 +644,15 @@ final class FriendsViewModel: ObservableObject {
                     totalEarnedSeconds: stats.totalEarnedSeconds,
                     // KotlinDouble? bridges to KotlinDouble? in Swift; .doubleValue extracts Double.
                     averageQuality: stats.averageQuality?.doubleValue,
-                    currentStreak: Int(stats.currentStreak)
+                    currentStreak: Int(stats.currentStreak),
+                    friendLevel: Int(stats.friendLevel)
                 )
                 self.friendStatsState = .loaded(data)
-                // Stamp the streak back onto the FriendItem so the hub row
-                // shows it without requiring a separate stats fetch.
+                // Stamp streak and level back onto the FriendItem so the hub
+                // row shows them without requiring a separate stats fetch.
                 if let idx = self.friends.firstIndex(where: { $0.id == friendId }) {
                     self.friends[idx].currentStreak = Int(stats.currentStreak)
+                    self.friends[idx].currentLevel  = Int(stats.friendLevel)
                 }
             },
             onError: { [weak self] error in

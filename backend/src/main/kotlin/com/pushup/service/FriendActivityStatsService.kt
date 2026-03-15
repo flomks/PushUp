@@ -5,7 +5,7 @@ import com.pushup.dto.FriendActivityStatsDTO
 import com.pushup.dto.StatsPeriod
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
-import org.jetbrains.exposed.sql.SortOrder
+import com.pushup.plugins.UserLevels
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -24,6 +24,8 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
+import kotlin.math.floor
+import kotlin.math.pow
 
 /**
  * Result type for [FriendActivityStatsService.getStats].
@@ -136,8 +138,16 @@ open class FriendActivityStatsService {
         // ------------------------------------------------------------------
         // 4. Compute the friend's current workout streak
         //
-        // Reuses the same DATE_TRUNC query and pure calculateCurrentStreak
-        // helper from StatsService so the logic is consistent.
+        // PostgreSQL requires that ORDER BY expressions appear in the SELECT
+        // list when using SELECT DISTINCT. Since startedAtDay is a
+        // CustomFunction (DATE_TRUNC), Exposed generates two separate
+        // parameter bindings -- one for SELECT, one for ORDER BY -- which
+        // PostgreSQL rejects as "not in select list".
+        //
+        // Solution: fetch all rows without DISTINCT/ORDER BY, then
+        // deduplicate and sort in Kotlin. The result set is bounded by the
+        // total number of completed sessions for this user, which is small
+        // enough that in-memory deduplication is not a concern.
         // ------------------------------------------------------------------
         val workoutDays: List<LocalDate> = WorkoutSessions
             .select(WorkoutSessions.startedAtDay)
@@ -145,11 +155,27 @@ open class FriendActivityStatsService {
                 (WorkoutSessions.userId eq friendId) and
                 WorkoutSessions.endedAt.isNotNull()
             }
-            .withDistinct()
-            .orderBy(WorkoutSessions.startedAtDay to SortOrder.DESC)
             .map { it[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
+            .distinct()
+            .sortedDescending()
 
         val currentStreak = calculateCurrentStreak(workoutDays, today)
+
+        // ------------------------------------------------------------------
+        // 5. Look up the friend's current XP level
+        //
+        // The user_levels table stores total_xp; the level number is derived
+        // using the same formula as LevelCalculator in the shared KMP module:
+        //   xpRequiredForLevel(n) = floor(100 * n^1.5)
+        // If no row exists yet the friend is treated as level 1.
+        // ------------------------------------------------------------------
+        val totalXp = UserLevels
+            .select(UserLevels.totalXp)
+            .where { UserLevels.userId eq friendId }
+            .firstOrNull()
+            ?.get(UserLevels.totalXp) ?: 0L
+
+        val friendLevel = levelFromTotalXp(totalXp)
 
         FriendActivityStatsResult.Success(
             FriendActivityStatsDTO(
@@ -164,6 +190,7 @@ open class FriendActivityStatsService {
                 totalEarnedSeconds = credits,
                 averageQuality     = quality,
                 currentStreak      = currentStreak,
+                friendLevel        = friendLevel,
             ),
         )
     }
@@ -222,6 +249,31 @@ open class FriendActivityStatsService {
                 first to last
             }
         }
+
+    // -----------------------------------------------------------------------
+    // Pure helpers -- no DB access, fully unit-testable
+    // -----------------------------------------------------------------------
+
+    /**
+     * Derives the level number from [totalXp] using the same formula as
+     * `LevelCalculator` in the shared KMP module:
+     *
+     *   xpRequiredForLevel(n) = floor(100 * n^1.5)
+     *
+     * Iterates upward from level 1 until the accumulated threshold exceeds
+     * [totalXp]. Returns the last level whose threshold was not exceeded.
+     */
+    internal fun levelFromTotalXp(totalXp: Long): Int {
+        var level = 1
+        var accumulated = 0L
+        while (true) {
+            val needed = floor(100.0 * level.toDouble().pow(1.5)).toLong()
+            if (accumulated + needed > totalXp) break
+            accumulated += needed
+            level++
+        }
+        return level
+    }
 
     // -----------------------------------------------------------------------
     // Companion / constants

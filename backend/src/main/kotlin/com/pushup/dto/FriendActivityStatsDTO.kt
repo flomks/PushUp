@@ -51,6 +51,7 @@ data class DateRangeDTO(
  * @property averageQuality     Average form-quality score across all sessions (0.0 - 1.0),
  *                              null when no sessions exist.
  * @property currentStreak      Current consecutive-day workout streak (days).
+ * @property friendLevel         Current XP level of the friend (1-based).
  */
 @Serializable
 data class FriendActivityStatsDTO(
@@ -62,4 +63,5 @@ data class FriendActivityStatsDTO(
     val totalEarnedSeconds: Long,
     val averageQuality: Double?,
     val currentStreak: Int = 0,
+    val friendLevel: Int = 1,
 )

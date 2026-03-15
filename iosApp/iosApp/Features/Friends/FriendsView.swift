@@ -615,16 +615,18 @@ private struct FriendHubRow<Destination: View>: View {
                         .font(AppTypography.bodySemibold)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    // Rank + streak badges on a single row
+                    // Level + streak badges on a single row
                     HStack(spacing: AppSpacing.xxs) {
-                        if let rank = friend.leaderboardRank {
-                            rankBadge(rank)
+                        if let level = friend.currentLevel {
+                            levelBadge(level)
                         }
                         if let streak = friend.currentStreak, streak > 0 {
                             streakBadge(streak)
                         }
-                        if let sub = friend.usernameLabel,
-                           friend.leaderboardRank == nil && (friend.currentStreak ?? 0) == 0 {
+                        // Show @username as fallback when no badges are loaded yet
+                        if friend.currentLevel == nil,
+                           (friend.currentStreak ?? 0) == 0,
+                           let sub = friend.usernameLabel {
                             Text(sub)
                                 .font(AppTypography.caption1)
                                 .foregroundStyle(AppColors.textSecondary)
@@ -666,29 +668,17 @@ private struct FriendHubRow<Destination: View>: View {
 
     // MARK: - Badge helpers
 
-    private func rankBadge(_ rank: Int) -> some View {
-        let color = PodiumView.rankColor(rank)
-        let icon: String = {
-            switch rank {
-            case 1: return "crown.fill"
-            case 2: return "medal.fill"
-            case 3: return "medal.fill"
-            default: return "number"
-            }
-        }()
-        return HStack(spacing: 2) {
-            Image(systemName: icon)
+    private func levelBadge(_ level: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "star.fill")
                 .font(.system(size: 9, weight: .bold))
-            Text("#\(rank)")
+            Text("Lvl \(level)")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
         }
-        .foregroundStyle(rank <= 3 ? color : AppColors.textSecondary)
+        .foregroundStyle(AppColors.primary)
         .padding(.horizontal, 5)
         .padding(.vertical, 2)
-        .background(
-            (rank <= 3 ? color : AppColors.textSecondary).opacity(0.12),
-            in: Capsule()
-        )
+        .background(AppColors.primary.opacity(0.12), in: Capsule())
     }
 
     private func streakBadge(_ streak: Int) -> some View {
