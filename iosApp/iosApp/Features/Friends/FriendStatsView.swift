@@ -346,7 +346,8 @@ private func formatDuration(seconds: Int64) -> String {
             totalSessions: 7,
             totalEarnedSeconds: 852,
             averageQuality: 0.87,
-            currentStreak: 5
+            currentStreak: 5,
+            friendLevel: 12
         ))
         vm.friendStatsPeriod = .week
         return FriendStatsView(viewModel: vm, friendId: "u1", friendName: "Alice Smith")
@@ -366,7 +367,8 @@ private func formatDuration(seconds: Int64) -> String {
             totalSessions: 0,
             totalEarnedSeconds: 0,
             averageQuality: nil,
-            currentStreak: 0
+            currentStreak: 0,
+            friendLevel: 1
         ))
         vm.friendStatsPeriod = .day
         return FriendStatsView(viewModel: vm, friendId: "u2", friendName: "Bob Jones")

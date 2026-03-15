@@ -5,6 +5,7 @@ import com.pushup.dto.FriendActivityStatsDTO
 import com.pushup.dto.StatsPeriod
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
+import com.pushup.plugins.UserLevels
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -23,6 +24,8 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
+import kotlin.math.floor
+import kotlin.math.pow
 
 /**
  * Result type for [FriendActivityStatsService.getStats].
@@ -158,6 +161,22 @@ open class FriendActivityStatsService {
 
         val currentStreak = calculateCurrentStreak(workoutDays, today)
 
+        // ------------------------------------------------------------------
+        // 5. Look up the friend's current XP level
+        //
+        // The user_levels table stores total_xp; the level number is derived
+        // using the same formula as LevelCalculator in the shared KMP module:
+        //   xpRequiredForLevel(n) = floor(100 * n^1.5)
+        // If no row exists yet the friend is treated as level 1.
+        // ------------------------------------------------------------------
+        val totalXp = UserLevels
+            .select(UserLevels.totalXp)
+            .where { UserLevels.userId eq friendId }
+            .firstOrNull()
+            ?.get(UserLevels.totalXp) ?: 0L
+
+        val friendLevel = levelFromTotalXp(totalXp)
+
         FriendActivityStatsResult.Success(
             FriendActivityStatsDTO(
                 friendId           = friendId.toString(),
@@ -171,6 +190,7 @@ open class FriendActivityStatsService {
                 totalEarnedSeconds = credits,
                 averageQuality     = quality,
                 currentStreak      = currentStreak,
+                friendLevel        = friendLevel,
             ),
         )
     }
@@ -229,6 +249,31 @@ open class FriendActivityStatsService {
                 first to last
             }
         }
+
+    // -----------------------------------------------------------------------
+    // Pure helpers -- no DB access, fully unit-testable
+    // -----------------------------------------------------------------------
+
+    /**
+     * Derives the level number from [totalXp] using the same formula as
+     * `LevelCalculator` in the shared KMP module:
+     *
+     *   xpRequiredForLevel(n) = floor(100 * n^1.5)
+     *
+     * Iterates upward from level 1 until the accumulated threshold exceeds
+     * [totalXp]. Returns the last level whose threshold was not exceeded.
+     */
+    internal fun levelFromTotalXp(totalXp: Long): Int {
+        var level = 1
+        var accumulated = 0L
+        while (true) {
+            val needed = floor(100.0 * level.toDouble().pow(1.5)).toLong()
+            if (accumulated + needed > totalXp) break
+            accumulated += needed
+            level++
+        }
+        return level
+    }
 
     // -----------------------------------------------------------------------
     // Companion / constants
