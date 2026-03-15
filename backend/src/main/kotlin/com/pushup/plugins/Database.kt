@@ -228,6 +228,37 @@ object DeviceTokens : Table("device_tokens") {
 }
 
 /**
+ * Mirrors the public.user_levels table in Supabase.
+ * One row per user -- tracks accumulated XP.
+ * The current level is derived from [totalXp] on the client via LevelCalculator.
+ */
+object UserLevels : Table("user_levels") {
+    val id        = uuid("id")
+    val userId    = uuid("user_id").references(Users.id)
+    val totalXp   = long("total_xp")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.notifications table in Supabase.
+ * One row per in-app notification delivered to a user.
+ */
+object Notifications : Table("notifications") {
+    val id        = uuid("id")
+    val userId    = uuid("user_id").references(Users.id)
+    val type      = text("type")           // notification_type enum value as text
+    val actorId   = uuid("actor_id").nullable()
+    val payload   = jsonb("payload")
+    val isRead    = bool("is_read")
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
  *
@@ -282,14 +313,23 @@ fun Application.configureDatabase(): Boolean {
 
     log.info("Database connection pool ready (pool size: ${hikariConfig.maximumPoolSize})")
 
-    // Create any missing tables that are not yet in the Supabase schema.
-    // This is idempotent -- existing tables are not modified.
-    // Currently only DeviceTokens needs this; all other tables were created
-    // via Supabase migrations before this code was added.
+    // Ensure all application tables exist. SchemaUtils.createMissingTablesAndColumns
+    // is idempotent -- it only creates tables/columns that are absent and never
+    // modifies existing ones. This is a safety net for tables that may not yet
+    // exist in the Supabase project (e.g. device_tokens, user_levels, notifications
+    // if the numbered migrations were not all applied).
+    //
+    // NOTE: This does NOT replace the Supabase migrations. RLS policies, triggers,
+    // indexes, and enum types are managed exclusively via the migration files.
+    // SchemaUtils only handles the raw table structure.
     transaction {
-        SchemaUtils.createMissingTablesAndColumns(DeviceTokens)
+        SchemaUtils.createMissingTablesAndColumns(
+            DeviceTokens,
+            UserLevels,
+            Notifications,
+        )
     }
-    log.info("Schema check complete (device_tokens table ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, notifications tables ensured)")
 
     return true
 }

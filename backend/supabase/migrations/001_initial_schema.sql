@@ -1,7 +1,11 @@
 -- =============================================================================
 -- Migration: 001_initial_schema.sql
--- Description: Initial PostgreSQL schema for PushUp App
+-- Description: Initial PostgreSQL schema for PushUp App.
+--              Creates users, workout_sessions, push_up_records, time_credits,
+--              user_settings tables with RLS, triggers, and the auth trigger.
 -- Created: 2026-03-03
+-- NOTE: For a fresh install, prefer 000_master_schema.sql which applies the
+--       complete up-to-date schema in one shot.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -221,6 +225,9 @@ BEGIN
   INSERT INTO public.user_settings (user_id)
   VALUES (NEW.id)
   ON CONFLICT (user_id) DO NOTHING;
+
+  -- user_levels row is created by migration 007_user_levels.sql once that
+  -- table exists. The 000_master_schema.sql handles this in one shot.
 
   RETURN NEW;
 END;
