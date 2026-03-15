@@ -85,6 +85,23 @@ COMMENT ON FUNCTION public.handle_new_auth_user() IS
   'Triggered after INSERT on auth.users. Creates companion rows with all '
   'non-nullable columns supplied explicitly (no reliance on column DEFAULTs).';
 
+-- ---- Update username CHECK constraint to allow dots -------------------------
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_username_format;
+ALTER TABLE public.users
+  ADD CONSTRAINT users_username_format CHECK (
+    username IS NULL OR (
+      length(username) >= 3
+      AND length(username) <= 20
+      AND username ~ '^[a-z0-9_.]+$'
+      AND username NOT LIKE '.%'
+      AND username NOT LIKE '%.'
+      AND username NOT LIKE '%..%'
+    )
+  );
+
+COMMENT ON CONSTRAINT users_username_format ON public.users IS
+  'Username: 3-20 chars, lowercase letters/digits/underscores/dots. No leading, trailing, or consecutive dots.';
+
 -- =============================================================================
 -- END OF MIGRATION 011
 -- =============================================================================

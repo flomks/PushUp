@@ -39,7 +39,7 @@ enum AuthError: LocalizedError {
         case .usernameTooLong:
             return "Username must be at most 20 characters long."
         case .usernameInvalidChars:
-            return "Username may only contain lowercase letters, digits, and underscores."
+            return "Username may only contain lowercase letters, digits, underscores, and dots."
         case .networkError(let msg):
             return "Network error: \(msg)"
         case .invalidCredentials:
@@ -398,9 +398,15 @@ final class AuthViewModel: NSObject, ObservableObject {
         guard !trimmed.isEmpty else { return nil }
         if trimmed.count < 3 { return "At least 3 characters" }
         if trimmed.count > 20 { return "At most 20 characters" }
-        let validPattern = #"^[a-z0-9_]+$"#
+        let validPattern = #"^[a-z0-9_.]+$"#
         if trimmed.range(of: validPattern, options: .regularExpression) == nil {
-            return "Only letters, digits, and underscores"
+            return "Only letters, digits, underscores, and dots"
+        }
+        if trimmed.hasPrefix(".") || trimmed.hasSuffix(".") {
+            return "Cannot start or end with a dot"
+        }
+        if trimmed.contains("..") {
+            return "Cannot contain consecutive dots"
         }
         return nil
     }
@@ -409,8 +415,11 @@ final class AuthViewModel: NSObject, ObservableObject {
     var isUsernameLocallyValid: Bool {
         let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
         guard trimmed.count >= 3, trimmed.count <= 20 else { return false }
-        let validPattern = #"^[a-z0-9_]+$"#
-        return trimmed.range(of: validPattern, options: .regularExpression) != nil
+        let validPattern = #"^[a-z0-9_.]+$"#
+        guard trimmed.range(of: validPattern, options: .regularExpression) != nil else { return false }
+        guard !trimmed.hasPrefix("."), !trimmed.hasSuffix(".") else { return false }
+        guard !trimmed.contains("..") else { return false }
+        return true
     }
 
     /// Called whenever the username input changes. Debounces availability checks.
@@ -476,7 +485,7 @@ final class AuthViewModel: NSObject, ObservableObject {
             errorMessage = AuthError.usernameTooLong.errorDescription
             return
         }
-        let validPattern = #"^[a-z0-9_]+$"#
+        let validPattern = #"^[a-z0-9_.]+$"#
         guard trimmed.range(of: validPattern, options: .regularExpression) != nil else {
             errorMessage = AuthError.usernameInvalidChars.errorDescription
             return

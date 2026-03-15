@@ -159,8 +159,12 @@ object SafeAuthBridge : KoinComponent {
                 return SafeAuthResult(user = null, errorMessage = "Username must be at least 3 characters long.")
             trimmed.length > 20 ->
                 return SafeAuthResult(user = null, errorMessage = "Username must be at most 20 characters long.")
-            !Regex("^[a-z0-9_]+$").matches(trimmed) ->
-                return SafeAuthResult(user = null, errorMessage = "Username may only contain lowercase letters, digits, and underscores.")
+            !Regex("^[a-z0-9_.]+$").matches(trimmed) ->
+                return SafeAuthResult(user = null, errorMessage = "Username may only contain lowercase letters, digits, underscores, and dots.")
+            trimmed.startsWith('.') || trimmed.endsWith('.') ->
+                return SafeAuthResult(user = null, errorMessage = "Username cannot start or end with a dot.")
+            trimmed.contains("..") ->
+                return SafeAuthResult(user = null, errorMessage = "Username cannot contain consecutive dots.")
         }
 
         val userRepo = get<UserRepository>()
