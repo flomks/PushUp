@@ -184,10 +184,18 @@ struct SetDisplayNameView: View {
         let trimmed = viewModel.usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
         if !trimmed.isEmpty {
             if let localError = viewModel.usernameValidationError {
+                // Local format error (too short, bad chars, etc.)
                 Text(localError)
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.error)
+            } else if let checkError = viewModel.usernameCheckError {
+                // Network/server error during availability check — do NOT say "taken"
+                Text("Could not check availability: \(checkError)")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .transition(.opacity)
             } else if let available = viewModel.isUsernameAvailable {
+                // Definitive result from the server
                 Text(available ? "Username is available!" : "Username is already taken.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(available ? AppColors.success : AppColors.error)

@@ -119,17 +119,24 @@ object SafeAuthBridge : KoinComponent {
     /**
      * Checks whether [username] is available (not taken by another user).
      *
+     * Uses the Supabase PostgREST API directly — does NOT require the Ktor
+     * backend to be running. This makes it reliable even in development or
+     * when the backend URL is not configured.
+     *
      * Returns a [SafeUsernameCheckResult] with [available] = true if the username
      * is free to use. Never throws.
      */
     suspend fun safeCheckUsernameAvailability(username: String): SafeUsernameCheckResult = try {
-        val ktorClient = runCatching { get<KtorApiClient>() }.getOrNull()
-            ?: return SafeUsernameCheckResult(available = false, errorMessage = "API client not available.")
-        val response = ktorClient.checkUsernameAvailability(username)
+        // Use SupabaseClient (CloudSyncApi) which queries PostgREST directly.
+        // This is always available regardless of whether the Ktor backend is configured.
+        val supabaseClient = runCatching { get<CloudSyncApi>() }.getOrNull()
+            ?: return SafeUsernameCheckResult(available = false, errorMessage = "Supabase client not available.")
+        val response = supabaseClient.checkUsernameAvailability(username)
         SafeUsernameCheckResult(available = response.available, errorMessage = null)
     } catch (_: CancellationException) {
         throw CancellationException()
     } catch (e: Exception) {
+        // Surface the real error so the UI can show "network error" instead of "username taken".
         SafeUsernameCheckResult(available = false, errorMessage = e.message ?: "Failed to check username.")
     }
 
@@ -160,23 +167,39 @@ object SafeAuthBridge : KoinComponent {
         val user = userRepo.getCurrentUser()
             ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
 
-        // Call the Ktor backend to set the username (enforces uniqueness).
+        // Set the username via Supabase PostgREST (always available).
+        // Falls back to KtorApiClient if available (adds server-side validation).
+        val supabaseClient = runCatching { get<CloudSyncApi>() }.getOrNull()
         val ktorClient = runCatching { get<KtorApiClient>() }.getOrNull()
-        if (ktorClient != null) {
-            val setUsername = runCatching {
-                ktorClient.setUsername(SetUsernameRequest(username = trimmed))
-            }
-            val error = setUsername.exceptionOrNull()
-            if (error != null) {
-                val msg = error.message ?: "Failed to set username."
-                // Surface conflict errors clearly.
-                val userFacingMsg = if (msg.contains("409") || msg.contains("taken", ignoreCase = true) || msg.contains("conflict", ignoreCase = true)) {
+
+        // Prefer KtorApiClient when the backend is configured (it enforces
+        // additional server-side validation). Fall back to SupabaseClient
+        // (PostgREST PATCH) when the backend URL is not set.
+        val backendUrl = runCatching {
+            org.koin.core.component.KoinComponent::class
+            get<String>(org.koin.core.qualifier.named(BACKEND_BASE_URL))
+        }.getOrDefault("")
+
+        val setResult = if (ktorClient != null && backendUrl.isNotBlank()) {
+            runCatching { ktorClient.setUsername(SetUsernameRequest(username = trimmed)) }
+        } else if (supabaseClient != null) {
+            runCatching { supabaseClient.setUsername(SetUsernameRequest(username = trimmed)) }
+        } else {
+            return SafeAuthResult(user = null, errorMessage = "No API client available.")
+        }
+
+        val error = setResult.exceptionOrNull()
+        if (error != null) {
+            val msg = error.message ?: "Failed to set username."
+            val userFacingMsg = when {
+                msg.contains("409") || msg.contains("taken", ignoreCase = true) ||
+                msg.contains("conflict", ignoreCase = true) || msg.contains("23505") ->
                     "This username is already taken. Please choose a different one."
-                } else {
-                    msg
-                }
-                return SafeAuthResult(user = null, errorMessage = userFacingMsg)
+                msg.contains("400") || msg.contains("invalid", ignoreCase = true) ->
+                    "Username is invalid. Use 3-20 lowercase letters, digits, or underscores."
+                else -> msg
             }
+            return SafeAuthResult(user = null, errorMessage = userFacingMsg)
         }
 
         // Persist locally.

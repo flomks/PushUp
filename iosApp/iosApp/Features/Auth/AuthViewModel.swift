@@ -117,10 +117,12 @@ final class AuthViewModel: NSObject, ObservableObject {
     @Published var usernameInput: String = ""
     @Published var isSavingUsername: Bool = false
 
-    /// Whether the username entered is available (nil = not yet checked).
+    /// Whether the username entered is available (nil = not yet checked or check failed).
     @Published var isUsernameAvailable: Bool? = nil
     /// Whether an availability check is in progress.
     @Published var isCheckingUsername: Bool = false
+    /// Non-nil when the availability check failed due to a network/server error.
+    @Published var usernameCheckError: String? = nil
 
     // Legacy: kept for backward compatibility with email registration display name
     @Published var displayNameInput: String = ""
@@ -415,6 +417,7 @@ final class AuthViewModel: NSObject, ObservableObject {
     func onUsernameInputChanged() {
         // Reset availability state immediately when the input changes.
         isUsernameAvailable = nil
+        usernameCheckError = nil
 
         // Cancel any pending check.
         usernameCheckTask?.cancel()
@@ -430,15 +433,28 @@ final class AuthViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Checks username availability against the backend.
+    /// Checks username availability against Supabase.
     private func checkUsernameAvailability(_ username: String) async {
         isCheckingUsername = true
         let result = await AuthService.shared.checkUsernameAvailability(username)
         isCheckingUsername = false
+
         // Only update if the input hasn't changed since we started the check.
         let currentTrimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
-        if currentTrimmed == username {
+        guard currentTrimmed == username else { return }
+
+        if let errorMsg = result.errorMessage {
+            // A network/server error occurred — do NOT show the username as "taken".
+            // Leave isUsernameAvailable = nil so the UI shows neither checkmark nor X,
+            // and surface the error so the user knows something went wrong.
+            isUsernameAvailable = nil
+            // Only show the error if it's not a generic cancellation.
+            if !errorMsg.lowercased().contains("cancel") {
+                usernameCheckError = errorMsg
+            }
+        } else {
             isUsernameAvailable = result.available
+            usernameCheckError = nil
         }
     }
 
