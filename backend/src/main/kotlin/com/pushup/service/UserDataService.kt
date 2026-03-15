@@ -71,7 +71,8 @@ class UserDataService(
                 email       = userRow[Users.email],
                 username    = userRow[Users.username],
                 displayName = userRow[Users.displayName],
-                avatarUrl   = userRow[Users.avatarUrl],
+                // Own profile: custom_avatar_url takes priority; visibility not applied.
+                avatarUrl   = userRow[Users.customAvatarUrl] ?: userRow[Users.avatarUrl],
                 createdAt   = userRow[Users.createdAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 updatedAt   = userRow[Users.updatedAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
             )

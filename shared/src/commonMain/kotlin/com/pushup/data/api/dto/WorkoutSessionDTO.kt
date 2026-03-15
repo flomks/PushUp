@@ -155,20 +155,29 @@ data class UpdateTimeCreditRequest(
  *
  * Only the fields relevant for sync are included here.
  *
- * @property id          UUID of the user.
- * @property username    The user's unique handle (may be null if not yet set).
- * @property displayName The user's display name (may be null if not yet set).
- * @property email       The user's email address.
- * @property updatedAt   ISO-8601 timestamp of last update (server-managed).
+ * @property id                UUID of the user.
+ * @property username          The user's unique handle (may be null if not yet set).
+ * @property displayName       The user's display name (may be null if not yet set).
+ * @property email             The user's email address.
+ * @property avatarUrl         OAuth provider avatar URL (Google/Apple).
+ * @property customAvatarUrl   User-uploaded avatar URL (takes priority over avatarUrl).
+ * @property avatarVisibility  Who can see the avatar: 'everyone', 'friends_only', 'nobody'.
+ * @property updatedAt         ISO-8601 timestamp of last update (server-managed).
  */
 @Serializable
 data class UserProfileDTO(
-    @SerialName("id")           val id: String,
-    @SerialName("username")     val username: String? = null,
-    @SerialName("display_name") val displayName: String? = null,
-    @SerialName("email")        val email: String? = null,
-    @SerialName("updated_at")   val updatedAt: String? = null,
-)
+    @SerialName("id")                  val id: String,
+    @SerialName("username")            val username: String? = null,
+    @SerialName("display_name")        val displayName: String? = null,
+    @SerialName("email")               val email: String? = null,
+    @SerialName("avatar_url")          val avatarUrl: String? = null,
+    @SerialName("custom_avatar_url")   val customAvatarUrl: String? = null,
+    @SerialName("avatar_visibility")   val avatarVisibility: String? = null,
+    @SerialName("updated_at")          val updatedAt: String? = null,
+) {
+    /** Returns the effective avatar URL: custom takes priority over OAuth. */
+    val effectiveAvatarUrl: String? get() = customAvatarUrl ?: avatarUrl
+}
 
 /**
  * Request body for updating the user's display name in public.users.

@@ -87,6 +87,8 @@ class CloudSyncRepositoryTests {
             email = "test@example.com",
             username = null,
             displayName = "Test User",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_000_000_000L,
         )

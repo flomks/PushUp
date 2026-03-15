@@ -73,19 +73,34 @@ END; $$;
 COMMENT ON TYPE public.notification_type IS
   'Types of in-app notifications: friend_request, friend_accepted.';
 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'avatar_visibility') THEN
+    CREATE TYPE public.avatar_visibility AS ENUM (
+      'everyone',      -- default: any authenticated user can see the avatar
+      'friends_only',  -- only accepted friends can see the avatar
+      'nobody'         -- avatar hidden; initials shown instead
+    );
+  END IF;
+END; $$;
+
+COMMENT ON TYPE public.avatar_visibility IS
+  'Controls who can see a user''s avatar: everyone, friends_only, or nobody.';
+
 
 -- =============================================================================
 -- TABLE: public.users
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS public.users (
-  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  email        TEXT        UNIQUE NOT NULL,
-  username     TEXT,
-  display_name TEXT,
-  avatar_url   TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id                 UUID                    PRIMARY KEY DEFAULT gen_random_uuid(),
+  email              TEXT                    UNIQUE NOT NULL,
+  username           TEXT,
+  display_name       TEXT,
+  avatar_url         TEXT,                   -- OAuth provider avatar (Google/Apple)
+  custom_avatar_url  TEXT,                   -- user-uploaded avatar (always takes priority)
+  avatar_visibility  public.avatar_visibility NOT NULL DEFAULT 'everyone',
+  created_at         TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ             NOT NULL DEFAULT NOW(),
 
   CONSTRAINT users_username_format CHECK (
     username IS NULL OR (
@@ -96,12 +111,14 @@ CREATE TABLE IF NOT EXISTS public.users (
   )
 );
 
-COMMENT ON TABLE  public.users              IS 'App user profiles, linked to Supabase Auth.';
-COMMENT ON COLUMN public.users.id           IS 'UUID matching auth.users.id.';
-COMMENT ON COLUMN public.users.email        IS 'User email address (unique, private).';
-COMMENT ON COLUMN public.users.username     IS 'Unique lowercase handle (e.g. "john_doe"). Used for search and @-mentions.';
-COMMENT ON COLUMN public.users.display_name IS 'Free-form display name shown in the UI (e.g. "John Doe").';
-COMMENT ON COLUMN public.users.avatar_url   IS 'URL to the user avatar stored in Supabase Storage.';
+COMMENT ON TABLE  public.users                    IS 'App user profiles, linked to Supabase Auth.';
+COMMENT ON COLUMN public.users.id                 IS 'UUID matching auth.users.id.';
+COMMENT ON COLUMN public.users.email              IS 'User email address (unique, private).';
+COMMENT ON COLUMN public.users.username           IS 'Unique lowercase handle (e.g. "john_doe"). Used for search and @-mentions.';
+COMMENT ON COLUMN public.users.display_name       IS 'Free-form display name shown in the UI (e.g. "John Doe").';
+COMMENT ON COLUMN public.users.avatar_url         IS 'OAuth provider avatar URL (Google/Apple). Never overwritten once custom_avatar_url is set.';
+COMMENT ON COLUMN public.users.custom_avatar_url  IS 'User-uploaded avatar URL. Always takes priority over avatar_url when set.';
+COMMENT ON COLUMN public.users.avatar_visibility  IS 'Who can see this user''s avatar: everyone (default), friends_only, or nobody.';
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_unique
   ON public.users (username) WHERE username IS NOT NULL;
@@ -357,7 +374,12 @@ BEGIN
   ON CONFLICT (id) DO UPDATE SET
     email        = EXCLUDED.email,
     display_name = COALESCE(EXCLUDED.display_name, public.users.display_name),
-    avatar_url   = COALESCE(EXCLUDED.avatar_url,   public.users.avatar_url),
+    -- Only update avatar_url when the user has NOT uploaded a custom avatar.
+    -- This prevents an OAuth re-login from overwriting a user-uploaded photo.
+    avatar_url   = CASE
+                     WHEN public.users.custom_avatar_url IS NOT NULL THEN public.users.avatar_url
+                     ELSE COALESCE(EXCLUDED.avatar_url, public.users.avatar_url)
+                   END,
     updated_at   = NOW();
 
   INSERT INTO public.time_credits  (user_id) VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
@@ -369,8 +391,8 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.handle_new_auth_user() IS
-  'Triggered after INSERT on auth.users. Creates companion rows in users, '
-  'time_credits, user_settings, and user_levels.';
+  'Triggered after INSERT on auth.users. Creates companion rows. '
+  'Sets avatar_url from OAuth metadata only when no custom avatar has been uploaded.';
 
 DROP TRIGGER IF EXISTS trg_on_auth_user_created ON auth.users;
 CREATE TRIGGER trg_on_auth_user_created

@@ -44,6 +44,8 @@ class UserRepositoryImpl(
             email = user.email,
             username = user.username,
             displayName = user.displayName,
+            avatarUrl = user.avatarUrl,
+            avatarVisibility = user.avatarVisibility.toDbValue(),
             createdAt = user.createdAt.toEpochMilliseconds(),
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
         )
@@ -57,6 +59,8 @@ class UserRepositoryImpl(
             email = user.email,
             username = user.username,
             displayName = user.displayName,
+            avatarUrl = user.avatarUrl,
+            avatarVisibility = user.avatarVisibility.toDbValue(),
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
             id = user.id,
         )
@@ -71,6 +75,8 @@ class UserRepositoryImpl(
             email = user.email,
             username = user.username,
             displayName = user.displayName,
+            avatarUrl = user.avatarUrl,
+            avatarVisibility = user.avatarVisibility.toDbValue(),
             createdAt = user.createdAt.toEpochMilliseconds(),
             syncedAt = user.lastSyncedAt.toEpochMilliseconds(),
         )
@@ -81,6 +87,20 @@ class UserRepositoryImpl(
         "Failed to update username for user '$userId'",
     ) {
         queries.updateUserUsername(username = username, id = userId)
+    }
+
+    override suspend fun updateUserAvatar(userId: String, avatarUrl: String?): Unit = safeDbCall(
+        dispatcher,
+        "Failed to update avatar for user '$userId'",
+    ) {
+        queries.updateUserAvatar(avatarUrl = avatarUrl, id = userId)
+    }
+
+    override suspend fun updateUserAvatarVisibility(userId: String, visibility: com.pushup.domain.model.AvatarVisibility): Unit = safeDbCall(
+        dispatcher,
+        "Failed to update avatar visibility for user '$userId'",
+    ) {
+        queries.updateUserAvatarVisibility(avatarVisibility = visibility.toDbValue(), id = userId)
     }
 
     override suspend fun deleteUser(userId: String): Unit = safeDbCall(

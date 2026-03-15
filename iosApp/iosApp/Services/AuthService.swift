@@ -190,6 +190,30 @@ final class AuthService: Sendable {
         }
     }
 
+    // MARK: - Avatar
+
+    /// Updates the avatar URL for the currently authenticated user.
+    /// Pass nil to clear the avatar.
+    func updateAvatar(_ avatarUrl: String?) async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeUpdateAvatar(
+                avatarUrl: avatarUrl,
+                completionHandler: handler
+            )
+        }
+    }
+
+    /// Updates the avatar visibility setting.
+    /// - Parameter visibility: One of "everyone", "friends_only", "nobody"
+    func updateAvatarVisibility(_ visibility: String) async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeUpdateAvatarVisibility(
+                visibility: visibility,
+                completionHandler: handler
+            )
+        }
+    }
+
     // MARK: - Private
 
     /// Bridges a SafeAuthBridge completionHandler call to async/await.

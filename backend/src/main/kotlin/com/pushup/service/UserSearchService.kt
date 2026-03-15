@@ -33,11 +33,6 @@ import java.util.UUID
  */
 open class UserSearchService {
 
-    companion object {
-        const val MAX_RESULTS = 20
-        const val MIN_QUERY_LENGTH = 2
-    }
-
     /**
      * Searches for users whose username, display_name, or (if opted in) email
      * contains [query] (case-insensitive).
@@ -98,23 +93,58 @@ open class UserSearchService {
             // ------------------------------------------------------------------
             // 3. Map to response DTOs.
             // ------------------------------------------------------------------
+            // 3. Map to response DTOs, applying avatar visibility rules.
+            // ------------------------------------------------------------------
             val results = userRows.map { row ->
                 val userId = row[Users.id]
-                val status = when (friendshipByPeer[userId]) {
+                val friendStatus = friendshipByPeer[userId]
+                val status = when (friendStatus) {
                     FriendshipStatus.ACCEPTED -> FriendshipStatusResponse.friend
                     FriendshipStatus.PENDING  -> FriendshipStatusResponse.pending
                     else                      -> FriendshipStatusResponse.none
                 }
+
+                // Resolve avatar URL respecting visibility setting.
+                val resolvedAvatar = resolveAvatarUrl(
+                    row            = row,
+                    viewerIsFriend = friendStatus == FriendshipStatus.ACCEPTED,
+                )
+
                 UserSearchResult(
                     id               = userId.toString(),
                     username         = row[Users.username],
                     displayName      = row[Users.displayName],
-                    avatarUrl        = row[Users.avatarUrl],
+                    avatarUrl        = resolvedAvatar,
                     friendshipStatus = status,
                 )
             }
 
             UserSearchResponse(results = results, total = results.size)
+        }
+    }
+
+    companion object {
+        const val MAX_RESULTS = 20
+        const val MIN_QUERY_LENGTH = 2
+
+        /**
+         * Resolves the effective avatar URL for a user row, applying visibility rules.
+         *
+         * Priority:
+         *   1. custom_avatar_url (user-uploaded) always wins over avatar_url (OAuth).
+         *   2. Visibility:
+         *      - 'everyone'     -> return the URL
+         *      - 'friends_only' -> return URL only if [viewerIsFriend] is true
+         *      - 'nobody'       -> always return null
+         */
+        fun resolveAvatarUrl(
+            row: org.jetbrains.exposed.sql.ResultRow,
+            viewerIsFriend: Boolean,
+        ): String? {
+            val visibility = row[Users.avatarVisibility]
+            if (visibility == "nobody") return null
+            if (visibility == "friends_only" && !viewerIsFriend) return null
+            return row[Users.customAvatarUrl] ?: row[Users.avatarUrl]
         }
     }
 }

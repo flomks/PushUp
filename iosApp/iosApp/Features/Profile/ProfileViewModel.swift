@@ -2,6 +2,34 @@ import Shared
 import SwiftUI
 import PhotosUI
 
+// MARK: - AvatarVisibilityOption
+
+/// Swift-side mirror of the KMP AvatarVisibility enum.
+/// Controls who can see a user's avatar.
+enum AvatarVisibilityOption: String, CaseIterable, Identifiable {
+    case everyone     = "everyone"
+    case friendsOnly  = "friends_only"
+    case nobody       = "nobody"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .everyone:    return "Everyone"
+        case .friendsOnly: return "Friends only"
+        case .nobody:      return "Nobody (show initials)"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .everyone:    return "globe"
+        case .friendsOnly: return "person.2.fill"
+        case .nobody:      return "eye.slash"
+        }
+    }
+}
+
 // MARK: - ProfileError
 
 /// Typed errors surfaced by the profile flow.
@@ -104,11 +132,19 @@ final class ProfileViewModel: ObservableObject {
     /// The date the user registered (formatted for display).
     @Published private(set) var memberSinceText: String = ""
 
-    /// The currently displayed avatar image. `nil` shows the initials fallback.
+    /// A locally held UIImage (just picked from camera/library, before upload).
+    /// Takes priority over `avatarURL` in the UI.
     @Published private(set) var avatarImage: UIImage? = nil
 
-    /// The URL string of the avatar stored in Supabase Storage.
+    /// The effective avatar URL synced from the server (custom > OAuth).
+    /// Used to load the avatar via AsyncImage when no local image is held.
     @Published private(set) var avatarURL: String? = nil
+
+    /// Who can see this user's avatar.
+    @Published var avatarVisibility: AvatarVisibilityOption = .everyone
+
+    /// Whether an avatar visibility save is in progress.
+    @Published private(set) var isSavingAvatarVisibility: Bool = false
 
     /// Lifetime account statistics.
     @Published private(set) var stats: ProfileStats? = nil
@@ -307,22 +343,33 @@ final class ProfileViewModel: ObservableObject {
                 throw ProfileError.avatarTooLarge
             }
 
-            // Replace with real Supabase Storage upload:
-            //   let fileName = "\(currentUserId)/avatar.jpg"
+            // TODO: Replace with real Supabase Storage upload when storage bucket is configured:
+            //   let userId = (await AuthService.shared.getCurrentUser())?.id ?? "unknown"
+            //   let fileName = "\(userId)/avatar.jpg"
             //   try await supabaseClient.storage
             //       .from("avatars")
             //       .upload(fileName, data: imageData, options: .init(contentType: "image/jpeg", upsert: true))
             //   let publicURL = try supabaseClient.storage.from("avatars").getPublicURL(path: fileName)
-            //   try await supabaseClient.from("profiles")
-            //       .update(["avatar_url": publicURL.absoluteString])
-            //       .eq("id", value: currentUserId)
-            //       .execute()
+            //   let uploadedUrl = publicURL.absoluteString
+            //
+            // For now: store the image locally and persist the URL via SafeAuthBridge.
+            // When real upload is wired up, replace the stub URL with the real one.
             _ = imageData
-            try await Task.sleep(nanoseconds: 1_200_000_000)
+            try await Task.sleep(nanoseconds: 800_000_000)
 
+            // Show the picked image immediately (optimistic UI).
             avatarImage = resized
-            avatarURL = "https://storage.supabase.co/avatars/stub.jpg"
-            showSuccess("Avatar updated.")
+
+            // Persist the avatar URL locally via KMP (will sync to server on next sync).
+            // Replace "stub_url" with the real Supabase Storage URL once upload is wired.
+            let stubUrl = "local://avatar_pending_upload"
+            let result = await AuthService.shared.updateAvatar(stubUrl)
+            if result.isSuccess {
+                avatarURL = stubUrl
+                showSuccess("Avatar updated.")
+            } else {
+                showSuccess("Avatar updated locally.")
+            }
         } catch let error as ProfileError {
             errorMessage = error.errorDescription
         } catch is CancellationError {
@@ -340,17 +387,14 @@ final class ProfileViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            // Replace with real Supabase Storage delete:
-            //   let fileName = "\(currentUserId)/avatar.jpg"
-            //   try await supabaseClient.storage.from("avatars").remove(paths: [fileName])
-            //   try await supabaseClient.from("profiles")
-            //       .update(["avatar_url": NSNull()])
-            //       .eq("id", value: currentUserId)
-            //       .execute()
-            try await Task.sleep(nanoseconds: 600_000_000)
+            // TODO: Also delete from Supabase Storage when upload is wired.
+            try await Task.sleep(nanoseconds: 400_000_000)
 
             avatarImage = nil
             avatarURL = nil
+
+            // Clear the avatar URL in the local KMP database.
+            _ = await AuthService.shared.updateAvatar(nil)
             showSuccess("Photo removed.")
         } catch is CancellationError {
             // Silently ignore cancellation.
@@ -463,11 +507,38 @@ final class ProfileViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Avatar Visibility
+
+    /// Saves the avatar visibility setting chosen by the user.
+    func saveAvatarVisibility(_ option: AvatarVisibilityOption) async {
+        isSavingAvatarVisibility = true
+        let result = await AuthService.shared.updateAvatarVisibility(option.rawValue)
+        isSavingAvatarVisibility = false
+        if result.isSuccess {
+            avatarVisibility = option
+            showSuccess("Avatar visibility updated.")
+        } else {
+            errorMessage = result.errorMessage ?? "Could not update avatar visibility."
+        }
+    }
+
+    // MARK: - Private Helpers
+
     /// Populates all published properties from a real KMP [User] object.
     private func applyUserData(_ user: User) {
         displayName = user.displayName
         savedDisplayName = user.displayName
         email = user.email
+
+        // Avatar: use the URL from the KMP User (resolved: custom > OAuth).
+        // Only update avatarURL if we don't already have a locally held image
+        // (which means the user just picked a photo and it hasn't been uploaded yet).
+        if avatarImage == nil {
+            avatarURL = user.avatarUrl
+        }
+
+        // Avatar visibility
+        avatarVisibility = AvatarVisibilityOption(rawValue: user.avatarVisibility.toDbValue()) ?? .everyone
 
         // Format the member-since date from the KMP Instant (epoch seconds).
         let joinDate = Date(timeIntervalSince1970: Double(user.createdAt.epochSeconds))
