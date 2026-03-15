@@ -610,14 +610,25 @@ private struct FriendHubRow<Destination: View>: View {
                     size: 44
                 )
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(friend.displayLabel)
                         .font(AppTypography.bodySemibold)
                         .foregroundStyle(AppColors.textPrimary)
-                    if let sub = friend.usernameLabel {
-                        Text(sub)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
+
+                    // Rank + streak badges on a single row
+                    HStack(spacing: AppSpacing.xxs) {
+                        if let rank = friend.leaderboardRank {
+                            rankBadge(rank)
+                        }
+                        if let streak = friend.currentStreak, streak > 0 {
+                            streakBadge(streak)
+                        }
+                        if let sub = friend.usernameLabel,
+                           friend.leaderboardRank == nil && (friend.currentStreak ?? 0) == 0 {
+                            Text(sub)
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
                     }
                 }
 
@@ -651,6 +662,46 @@ private struct FriendHubRow<Destination: View>: View {
             Button("Remove", role: .destructive) { onRemove() }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    // MARK: - Badge helpers
+
+    private func rankBadge(_ rank: Int) -> some View {
+        let color = PodiumView.rankColor(rank)
+        let icon: String = {
+            switch rank {
+            case 1: return "crown.fill"
+            case 2: return "medal.fill"
+            case 3: return "medal.fill"
+            default: return "number"
+            }
+        }()
+        return HStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text("#\(rank)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(rank <= 3 ? color : AppColors.textSecondary)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(
+            (rank <= 3 ? color : AppColors.textSecondary).opacity(0.12),
+            in: Capsule()
+        )
+    }
+
+    private func streakBadge(_ streak: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text("\(streak)d")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(AppColors.secondary)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(AppColors.secondary.opacity(0.12), in: Capsule())
     }
 }
 

@@ -162,6 +162,11 @@ struct FriendStatsView: View {
                     )
                 }
 
+                // Streak card (full width, only shown when streak > 0)
+                if data.currentStreak > 0 {
+                    streakCard(streak: data.currentStreak)
+                }
+
                 // Average quality card (full width)
                 if let quality = data.averageQuality {
                     qualityCard(score: quality)
@@ -251,6 +256,28 @@ struct FriendStatsView: View {
         .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
     }
 
+    private func streakCard(streak: Int) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: AppSpacing.iconSizeMedium))
+                .foregroundStyle(AppColors.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Current Streak")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+                Text("\(streak) day\(streak == 1 ? "" : "s") in a row")
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.secondary)
+            }
+            Spacer()
+            Text("\(streak)")
+                .font(AppTypography.displayMedium)
+                .foregroundStyle(AppColors.secondary)
+        }
+        .padding(AppSpacing.cardPadding)
+        .background(AppColors.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+    }
+
     private func qualityCard(score: Double) -> some View {
         let percentage = Int((score * 100).rounded())
         let color = AppColors.formScoreColor(score)
@@ -318,7 +345,8 @@ private func formatDuration(seconds: Int64) -> String {
             pushupCount: 142,
             totalSessions: 7,
             totalEarnedSeconds: 852,
-            averageQuality: 0.87
+            averageQuality: 0.87,
+            currentStreak: 5
         ))
         vm.friendStatsPeriod = .week
         return FriendStatsView(viewModel: vm, friendId: "u1", friendName: "Alice Smith")
@@ -337,7 +365,8 @@ private func formatDuration(seconds: Int64) -> String {
             pushupCount: 0,
             totalSessions: 0,
             totalEarnedSeconds: 0,
-            averageQuality: nil
+            averageQuality: nil,
+            currentStreak: 0
         ))
         vm.friendStatsPeriod = .day
         return FriendStatsView(viewModel: vm, friendId: "u2", friendName: "Bob Jones")

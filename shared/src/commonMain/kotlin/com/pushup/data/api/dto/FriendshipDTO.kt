@@ -142,6 +142,7 @@ data class FriendActivityStatsDTO(
     @SerialName("totalSessions")      val totalSessions: Int,
     @SerialName("totalEarnedSeconds") val totalEarnedSeconds: Long,
     @SerialName("averageQuality")     val averageQuality: Double? = null,
+    @SerialName("currentStreak")      val currentStreak: Int = 0,
 )
 
 // ---------------------------------------------------------------------------
@@ -157,6 +158,7 @@ fun FriendActivityStatsDTO.toDomain(): FriendActivityStats = FriendActivityStats
     totalSessions      = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
     averageQuality     = averageQuality,
+    currentStreak      = currentStreak,
 )
 
 fun FriendProfileDTO.toDomain(): Friend = Friend(

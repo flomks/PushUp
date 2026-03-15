@@ -5,6 +5,7 @@ import com.pushup.dto.FriendActivityStatsDTO
 import com.pushup.dto.StatsPeriod
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -132,6 +133,24 @@ open class FriendActivityStatsService {
         val sessions = row?.get(sessionCount)?.toInt() ?: 0
         val quality  = row?.get(qualityAvg)?.toDouble()
 
+        // ------------------------------------------------------------------
+        // 4. Compute the friend's current workout streak
+        //
+        // Reuses the same DATE_TRUNC query and pure calculateCurrentStreak
+        // helper from StatsService so the logic is consistent.
+        // ------------------------------------------------------------------
+        val workoutDays: List<LocalDate> = WorkoutSessions
+            .select(WorkoutSessions.startedAtDay)
+            .where {
+                (WorkoutSessions.userId eq friendId) and
+                WorkoutSessions.endedAt.isNotNull()
+            }
+            .withDistinct()
+            .orderBy(WorkoutSessions.startedAtDay to SortOrder.DESC)
+            .map { it[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
+
+        val currentStreak = calculateCurrentStreak(workoutDays, today)
+
         FriendActivityStatsResult.Success(
             FriendActivityStatsDTO(
                 friendId           = friendId.toString(),
@@ -144,6 +163,7 @@ open class FriendActivityStatsService {
                 totalSessions      = sessions,
                 totalEarnedSeconds = credits,
                 averageQuality     = quality,
+                currentStreak      = currentStreak,
             ),
         )
     }
@@ -151,6 +171,32 @@ open class FriendActivityStatsService {
     // -----------------------------------------------------------------------
     // Pure helpers -- no DB access, fully unit-testable
     // -----------------------------------------------------------------------
+
+    /**
+     * Current streak: consecutive days backwards from [today].
+     * Streak is alive when the most recent workout was today or yesterday.
+     * [workoutDaysSortedDesc] must be sorted descending (most recent first).
+     *
+     * Mirrors [StatsService.calculateCurrentStreak] so the logic is consistent.
+     */
+    internal fun calculateCurrentStreak(
+        workoutDaysSortedDesc: List<LocalDate>,
+        today: LocalDate,
+    ): Int {
+        if (workoutDaysSortedDesc.isEmpty()) return 0
+        val mostRecent = workoutDaysSortedDesc.first()
+        if (mostRecent.isBefore(today.minusDays(1))) return 0
+
+        var streak = 0
+        var expected = if (mostRecent == today) today else today.minusDays(1)
+        for (day in workoutDaysSortedDesc) {
+            when {
+                day == expected -> { streak++; expected = expected.minusDays(1) }
+                day.isBefore(expected) -> break
+            }
+        }
+        return streak
+    }
 
     /**
      * Returns the inclusive [from, to] date range for the given [period]
