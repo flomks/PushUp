@@ -211,12 +211,14 @@ private struct FriendHubView: View {
                 .foregroundStyle(AppColors.textSecondary)
                 .frame(width: 20, alignment: .center)
 
-            // Avatar
-            FriendAvatar(
-                label: entry.isCurrentUser
-                    ? entry.displayLabel.replacingOccurrences(of: " (You)", with: "")
-                    : entry.displayLabel,
-                color: AppColors.primary
+            // Avatar (leaderboard entries carry no URL; initials fallback is used)
+            AvatarView(
+                initials: FriendItem.makeInitials(
+                    entry.isCurrentUser
+                        ? entry.displayLabel.replacingOccurrences(of: " (You)", with: "")
+                        : entry.displayLabel
+                ),
+                size: 36
             )
 
             // Name
@@ -602,16 +604,31 @@ private struct FriendHubRow<Destination: View>: View {
     var body: some View {
         NavigationLink(destination: { destination() }) {
             HStack(spacing: AppSpacing.sm) {
-                FriendAvatar(label: friend.displayLabel, color: AppColors.success, size: 44)
+                AvatarView(
+                    url: friend.avatarUrl.flatMap { URL(string: $0) },
+                    initials: friend.initials,
+                    size: 44
+                )
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(friend.displayLabel)
                         .font(AppTypography.bodySemibold)
                         .foregroundStyle(AppColors.textPrimary)
-                    if let sub = friend.usernameLabel {
-                        Text(sub)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
+
+                    // Rank + streak badges on a single row
+                    HStack(spacing: AppSpacing.xxs) {
+                        if let rank = friend.leaderboardRank {
+                            rankBadge(rank)
+                        }
+                        if let streak = friend.currentStreak, streak > 0 {
+                            streakBadge(streak)
+                        }
+                        if let sub = friend.usernameLabel,
+                           friend.leaderboardRank == nil && (friend.currentStreak ?? 0) == 0 {
+                            Text(sub)
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
                     }
                 }
 
@@ -645,6 +662,46 @@ private struct FriendHubRow<Destination: View>: View {
             Button("Remove", role: .destructive) { onRemove() }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    // MARK: - Badge helpers
+
+    private func rankBadge(_ rank: Int) -> some View {
+        let color = PodiumView.rankColor(rank)
+        let icon: String = {
+            switch rank {
+            case 1: return "crown.fill"
+            case 2: return "medal.fill"
+            case 3: return "medal.fill"
+            default: return "number"
+            }
+        }()
+        return HStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text("#\(rank)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(rank <= 3 ? color : AppColors.textSecondary)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(
+            (rank <= 3 ? color : AppColors.textSecondary).opacity(0.12),
+            in: Capsule()
+        )
+    }
+
+    private func streakBadge(_ streak: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text("\(streak)d")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(AppColors.secondary)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(AppColors.secondary.opacity(0.12), in: Capsule())
     }
 }
 
@@ -788,7 +845,11 @@ private struct AddFriendRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            FriendAvatar(label: user.displayLabel, color: AppColors.primary)
+            AvatarView(
+                url: user.avatarUrl.flatMap { URL(string: $0) },
+                initials: user.initials,
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.displayLabel)
@@ -945,7 +1006,11 @@ private struct RequestRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.sm) {
-            FriendAvatar(label: request.displayLabel, color: AppColors.primary)
+            AvatarView(
+                url: request.avatarUrl.flatMap { URL(string: $0) },
+                initials: request.initials,
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.displayLabel)
@@ -1021,31 +1086,6 @@ private struct ShimmerModifier: ViewModifier {
                 withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
                     phase = 1
                 }
-            }
-    }
-}
-
-// MARK: - FriendAvatar
-
-/// Reusable circular avatar showing the first letter(s) of a name.
-struct FriendAvatar: View {
-
-    let label: String
-    let color: Color
-    var size: CGFloat = 40
-
-    var body: some View {
-        Circle()
-            .fill(color.opacity(0.15))
-            .frame(width: size, height: size)
-            .overlay {
-                Text(String(label.prefix(1)).uppercased())
-                    .font(.system(
-                        size: size * 0.42,
-                        weight: .bold,
-                        design: .rounded
-                    ))
-                    .foregroundStyle(color)
             }
     }
 }

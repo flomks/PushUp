@@ -42,14 +42,15 @@ data class DateRangeDTO(
  *
  * Returned by GET /api/friends/{id}/stats?period=day|week|month.
  *
- * @property friendId      UUID of the friend whose stats are returned.
- * @property period        The requested period ("day", "week", or "month").
- * @property dateRange     The calendar range covered by this response.
- * @property pushupCount   Total push-ups performed by the friend in the period.
- * @property totalSessions Number of completed workout sessions in the period.
+ * @property friendId           UUID of the friend whose stats are returned.
+ * @property period             The requested period ("day", "week", or "month").
+ * @property dateRange          The calendar range covered by this response.
+ * @property pushupCount        Total push-ups performed by the friend in the period.
+ * @property totalSessions      Number of completed workout sessions in the period.
  * @property totalEarnedSeconds Total screen-time credits earned in the period (seconds).
- * @property averageQuality Average form-quality score across all sessions (0.0 - 1.0),
- *                          null when no sessions exist.
+ * @property averageQuality     Average form-quality score across all sessions (0.0 - 1.0),
+ *                              null when no sessions exist.
+ * @property currentStreak      Current consecutive-day workout streak (days).
  */
 @Serializable
 data class FriendActivityStatsDTO(
@@ -60,4 +61,5 @@ data class FriendActivityStatsDTO(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val averageQuality: Double?,
+    val currentStreak: Int = 0,
 )

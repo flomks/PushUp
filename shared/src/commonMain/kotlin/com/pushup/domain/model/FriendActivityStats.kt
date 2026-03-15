@@ -14,6 +14,7 @@ package com.pushup.domain.model
  * @property totalEarnedSeconds  Total screen-time credits earned in the period (seconds).
  * @property averageQuality      Average form-quality score across all sessions (0.0 - 1.0),
  *                               null when no sessions exist.
+ * @property currentStreak       Current consecutive-day workout streak (days).
  */
 data class FriendActivityStats(
     val friendId: String,
@@ -24,4 +25,5 @@ data class FriendActivityStats(
     val totalSessions: Int,
     val totalEarnedSeconds: Long,
     val averageQuality: Double?,
+    val currentStreak: Int = 0,
 )

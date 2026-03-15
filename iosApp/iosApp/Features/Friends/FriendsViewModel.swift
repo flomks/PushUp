@@ -8,6 +8,10 @@ struct FriendItem: Identifiable {
     let username: String?
     let displayName: String?
     let avatarUrl: String?
+    /// Leaderboard rank for the current period (nil until leaderboard is loaded).
+    var leaderboardRank: Int? = nil
+    /// Current consecutive-day workout streak (nil until stats are loaded).
+    var currentStreak: Int? = nil
 
     var displayLabel: String { displayName ?? username ?? "Unknown" }
 
@@ -122,6 +126,8 @@ struct FriendStatsData: Equatable {
     let totalEarnedSeconds: Int64
     /// Average form-quality score in [0, 1], nil when no sessions exist.
     let averageQuality: Double?
+    /// Current consecutive-day workout streak.
+    let currentStreak: Int
 }
 
 // MARK: - FriendsViewModel
@@ -497,6 +503,15 @@ final class FriendsViewModel: ObservableObject {
 
         entries.sort { $0.pushupCount > $1.pushupCount }
         leaderboard = entries
+
+        // Stamp the leaderboard rank back onto each FriendItem so the hub
+        // row can display it without an extra network call.
+        for (index, entry) in entries.enumerated() {
+            if let idx = friends.firstIndex(where: { $0.id == entry.id }) {
+                friends[idx].leaderboardRank = index + 1
+            }
+        }
+
         isLoadingLeaderboard = false
     }
 
@@ -614,7 +629,7 @@ final class FriendsViewModel: ObservableObject {
             period: period.rawValue,
             onResult: { [weak self] stats in
                 guard let self else { return }
-                self.friendStatsState = .loaded(FriendStatsData(
+                let data = FriendStatsData(
                     friendId: stats.friendId,
                     friendName: friendName,
                     period: stats.period,
@@ -624,8 +639,15 @@ final class FriendsViewModel: ObservableObject {
                     totalSessions: Int(stats.totalSessions),
                     totalEarnedSeconds: stats.totalEarnedSeconds,
                     // KotlinDouble? bridges to KotlinDouble? in Swift; .doubleValue extracts Double.
-                    averageQuality: stats.averageQuality?.doubleValue
-                ))
+                    averageQuality: stats.averageQuality?.doubleValue,
+                    currentStreak: Int(stats.currentStreak)
+                )
+                self.friendStatsState = .loaded(data)
+                // Stamp the streak back onto the FriendItem so the hub row
+                // shows it without requiring a separate stats fetch.
+                if let idx = self.friends.firstIndex(where: { $0.id == friendId }) {
+                    self.friends[idx].currentStreak = Int(stats.currentStreak)
+                }
             },
             onError: { [weak self] error in
                 self?.friendStatsState = .error(error)
