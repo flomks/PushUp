@@ -80,10 +80,24 @@ fun Application.configureRouting(
         }
 
         // Universal Link landing page: /friend/<CODE>
-        // When the app is NOT installed, this shows a web page with an
-        // App Store link. When installed, iOS intercepts before this runs.
+        //
+        // Strategy:
+        //   1. JavaScript immediately tries to open pushup://friend-code/<CODE>
+        //   2. A 1500ms timer fires -- if the app opened, the page is hidden
+        //      and the timer never redirects. If the app is NOT installed,
+        //      Safari cannot open the custom scheme and the timer redirects
+        //      straight to the App Store.
+        //   3. The user sees only a brief loading spinner -- no ugly web page.
+        //
+        // When Universal Links work (app installed + Associated Domains active),
+        // iOS intercepts the https:// link BEFORE the browser even loads this
+        // page, so this HTML is never shown at all.
         get("/friend/{code}") {
-            val code = call.parameters["code"]?.uppercase() ?: ""
+            val code       = call.parameters["code"]?.uppercase()?.filter { it.isLetterOrDigit() } ?: ""
+            val appScheme  = "pushup://friend-code/$code"
+            // Replace with the real App Store ID once the app is published.
+            val appStoreUrl = "https://apps.apple.com/app/id0000000000"
+
             call.respondText(
                 contentType = ContentType.Text.Html,
                 text = """
@@ -91,33 +105,52 @@ fun Application.configureRouting(
                     <html lang="en">
                     <head>
                       <meta charset="UTF-8">
-                      <meta name="viewport" content="width=device-width, initial-scale=1">
-                      <title>Add Friend on PushUp</title>
+                      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+                      <title>Opening PushUp…</title>
                       <style>
-                        body { font-family: -apple-system, sans-serif; text-align: center;
-                               padding: 60px 24px; background: #0f0f0f; color: #fff; }
-                        h1   { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
-                        p    { color: #aaa; margin-bottom: 32px; }
-                        .code { font-family: monospace; font-size: 32px; font-weight: 700;
-                                letter-spacing: 6px; background: #1c1c1e; padding: 16px 24px;
-                                border-radius: 12px; display: inline-block; margin-bottom: 32px; }
-                        a.btn { display: inline-block; background: #007AFF; color: #fff;
-                                padding: 16px 32px; border-radius: 14px; text-decoration: none;
-                                font-size: 17px; font-weight: 600; }
+                        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+                        html, body {
+                          height: 100%; background: #000; color: #fff;
+                          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                          display: flex; align-items: center; justify-content: center;
+                        }
+                        .wrap { text-align: center; padding: 24px; }
+                        .spinner {
+                          width: 48px; height: 48px; border-radius: 50%;
+                          border: 4px solid rgba(255,255,255,.15);
+                          border-top-color: #007AFF;
+                          animation: spin .8s linear infinite;
+                          margin: 0 auto 24px;
+                        }
+                        @keyframes spin { to { transform: rotate(360deg); } }
+                        p { color: rgba(255,255,255,.5); font-size: 15px; }
                       </style>
                     </head>
                     <body>
-                      <h1>Add me on PushUp</h1>
-                      <p>Open the app and enter this friend code:</p>
-                      <div class="code">${code.chunked(4).joinToString(" ")}</div>
-                      <br>
-                      <a class="btn" href="pushup://friend-code/$code">Open in PushUp</a>
-                      <br><br>
-                      <p style="font-size:13px">Don't have PushUp yet?
-                        <a href="https://apps.apple.com/app/id0000000000" style="color:#007AFF">
-                          Download on the App Store
-                        </a>
-                      </p>
+                      <div class="wrap">
+                        <div class="spinner"></div>
+                        <p>Opening PushUp…</p>
+                      </div>
+                      <script>
+                        // 1. Try to open the app via custom scheme.
+                        window.location.href = '$appScheme';
+
+                        // 2. If the app is not installed, the browser stays on this
+                        //    page and the timer fires -> redirect to App Store.
+                        //    If the app DID open, the page goes to background and
+                        //    the timer is irrelevant (never causes a redirect).
+                        var t = setTimeout(function() {
+                          window.location.replace('$appStoreUrl');
+                        }, 1500);
+
+                        // 3. Cancel the timer if the user comes back to the page
+                        //    (e.g. they opened the app and then returned to Safari).
+                        document.addEventListener('visibilitychange', function() {
+                          if (document.visibilityState === 'hidden') {
+                            clearTimeout(t);
+                          }
+                        });
+                      </script>
                     </body>
                     </html>
                 """.trimIndent()
