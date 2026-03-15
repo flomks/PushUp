@@ -109,112 +109,175 @@ fun Application.configureRouting(
                         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
                         :root {
-                          --bg:      #0a0a0a;
-                          --surface: #141414;
-                          --border:  #222;
-                          --text:    #f5f5f5;
-                          --muted:   #888;
-                          --accent:  #007AFF;
-                          --radius:  16px;
+                          --accent:  #3B82F6;
+                          --accent2: #8B5CF6;
+                          --text:    #f0f0f8;
+                          --muted:   rgba(240,240,248,.45);
+                          --card:    rgba(255,255,255,.05);
+                          --border:  rgba(255,255,255,.09);
+                          --r-lg:    24px;
+                          --r-md:    16px;
+                          --r-sm:    12px;
                         }
 
-                        html, body {
+                        html { height: 100%; }
+
+                        body {
                           min-height: 100%;
-                          background: var(--bg);
+                          font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
                           color: var(--text);
-                          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
                           display: flex;
+                          flex-direction: column;
                           align-items: center;
                           justify-content: center;
-                          padding: 24px;
+                          padding: 32px 20px 48px;
+                          background:
+                            radial-gradient(ellipse 90% 55% at 50% -5%,  rgba(59,130,246,.22) 0%, transparent 65%),
+                            radial-gradient(ellipse 70% 50% at 85% 105%, rgba(139,92,246,.18) 0%, transparent 65%),
+                            radial-gradient(ellipse 50% 40% at 10% 90%,  rgba(59,130,246,.10) 0%, transparent 60%),
+                            #07070f;
                         }
 
+                        /* ── Wordmark ── */
+                        .wordmark {
+                          display: flex;
+                          align-items: center;
+                          gap: 8px;
+                          font-size: 13px;
+                          font-weight: 800;
+                          letter-spacing: 2.5px;
+                          text-transform: uppercase;
+                          color: var(--muted);
+                          margin-bottom: 36px;
+                        }
+                        .wordmark-dot {
+                          width: 7px; height: 7px;
+                          border-radius: 50%;
+                          background: linear-gradient(135deg, var(--accent), var(--accent2));
+                        }
+
+                        /* ── Card ── */
                         .card {
                           width: 100%;
-                          max-width: 380px;
-                          background: var(--surface);
+                          max-width: 400px;
+                          background: var(--card);
                           border: 1px solid var(--border);
-                          border-radius: 24px;
-                          padding: 40px 32px 36px;
+                          border-radius: var(--r-lg);
+                          padding: 44px 32px 40px;
                           text-align: center;
+                          backdrop-filter: blur(24px);
+                          -webkit-backdrop-filter: blur(24px);
+                          box-shadow:
+                            0 0 0 1px rgba(255,255,255,.04) inset,
+                            0 40px 80px rgba(0,0,0,.55),
+                            0 0 120px rgba(59,130,246,.06);
                         }
 
-                        .icon {
-                          width: 72px; height: 72px;
-                          background: linear-gradient(135deg, #1a1a2e, #16213e);
-                          border-radius: 18px;
+                        /* ── App icon ── */
+                        .app-icon {
+                          width: 84px; height: 84px;
+                          background: linear-gradient(145deg, #1d4ed8 0%, #7c3aed 100%);
+                          border-radius: 22px;
                           display: flex; align-items: center; justify-content: center;
-                          margin: 0 auto 24px;
-                          font-size: 36px;
-                          border: 1px solid var(--border);
+                          margin: 0 auto 28px;
+                          font-size: 40px;
+                          box-shadow:
+                            0 8px 32px rgba(59,130,246,.4),
+                            0 0 0 1px rgba(255,255,255,.12) inset;
                         }
 
+                        /* ── Headline ── */
                         h1 {
-                          font-size: 22px;
-                          font-weight: 700;
-                          letter-spacing: -0.3px;
-                          margin-bottom: 6px;
+                          font-size: 26px;
+                          font-weight: 800;
+                          letter-spacing: -0.6px;
+                          line-height: 1.15;
+                          margin-bottom: 10px;
+                          background: linear-gradient(160deg, #fff 40%, rgba(255,255,255,.55));
+                          -webkit-background-clip: text;
+                          -webkit-text-fill-color: transparent;
+                          background-clip: text;
                         }
 
                         .subtitle {
                           color: var(--muted);
                           font-size: 15px;
-                          margin-bottom: 28px;
-                          line-height: 1.4;
+                          line-height: 1.55;
+                          margin-bottom: 36px;
                         }
 
+                        /* ── Friend code box ── */
                         .code-box {
-                          background: var(--bg);
-                          border: 1px solid var(--border);
-                          border-radius: var(--radius);
-                          padding: 16px 20px;
+                          background: rgba(59,130,246,.07);
+                          border: 1px solid rgba(59,130,246,.22);
+                          border-radius: var(--r-md);
+                          padding: 20px 24px 18px;
                           margin-bottom: 28px;
+                          position: relative;
+                          overflow: hidden;
+                        }
+                        .code-box::before {
+                          content: "";
+                          position: absolute;
+                          inset: 0;
+                          background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(59,130,246,.12), transparent);
+                          pointer-events: none;
                         }
 
                         .code-label {
-                          font-size: 11px;
-                          font-weight: 600;
-                          letter-spacing: 1.2px;
-                          text-transform: uppercase;
-                          color: var(--muted);
-                          margin-bottom: 6px;
-                        }
-
-                        .code-value {
-                          font-family: "SF Mono", "Fira Code", monospace;
-                          font-size: 28px;
+                          font-size: 10px;
                           font-weight: 700;
-                          letter-spacing: 6px;
-                          color: var(--text);
-                        }
-
-                        .btn {
-                          display: block;
-                          width: 100%;
-                          padding: 15px 20px;
-                          border-radius: var(--radius);
-                          font-size: 16px;
-                          font-weight: 600;
-                          text-decoration: none;
-                          cursor: pointer;
-                          border: none;
-                          transition: opacity .15s;
-                        }
-                        .btn:active { opacity: .75; }
-
-                        .btn-primary {
-                          background: var(--accent);
-                          color: #fff;
+                          letter-spacing: 2px;
+                          text-transform: uppercase;
+                          color: var(--accent);
                           margin-bottom: 10px;
                         }
 
+                        .code-value {
+                          font-family: "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+                          font-size: 32px;
+                          font-weight: 700;
+                          letter-spacing: 9px;
+                          color: #fff;
+                          text-shadow: 0 0 28px rgba(59,130,246,.5);
+                        }
+
+                        /* ── Primary CTA ── */
+                        .btn-primary {
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          gap: 9px;
+                          width: 100%;
+                          padding: 17px 20px;
+                          border-radius: var(--r-md);
+                          font-size: 16px;
+                          font-weight: 700;
+                          letter-spacing: -.1px;
+                          text-decoration: none;
+                          color: #fff;
+                          background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+                          box-shadow:
+                            0 4px 28px rgba(59,130,246,.38),
+                            0 0 0 1px rgba(255,255,255,.1) inset;
+                          transition: transform .15s ease, box-shadow .15s ease;
+                          -webkit-tap-highlight-color: transparent;
+                        }
+                        .btn-primary:active {
+                          transform: scale(.97);
+                          box-shadow: 0 2px 14px rgba(59,130,246,.25);
+                        }
+
+                        /* ── Divider ── */
                         .divider {
                           display: flex;
                           align-items: center;
-                          gap: 10px;
-                          margin: 20px 0 16px;
+                          gap: 12px;
+                          margin: 28px 0 22px;
                           color: var(--muted);
                           font-size: 12px;
+                          font-weight: 500;
+                          letter-spacing: .4px;
                         }
                         .divider::before, .divider::after {
                           content: "";
@@ -223,47 +286,76 @@ fun Application.configureRouting(
                           background: var(--border);
                         }
 
-                        .store-row {
-                          display: flex;
-                          gap: 10px;
-                        }
+                        /* ── Store badges ── */
+                        .store-row { display: flex; gap: 10px; }
 
-                        .btn-store {
+                        .store-badge {
                           flex: 1;
-                          background: var(--bg);
-                          border: 1px solid var(--border);
-                          color: var(--text);
-                          font-size: 13px;
-                          padding: 12px 10px;
-                          border-radius: var(--radius);
-                          text-decoration: none;
                           display: flex;
-                          flex-direction: column;
                           align-items: center;
-                          gap: 4px;
-                          transition: border-color .15s;
+                          gap: 11px;
+                          padding: 13px 14px;
+                          background: rgba(255,255,255,.04);
+                          border: 1px solid var(--border);
+                          border-radius: var(--r-sm);
+                          text-decoration: none;
+                          color: var(--text);
+                          transition: background .15s, border-color .15s, transform .12s;
+                          -webkit-tap-highlight-color: transparent;
                         }
-                        .btn-store:active { border-color: var(--accent); }
+                        .store-badge:active {
+                          background: rgba(255,255,255,.08);
+                          border-color: rgba(255,255,255,.2);
+                          transform: scale(.97);
+                        }
 
-                        .store-icon { font-size: 20px; }
-                        .store-label { font-size: 10px; color: var(--muted); font-weight: 500; }
-                        .store-name  { font-size: 13px; font-weight: 600; }
+                        .badge-icon {
+                          font-size: 24px;
+                          line-height: 1;
+                          flex-shrink: 0;
+                        }
+                        .badge-text { text-align: left; }
+                        .badge-sub {
+                          display: block;
+                          font-size: 9px;
+                          font-weight: 600;
+                          letter-spacing: .5px;
+                          text-transform: uppercase;
+                          color: var(--muted);
+                          margin-bottom: 2px;
+                        }
+                        .badge-name {
+                          display: block;
+                          font-size: 14px;
+                          font-weight: 700;
+                          letter-spacing: -.2px;
+                        }
 
+                        /* ── Footer ── */
                         .footer {
-                          margin-top: 28px;
+                          margin-top: 36px;
                           font-size: 12px;
                           color: var(--muted);
+                          letter-spacing: .3px;
                         }
                       </style>
                     </head>
                     <body>
+
+                      <div class="wordmark">
+                        <span class="wordmark-dot"></span>
+                        PushUp
+                        <span class="wordmark-dot"></span>
+                      </div>
+
                       <div class="card">
-                        <div class="icon">💪</div>
+
+                        <div class="app-icon">💪</div>
 
                         <h1>You've been invited!</h1>
                         <p class="subtitle">
-                          Someone wants to add you as a friend on PushUp.<br>
-                          Open the app to accept.
+                          A friend wants to add you on PushUp —<br>
+                          the app that lets you earn your screen time.
                         </p>
 
                         <div class="code-box">
@@ -271,27 +363,41 @@ fun Application.configureRouting(
                           <div class="code-value">$formatted</div>
                         </div>
 
-                        <a class="btn btn-primary" href="$appScheme">
+                        <a class="btn-primary" href="$appScheme">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                               stroke="currentColor" stroke-width="2.5"
+                               stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                            <circle cx="9" cy="7" r="4"/>
+                            <line x1="19" y1="8" x2="19" y2="14"/>
+                            <line x1="22" y1="11" x2="16" y2="11"/>
+                          </svg>
                           Add Friend in PushUp
                         </a>
 
-                        <div class="divider">Don't have the app?</div>
+                        <div class="divider">Don't have the app yet?</div>
 
                         <div class="store-row">
-                          <a class="btn-store" href="$appStoreUrl">
-                            <span class="store-icon">🍎</span>
-                            <span class="store-label">Download on the</span>
-                            <span class="store-name">App Store</span>
+                          <a class="store-badge" href="$appStoreUrl">
+                            <span class="badge-icon">&#xF8FF;</span>
+                            <span class="badge-text">
+                              <span class="badge-sub">Download on the</span>
+                              <span class="badge-name">App Store</span>
+                            </span>
                           </a>
-                          <a class="btn-store" href="$playStoreUrl">
-                            <span class="store-icon">▶</span>
-                            <span class="store-label">Get it on</span>
-                            <span class="store-name">Google Play</span>
+                          <a class="store-badge" href="$playStoreUrl">
+                            <span class="badge-icon">&#9654;</span>
+                            <span class="badge-text">
+                              <span class="badge-sub">Get it on</span>
+                              <span class="badge-name">Google Play</span>
+                            </span>
                           </a>
                         </div>
 
-                        <p class="footer">PushUp · Earn your screen time</p>
                       </div>
+
+                      <p class="footer">PushUp &middot; Earn your screen time</p>
+
                     </body>
                     </html>
                 """.trimIndent()
