@@ -8,15 +8,6 @@ import SwiftUI
 /// Calls `onCode` exactly once with the first valid `pushup://friend-code/<CODE>`
 /// deep-link or bare alphanumeric code it detects, then stops scanning.
 /// Calls `onCancel` when the user taps the X button.
-///
-/// Usage:
-/// ```swift
-/// QRScannerView { code in
-///     // code is already normalised (uppercase, trimmed)
-/// } onCancel: {
-///     showScanner = false
-/// }
-/// ```
 struct QRScannerView: View {
 
     let onCode: (String) -> Void
@@ -27,18 +18,18 @@ struct QRScannerView: View {
 
     var body: some View {
         ZStack {
-            // Camera preview
             if permissionDenied {
                 permissionDeniedView
             } else {
+                // Live camera feed
                 CameraPreviewLayer(session: scanner.session)
                     .ignoresSafeArea()
 
-                // Viewfinder overlay
-                viewfinderOverlay
+                // Viewfinder overlay drawn on top
+                ViewfinderOverlay()
             }
 
-            // Top bar: cancel button
+            // Cancel button pinned to top-right
             VStack {
                 HStack {
                     Spacer()
@@ -49,7 +40,7 @@ struct QRScannerView: View {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 32, weight: .semibold))
                             .foregroundStyle(.white)
-                            .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                            .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
                     }
                     .padding(.trailing, AppSpacing.md)
                     .padding(.top, AppSpacing.md)
@@ -58,7 +49,7 @@ struct QRScannerView: View {
             }
         }
         .onAppear {
-            scanner.onCode = { raw in
+            scanner.onCode = { [self] raw in
                 let code = extractCode(from: raw)
                 guard !code.isEmpty else { return }
                 scanner.stop()
@@ -70,51 +61,6 @@ struct QRScannerView: View {
         }
         .onDisappear {
             scanner.stop()
-        }
-    }
-
-    // MARK: - Viewfinder overlay
-
-    private var viewfinderOverlay: some View {
-        GeometryReader { geo in
-            let size: CGFloat = min(geo.size.width, geo.size.height) * 0.65
-            let x = (geo.size.width  - size) / 2
-            let y = (geo.size.height - size) / 2
-
-            ZStack {
-                // Dimmed background with a clear cutout
-                Color.black.opacity(0.55)
-                    .ignoresSafeArea()
-                    .mask(
-                        Rectangle()
-                            .ignoresSafeArea()
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .frame(width: size, height: size)
-                                    .blendMode(.destinationOut)
-                            )
-                    )
-
-                // Corner brackets
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(.white, lineWidth: 3)
-                    .frame(width: size, height: size)
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-
-                // Instruction label
-                VStack(spacing: AppSpacing.xs) {
-                    Spacer()
-                        .frame(height: y + size + AppSpacing.lg)
-
-                    Text("Point at a friend's QR code")
-                        .font(AppTypography.subheadline)
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppSpacing.xl)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
         }
     }
 
@@ -155,15 +101,10 @@ struct QRScannerView: View {
 
     // MARK: - Code extraction
 
-    /// Extracts the friend code from either a deep-link or a bare code string.
-    ///
-    /// Accepts:
-    ///   - `pushup://friend-code/AB3X7K2M`
-    ///   - `AB3X7K2M`
     private func extractCode(from raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Deep-link format
+        // Deep-link: pushup://friend-code/AB3X7K2M
         if let url = URL(string: trimmed),
            url.scheme == "pushup",
            url.host == "friend-code" {
@@ -174,16 +115,76 @@ struct QRScannerView: View {
             return code
         }
 
-        // Bare code: uppercase alphanumeric only
+        // Bare code: uppercase alphanumeric, 4-16 chars
         let bare = trimmed.uppercased().filter { $0.isLetter || $0.isNumber }
         guard bare.count >= 4, bare.count <= 16 else { return "" }
         return bare
     }
 }
 
+// MARK: - ViewfinderOverlay
+
+/// Draws the dimmed surround + white border frame + instruction text.
+/// Uses a Canvas-based approach to avoid the deprecated mask(content:) API.
+private struct ViewfinderOverlay: View {
+
+    var body: some View {
+        GeometryReader { geo in
+            let side: CGFloat = min(geo.size.width, geo.size.height) * 0.65
+            let cx = geo.size.width  / 2
+            let cy = geo.size.height / 2
+            let rect = CGRect(
+                x: cx - side / 2,
+                y: cy - side / 2,
+                width: side,
+                height: side
+            )
+            let radius: CGFloat = 16
+
+            ZStack {
+                // Dimmed surround with transparent cutout via Canvas
+                Canvas { ctx, size in
+                    // Fill entire canvas with semi-transparent black
+                    ctx.fill(
+                        Path(CGRect(origin: .zero, size: size)),
+                        with: .color(.black.opacity(0.55))
+                    )
+                    // Punch out the viewfinder rectangle using .clear blend mode
+                    var cutout = Path()
+                    cutout.addRoundedRect(
+                        in: rect,
+                        cornerSize: CGSize(width: radius, height: radius)
+                    )
+                    ctx.blendMode = .clear
+                    ctx.fill(cutout, with: .color(.black))
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+                // White border around the viewfinder
+                RoundedRectangle(cornerRadius: radius)
+                    .strokeBorder(.white, lineWidth: 3)
+                    .frame(width: side, height: side)
+                    .position(x: cx, y: cy)
+                    .allowsHitTesting(false)
+
+                // Instruction label below the viewfinder
+                Text("Point at a friend's QR code")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AppSpacing.xl)
+                    .position(x: cx, y: rect.maxY + AppSpacing.lg + 10)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 // MARK: - CameraPreviewLayer
 
-/// UIViewRepresentable that hosts an `AVCaptureVideoPreviewLayer`.
+/// UIViewRepresentable that hosts an AVCaptureVideoPreviewLayer.
 private struct CameraPreviewLayer: UIViewRepresentable {
 
     let session: AVCaptureSession
@@ -197,34 +198,43 @@ private struct CameraPreviewLayer: UIViewRepresentable {
 
     func updateUIView(_ uiView: PreviewView, context: Context) {}
 
+    // MARK: PreviewView
+
     final class PreviewView: UIView {
-        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-        var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+        override class var layerClass: AnyClass {
+            AVCaptureVideoPreviewLayer.self
+        }
+        var previewLayer: AVCaptureVideoPreviewLayer {
+            // swiftlint:disable:next force_cast
+            layer as! AVCaptureVideoPreviewLayer
+        }
     }
 }
 
 // MARK: - QRScannerCoordinator
 
-/// ObservableObject that owns the AVFoundation capture session and
-/// delivers decoded QR strings via the `onCode` callback.
+/// Owns the AVCaptureSession and delivers decoded QR strings via `onCode`.
 final class QRScannerCoordinator: NSObject, ObservableObject, AVCaptureMetadataOutputObjectsDelegate {
 
     let session = AVCaptureSession()
     var onCode: ((String) -> Void)?
 
     private var hasDelivered = false
-    private let queue = DispatchQueue(label: "com.pushup.qrscanner", qos: .userInitiated)
+    private let sessionQueue = DispatchQueue(
+        label: "com.pushup.qrscanner.session",
+        qos: .userInitiated
+    )
 
-    // MARK: - Permission + start
+    // MARK: Permission + start
 
     func checkPermissionAndStart(onDenied: @escaping (Bool) -> Void) {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            queue.async { self.configureAndStart() }
+            sessionQueue.async { self.configureAndStart() }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 if granted {
-                    self.queue.async { self.configureAndStart() }
+                    self.sessionQueue.async { self.configureAndStart() }
                 } else {
                     DispatchQueue.main.async { onDenied(true) }
                 }
@@ -234,7 +244,7 @@ final class QRScannerCoordinator: NSObject, ObservableObject, AVCaptureMetadataO
         }
     }
 
-    // MARK: - Session setup
+    // MARK: Session setup
 
     private func configureAndStart() {
         guard !session.isRunning else { return }
@@ -256,22 +266,23 @@ final class QRScannerCoordinator: NSObject, ObservableObject, AVCaptureMetadataO
             return
         }
         session.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: queue)
+        output.setMetadataObjectsDelegate(self, queue: sessionQueue)
         output.metadataObjectTypes = [.qr]
 
         session.commitConfiguration()
         session.startRunning()
     }
 
-    // MARK: - Stop
+    // MARK: Stop
 
     func stop() {
-        queue.async {
-            if self.session.isRunning { self.session.stopRunning() }
+        sessionQueue.async {
+            guard self.session.isRunning else { return }
+            self.session.stopRunning()
         }
     }
 
-    // MARK: - AVCaptureMetadataOutputObjectsDelegate
+    // MARK: AVCaptureMetadataOutputObjectsDelegate
 
     func metadataOutput(
         _ output: AVCaptureMetadataOutput,
@@ -280,8 +291,8 @@ final class QRScannerCoordinator: NSObject, ObservableObject, AVCaptureMetadataO
     ) {
         guard
             !hasDelivered,
-            let obj  = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-            let raw  = obj.stringValue,
+            let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+            let raw = obj.stringValue,
             !raw.isEmpty
         else { return }
 
