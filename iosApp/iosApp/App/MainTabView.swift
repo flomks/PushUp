@@ -8,10 +8,12 @@ import UIKit
 /// The raw value defines the visual order of tabs. All display metadata
 /// (icon, label, description) is centralised here so that no other file
 /// needs to duplicate these strings.
+///
+/// History has been moved inside the Stats tab (as a segment) so that the
+/// Friends tab can occupy a dedicated, prominent position in the tab bar.
 enum Tab: Int, CaseIterable, Identifiable {
     case dashboard = 0
     case workout
-    case history
     case stats
     case friends
     case profile
@@ -28,7 +30,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return .houseFill
         case .workout:   return .figureStrengthTraining
-        case .history:   return .rectangleStackFill
         case .stats:     return .chartBarFill
         case .friends:   return .person2Fill
         case .profile:   return .personFill
@@ -42,7 +43,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Dashboard"
         case .workout:   return "Workout"
-        case .history:   return "History"
         case .stats:     return "Stats"
         case .friends:   return "Friends"
         case .profile:   return "Profile"
@@ -56,8 +56,7 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Your time credit and daily statistics will appear here."
         case .workout:   return "Start a workout here and count your push-ups in real time."
-        case .history:   return "All your past workouts will appear here."
-        case .stats:     return "Daily, weekly, and monthly statistics will appear here."
+        case .stats:     return "Daily, weekly, monthly statistics and workout history will appear here."
         case .friends:   return "Find friends, manage requests, and see your friends list."
         case .profile:   return "Your profile, avatar, and account information will appear here."
         case .settings:  return "Push-up rate, notifications, and other settings will appear here."
@@ -69,7 +68,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "tab_dashboard"
         case .workout:   return "tab_workout"
-        case .history:   return "tab_history"
         case .stats:     return "tab_stats"
         case .friends:   return "tab_friends"
         case .profile:   return "tab_profile"
@@ -121,17 +119,8 @@ struct MainTabView: View {
                     .tag(Tab.workout)
                     .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
-                // History tab -- real implementation (Task 3.9)
-                NavigationStack {
-                    HistoryView()
-                }
-                .tabItem {
-                    Label(Tab.history.label, icon: Tab.history.icon)
-                }
-                .tag(Tab.history)
-                .accessibilityIdentifier(Tab.history.accessibilityIdentifier)
-
                 // Stats tab -- real implementation (Task 3.8)
+                // History is accessible via the "History" segment inside StatsView.
                 NavigationStack {
                     StatsView()
                 }
@@ -141,8 +130,9 @@ struct MainTabView: View {
                 .tag(Tab.stats)
                 .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
 
-                // Friends tab -- passes the shared ViewModel so the badge and
-                // the list are always in sync.
+                // Friends tab -- dedicated tab so the social / competition
+                // features are always one tap away. Passes the shared ViewModel
+                // so the badge and the list are always in sync.
                 FriendsView(viewModel: friendsViewModel)
                     .tabItem {
                         Label(Tab.friends.label, icon: Tab.friends.icon)
@@ -262,6 +252,12 @@ struct TabPlaceholderView: View {
 #Preview("Placeholder - Stats") {
     NavigationStack {
         TabPlaceholderView(tab: .stats)
+    }
+}
+
+#Preview("Placeholder - Friends") {
+    NavigationStack {
+        TabPlaceholderView(tab: .friends)
     }
 }
 

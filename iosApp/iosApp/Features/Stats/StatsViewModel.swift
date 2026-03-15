@@ -9,6 +9,7 @@ enum StatsTab: Int, CaseIterable, Identifiable {
     case monthly    = 2
     case total      = 3
     case screenTime = 4
+    case history    = 5
 
     var id: Int { rawValue }
 
@@ -19,6 +20,7 @@ enum StatsTab: Int, CaseIterable, Identifiable {
         case .monthly:    return "Monthly"
         case .total:      return "Total"
         case .screenTime: return "Screen"
+        case .history:    return "History"
         }
     }
 }
