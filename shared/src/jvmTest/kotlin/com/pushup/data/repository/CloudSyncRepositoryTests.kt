@@ -213,7 +213,7 @@ class CloudSyncRepositoryTests {
         ): UserLevel = LevelCalculator.fromTotalXp(userId = userId, totalXp = request.totalXp)
 
         override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse =
-            UsernameCheckResponse(available = true)
+            UsernameCheckResponse(username = username, available = true)
 
         override suspend fun setUsername(request: SetUsernameRequest): String = request.username
     }
