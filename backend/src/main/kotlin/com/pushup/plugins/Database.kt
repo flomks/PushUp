@@ -116,6 +116,32 @@ fun Table.jsonb(columnName: String): Column<String> =
     registerColumn(columnName, JsonbColumnType())
 
 // ---------------------------------------------------------------------------
+// Friend code privacy values -- mirror the public.friend_code_privacy PostgreSQL enum
+// ---------------------------------------------------------------------------
+
+/**
+ * Kotlin representation of the `public.friend_code_privacy` PostgreSQL enum.
+ *
+ * Values:
+ *   AUTO_ACCEPT      -- anyone who uses the code is added as a friend immediately
+ *   REQUIRE_APPROVAL -- using the code creates a pending friend request
+ *   INACTIVE         -- the code is disabled; attempts to use it are rejected
+ */
+enum class FriendCodePrivacy(override val pgValue: String) : PgEnumValue {
+    AUTO_ACCEPT("auto_accept"),
+    REQUIRE_APPROVAL("require_approval"),
+    INACTIVE("inactive"),
+    ;
+
+    fun toDbValue(): String = pgValue
+
+    companion object {
+        fun fromDbValue(value: String): FriendCodePrivacy =
+            entries.first { it.pgValue.equals(value, ignoreCase = true) }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Friendship status values -- mirror the public.friendship_status PostgreSQL enum
 // ---------------------------------------------------------------------------
 
@@ -333,6 +359,35 @@ object Notifications : Table("notifications") {
         columns    = listOf(userId, createdAt),
         unique     = false,
         customName = "idx_notifications_user_created_at",
+    )
+}
+
+/**
+ * Mirrors the public.friend_codes table in Supabase.
+ * One row per user -- each user has exactly one friend code at a time.
+ *
+ * The code can be reset (new value generated) or deactivated via the
+ * [privacy] column.
+ */
+object FriendCodes : Table("friend_codes") {
+    val id        = uuid("id")
+    val userId    = uuid("user_id").references(Users.id)
+    val code      = text("code")
+    val privacy   = pgEnum<FriendCodePrivacy>("privacy", "friend_code_privacy")
+    val createdAt = timestampWithTimeZone("created_at")
+    val updatedAt = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+
+    val idxCode = Index(
+        columns    = listOf(code),
+        unique     = true,
+        customName = "idx_friend_codes_code",
+    )
+    val idxUserId = Index(
+        columns    = listOf(userId),
+        unique     = true,
+        customName = "idx_friend_codes_user_id",
     )
 }
 
