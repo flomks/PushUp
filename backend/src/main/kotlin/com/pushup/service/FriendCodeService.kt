@@ -79,7 +79,7 @@ open class FriendCodeService(
 ) {
 
     companion object {
-        private const val DEEP_LINK_BASE = "pushup://friend-code"
+        private const val DEEP_LINK_BASE = "https://pushup.weareo.fun/friend"
         private val CHARSET = ('A'..'Z') + ('0'..'9')
 
         /** Generates a random 8-character uppercase alphanumeric code. */
