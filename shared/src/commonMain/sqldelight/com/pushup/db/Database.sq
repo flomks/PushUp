@@ -77,13 +77,15 @@ CREATE INDEX idx_time_credit_user_id ON TimeCredit(userId);
 -- UserSettings
 -- Per-user configuration (one row per user).
 -- qualityMultiplierEnabled: 0 = false, 1 = true (SQLite has no BOOLEAN).
+-- searchableByEmail:        0 = false, 1 = true (SQLite has no BOOLEAN).
 -- -----------------------------------------------------------------------------
 CREATE TABLE UserSettings (
     id                       TEXT    NOT NULL PRIMARY KEY,
     userId                   TEXT    NOT NULL UNIQUE REFERENCES User(id) ON DELETE CASCADE,
     pushUpsPerMinuteCredit   INTEGER NOT NULL DEFAULT 10,
     qualityMultiplierEnabled INTEGER NOT NULL DEFAULT 0,
-    dailyCreditCapSeconds    INTEGER
+    dailyCreditCapSeconds    INTEGER,
+    searchableByEmail        INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_user_settings_user_id ON UserSettings(userId);
@@ -301,8 +303,8 @@ VALUES (?, ?, ?, ?, ?, ?);
 -- =============================================================================
 
 insertUserSettings:
-INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
+VALUES (?, ?, ?, ?, ?, ?);
 
 selectUserSettingsById:
 SELECT *
@@ -315,8 +317,13 @@ FROM UserSettings;
 
 updateUserSettings:
 UPDATE UserSettings
-SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?
+SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?, searchableByEmail = ?
 WHERE id = ?;
+
+updateUserSettingsSearchableByEmail:
+UPDATE UserSettings
+SET searchableByEmail = ?
+WHERE userId = ?;
 
 deleteUserSettings:
 DELETE FROM UserSettings
@@ -332,8 +339,8 @@ FROM UserSettings
 WHERE userId = ?;
 
 upsertUserSettings:
-INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- =============================================================================
 -- UserLevel

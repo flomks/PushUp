@@ -1,0 +1,4 @@
+-- Migration 2 -> 3
+-- Adds the searchableByEmail column to the UserSettings table.
+-- 0 = false (default, email is private), 1 = true (opt-in email search).
+ALTER TABLE UserSettings ADD COLUMN searchableByEmail INTEGER NOT NULL DEFAULT 0;

@@ -51,6 +51,7 @@ class UserSettingsRepositoryImpl(
                 pushUpsPerMinuteCredit = settings.pushUpsPerMinuteCredit.toLong(),
                 qualityMultiplierEnabled = if (settings.qualityMultiplierEnabled) 1L else 0L,
                 dailyCreditCapSeconds = settings.dailyCreditCapSeconds,
+                searchableByEmail = if (settings.searchableByEmail) 1L else 0L,
             )
         }
     }

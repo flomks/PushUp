@@ -5,11 +5,13 @@ import com.pushup.models.UserSearchResponse
 import com.pushup.models.UserSearchResult
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
+import com.pushup.plugins.UserSettings
 import com.pushup.plugins.Users
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.leftJoin
 import org.jetbrains.exposed.sql.lowerCase
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
@@ -20,58 +22,40 @@ import java.util.UUID
  * Handles user search queries for the GET /api/users/search endpoint.
  *
  * Search behaviour:
- * - Matches against [Users.username] and [Users.displayName] using a
- *   case-insensitive prefix/substring search (SQL ILIKE with leading wildcard).
+ * - Always matches against [Users.username] and [Users.displayName]
+ *   (case-insensitive substring search).
+ * - Also matches against [Users.email] when the target user has opted in via
+ *   [UserSettings.searchableByEmail] = true.
  * - The authenticated caller is always excluded from the results.
  * - Each result is annotated with the friendship status between the caller
- *   and the matched user:
- *     - [FriendshipStatusResponse.friend]  -- accepted friendship exists
- *     - [FriendshipStatusResponse.pending] -- a pending request exists in
- *                                             either direction
- *     - [FriendshipStatusResponse.none]    -- no relationship (including
- *                                             previously declined requests)
+ *   and the matched user (friend / pending / none).
  * - Results are capped at [MAX_RESULTS] entries.
- *
- * All database access is performed inside a single suspended transaction so
- * the coroutine does not block a thread.
  */
 open class UserSearchService {
 
     companion object {
-        /** Maximum number of results returned per query. */
         const val MAX_RESULTS = 20
-
-        /** Minimum query length enforced at the service layer as a safety net. */
         const val MIN_QUERY_LENGTH = 2
     }
 
     /**
-     * Searches for users whose [Users.username] or [Users.displayName] contains
-     * [query] (case-insensitive).
+     * Searches for users whose username, display_name, or (if opted in) email
+     * contains [query] (case-insensitive).
      *
-     * @param query      The search term supplied by the client (already validated
-     *                   to be at least [MIN_QUERY_LENGTH] characters by the route
-     *                   handler; the service re-validates as a safety net).
-     * @param callerId   UUID of the authenticated user making the request.
-     *                   This user is excluded from the results.
-     * @return           [UserSearchResponse] with up to [MAX_RESULTS] entries.
-     * @throws IllegalArgumentException if [query] is shorter than [MIN_QUERY_LENGTH].
+     * @param query    Search term (min [MIN_QUERY_LENGTH] chars).
+     * @param callerId UUID of the authenticated caller (excluded from results).
      */
     open suspend fun search(query: String, callerId: UUID): UserSearchResponse {
         require(query.length >= MIN_QUERY_LENGTH) {
             "Search query must be at least $MIN_QUERY_LENGTH characters long"
         }
 
-        // SQL ILIKE pattern: '%<query>%' -- matches anywhere in the value.
-        // Both sides are lowercased so the comparison is truly case-insensitive
-        // regardless of the database collation.
         val pattern = "%${query.lowercase()}%"
 
         return newSuspendedTransaction {
 
             // ------------------------------------------------------------------
-            // 1. Fetch all friendship rows that involve the caller so we can
-            //    annotate results without issuing N+1 queries.
+            // 1. Load all friendship rows involving the caller for annotation.
             // ------------------------------------------------------------------
             val friendshipRows = Friendships.selectAll()
                 .where {
@@ -80,47 +64,45 @@ open class UserSearchService {
                 }
                 .toList()
 
-            // Build a map: otherUserId -> FriendshipStatus for fast lookup.
             val friendshipByPeer: Map<UUID, FriendshipStatus> = friendshipRows.associate { row ->
-                val peerId = if (row[Friendships.requesterId] == callerId) {
-                    row[Friendships.receiverId]
-                } else {
-                    row[Friendships.requesterId]
-                }
+                val peerId = if (row[Friendships.requesterId] == callerId)
+                    row[Friendships.receiverId] else row[Friendships.requesterId]
                 peerId to row[Friendships.status]
             }
 
             // ------------------------------------------------------------------
-            // 2. Query users matching the search term.
-            //    Exclude only the caller themselves.
-            //    Previously declined requests are shown with status = none so
-            //    the user can find and re-request them.
+            // 2. Query users.
+            //    LEFT JOIN user_settings so we can check searchable_by_email.
+            //    A user matches if:
+            //      a) username ILIKE pattern, OR
+            //      b) display_name ILIKE pattern, OR
+            //      c) email ILIKE pattern AND searchable_by_email = true
             // ------------------------------------------------------------------
-            val userRows = Users.selectAll()
+            val userRows = Users
+                .leftJoin(UserSettings, { Users.id }, { UserSettings.userId })
+                .selectAll()
                 .where {
-                    // Match username OR display_name (case-insensitive)
+                    val matchesUsername    = Users.username.lowerCase() like pattern
+                    val matchesDisplayName = Users.displayName.lowerCase() like pattern
+                    val matchesEmail       = (Users.email.lowerCase() like pattern) and
+                        (UserSettings.searchableByEmail eq true)
+
                     val matchesQuery: Op<Boolean> =
-                        (Users.username.lowerCase() like pattern) or
-                            (Users.displayName.lowerCase() like pattern)
+                        matchesUsername or matchesDisplayName or matchesEmail
 
-                    // Exclude the caller
-                    val notSelf: Op<Boolean> = Users.id neq callerId
-
-                    matchesQuery and notSelf
+                    matchesQuery and (Users.id neq callerId)
                 }
                 .limit(MAX_RESULTS)
                 .toList()
 
             // ------------------------------------------------------------------
-            // 3. Map rows to response DTOs, annotating each with friendship status.
+            // 3. Map to response DTOs.
             // ------------------------------------------------------------------
             val results = userRows.map { row ->
                 val userId = row[Users.id]
                 val status = when (friendshipByPeer[userId]) {
                     FriendshipStatus.ACCEPTED -> FriendshipStatusResponse.friend
                     FriendshipStatus.PENDING  -> FriendshipStatusResponse.pending
-                    // DECLINED and no relationship both map to "none" so the
-                    // user can find and re-request previously declined contacts.
                     else                      -> FriendshipStatusResponse.none
                 }
                 UserSearchResult(
@@ -132,10 +114,7 @@ open class UserSearchService {
                 )
             }
 
-            UserSearchResponse(
-                results = results,
-                total   = results.size,
-            )
+            UserSearchResponse(results = results, total = results.size)
         }
     }
 }

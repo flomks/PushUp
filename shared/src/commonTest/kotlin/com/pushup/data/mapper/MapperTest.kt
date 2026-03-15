@@ -398,6 +398,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 15L,
             qualityMultiplierEnabled = 1L,
             dailyCreditCapSeconds = 3600L,
+            searchableByEmail = 1L,
         )
 
         val domain = dbSettings.toDomain()
@@ -406,6 +407,7 @@ class MapperTest {
         assertEquals(15, domain.pushUpsPerMinuteCredit)
         assertTrue(domain.qualityMultiplierEnabled)
         assertEquals(3600L, domain.dailyCreditCapSeconds)
+        assertTrue(domain.searchableByEmail)
     }
 
     @Test
@@ -416,12 +418,14 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = 0L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()
 
         assertFalse(domain.qualityMultiplierEnabled)
         assertNull(domain.dailyCreditCapSeconds)
+        assertFalse(domain.searchableByEmail)
     }
 
     @Test
@@ -431,6 +435,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 20,
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 7200L,
+            searchableByEmail = true,
         )
 
         val db = settings.toDbEntity(id = "settings-3")
@@ -440,6 +445,7 @@ class MapperTest {
         assertEquals(20L, db.pushUpsPerMinuteCredit)
         assertEquals(1L, db.qualityMultiplierEnabled)
         assertEquals(7200L, db.dailyCreditCapSeconds)
+        assertEquals(1L, db.searchableByEmail)
     }
 
     @Test
@@ -449,12 +455,14 @@ class MapperTest {
             pushUpsPerMinuteCredit = 5,
             qualityMultiplierEnabled = false,
             dailyCreditCapSeconds = null,
+            searchableByEmail = false,
         )
 
         val db = settings.toDbEntity(id = "settings-4")
 
         assertEquals(0L, db.qualityMultiplierEnabled)
         assertNull(db.dailyCreditCapSeconds)
+        assertEquals(0L, db.searchableByEmail)
     }
 
     @Test
@@ -464,6 +472,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 12,
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 1800L,
+            searchableByEmail = true,
         )
 
         val roundTripped = original.toDbEntity(id = "settings-rt").toDomain()
@@ -472,6 +481,7 @@ class MapperTest {
         assertEquals(original.pushUpsPerMinuteCredit, roundTripped.pushUpsPerMinuteCredit)
         assertEquals(original.qualityMultiplierEnabled, roundTripped.qualityMultiplierEnabled)
         assertEquals(original.dailyCreditCapSeconds, roundTripped.dailyCreditCapSeconds)
+        assertEquals(original.searchableByEmail, roundTripped.searchableByEmail)
     }
 
     // =========================================================================
@@ -593,6 +603,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = 42L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()
@@ -608,6 +619,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = -1L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()

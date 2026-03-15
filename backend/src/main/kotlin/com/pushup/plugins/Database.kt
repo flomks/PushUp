@@ -159,6 +159,23 @@ object Users : Table("users") {
 }
 
 /**
+ * Mirrors the public.user_settings table in Supabase.
+ * One row per user -- per-user configuration for the credit system.
+ */
+object UserSettings : Table("user_settings") {
+    val id                       = uuid("id")
+    val userId                   = uuid("user_id").references(Users.id)
+    val pushUpsPerMinuteCredit   = integer("push_ups_per_minute_credit")
+    val qualityMultiplierEnabled = bool("quality_multiplier_enabled")
+    val dailyCreditCapSeconds    = long("daily_credit_cap_seconds").nullable()
+    val searchableByEmail        = bool("searchable_by_email")
+    val createdAt                = timestampWithTimeZone("created_at")
+    val updatedAt                = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
  * Mirrors the public.time_credits table in Supabase.
  * One row per user -- tracks accumulated earned and spent screen-time credits.
  */
