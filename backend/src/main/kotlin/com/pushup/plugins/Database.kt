@@ -6,6 +6,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.log
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.Index
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
@@ -251,6 +252,13 @@ object DeviceTokens : Table("device_tokens") {
     val updatedAt = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
+
+    /** Mirrors `idx_device_tokens_user_id` created by migration 003. */
+    val idxUserId = Index(
+        columns    = listOf(userId),
+        unique     = false,
+        customName = "idx_device_tokens_user_id",
+    )
 }
 
 /**
@@ -265,6 +273,23 @@ object UserLevels : Table("user_levels") {
     val updatedAt = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
+
+    /**
+     * Mirrors `idx_user_levels_user_id` (non-unique) created by migration 007.
+     * The `user_levels_user_id_key` unique constraint is enforced by the
+     * `UNIQUE` keyword on the column definition in the migration DDL; Exposed
+     * sees it as a separate unique index and maps it via [idxUserIdUnique].
+     */
+    val idxUserId = Index(
+        columns    = listOf(userId),
+        unique     = false,
+        customName = "idx_user_levels_user_id",
+    )
+    val idxUserIdUnique = Index(
+        columns    = listOf(userId),
+        unique     = true,
+        customName = "user_levels_user_id_key",
+    )
 }
 
 /**
@@ -282,6 +307,33 @@ object Notifications : Table("notifications") {
     val updatedAt = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
+
+    /** Mirrors `idx_notifications_user_id` created by migration 006. */
+    val idxUserId = Index(
+        columns    = listOf(userId),
+        unique     = false,
+        customName = "idx_notifications_user_id",
+    )
+
+    /**
+     * Mirrors `idx_notifications_user_is_read` created by migration 006.
+     * Used to efficiently query unread notifications for a user.
+     */
+    val idxUserIsRead = Index(
+        columns    = listOf(userId, isRead),
+        unique     = false,
+        customName = "idx_notifications_user_is_read",
+    )
+
+    /**
+     * Mirrors `idx_notifications_user_created_at` created by migration 006.
+     * Used for paginated notification feeds ordered by creation time.
+     */
+    val idxUserCreatedAt = Index(
+        columns    = listOf(userId, createdAt),
+        unique     = false,
+        customName = "idx_notifications_user_created_at",
+    )
 }
 
 /**
