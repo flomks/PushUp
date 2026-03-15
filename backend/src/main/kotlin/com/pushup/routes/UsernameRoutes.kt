@@ -29,8 +29,10 @@ private object UsernameValidation {
     const val MIN_LENGTH = 3
     const val MAX_LENGTH = 20
 
-    /** Only lowercase letters, digits, and underscores. */
-    val VALID_PATTERN = Regex("^[a-z0-9_]+$")
+    /** Lowercase letters, digits, underscores, and dots. No leading/trailing/consecutive dots. */
+    val VALID_PATTERN = Regex("^[a-z0-9_.]+$")
+    val NO_LEADING_TRAILING_DOT = Regex("^[^.].*[^.]$|^[^.]\$")
+    val NO_CONSECUTIVE_DOTS = Regex("^\\.\\.")
 
     fun validate(username: String): String? {
         val trimmed = username.trim().lowercase()
@@ -40,7 +42,11 @@ private object UsernameValidation {
             trimmed.length > MAX_LENGTH ->
                 "Username must be at most $MAX_LENGTH characters long."
             !VALID_PATTERN.matches(trimmed) ->
-                "Username may only contain lowercase letters, digits, and underscores."
+                "Username may only contain lowercase letters, digits, underscores, and dots."
+            trimmed.startsWith('.') || trimmed.endsWith('.') ->
+                "Username cannot start or end with a dot."
+            trimmed.contains("..") ->
+                "Username cannot contain consecutive dots."
             else -> null
         }
     }

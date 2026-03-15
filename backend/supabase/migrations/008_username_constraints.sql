@@ -44,7 +44,10 @@ BEGIN
         username IS NULL OR (
           length(username) >= 3
           AND length(username) <= 20
-          AND username ~ '^[a-z0-9_]+$'
+          AND username ~ '^[a-z0-9_.]+$'
+          AND username NOT LIKE '.%'
+          AND username NOT LIKE '%.'
+          AND username NOT LIKE '%..%'
         )
       );
   END IF;

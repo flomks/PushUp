@@ -151,7 +151,7 @@ struct SetDisplayNameView: View {
                 validationMessage
 
                 // Rules hint
-                Text("3-20 characters. Letters, digits, and underscores only.")
+                Text("3-20 characters. Letters, digits, underscores (_), and dots (.) allowed.")
                     .font(AppTypography.caption2)
                     .foregroundStyle(AppColors.textTertiary)
             }
