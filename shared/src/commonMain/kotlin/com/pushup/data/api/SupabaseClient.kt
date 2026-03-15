@@ -388,27 +388,74 @@ class SupabaseClient(
     }
 
     // =========================================================================
-    // Username (delegated to Ktor backend -- not available via PostgREST)
+    // Username (via Supabase PostgREST -- always available, no backend needed)
     // =========================================================================
 
     /**
-     * Not implemented on SupabaseClient -- username operations go through the
-     * Ktor backend ([KtorApiClient]). Throws [UnsupportedOperationException].
+     * Checks whether [username] is available by querying the `users` table
+     * directly via Supabase PostgREST.
+     *
+     * Uses a case-insensitive filter (`ilike`) so "John" and "john" are treated
+     * as the same username. Returns [UsernameCheckResponse.available] = true
+     * when no row with that username exists, or when the only matching row
+     * belongs to the caller (so a user can "re-confirm" their own username).
+     *
+     * This does NOT require the Ktor backend to be running.
      */
-    override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse {
-        throw UnsupportedOperationException(
-            "checkUsernameAvailability must be called via KtorApiClient, not SupabaseClient"
-        )
-    }
+    override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse =
+        withRetry {
+            val token = tokenProvider()
+            val rows = httpClient.get("$restBase/users") {
+                supabaseHeaders(token)
+                // ilike = case-insensitive LIKE; exact match via "eq." would miss
+                // case variants that the DB constraint would reject anyway.
+                url.parameters.append("username", "ilike.$username")
+                url.parameters.append("select", "id")
+            }.also { it.expectSuccess() }
+                .body<List<Map<String, String>>>()
+
+            // Available when: no row found, OR the only row is the caller's own.
+            val callerId = runCatching { tokenProvider() }.getOrNull()
+            val available = rows.isEmpty() ||
+                rows.all { it["id"] == callerId }
+
+            UsernameCheckResponse(username = username, available = available)
+        }
 
     /**
-     * Not implemented on SupabaseClient -- username operations go through the
-     * Ktor backend ([KtorApiClient]). Throws [UnsupportedOperationException].
+     * Sets the username for the authenticated user via Supabase PostgREST PATCH.
+     *
+     * Uses `?id=eq.<userId>` to target only the caller's row (RLS also enforces
+     * this). Returns the updated username on success.
+     *
+     * Note: uniqueness is enforced by the `idx_users_username_unique` partial
+     * index in Supabase. A duplicate will result in a 409 / 23505 error from
+     * PostgREST which is mapped to [ApiException.Conflict].
      */
-    override suspend fun setUsername(request: SetUsernameRequest): String {
-        throw UnsupportedOperationException(
-            "setUsername must be called via KtorApiClient, not SupabaseClient"
-        )
+    override suspend fun setUsername(request: SetUsernameRequest): String = withRetry {
+        val token = tokenProvider()
+        val username = request.username.trim().lowercase()
+
+        // We need the caller's user ID to target the correct row.
+        // Decode it from the JWT sub claim via the /auth/v1/user endpoint.
+        val userProfile = httpClient.get("$supabaseUrl/auth/v1/user") {
+            header("apikey", supabasePublishableKey)
+            bearerAuth(token)
+        }.also { it.expectSuccess() }
+            .body<Map<String, kotlinx.serialization.json.JsonElement>>()
+
+        val userId = userProfile["id"]?.toString()?.trim('"')
+            ?: throw ApiException.Unknown(message = "Could not determine user ID from JWT")
+
+        httpClient.patch("$restBase/users") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$userId")
+            header("Prefer", "return=minimal")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("username" to username))
+        }.also { it.expectSuccess() }
+
+        username
     }
 
     // =========================================================================
