@@ -18,6 +18,7 @@
 --   public.time_credits     — Accumulated screen-time credit balance per user
 --   public.user_settings    — Per-user configuration (credit rate, cap, etc.)
 --   public.friendships      — Friend requests and accepted friendships
+--   public.friend_codes     — Shareable friend codes (one per user)
 --   public.notifications    — In-app notifications (friend requests, etc.)
 --   public.user_levels      — Accumulated XP per user
 --   public.device_tokens    — APNs / FCM push notification tokens
@@ -30,7 +31,7 @@
 --   Search works by username, display_name, or (optionally) email.
 --   Email search is controlled by user_settings.searchable_by_email (default FALSE).
 --
--- LAST UPDATED: 2026-03-15 (reflects migrations 001-009)
+-- LAST UPDATED: 2026-03-15 (reflects migrations 001-012)
 -- =============================================================================
 
 BEGIN;
@@ -272,6 +273,74 @@ DROP TRIGGER IF EXISTS trg_friendships_updated_at ON public.friendships;
 CREATE TRIGGER trg_friendships_updated_at
   BEFORE UPDATE ON public.friendships
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+-- =============================================================================
+-- TABLE: public.friend_codes
+-- =============================================================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'friend_code_privacy') THEN
+    CREATE TYPE public.friend_code_privacy AS ENUM (
+      'auto_accept',
+      'require_approval',
+      'inactive'
+    );
+  END IF;
+END; $$;
+
+COMMENT ON TYPE public.friend_code_privacy IS
+  'Privacy setting for a friend code: auto_accept (instant friend), require_approval (pending request), inactive (disabled).';
+
+CREATE TABLE IF NOT EXISTS public.friend_codes (
+  id         UUID                       PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID                       NOT NULL UNIQUE REFERENCES public.users(id) ON DELETE CASCADE,
+  code       TEXT                       NOT NULL UNIQUE,
+  privacy    public.friend_code_privacy NOT NULL DEFAULT 'require_approval',
+  created_at TIMESTAMPTZ                NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ                NOT NULL DEFAULT NOW(),
+  CONSTRAINT friend_codes_code_format CHECK (code ~ '^[A-Z0-9]{4,16}$')
+);
+
+COMMENT ON TABLE  public.friend_codes            IS 'Shareable friend codes -- one per user.';
+COMMENT ON COLUMN public.friend_codes.user_id    IS 'FK to users.id -- the owner of this code.';
+COMMENT ON COLUMN public.friend_codes.code       IS 'Short uppercase alphanumeric code (4-16 chars, globally unique).';
+COMMENT ON COLUMN public.friend_codes.privacy    IS 'Controls what happens when someone uses this code.';
+
+CREATE INDEX IF NOT EXISTS idx_friend_codes_code    ON public.friend_codes(code);
+CREATE INDEX IF NOT EXISTS idx_friend_codes_user_id ON public.friend_codes(user_id);
+
+DROP TRIGGER IF EXISTS trg_friend_codes_updated_at ON public.friend_codes;
+CREATE TRIGGER trg_friend_codes_updated_at
+  BEFORE UPDATE ON public.friend_codes
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+ALTER TABLE public.friend_codes ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='friend_codes' AND policyname='friend_codes_select') THEN
+    CREATE POLICY "friend_codes_select" ON public.friend_codes FOR SELECT USING (true);
+  END IF;
+END; $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='friend_codes' AND policyname='friend_codes_insert_own') THEN
+    CREATE POLICY "friend_codes_insert_own" ON public.friend_codes FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+END; $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='friend_codes' AND policyname='friend_codes_update_own') THEN
+    CREATE POLICY "friend_codes_update_own" ON public.friend_codes FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  END IF;
+END; $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='friend_codes' AND policyname='friend_codes_delete_own') THEN
+    CREATE POLICY "friend_codes_delete_own" ON public.friend_codes FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+END; $$;
 
 
 -- =============================================================================
