@@ -5,7 +5,6 @@ import com.pushup.dto.FriendActivityStatsDTO
 import com.pushup.dto.StatsPeriod
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
-import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -136,8 +135,16 @@ open class FriendActivityStatsService {
         // ------------------------------------------------------------------
         // 4. Compute the friend's current workout streak
         //
-        // Reuses the same DATE_TRUNC query and pure calculateCurrentStreak
-        // helper from StatsService so the logic is consistent.
+        // PostgreSQL requires that ORDER BY expressions appear in the SELECT
+        // list when using SELECT DISTINCT. Since startedAtDay is a
+        // CustomFunction (DATE_TRUNC), Exposed generates two separate
+        // parameter bindings -- one for SELECT, one for ORDER BY -- which
+        // PostgreSQL rejects as "not in select list".
+        //
+        // Solution: fetch all rows without DISTINCT/ORDER BY, then
+        // deduplicate and sort in Kotlin. The result set is bounded by the
+        // total number of completed sessions for this user, which is small
+        // enough that in-memory deduplication is not a concern.
         // ------------------------------------------------------------------
         val workoutDays: List<LocalDate> = WorkoutSessions
             .select(WorkoutSessions.startedAtDay)
@@ -145,9 +152,9 @@ open class FriendActivityStatsService {
                 (WorkoutSessions.userId eq friendId) and
                 WorkoutSessions.endedAt.isNotNull()
             }
-            .withDistinct()
-            .orderBy(WorkoutSessions.startedAtDay to SortOrder.DESC)
             .map { it[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
+            .distinct()
+            .sortedDescending()
 
         val currentStreak = calculateCurrentStreak(workoutDays, today)
 
