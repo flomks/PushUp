@@ -215,7 +215,10 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         guard !code.isEmpty else { return }
         hasDelivered = true
         session.stopRunning()
-        DispatchQueue.main.async { self.onCode?(code) }
+        DispatchQueue.main.async {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            self.onCode?(code)
+        }
     }
 
     // MARK: Code extraction
