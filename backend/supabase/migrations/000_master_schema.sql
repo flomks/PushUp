@@ -382,9 +382,11 @@ BEGIN
                    END,
     updated_at   = NOW();
 
-  INSERT INTO public.time_credits  (user_id) VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_settings (user_id) VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_levels   (user_id) VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  -- Explicitly pass gen_random_uuid() for id to avoid relying on column defaults,
+  -- which may not be set if the table was created by an older migration.
+  INSERT INTO public.time_credits  (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.user_settings (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.user_levels   (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
