@@ -98,6 +98,16 @@ struct MainTabView: View {
     /// badge and the FriendsView so they always reflect the same state.
     @StateObject private var friendsViewModel = FriendsViewModel()
 
+    /// When a friend-code deep-link is opened, this holds the code so the
+    /// Friends tab can present the Enter Code sheet automatically.
+    @State private var pendingFriendCode: String? = nil
+
+    /// Controls the Enter Code sheet triggered by a deep-link.
+    @State private var showFriendCodeSheet = false
+
+    /// Shared ViewModel for friend code operations (used by deep-link sheet).
+    @StateObject private var friendCodeViewModel = FriendCodeViewModel()
+
     var body: some View {
         ZStack(alignment: .top) {
             TabView(selection: $selectedTab) {
@@ -174,6 +184,13 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             handleShieldWorkoutFlag()
         }
+        // Handle pushup://friend-code/<CODE> deep-links
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
+        .sheet(isPresented: $showFriendCodeSheet) {
+            EnterFriendCodeSheet(viewModel: friendCodeViewModel)
+        }
     }
 
     // MARK: - Shield Deep Link
@@ -187,6 +204,34 @@ struct MainTabView: View {
         defaults?.removeObject(forKey: "shield.shouldOpenWorkout")
         defaults?.synchronize()
         selectedTab = .workout
+    }
+
+    // MARK: - Friend Code Deep Link
+
+    /// Handles `pushup://friend-code/<CODE>` deep-links.
+    ///
+    /// Switches to the Friends tab and opens the Enter Code sheet with the
+    /// code pre-filled so the user only needs to tap "Add Friend".
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "pushup",
+              url.host == "friend-code" else { return }
+
+        // Extract the code from the path: /AB3X7K2M -> "AB3X7K2M"
+        let code = url.pathComponents
+            .filter { $0 != "/" }
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard let code, !code.isEmpty else { return }
+
+        // Switch to Friends tab and open the Enter Code sheet.
+        selectedTab = .friends
+        friendCodeViewModel.enteredCode = code
+        // Small delay so the tab switch animation completes first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            showFriendCodeSheet = true
+        }
     }
 }
 
