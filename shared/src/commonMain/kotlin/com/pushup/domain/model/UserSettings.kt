@@ -3,12 +3,14 @@ package com.pushup.domain.model
 import kotlinx.serialization.Serializable
 
 /**
- * User-configurable settings that control how credits are earned.
+ * User-configurable settings.
  *
- * @property userId Identifier of the user these settings belong to.
- * @property pushUpsPerMinuteCredit Number of push-ups required to earn one minute of screen time.
+ * @property userId                  Identifier of the user these settings belong to.
+ * @property pushUpsPerMinuteCredit  Push-ups required to earn one minute of screen time.
  * @property qualityMultiplierEnabled When `true`, higher-quality push-ups earn bonus credits.
- * @property dailyCreditCapSeconds Optional daily cap on earnable credits (`null` means unlimited).
+ * @property dailyCreditCapSeconds   Optional daily cap on earnable credits (`null` = unlimited).
+ * @property searchableByEmail       When `true`, other users can find this account by email.
+ *                                   Defaults to `false` (email is private).
  */
 @Serializable
 data class UserSettings(
@@ -16,6 +18,7 @@ data class UserSettings(
     val pushUpsPerMinuteCredit: Int,
     val qualityMultiplierEnabled: Boolean,
     val dailyCreditCapSeconds: Long?,
+    val searchableByEmail: Boolean = false,
 ) {
     init {
         require(userId.isNotBlank()) { "UserSettings.userId must not be blank" }
@@ -32,16 +35,13 @@ data class UserSettings(
     companion object {
         /**
          * Sensible defaults for a new user.
-         *
-         * - [pushUpsPerMinuteCredit] = 10 (earn 1 minute of screen time per 10 push-ups)
-         * - [qualityMultiplierEnabled] = false (quality bonus disabled by default)
-         * - [dailyCreditCapSeconds] = null (no daily cap)
          */
         fun default(userId: String): UserSettings = UserSettings(
             userId = userId,
             pushUpsPerMinuteCredit = 10,
             qualityMultiplierEnabled = false,
             dailyCreditCapSeconds = null,
+            searchableByEmail = false,
         )
     }
 }

@@ -72,7 +72,8 @@ class RepositoryTests {
         displayName: String = "Test User",
         createdAt: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
         lastSyncedAt: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
-    ) = User(id, email, username, displayName, createdAt, lastSyncedAt)
+    ) = User(id = id, email = email, username = username, displayName = displayName,
+             createdAt = createdAt, lastSyncedAt = lastSyncedAt)
 
     private fun testSession(
         id: String = "session-1",
@@ -170,6 +171,8 @@ class RepositoryTests {
             email = "test@example.com",
             username = null,
             displayName = "Test User",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_000_000_000L,
         )

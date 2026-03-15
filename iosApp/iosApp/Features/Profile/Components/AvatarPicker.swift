@@ -2,22 +2,31 @@ import SwiftUI
 
 // MARK: - AvatarView
 
-/// Circular avatar display that shows either a loaded image or an
-/// initials-based fallback with a gradient background.
+/// Circular avatar display with three display modes:
 ///
-/// Used standalone for display and as the base of `AvatarPickerButton`.
+/// 1. **Local image** (`image` parameter) — shown immediately, used after
+///    the user picks a photo from camera/library before it is uploaded.
+/// 2. **Remote URL** (`url` parameter) — loaded asynchronously via AsyncImage.
+///    Shows a shimmer placeholder while loading and falls back to initials on error.
+/// 3. **Initials fallback** — shown when both `image` and `url` are nil, or
+///    when the remote image fails to load.
+///
+/// Priority: local `image` > remote `url` > initials.
 ///
 /// Usage:
 /// ```swift
-/// AvatarView(
-///     image: viewModel.avatarImage,
-///     initials: viewModel.initials,
-///     size: 96
-/// )
+/// // Own profile (local UIImage after picking):
+/// AvatarView(image: viewModel.avatarImage, initials: viewModel.initials, size: 96)
+///
+/// // Friend in search results (remote URL):
+/// AvatarView(url: URL(string: item.avatarUrl), initials: item.initials, size: 44)
 /// ```
 struct AvatarView: View {
 
-    let image: UIImage?
+    /// A locally held UIImage (e.g. just picked from camera). Takes priority over `url`.
+    var image: UIImage? = nil
+    /// A remote URL to load asynchronously.
+    var url: URL? = nil
     let initials: String
     let size: CGFloat
 
@@ -26,9 +35,28 @@ struct AvatarView: View {
     var body: some View {
         Group {
             if let image {
+                // Local image — show immediately (no network needed).
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
+            } else if let url {
+                // Remote URL — load asynchronously.
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        // Loading: show a subtle shimmer placeholder.
+                        shimmerView
+                    case .success(let loaded):
+                        loaded
+                            .resizable()
+                            .scaledToFill()
+                    case .failure:
+                        // Network error or bad URL: fall back to initials.
+                        initialsView
+                    @unknown default:
+                        initialsView
+                    }
+                }
             } else {
                 initialsView
             }
@@ -37,6 +65,8 @@ struct AvatarView: View {
         .clipShape(Circle())
         .accessibilityHidden(true)
     }
+
+    // MARK: - Sub-views
 
     private var initialsView: some View {
         ZStack {
@@ -53,6 +83,15 @@ struct AvatarView: View {
                 .font(.system(size: fontSize, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
         }
+    }
+
+    private var shimmerView: some View {
+        Circle()
+            .fill(AppColors.backgroundSecondary)
+            .overlay(
+                Circle()
+                    .fill(AppColors.textTertiary.opacity(0.15))
+            )
     }
 }
 

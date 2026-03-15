@@ -17,6 +17,20 @@ struct FriendItem: Identifiable {
         guard let u = username, displayName != nil else { return nil }
         return "@\(u)"
     }
+
+    /// Initials derived from displayName or username for the avatar fallback.
+    var initials: String { Self.makeInitials(displayName ?? username) }
+
+    static func makeInitials(_ name: String?) -> String {
+        guard let name, !name.isEmpty else { return "?" }
+        let parts = name.trimmingCharacters(in: .whitespaces)
+            .components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        switch parts.count {
+        case 0: return "?"
+        case 1: return String(parts[0].prefix(2)).uppercased()
+        default: return "\(parts[0].prefix(1))\(parts[parts.count - 1].prefix(1))".uppercased()
+        }
+    }
 }
 
 struct FriendRequestItem: Identifiable {
@@ -24,6 +38,7 @@ struct FriendRequestItem: Identifiable {
     let requesterId: String
     let username: String?
     let displayName: String?
+    let avatarUrl: String?
     let createdAt: String
 
     var displayLabel: String { displayName ?? username ?? "Unknown" }
@@ -32,12 +47,15 @@ struct FriendRequestItem: Identifiable {
         guard let u = username, displayName != nil else { return nil }
         return "@\(u)"
     }
+
+    var initials: String { FriendItem.makeInitials(displayName ?? username) }
 }
 
 struct UserSearchItem: Identifiable {
     let id: String
     let username: String?
     let displayName: String?
+    let avatarUrl: String?
     /// Raw status string from the KMP layer: "none" | "pending" | "friend"
     let friendshipStatus: String
 
@@ -47,6 +65,8 @@ struct UserSearchItem: Identifiable {
         guard let u = username, displayName != nil else { return nil }
         return "@\(u)"
     }
+
+    var initials: String { FriendItem.makeInitials(displayName ?? username) }
 }
 
 // MARK: - Leaderboard

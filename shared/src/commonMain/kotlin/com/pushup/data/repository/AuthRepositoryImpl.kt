@@ -236,8 +236,12 @@ class AuthRepositoryImpl(
      * @param emailOverride Caller-supplied email (non-null for email/password flows).
      */
     private suspend fun makeUserPreservingUsername(token: AuthToken, emailOverride: String?): User {
-        val existingUsername = userRepository.getCurrentUser()?.username
-        return makeUser(token, emailOverride).copy(username = existingUsername)
+        val existing = userRepository.getCurrentUser()
+        return makeUser(token, emailOverride).copy(
+            username         = existing?.username,
+            avatarUrl        = existing?.avatarUrl,
+            avatarVisibility = existing?.avatarVisibility ?: com.pushup.domain.model.AvatarVisibility.EVERYONE,
+        )
     }
 
     /**

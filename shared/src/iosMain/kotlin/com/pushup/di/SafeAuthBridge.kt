@@ -5,6 +5,7 @@ import com.pushup.data.api.KtorApiClient
 import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.domain.model.AuthException
+import com.pushup.domain.model.AvatarVisibility
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
@@ -186,6 +187,44 @@ object SafeAuthBridge : KoinComponent {
         throw CancellationException()
     } catch (e: Exception) {
         SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to set username.")
+    }
+
+    /**
+     * Updates the avatar URL for the currently authenticated user.
+     *
+     * Pass `null` to clear the avatar (revert to initials fallback).
+     * Persists locally immediately; cloud sync will propagate the change.
+     */
+    suspend fun safeUpdateAvatar(avatarUrl: String?): SafeAuthResult = try {
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser()
+            ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
+        userRepo.updateUserAvatar(userId = user.id, avatarUrl = avatarUrl)
+        val updated = user.copy(avatarUrl = avatarUrl)
+        SafeAuthResult(user = updated, errorMessage = null)
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (e: Exception) {
+        SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to update avatar.")
+    }
+
+    /**
+     * Updates the avatar visibility setting for the currently authenticated user.
+     *
+     * @param visibility One of: "everyone", "friends_only", "nobody"
+     */
+    suspend fun safeUpdateAvatarVisibility(visibility: String): SafeAuthResult = try {
+        val parsed = AvatarVisibility.fromDbValue(visibility)
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser()
+            ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
+        userRepo.updateUserAvatarVisibility(userId = user.id, visibility = parsed)
+        val updated = user.copy(avatarVisibility = parsed)
+        SafeAuthResult(user = updated, errorMessage = null)
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (e: Exception) {
+        SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to update avatar visibility.")
     }
 
     private suspend fun safeCall(block: suspend () -> User): SafeAuthResult = try {

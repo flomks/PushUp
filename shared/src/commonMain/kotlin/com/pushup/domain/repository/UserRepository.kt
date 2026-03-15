@@ -1,5 +1,6 @@
 package com.pushup.domain.repository
 
+import com.pushup.domain.model.AvatarVisibility
 import com.pushup.domain.model.User
 import kotlinx.coroutines.flow.Flow
 
@@ -57,15 +58,19 @@ interface UserRepository {
 
     /**
      * Updates only the [username] field for the user with [userId].
-     *
-     * This is a targeted update that does not require loading the full [User]
-     * object first. Used after the username setup screen to persist the chosen
-     * username locally without overwriting other fields.
-     *
-     * @param userId   The ID of the user to update.
-     * @param username The new username to set (already validated and lowercased).
      */
     suspend fun updateUserUsername(userId: String, username: String)
+
+    /**
+     * Updates only the [avatarUrl] field for the user with [userId].
+     * Pass `null` to clear the avatar (revert to initials fallback).
+     */
+    suspend fun updateUserAvatar(userId: String, avatarUrl: String?)
+
+    /**
+     * Updates only the [avatarVisibility] field for the user with [userId].
+     */
+    suspend fun updateUserAvatarVisibility(userId: String, visibility: AvatarVisibility)
 
     /**
      * Observes the currently authenticated user as a reactive [Flow].

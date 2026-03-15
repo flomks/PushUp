@@ -1,0 +1,6 @@
+-- Migration 3 -> 4
+-- Adds avatarUrl and avatarVisibility columns to the User table.
+-- avatarUrl: the effective avatar URL (custom takes priority over OAuth).
+-- avatarVisibility: 'everyone' | 'friends_only' | 'nobody' (default 'everyone').
+ALTER TABLE User ADD COLUMN avatarUrl TEXT;
+ALTER TABLE User ADD COLUMN avatarVisibility TEXT NOT NULL DEFAULT 'everyone';

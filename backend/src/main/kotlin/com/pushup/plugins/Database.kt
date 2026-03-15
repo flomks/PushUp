@@ -147,13 +147,39 @@ enum class FriendshipStatus(override val pgValue: String) : PgEnumValue {
 // ---------------------------------------------------------------------------
 
 object Users : Table("users") {
-    val id          = uuid("id")
-    val email       = text("email")
-    val username    = text("username").nullable()
-    val displayName = text("display_name").nullable()
-    val avatarUrl   = text("avatar_url").nullable()
-    val createdAt   = timestampWithTimeZone("created_at")
-    val updatedAt   = timestampWithTimeZone("updated_at")
+    val id                = uuid("id")
+    val email             = text("email")
+    val username          = text("username").nullable()
+    val displayName       = text("display_name").nullable()
+    val avatarUrl         = text("avatar_url").nullable()         // OAuth provider avatar
+    val customAvatarUrl   = text("custom_avatar_url").nullable()  // user-uploaded avatar (priority)
+    val avatarVisibility  = text("avatar_visibility")             // 'everyone' | 'friends_only' | 'nobody'
+    val createdAt         = timestampWithTimeZone("created_at")
+    val updatedAt         = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+
+    /**
+     * Returns the effective avatar URL for a result row:
+     * custom_avatar_url takes priority over avatar_url (OAuth).
+     */
+    fun resolvedAvatarUrl(row: org.jetbrains.exposed.sql.ResultRow): String? =
+        row[customAvatarUrl] ?: row[avatarUrl]
+}
+
+/**
+ * Mirrors the public.user_settings table in Supabase.
+ * One row per user -- per-user configuration for the credit system.
+ */
+object UserSettings : Table("user_settings") {
+    val id                       = uuid("id")
+    val userId                   = uuid("user_id").references(Users.id)
+    val pushUpsPerMinuteCredit   = integer("push_ups_per_minute_credit")
+    val qualityMultiplierEnabled = bool("quality_multiplier_enabled")
+    val dailyCreditCapSeconds    = long("daily_credit_cap_seconds").nullable()
+    val searchableByEmail        = bool("searchable_by_email")
+    val createdAt                = timestampWithTimeZone("created_at")
+    val updatedAt                = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
 }

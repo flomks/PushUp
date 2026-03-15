@@ -89,6 +89,9 @@ fun Route.userRoutes(databaseReady: Boolean = true) {
                         return@get
                     }
 
+                    // For the user's own profile, always return the full resolved avatar
+                    // (custom_avatar_url takes priority over OAuth avatar_url).
+                    // Visibility is not applied here because the user is viewing their own profile.
                     call.respond(
                         HttpStatusCode.OK,
                         UserResponse(
@@ -96,7 +99,7 @@ fun Route.userRoutes(databaseReady: Boolean = true) {
                             email       = userRow[Users.email],
                             username    = userRow[Users.username],
                             displayName = userRow[Users.displayName],
-                            avatarUrl   = userRow[Users.avatarUrl],
+                            avatarUrl   = userRow[Users.customAvatarUrl] ?: userRow[Users.avatarUrl],
                             createdAt   = userRow[Users.createdAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                             updatedAt   = userRow[Users.updatedAt].format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                         ),

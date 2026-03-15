@@ -21,6 +21,7 @@ fun DbUserSettings.toDomain(): UserSettings = UserSettings(
     ),
     qualityMultiplierEnabled = qualityMultiplierEnabled != 0L,
     dailyCreditCapSeconds = dailyCreditCapSeconds,
+    searchableByEmail = searchableByEmail != 0L,
 )
 
 /**
@@ -35,4 +36,5 @@ fun UserSettings.toDbEntity(id: String): DbUserSettings = DbUserSettings(
     pushUpsPerMinuteCredit = pushUpsPerMinuteCredit.toLong(),
     qualityMultiplierEnabled = if (qualityMultiplierEnabled) 1L else 0L,
     dailyCreditCapSeconds = dailyCreditCapSeconds,
+    searchableByEmail = if (searchableByEmail) 1L else 0L,
 )

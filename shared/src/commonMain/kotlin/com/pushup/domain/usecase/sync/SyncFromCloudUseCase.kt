@@ -3,6 +3,7 @@ package com.pushup.domain.usecase.sync
 import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.isTransient
+import com.pushup.domain.model.AvatarVisibility
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
@@ -190,16 +191,24 @@ class SyncFromCloudUseCase(
                 val remote = supabaseClient.getUserProfile(userId) ?: return
                 val local = userRepository.getCurrentUser() ?: return
 
-                val remoteDisplayName = remote.displayName?.trim()?.takeIf { it.isNotBlank() }
-                val remoteUsername = remote.username?.trim()?.takeIf { it.isNotBlank() }
+                val remoteDisplayName    = remote.displayName?.trim()?.takeIf { it.isNotBlank() }
+                val remoteUsername       = remote.username?.trim()?.takeIf { it.isNotBlank() }
+                val remoteAvatarUrl      = remote.effectiveAvatarUrl
+                val remoteVisibility     = remote.avatarVisibility
+                    ?.let { AvatarVisibility.fromDbValue(it) }
 
-                val needsUpdate = (remoteDisplayName != null && local.displayName != remoteDisplayName) ||
-                    (remoteUsername != null && local.username != remoteUsername)
+                val needsUpdate =
+                    (remoteDisplayName != null && local.displayName != remoteDisplayName) ||
+                    (remoteUsername    != null && local.username    != remoteUsername)    ||
+                    (remoteAvatarUrl   != null && local.avatarUrl   != remoteAvatarUrl)  ||
+                    (remoteVisibility  != null && local.avatarVisibility != remoteVisibility)
 
                 if (needsUpdate) {
                     val updated = local.copy(
-                        displayName = remoteDisplayName ?: local.displayName,
-                        username = remoteUsername ?: local.username,
+                        displayName      = remoteDisplayName  ?: local.displayName,
+                        username         = remoteUsername     ?: local.username,
+                        avatarUrl        = remoteAvatarUrl    ?: local.avatarUrl,
+                        avatarVisibility = remoteVisibility   ?: local.avatarVisibility,
                     )
                     userRepository.updateUser(updated)
                 }

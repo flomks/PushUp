@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v2)
+-- PushUp App Local Database Schema (v4)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 --
@@ -7,18 +7,23 @@
 --   v1 (initial) — User, WorkoutSession, PushUpRecord, TimeCredit,
 --                  UserSettings, UserLevel tables.
 --   v2 (1.sqm)   — Added username column to User table.
+--   v3 (2.sqm)   — Added searchableByEmail column to UserSettings table.
+--   v4 (3.sqm)   — Added avatarUrl and avatarVisibility columns to User table.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
 -- User (local profile, one per device)
+-- avatarVisibility: 'everyone' | 'friends_only' | 'nobody'
 -- -----------------------------------------------------------------------------
 CREATE TABLE User (
-    id          TEXT    NOT NULL PRIMARY KEY,
-    email       TEXT    NOT NULL,
-    username    TEXT,
-    displayName TEXT    NOT NULL,
-    createdAt   INTEGER NOT NULL,
-    syncedAt    INTEGER
+    id               TEXT    NOT NULL PRIMARY KEY,
+    email            TEXT    NOT NULL,
+    username         TEXT,
+    displayName      TEXT    NOT NULL,
+    avatarUrl        TEXT,
+    avatarVisibility TEXT    NOT NULL DEFAULT 'everyone',
+    createdAt        INTEGER NOT NULL,
+    syncedAt         INTEGER
 );
 
 -- -----------------------------------------------------------------------------
@@ -77,13 +82,15 @@ CREATE INDEX idx_time_credit_user_id ON TimeCredit(userId);
 -- UserSettings
 -- Per-user configuration (one row per user).
 -- qualityMultiplierEnabled: 0 = false, 1 = true (SQLite has no BOOLEAN).
+-- searchableByEmail:        0 = false, 1 = true (SQLite has no BOOLEAN).
 -- -----------------------------------------------------------------------------
 CREATE TABLE UserSettings (
     id                       TEXT    NOT NULL PRIMARY KEY,
     userId                   TEXT    NOT NULL UNIQUE REFERENCES User(id) ON DELETE CASCADE,
     pushUpsPerMinuteCredit   INTEGER NOT NULL DEFAULT 10,
     qualityMultiplierEnabled INTEGER NOT NULL DEFAULT 0,
-    dailyCreditCapSeconds    INTEGER
+    dailyCreditCapSeconds    INTEGER,
+    searchableByEmail        INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_user_settings_user_id ON UserSettings(userId);
@@ -93,8 +100,8 @@ CREATE INDEX idx_user_settings_user_id ON UserSettings(userId);
 -- =============================================================================
 
 insertUser:
-INSERT INTO User (id, email, username, displayName, createdAt, syncedAt)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO User (id, email, username, displayName, avatarUrl, avatarVisibility, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 selectUserById:
 SELECT *
@@ -114,7 +121,7 @@ LIMIT 1;
 
 updateUser:
 UPDATE User
-SET email = ?, username = ?, displayName = ?, syncedAt = ?
+SET email = ?, username = ?, displayName = ?, avatarUrl = ?, avatarVisibility = ?, syncedAt = ?
 WHERE id = ?;
 
 updateUserUsername:
@@ -122,9 +129,19 @@ UPDATE User
 SET username = ?
 WHERE id = ?;
 
+updateUserAvatar:
+UPDATE User
+SET avatarUrl = ?
+WHERE id = ?;
+
+updateUserAvatarVisibility:
+UPDATE User
+SET avatarVisibility = ?
+WHERE id = ?;
+
 upsertUser:
-INSERT OR REPLACE INTO User (id, email, username, displayName, createdAt, syncedAt)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO User (id, email, username, displayName, avatarUrl, avatarVisibility, createdAt, syncedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteUser:
 DELETE FROM User
@@ -301,8 +318,8 @@ VALUES (?, ?, ?, ?, ?, ?);
 -- =============================================================================
 
 insertUserSettings:
-INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
+VALUES (?, ?, ?, ?, ?, ?);
 
 selectUserSettingsById:
 SELECT *
@@ -315,8 +332,13 @@ FROM UserSettings;
 
 updateUserSettings:
 UPDATE UserSettings
-SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?
+SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?, searchableByEmail = ?
 WHERE id = ?;
+
+updateUserSettingsSearchableByEmail:
+UPDATE UserSettings
+SET searchableByEmail = ?
+WHERE userId = ?;
 
 deleteUserSettings:
 DELETE FROM UserSettings
@@ -332,8 +354,8 @@ FROM UserSettings
 WHERE userId = ?;
 
 upsertUserSettings:
-INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- =============================================================================
 -- UserLevel

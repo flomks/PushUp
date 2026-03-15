@@ -32,6 +32,8 @@ class MapperTest {
             email = "test@example.com",
             username = "test_user",
             displayName = "Test User",
+            avatarUrl = "https://example.com/avatar.jpg",
+            avatarVisibility = "everyone",
             createdAt = 1_700_000_000_000L,
             syncedAt = 1_700_001_000_000L,
         )
@@ -52,6 +54,8 @@ class MapperTest {
             email = "null@example.com",
             username = null,
             displayName = "Null Sync",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
             createdAt = 1_700_000_000_000L,
             syncedAt = null,
         )
@@ -398,6 +402,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 15L,
             qualityMultiplierEnabled = 1L,
             dailyCreditCapSeconds = 3600L,
+            searchableByEmail = 1L,
         )
 
         val domain = dbSettings.toDomain()
@@ -406,6 +411,7 @@ class MapperTest {
         assertEquals(15, domain.pushUpsPerMinuteCredit)
         assertTrue(domain.qualityMultiplierEnabled)
         assertEquals(3600L, domain.dailyCreditCapSeconds)
+        assertTrue(domain.searchableByEmail)
     }
 
     @Test
@@ -416,12 +422,14 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = 0L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()
 
         assertFalse(domain.qualityMultiplierEnabled)
         assertNull(domain.dailyCreditCapSeconds)
+        assertFalse(domain.searchableByEmail)
     }
 
     @Test
@@ -431,6 +439,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 20,
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 7200L,
+            searchableByEmail = true,
         )
 
         val db = settings.toDbEntity(id = "settings-3")
@@ -440,6 +449,7 @@ class MapperTest {
         assertEquals(20L, db.pushUpsPerMinuteCredit)
         assertEquals(1L, db.qualityMultiplierEnabled)
         assertEquals(7200L, db.dailyCreditCapSeconds)
+        assertEquals(1L, db.searchableByEmail)
     }
 
     @Test
@@ -449,12 +459,14 @@ class MapperTest {
             pushUpsPerMinuteCredit = 5,
             qualityMultiplierEnabled = false,
             dailyCreditCapSeconds = null,
+            searchableByEmail = false,
         )
 
         val db = settings.toDbEntity(id = "settings-4")
 
         assertEquals(0L, db.qualityMultiplierEnabled)
         assertNull(db.dailyCreditCapSeconds)
+        assertEquals(0L, db.searchableByEmail)
     }
 
     @Test
@@ -464,6 +476,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 12,
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 1800L,
+            searchableByEmail = true,
         )
 
         val roundTripped = original.toDbEntity(id = "settings-rt").toDomain()
@@ -472,6 +485,7 @@ class MapperTest {
         assertEquals(original.pushUpsPerMinuteCredit, roundTripped.pushUpsPerMinuteCredit)
         assertEquals(original.qualityMultiplierEnabled, roundTripped.qualityMultiplierEnabled)
         assertEquals(original.dailyCreditCapSeconds, roundTripped.dailyCreditCapSeconds)
+        assertEquals(original.searchableByEmail, roundTripped.searchableByEmail)
     }
 
     // =========================================================================
@@ -551,6 +565,8 @@ class MapperTest {
             email = "epoch@example.com",
             username = null,
             displayName = "Epoch User",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
             createdAt = 0L,
             syncedAt = 0L,
         )
@@ -570,6 +586,8 @@ class MapperTest {
             email = "future@example.com",
             username = null,
             displayName = "Future User",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
             createdAt = farFuture,
             syncedAt = farFuture,
         )
@@ -593,6 +611,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = 42L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()
@@ -608,6 +627,7 @@ class MapperTest {
             pushUpsPerMinuteCredit = 10L,
             qualityMultiplierEnabled = -1L,
             dailyCreditCapSeconds = null,
+            searchableByEmail = 0L,
         )
 
         val domain = dbSettings.toDomain()
@@ -622,8 +642,8 @@ class MapperTest {
     @Test
     fun list_dbUsers_toDomain_mapsAll() {
         val dbUsers = listOf(
-            DbUser("u1", "a@b.com", null, "A", 1_000L, 2_000L),
-            DbUser("u2", "c@d.com", null, "B", 3_000L, null),
+            DbUser("u1", "a@b.com", null, "A", null, "everyone", 1_000L, 2_000L),
+            DbUser("u2", "c@d.com", null, "B", null, "everyone", 3_000L, null),
         )
 
         val domainUsers = dbUsers.map { it.toDomain() }
