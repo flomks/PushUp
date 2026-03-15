@@ -126,6 +126,21 @@ final class ProfileViewModel: ObservableObject {
     /// The user's current display name (editable).
     @Published var displayName: String = ""
 
+    /// The user's current username (editable, unique).
+    @Published var usernameInput: String = ""
+
+    /// Whether the username entered is available (nil = not yet checked or unchanged).
+    @Published private(set) var isUsernameAvailable: Bool? = nil
+
+    /// Whether an availability check is in progress.
+    @Published private(set) var isCheckingUsername: Bool = false
+
+    /// Non-nil when the availability check failed due to a network error.
+    @Published private(set) var usernameCheckError: String? = nil
+
+    /// Whether a username save is in progress.
+    @Published private(set) var isSavingUsername: Bool = false
+
     /// The user's email address (read-only).
     @Published private(set) var email: String = ""
 
@@ -236,10 +251,56 @@ final class ProfileViewModel: ObservableObject {
             && trimmed.count <= ProfileValidation.maxDisplayNameLength
     }
 
+    // MARK: - Username Derived
+
+    /// Local format validation error for the username field (nil = valid or empty).
+    var usernameValidationError: String? {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.count < 3  { return "At least 3 characters" }
+        if trimmed.count > 20 { return "At most 20 characters" }
+        if trimmed.range(of: #"^[a-z0-9_.]+$"#, options: .regularExpression) == nil {
+            return "Letters, digits, underscores, and dots only"
+        }
+        if trimmed.hasPrefix(".") || trimmed.hasSuffix(".") { return "Cannot start or end with a dot" }
+        if trimmed.contains("..") { return "Cannot contain consecutive dots" }
+        return nil
+    }
+
+    /// Whether the username input passes all local validation rules.
+    var isUsernameLocallyValid: Bool {
+        let t = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard t.count >= 3, t.count <= 20 else { return false }
+        guard t.range(of: #"^[a-z0-9_.]+$"#, options: .regularExpression) != nil else { return false }
+        guard !t.hasPrefix("."), !t.hasSuffix("."), !t.contains("..") else { return false }
+        return true
+    }
+
+    /// Whether the username input differs from the currently saved username.
+    var hasUnsavedUsernameChange: Bool {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        return !trimmed.isEmpty && trimmed != savedUsername
+    }
+
+    /// Whether the Save button for username should be enabled.
+    var canSaveUsername: Bool {
+        hasUnsavedUsernameChange
+            && isUsernameLocallyValid
+            && isUsernameAvailable == true
+            && !isSavingUsername
+            && !isCheckingUsername
+    }
+
     // MARK: - Private
 
     /// The last successfully saved display name. Used to detect unsaved changes.
     private var savedDisplayName: String = ""
+
+    /// The last successfully saved username. Used to detect unsaved changes.
+    private var savedUsername: String = ""
+
+    /// Debounce task for username availability checks.
+    private var usernameCheckTask: Task<Void, Never>? = nil
 
     /// Cancellable handle for the success-message auto-dismiss task.
     private var successDismissTask: Task<Void, Never>?
@@ -318,6 +379,74 @@ final class ProfileViewModel: ObservableObject {
         }
 
         isSavingName = false
+    }
+
+    // MARK: - Username Actions
+
+    /// Called whenever the username input changes. Resets availability and debounces the check.
+    func onUsernameInputChanged() {
+        isUsernameAvailable = nil
+        usernameCheckError = nil
+        usernameCheckTask?.cancel()
+
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+
+        // If the user typed back their current username, no check needed.
+        if trimmed == savedUsername {
+            isUsernameAvailable = nil
+            return
+        }
+
+        guard isUsernameLocallyValid else { return }
+
+        usernameCheckTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await checkUsernameAvailability(trimmed)
+        }
+    }
+
+    private func checkUsernameAvailability(_ username: String) async {
+        isCheckingUsername = true
+        let result = await AuthService.shared.checkUsernameAvailability(username)
+        isCheckingUsername = false
+
+        let currentTrimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard currentTrimmed == username else { return }
+
+        if let errorMsg = result.errorMessage {
+            isUsernameAvailable = nil
+            if !errorMsg.lowercased().contains("cancel") {
+                usernameCheckError = errorMsg
+            }
+        } else {
+            isUsernameAvailable = result.available
+            usernameCheckError = nil
+        }
+    }
+
+    /// Saves the new username. Validates locally, checks availability, then persists.
+    func saveUsername() async {
+        let trimmed = usernameInput.trimmingCharacters(in: .whitespaces).lowercased()
+        guard trimmed != savedUsername else { return }
+        guard isUsernameLocallyValid else { return }
+
+        isSavingUsername = true
+        errorMessage = nil
+
+        let result = await AuthService.shared.setUsername(trimmed)
+        isSavingUsername = false
+
+        if result.isSuccess {
+            savedUsername = trimmed
+            usernameInput = trimmed
+            isUsernameAvailable = nil
+            showSuccess("Username updated.")
+        } else {
+            errorMessage = result.errorMessage ?? "Could not save username."
+            // Re-check availability in case it was taken between check and submit.
+            isUsernameAvailable = nil
+        }
     }
 
     /// Handles a new avatar image selected from camera or photo library.
@@ -528,6 +657,11 @@ final class ProfileViewModel: ObservableObject {
     private func applyUserData(_ user: User) {
         displayName = user.displayName
         savedDisplayName = user.displayName
+
+        let currentUsername = user.username ?? ""
+        usernameInput = currentUsername
+        savedUsername = currentUsername
+
         email = user.email
 
         // Avatar: use the URL from the KMP User (resolved: custom > OAuth).

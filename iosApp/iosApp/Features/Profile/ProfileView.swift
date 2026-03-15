@@ -155,6 +155,7 @@ struct ProfileView: View {
             VStack(spacing: AppSpacing.lg) {
                 avatarSection
                 Divider()
+                usernameRow
                 displayNameRow
                 profileInfoRow(
                     icon: .envelope,
@@ -193,6 +194,127 @@ struct ProfileView: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
         }
+    }
+
+    // MARK: - Username Row
+
+    @FocusState private var isUsernameFieldFocused: Bool
+
+    private var usernameRow: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            // Label row
+            HStack(spacing: AppSpacing.xs) {
+                Image(systemName: "at")
+                    .font(.system(size: AppSpacing.iconSizeSmall, weight: .semibold))
+                    .foregroundStyle(AppColors.secondary)
+                    .frame(width: AppSpacing.iconSizeMedium)
+
+                Text("Username")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+
+                Spacer()
+            }
+
+            // Input + availability indicator + save button
+            HStack(spacing: AppSpacing.xs) {
+                Text("@")
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textTertiary)
+
+                TextField("your_username", text: $viewModel.usernameInput)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+                    .focused($isUsernameFieldFocused)
+                    .submitLabel(.done)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .textContentType(.username)
+                    .onChange(of: viewModel.usernameInput) { _, _ in
+                        viewModel.onUsernameInputChanged()
+                    }
+                    .onSubmit {
+                        isUsernameFieldFocused = false
+                        guard viewModel.canSaveUsername else { return }
+                        Task { await viewModel.saveUsername() }
+                    }
+
+                // Availability indicator
+                usernameAvailabilityIndicator
+
+                // Save button (shown when there's a valid, available change)
+                if viewModel.canSaveUsername {
+                    saveUsernameButton
+                }
+            }
+            .padding(.horizontal, AppSpacing.sm)
+            .frame(height: AppSpacing.buttonHeightSecondary)
+            .background(AppColors.backgroundTertiary)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+
+            // Validation / availability message
+            if let localError = viewModel.usernameValidationError, !viewModel.usernameInput.isEmpty {
+                Text(localError)
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(AppColors.error)
+                    .padding(.leading, AppSpacing.xs)
+                    .transition(.opacity)
+            } else if let checkError = viewModel.usernameCheckError {
+                Text("Could not check: \(checkError)")
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .padding(.leading, AppSpacing.xs)
+                    .transition(.opacity)
+            } else if let available = viewModel.isUsernameAvailable, viewModel.hasUnsavedUsernameChange {
+                Text(available ? "Username is available!" : "Username is already taken.")
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(available ? AppColors.success : AppColors.error)
+                    .padding(.leading, AppSpacing.xs)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isUsernameAvailable)
+    }
+
+    @ViewBuilder
+    private var usernameAvailabilityIndicator: some View {
+        let trimmed = viewModel.usernameInput.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || !viewModel.hasUnsavedUsernameChange {
+            EmptyView()
+        } else if viewModel.isCheckingUsername {
+            ProgressView()
+                .scaleEffect(0.75)
+                .frame(width: 18, height: 18)
+        } else if let available = viewModel.isUsernameAvailable {
+            Image(systemName: available ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(available ? AppColors.success : AppColors.error)
+                .font(.system(size: 16))
+                .transition(.scale.combined(with: .opacity))
+        }
+    }
+
+    private var saveUsernameButton: some View {
+        Button {
+            isUsernameFieldFocused = false
+            Task { await viewModel.saveUsername() }
+        } label: {
+            Group {
+                if viewModel.isSavingUsername {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(AppColors.secondary)
+                        .scaleEffect(0.75)
+                } else {
+                    Image(systemName: AppIcon.checkmark.rawValue)
+                        .font(.system(size: AppSpacing.iconSizeSmall, weight: .bold))
+                        .foregroundStyle(AppColors.secondary)
+                }
+            }
+        }
+        .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
+        .disabled(viewModel.isSavingUsername)
+        .transition(.scale.combined(with: .opacity))
+        .accessibilityLabel("Save username")
     }
 
     // MARK: - Display Name Row
