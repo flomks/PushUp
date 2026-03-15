@@ -110,21 +110,18 @@ struct FriendCodeView: View {
                     }
                 )
 
-                // Share deep-link with a friendly message
-                if !viewModel.deepLink.isEmpty, let shareURL = URL(string: viewModel.deepLink) {
-                    ShareLink(
-                        item: shareURL,
-                        subject: Text("Add me on PushUp"),
-                        message: Text("Use my friend code \(viewModel.code) to add me on PushUp: \(viewModel.deepLink)")
-                    ) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .font(AppTypography.captionSemibold)
-                            .foregroundStyle(AppColors.textOnPrimary)
-                            .padding(.horizontal, AppSpacing.md)
-                            .padding(.vertical, AppSpacing.xs)
-                            .background(AppColors.primary, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+                 // Share only the URL -- no subject/message so the link
+                 // never appears twice in iMessage or WhatsApp.
+                 if !viewModel.deepLink.isEmpty, let shareURL = URL(string: viewModel.deepLink) {
+                     ShareLink(item: shareURL) {
+                         Label("Share", systemImage: "square.and.arrow.up")
+                             .font(AppTypography.captionSemibold)
+                             .foregroundStyle(AppColors.textOnPrimary)
+                             .padding(.horizontal, AppSpacing.md)
+                             .padding(.vertical, AppSpacing.xs)
+                             .background(AppColors.primary, in: Capsule())
+                     }
+                     .buttonStyle(.plain)
                 }
             }
         }
