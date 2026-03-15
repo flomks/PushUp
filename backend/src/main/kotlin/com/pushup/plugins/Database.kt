@@ -461,37 +461,8 @@ fun Application.configureDatabase(): Boolean {
             UserLevels,
             Notifications,
         )
-
-        // friend_code_privacy enum and friend_codes table are created by
-        // migration 012. If the migration has not been applied yet (e.g. on
-        // a fresh deployment or a dev environment), we create them here as a
-        // safety net so the server starts cleanly without requiring a manual
-        // migration run.
-        //
-        // The DO block is idempotent: it only creates the enum if it does not
-        // already exist. SchemaUtils.createMissingTablesAndColumns then creates
-        // the table if absent, or is a no-op if it already exists.
-        exec(
-            """
-            DO ${'$'}${'$'}
-            BEGIN
-              IF NOT EXISTS (
-                SELECT 1 FROM pg_type WHERE typname = 'friend_code_privacy'
-              ) THEN
-                CREATE TYPE public.friend_code_privacy AS ENUM (
-                  'auto_accept',
-                  'require_approval',
-                  'inactive'
-                );
-              END IF;
-            END;
-            ${'$'}${'$'};
-            """.trimIndent()
-        )
-
-        SchemaUtils.createMissingTablesAndColumns(FriendCodes)
     }
-    log.info("Schema check complete (device_tokens, user_levels, notifications, friend_codes tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, notifications tables ensured)")
 
     return true
 }
