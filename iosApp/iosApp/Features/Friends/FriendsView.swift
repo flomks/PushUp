@@ -105,8 +105,10 @@ private struct FriendHubView: View {
         ScrollView {
             LazyVStack(spacing: AppSpacing.lg) {
 
-                // 1. Leaderboard -- only shown when the user has at least one friend
-                if !viewModel.friends.isEmpty || viewModel.isLoadingFriends {
+                // 1. Leaderboard -- only shown once we know the user has friends.
+                //    Deliberately NOT shown while isLoadingFriends to avoid the
+                //    flicker where the leaderboard appears briefly then disappears.
+                if !viewModel.friends.isEmpty {
                     leaderboardSection
                 }
 
@@ -119,8 +121,7 @@ private struct FriendHubView: View {
         }
         .background(AppColors.backgroundPrimary)
         .refreshable {
-            viewModel.loadFriends()
-            viewModel.loadLeaderboard()
+            await viewModel.refresh()
         }
     }
 
@@ -764,6 +765,14 @@ struct AddFriendSheet: View {
         .presentationDragIndicator(.visible)
         .sheet(isPresented: $showMyCode) {
             FriendCodeView()
+        }
+        .onAppear {
+            // Wire up auto-refresh once: when a friend is added via code,
+            // reload the friends list and leaderboard immediately.
+            codeViewModel.onFriendAdded = { [weak viewModel] in
+                viewModel?.loadFriends()
+                viewModel?.loadLeaderboard()
+            }
         }
         .onDisappear { viewModel.clearSearch() }
     }

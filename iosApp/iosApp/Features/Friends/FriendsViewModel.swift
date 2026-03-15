@@ -395,8 +395,6 @@ final class FriendsViewModel: ObservableObject {
                     )
                 }
                 self.isLoadingFriends = false
-                // If the leaderboard tab was opened before friends finished loading,
-                // populate it now that we have the friend list.
                 self.loadLeaderboardIfReady()
             },
             onError: { [weak self] error in
@@ -405,6 +403,53 @@ final class FriendsViewModel: ObservableObject {
                 self.isLoadingFriends = false
             }
         )
+    }
+
+    /// Async wrapper for pull-to-refresh: waits until both friends and
+    /// leaderboard have finished loading before releasing the spinner.
+    func refresh() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var friendsDone    = false
+            var leaderboardDone = false
+
+            func finish() {
+                guard friendsDone && leaderboardDone else { return }
+                continuation.resume()
+            }
+
+            isLoadingFriends = true
+            friendsError = nil
+            FriendsBridge.shared.getFriends(
+                onResult: { [weak self] friends in
+                    guard let self else { continuation.resume(); return }
+                    self.friends = friends.map {
+                        FriendItem(id: $0.id, username: $0.username,
+                                   displayName: $0.displayName, avatarUrl: $0.avatarUrl)
+                    }
+                    self.isLoadingFriends = false
+                    friendsDone = true
+                    // Kick off leaderboard now that friends are known
+                    if !self.friends.isEmpty {
+                        self.leaderboardTask?.cancel()
+                        self.leaderboardTask = Task {
+                            await self.fetchLeaderboard()
+                            leaderboardDone = true
+                            finish()
+                        }
+                    } else {
+                        leaderboardDone = true
+                        finish()
+                    }
+                },
+                onError: { [weak self] error in
+                    self?.friendsError = error
+                    self?.isLoadingFriends = false
+                    friendsDone    = true
+                    leaderboardDone = true
+                    finish()
+                }
+            )
+        }
     }
 
     func removeFriend(_ friendId: String) {
