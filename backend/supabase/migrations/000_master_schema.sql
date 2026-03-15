@@ -382,11 +382,19 @@ BEGIN
                    END,
     updated_at   = NOW();
 
-  -- Explicitly pass gen_random_uuid() for id to avoid relying on column defaults,
-  -- which may not be set if the table was created by an older migration.
-  INSERT INTO public.time_credits  (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_settings (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_levels   (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  -- Supply every non-nullable column explicitly — never rely on column DEFAULTs
+  -- inside a trigger, as they may not be set on tables created by older migrations.
+  INSERT INTO public.time_credits (id, user_id, total_earned_seconds, total_spent_seconds, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 0, 0, NOW())
+  ON CONFLICT (user_id) DO NOTHING;
+
+  INSERT INTO public.user_settings (id, user_id, push_ups_per_minute_credit, quality_multiplier_enabled, searchable_by_email, created_at, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 10, FALSE, FALSE, NOW(), NOW())
+  ON CONFLICT (user_id) DO NOTHING;
+
+  INSERT INTO public.user_levels (id, user_id, total_xp, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 0, NOW())
+  ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;

@@ -1,33 +1,43 @@
 -- =============================================================================
 -- Migration: 011_fix_companion_table_defaults.sql
--- Description: Ensures all companion tables (user_levels, time_credits,
---              user_settings) have gen_random_uuid() as the default for their
---              id column, and re-applies the correct handle_new_auth_user()
---              trigger function.
+-- Description: Fixes NOT NULL constraint errors on sign-up by ensuring all
+--              companion table columns have correct defaults AND by rewriting
+--              the trigger to supply every non-nullable column explicitly.
 --
 -- WHY THIS IS NEEDED
---   When 000_master_schema.sql was run on a database that already had these
---   tables (created by migrations 001-007), the CREATE TABLE IF NOT EXISTS
---   statements were skipped entirely. If the existing tables were created
---   without DEFAULT gen_random_uuid() on the id column (e.g. because an older
---   version of the migration omitted it), the trigger INSERT INTO user_levels
---   (user_id) VALUES (...) fails with:
---     "null value in column id violates not-null constraint"
+--   When 000_master_schema.sql ran on a DB that already had these tables
+--   (created by migrations 001-007), CREATE TABLE IF NOT EXISTS was skipped.
+--   The existing tables may be missing column DEFAULTs, causing the trigger
+--   INSERT to fail with "null value in column X violates not-null constraint"
+--   for id, total_xp, total_earned_seconds, etc.
 --
--- SAFE TO RUN: ALTER COLUMN ... SET DEFAULT is idempotent.
+-- SAFE TO RUN: ALTER COLUMN ... SET DEFAULT and CREATE OR REPLACE are idempotent.
 -- =============================================================================
 
--- Ensure id columns have gen_random_uuid() as default on all companion tables.
+-- ---- user_levels ------------------------------------------------------------
 ALTER TABLE public.user_levels
-  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  ALTER COLUMN id         SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN total_xp   SET DEFAULT 0,
+  ALTER COLUMN updated_at SET DEFAULT NOW();
 
+-- ---- time_credits -----------------------------------------------------------
 ALTER TABLE public.time_credits
-  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  ALTER COLUMN id                   SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN total_earned_seconds SET DEFAULT 0,
+  ALTER COLUMN total_spent_seconds  SET DEFAULT 0,
+  ALTER COLUMN updated_at           SET DEFAULT NOW();
 
+-- ---- user_settings ----------------------------------------------------------
 ALTER TABLE public.user_settings
-  ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  ALTER COLUMN id                         SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN push_ups_per_minute_credit SET DEFAULT 10,
+  ALTER COLUMN quality_multiplier_enabled SET DEFAULT FALSE,
+  ALTER COLUMN searchable_by_email        SET DEFAULT FALSE,
+  ALTER COLUMN created_at                 SET DEFAULT NOW(),
+  ALTER COLUMN updated_at                 SET DEFAULT NOW();
 
--- Re-apply the correct trigger function (idempotent via CREATE OR REPLACE).
+-- ---- Rewrite trigger: supply every non-nullable column explicitly -----------
+-- Never rely on column DEFAULTs inside a trigger — always pass values directly.
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
@@ -42,6 +52,7 @@ BEGIN
   );
   v_avatar_url := NULLIF(TRIM(NEW.raw_user_meta_data->>'avatar_url'), '');
 
+  -- Upsert user profile row.
   INSERT INTO public.users (id, email, display_name, avatar_url, created_at, updated_at)
   VALUES (NEW.id, NEW.email, v_display_name, v_avatar_url, NOW(), NOW())
   ON CONFLICT (id) DO UPDATE SET
@@ -53,13 +64,26 @@ BEGIN
                    END,
     updated_at   = NOW();
 
-  INSERT INTO public.time_credits  (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_settings (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_levels   (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  -- Companion rows: all non-nullable columns supplied explicitly.
+  INSERT INTO public.time_credits (id, user_id, total_earned_seconds, total_spent_seconds, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 0, 0, NOW())
+  ON CONFLICT (user_id) DO NOTHING;
+
+  INSERT INTO public.user_settings (id, user_id, push_ups_per_minute_credit, quality_multiplier_enabled, searchable_by_email, created_at, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 10, FALSE, FALSE, NOW(), NOW())
+  ON CONFLICT (user_id) DO NOTHING;
+
+  INSERT INTO public.user_levels (id, user_id, total_xp, updated_at)
+  VALUES (gen_random_uuid(), NEW.id, 0, NOW())
+  ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
 $$;
+
+COMMENT ON FUNCTION public.handle_new_auth_user() IS
+  'Triggered after INSERT on auth.users. Creates companion rows with all '
+  'non-nullable columns supplied explicitly (no reliance on column DEFAULTs).';
 
 -- =============================================================================
 -- END OF MIGRATION 011
