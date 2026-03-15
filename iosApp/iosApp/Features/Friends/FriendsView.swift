@@ -105,8 +105,10 @@ private struct FriendHubView: View {
         ScrollView {
             LazyVStack(spacing: AppSpacing.lg) {
 
-                // 1. Leaderboard podium
-                leaderboardSection
+                // 1. Leaderboard -- only shown when the user has at least one friend
+                if !viewModel.friends.isEmpty || viewModel.isLoadingFriends {
+                    leaderboardSection
+                }
 
                 // 2. Friends list
                 friendsSection
@@ -853,15 +855,24 @@ struct AddFriendSheet: View {
                 message: "Type at least 2 characters to search."
             )
         } else {
-            List(viewModel.searchResults) { user in
-                AddFriendRow(
-                    user: user,
-                    isSending: viewModel.sendingRequestIds.contains(user.id),
-                    onSend: { viewModel.sendFriendRequest(to: user.id) }
-                )
-                .listRowBackground(AppColors.backgroundSecondary)
+            ScrollView {
+                LazyVStack(spacing: AppSpacing.xs) {
+                    ForEach(viewModel.searchResults) { user in
+                        AddFriendRow(
+                            user: user,
+                            isSending: viewModel.sendingRequestIds.contains(user.id),
+                            onSend: { viewModel.sendFriendRequest(to: user.id) }
+                        )
+                        .padding(.horizontal, AppSpacing.md)
+                        .background(
+                            AppColors.backgroundSecondary,
+                            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                        )
+                    }
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.vertical, AppSpacing.sm)
             }
-            .listStyle(.plain)
         }
     }
 
@@ -1040,16 +1051,27 @@ struct RequestsSheet: View {
     }
 
     private var requestsList: some View {
-        List(viewModel.incomingRequests) { request in
-            RequestRow(
-                request: request,
-                isResponding: viewModel.respondingIds.contains(request.id),
-                onAccept: { viewModel.acceptRequest(request.id) },
-                onDecline: { viewModel.declineRequest(request.id) }
-            )
-            .listRowBackground(AppColors.backgroundSecondary)
+        ScrollView {
+            LazyVStack(spacing: AppSpacing.xs) {
+                ForEach(viewModel.incomingRequests) { request in
+                    RequestRow(
+                        request: request,
+                        isResponding: viewModel.respondingIds.contains(request.id),
+                        onAccept: { viewModel.acceptRequest(request.id) },
+                        onDecline: { viewModel.declineRequest(request.id) }
+                    )
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.sm)
+                    .background(
+                        AppColors.backgroundSecondary,
+                        in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                    )
+                }
+            }
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .padding(.top, AppSpacing.sm)
+            .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
-        .listStyle(.plain)
         .refreshable { viewModel.loadIncomingRequests() }
     }
 
