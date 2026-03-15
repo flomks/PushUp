@@ -699,28 +699,58 @@ private struct FriendHubRow<Destination: View>: View {
 // MARK: - AddFriendSheet
 
 /// Bottom sheet for searching users and sending friend requests.
+///
+/// Contains three tabs:
+///   1. Search  -- find users by name / username
+///   2. Code    -- enter a friend code
+///   3. My Code -- view / share / manage your own friend code
 struct AddFriendSheet: View {
 
     @ObservedObject var viewModel: FriendsViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Which tab is currently selected.
+    @State private var selectedTab: AddFriendTab = .search
+
+    /// Controls the full-screen My Code sheet.
+    @State private var showMyCode = false
+
+    /// Shared ViewModel for friend code operations.
+    @StateObject private var codeViewModel = FriendCodeViewModel()
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Search bar
-                searchBar
+                // Tab picker
+                tabPicker
                     .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .padding(.vertical, AppSpacing.sm)
+                    .padding(.top, AppSpacing.sm)
 
                 Divider()
+                    .padding(.top, AppSpacing.sm)
 
-                // Results
-                searchResults
+                // Tab content
+                switch selectedTab {
+                case .search:
+                    searchTabContent
+                case .code:
+                    codeTabContent
+                }
             }
             .background(AppColors.backgroundPrimary)
             .navigationTitle("Add Friend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    // "My Code" button -- opens the full friend code management sheet
+                    Button {
+                        showMyCode = true
+                    } label: {
+                        Label("My Code", systemImage: "qrcode")
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.primary)
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") { dismiss() }
                         .font(AppTypography.bodySemibold)
@@ -730,7 +760,52 @@ struct AddFriendSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showMyCode) {
+            FriendCodeView()
+        }
         .onDisappear { viewModel.clearSearch() }
+    }
+
+    // MARK: - Tab picker
+
+    private var tabPicker: some View {
+        HStack(spacing: AppSpacing.xs) {
+            ForEach(AddFriendTab.allCases) { tab in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedTab = tab }
+                } label: {
+                    HStack(spacing: AppSpacing.xxs) {
+                        Image(systemName: tab.systemImage)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(tab.label)
+                            .font(AppTypography.captionSemibold)
+                    }
+                    .foregroundStyle(selectedTab == tab ? AppColors.textOnPrimary : AppColors.textSecondary)
+                    .padding(.horizontal, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.xs)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        selectedTab == tab ? AppColors.primary : AppColors.backgroundTertiary,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Search tab
+
+    private var searchTabContent: some View {
+        VStack(spacing: 0) {
+            searchBar
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.vertical, AppSpacing.sm)
+
+            Divider()
+
+            searchResults
+        }
     }
 
     private var searchBar: some View {
@@ -823,6 +898,36 @@ struct AddFriendSheet: View {
             Spacer()
         }
         .padding(.horizontal, AppSpacing.xl)
+    }
+
+    // MARK: - Code tab
+
+    private var codeTabContent: some View {
+        // standalone=false: the parent AddFriendSheet provides the NavigationStack.
+        EnterFriendCodeSheet(viewModel: codeViewModel, standalone: false)
+    }
+}
+
+// MARK: - AddFriendTab
+
+private enum AddFriendTab: String, CaseIterable, Identifiable {
+    case search = "search"
+    case code   = "code"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .search: return "Search"
+        case .code:   return "Enter Code"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .search: return "magnifyingglass"
+        case .code:   return "person.badge.key"
+        }
     }
 }
 
