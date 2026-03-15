@@ -108,7 +108,7 @@ struct ProfileView: View {
         Button("Choose from Library") {
             viewModel.showPhotoPicker = true
         }
-        if viewModel.avatarImage != nil {
+        if viewModel.avatarImage != nil || viewModel.avatarURL != nil {
             Button("Remove Photo", role: .destructive) {
                 Task { await viewModel.removeAvatar() }
             }
@@ -178,6 +178,7 @@ struct ProfileView: View {
         VStack(spacing: AppSpacing.sm) {
             AvatarPickerButton(
                 image: viewModel.avatarImage,
+                url: viewModel.avatarURL.flatMap { URL(string: $0) },
                 initials: viewModel.initials,
                 isUploading: viewModel.isUploadingAvatar,
                 size: 96

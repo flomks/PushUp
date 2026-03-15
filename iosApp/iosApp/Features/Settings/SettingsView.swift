@@ -49,6 +49,7 @@ struct SettingsView: View {
             timeCreditSection
             cameraSection
             notificationsSection
+            privacySection
             feedbackSection
             appearanceSection
             infoSection
@@ -467,6 +468,72 @@ struct SettingsView: View {
                     .foregroundStyle(AppColors.warning)
             }
         }
+    }
+
+    // MARK: - Privacy Section
+
+    private var privacySection: some View {
+        Section {
+            // Avatar visibility picker
+            HStack(spacing: AppSpacing.sm) {
+                SettingsIconView(icon: .personFill, color: .purple)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Profile Photo Visibility")
+                        .font(AppTypography.body)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text(viewModel.avatarVisibility.label)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+
+                Spacer()
+
+                if viewModel.isSavingPrivacy {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.8)
+                }
+
+                Menu {
+                    ForEach(AvatarVisibilityOption.allCases) { option in
+                        Button {
+                            viewModel.avatarVisibility = option
+                        } label: {
+                            Label(option.label, systemImage: option.icon)
+                        }
+                        .disabled(viewModel.avatarVisibility == option)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(viewModel.avatarVisibility.label)
+                            .font(AppTypography.body)
+                            .foregroundStyle(AppColors.textSecondary)
+                        Image(icon: .chevronRight)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppColors.textTertiary)
+                    }
+                }
+            }
+            .padding(.vertical, AppSpacing.xxs)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Profile photo visibility: \(viewModel.avatarVisibility.label)")
+
+            // Searchable by email toggle
+            SettingsToggleRow(
+                icon: .envelope,
+                iconColor: .blue,
+                title: "Find me by Email",
+                subtitle: "Others can search for you using your email address",
+                isOn: $viewModel.searchableByEmail
+            )
+
+        } header: {
+            SettingsSectionHeader("Privacy")
+        } footer: {
+            Text("Control who can see your profile photo and how others can find your account.")
+        }
+        .task { await viewModel.loadPrivacySettings() }
     }
 
     // MARK: - Feedback Section

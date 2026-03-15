@@ -297,6 +297,29 @@ final class SettingsViewModel: ObservableObject {
     /// Available daily credit limit options in minutes.
     static let dailyCreditLimitOptions: [Int] = [30, 45, 60, 90, 120, 180, 240]
 
+    // MARK: - Privacy Settings
+
+    /// Whether other users can find this account by searching for its email address.
+    /// Loaded from the KMP User on init; saved to Supabase via AuthService.
+    @Published var searchableByEmail: Bool = false {
+        didSet {
+            guard isInitialised else { return }
+            Task { await saveSearchableByEmail(searchableByEmail) }
+        }
+    }
+
+    /// Who can see this user's avatar.
+    /// Loaded from the KMP User on init; saved to Supabase via AuthService.
+    @Published var avatarVisibility: AvatarVisibilityOption = .everyone {
+        didSet {
+            guard isInitialised else { return }
+            Task { await saveAvatarVisibility(avatarVisibility) }
+        }
+    }
+
+    /// Whether a privacy setting save is in progress.
+    @Published private(set) var isSavingPrivacy: Bool = false
+
     // MARK: - Init
 
     init() {
@@ -344,6 +367,35 @@ final class SettingsViewModel: ObservableObject {
 
         // Mark initialisation complete so didSet observers start firing.
         isInitialised = true
+
+        // Load privacy settings from the KMP User asynchronously.
+        // These are stored in Supabase, not UserDefaults.
+        Task { await loadPrivacySettings() }
+    }
+
+    // MARK: - Privacy Actions
+
+    /// Loads avatar visibility and searchable-by-email from the local KMP layer.
+    func loadPrivacySettings() async {
+        async let emailSearchable = AuthService.shared.getSearchableByEmail()
+        async let user = AuthService.shared.getCurrentUser()
+        let (isSearchable, currentUser) = await (emailSearchable, user)
+        searchableByEmail = isSearchable
+        if let u = currentUser {
+            avatarVisibility = AvatarVisibilityOption(rawValue: u.avatarVisibility.toDbValue()) ?? .everyone
+        }
+    }
+
+    private func saveSearchableByEmail(_ enabled: Bool) async {
+        isSavingPrivacy = true
+        _ = await AuthService.shared.updateSearchableByEmail(enabled)
+        isSavingPrivacy = false
+    }
+
+    private func saveAvatarVisibility(_ option: AvatarVisibilityOption) async {
+        isSavingPrivacy = true
+        _ = await AuthService.shared.updateAvatarVisibility(option.rawValue)
+        isSavingPrivacy = false
     }
 
     // MARK: - Actions
