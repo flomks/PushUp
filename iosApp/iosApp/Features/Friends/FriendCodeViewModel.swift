@@ -160,6 +160,10 @@ final class FriendCodeViewModel: ObservableObject {
 
     // MARK: - Use a friend code
 
+    /// Called after a successful friend-code use so the friends list and
+    /// leaderboard refresh automatically without the user pulling to reload.
+    var onFriendAdded: (() -> Void)? = nil
+
     func useFriendCode() {
         let trimmed = enteredCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !trimmed.isEmpty, !isUsingCode else { return }
@@ -177,6 +181,12 @@ final class FriendCodeViewModel: ObservableObject {
                 )
                 self.enteredCode = ""
                 self.isUsingCode = false
+                // Auto-refresh the friends list and leaderboard when the code
+                // resulted in an immediate friendship (auto_accept mode).
+                // For pending requests we skip the refresh since nothing changed yet.
+                if result.result == "added" {
+                    self.onFriendAdded?()
+                }
             },
             onError: { [weak self] error in
                 guard let self else { return }

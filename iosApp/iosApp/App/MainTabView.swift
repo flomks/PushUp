@@ -180,6 +180,11 @@ struct MainTabView: View {
         .onAppear {
             friendsViewModel.loadIncomingRequests()
             handleShieldWorkoutFlag()
+            // Wire deep-link scanner: auto-refresh friends after a successful add.
+            friendCodeViewModel.onFriendAdded = { [weak friendsViewModel] in
+                friendsViewModel?.loadFriends()
+                friendsViewModel?.loadLeaderboard()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             handleShieldWorkoutFlag()
