@@ -87,6 +87,10 @@ struct LeaderboardEntry: Identifiable {
     let totalEarnedSeconds: Int64
     /// `true` when this entry represents the currently logged-in user.
     let isCurrentUser: Bool
+    /// Dense rank (1-based). Ties share the same rank; the next distinct
+    /// push-up count gets the next rank number (not the next position).
+    /// Example: [210, 185, 185, 98] → ranks [1, 2, 2, 3].
+    var rank: Int = 1
 }
 
 // MARK: - Friend stats period
@@ -505,14 +509,37 @@ final class FriendsViewModel: ObservableObject {
             entries.append(own)
         }
 
-        entries.sort { $0.pushupCount > $1.pushupCount }
+        // Sort: primary = pushupCount descending, secondary = displayLabel
+        // ascending (alphabetical tie-break so the order is deterministic).
+        entries.sort {
+            if $0.pushupCount != $1.pushupCount { return $0.pushupCount > $1.pushupCount }
+            return $0.displayLabel.localizedCompare($1.displayLabel) == .orderedAscending
+        }
+
+        // Assign dense ranks: ties share the same rank number; the next
+        // distinct push-up count gets the next rank (not the next position).
+        // Example: [210, 185, 185, 98] → ranks [1, 2, 2, 3]
+        var currentRank = 1
+        for i in entries.indices {
+            if i == 0 {
+                entries[i].rank = 1
+            } else if entries[i].pushupCount == entries[i - 1].pushupCount {
+                // Same count as previous → same rank
+                entries[i].rank = entries[i - 1].rank
+            } else {
+                // New (lower) count → rank advances to current position + 1
+                currentRank = i + 1
+                entries[i].rank = currentRank
+            }
+        }
+
         leaderboard = entries
 
-        // Stamp the leaderboard rank back onto each FriendItem so the hub
-        // row can display it without an extra network call.
-        for (index, entry) in entries.enumerated() {
+        // Stamp the dense rank back onto each FriendItem so the hub row
+        // can display it without an extra network call.
+        for entry in entries {
             if let idx = friends.firstIndex(where: { $0.id == entry.id }) {
-                friends[idx].leaderboardRank = index + 1
+                friends[idx].leaderboardRank = entry.rank
             }
         }
 

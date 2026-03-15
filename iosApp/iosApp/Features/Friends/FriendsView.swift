@@ -181,31 +181,33 @@ private struct FriendHubView: View {
     @ViewBuilder
     private var leaderboardContent: some View {
         VStack(spacing: AppSpacing.xs) {
-            // Top 3 podium (if enough entries)
-            if viewModel.leaderboard.count >= 3 {
-                PodiumView(
-                    entries: Array(viewModel.leaderboard.prefix(3)),
-                    viewModel: viewModel
-                )
-                .padding(.bottom, AppSpacing.xs)
+            // Podium: all entries with rank 1, 2, or 3 — requires at least
+            // one entry at each of those three distinct rank levels.
+            let podiumEntries = viewModel.leaderboard.filter { $0.rank <= 3 }
+            let distinctPodiumRanks = Set(podiumEntries.map { $0.rank })
+            let hasPodium = distinctPodiumRanks.count >= 3
+
+            if hasPodium {
+                PodiumView(entries: podiumEntries, viewModel: viewModel)
+                    .padding(.bottom, AppSpacing.xs)
             }
 
-            // Remaining entries (rank 4+) or all entries if < 3
-            let hasPodium = viewModel.leaderboard.count >= 3
-            let rankOffset = hasPodium ? 3 : 0
-            let remaining: [LeaderboardEntry] = hasPodium
-                ? Array(viewModel.leaderboard.dropFirst(3))
+            // Rows: entries below the podium threshold, or all entries when
+            // there are fewer than 3 distinct rank levels.
+            let rowEntries: [LeaderboardEntry] = hasPodium
+                ? viewModel.leaderboard.filter { $0.rank > 3 }
                 : viewModel.leaderboard
 
-            ForEach(Array(remaining.enumerated()), id: \.element.id) { index, entry in
-                leaderboardRow(rank: index + rankOffset + 1, entry: entry)
+            ForEach(rowEntries) { entry in
+                leaderboardRow(entry: entry)
             }
         }
     }
 
-    private func leaderboardRow(rank: Int, entry: LeaderboardEntry) -> some View {
+    private func leaderboardRow(entry: LeaderboardEntry) -> some View {
+        let rank = entry.rank
         let content = HStack(spacing: AppSpacing.sm) {
-            // Rank
+            // Rank number
             Text("\(rank)")
                 .font(AppTypography.captionSemibold)
                 .foregroundStyle(AppColors.textSecondary)
@@ -466,20 +468,19 @@ private struct PodiumView: View {
     let viewModel: FriendsViewModel
 
     private struct PodiumItem: Identifiable {
-        let rank: Int
         let entry: LeaderboardEntry
         var id: String { entry.id }
+        var rank: Int { entry.rank }
     }
 
+    /// Reorders entries for the classic podium layout: 2nd (left), 1st (center), 3rd (right).
+    /// When multiple entries share the same rank they are grouped together in that slot.
     private var orderedItems: [PodiumItem] {
-        guard entries.count >= 3 else {
-            return entries.enumerated().map { PodiumItem(rank: $0.offset + 1, entry: $0.element) }
-        }
-        return [
-            PodiumItem(rank: 2, entry: entries[1]),
-            PodiumItem(rank: 1, entry: entries[0]),
-            PodiumItem(rank: 3, entry: entries[2])
-        ]
+        let rank1 = entries.filter { $0.rank == 1 }.map { PodiumItem(entry: $0) }
+        let rank2 = entries.filter { $0.rank == 2 }.map { PodiumItem(entry: $0) }
+        let rank3 = entries.filter { $0.rank == 3 }.map { PodiumItem(entry: $0) }
+        // Layout: [rank2...] [rank1...] [rank3...]
+        return rank2 + rank1 + rank3
     }
 
     var body: some View {
@@ -1102,11 +1103,13 @@ private extension FriendStatsPeriod {
         FriendItem(id: "u2", username: "bob", displayName: "Bob Jones", avatarUrl: nil),
         FriendItem(id: "u3", username: "charlie", displayName: "Charlie", avatarUrl: nil)
     ]
+    // Demonstrate dense ranking: Alice and Bob are tied at rank 2 (both 185),
+    // Charlie is rank 3 (next distinct count).
     vm.leaderboard = [
-        LeaderboardEntry(id: "me", displayLabel: "You (You)", usernameLabel: nil, pushupCount: 210, totalSessions: 14, totalEarnedSeconds: 1260, isCurrentUser: true),
-        LeaderboardEntry(id: "u1", displayLabel: "Alice Smith", usernameLabel: "@alice", pushupCount: 185, totalSessions: 12, totalEarnedSeconds: 1110, isCurrentUser: false),
-        LeaderboardEntry(id: "u2", displayLabel: "Bob Jones", usernameLabel: "@bob", pushupCount: 142, totalSessions: 9, totalEarnedSeconds: 852, isCurrentUser: false),
-        LeaderboardEntry(id: "u3", displayLabel: "Charlie", usernameLabel: nil, pushupCount: 98, totalSessions: 6, totalEarnedSeconds: 588, isCurrentUser: false)
+        LeaderboardEntry(id: "me",  displayLabel: "You",         usernameLabel: nil,      pushupCount: 210, totalSessions: 14, totalEarnedSeconds: 1260, isCurrentUser: true,  rank: 1),
+        LeaderboardEntry(id: "u1",  displayLabel: "Alice Smith", usernameLabel: "@alice", pushupCount: 185, totalSessions: 12, totalEarnedSeconds: 1110, isCurrentUser: false, rank: 2),
+        LeaderboardEntry(id: "u2",  displayLabel: "Bob Jones",   usernameLabel: "@bob",   pushupCount: 185, totalSessions: 9,  totalEarnedSeconds: 852,  isCurrentUser: false, rank: 2),
+        LeaderboardEntry(id: "u3",  displayLabel: "Charlie",     usernameLabel: nil,      pushupCount: 98,  totalSessions: 6,  totalEarnedSeconds: 588,  isCurrentUser: false, rank: 3)
     ]
     return FriendsView(viewModel: vm)
 }
