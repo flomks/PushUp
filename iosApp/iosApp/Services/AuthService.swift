@@ -214,6 +214,43 @@ final class AuthService: Sendable {
         }
     }
 
+    // MARK: - Privacy Settings
+
+    /// Returns whether the current user has opted in to email-based search.
+    func getSearchableByEmail() async -> Bool {
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                return try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    SafeAuthBridge.shared.safeGetSearchableByEmail { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: result?.boolValue ?? false)
+                        }
+                    }
+                }
+            } catch {
+                return false
+            }
+        }.value
+    }
+
+    /// Updates the searchable-by-email privacy setting.
+    func updateSearchableByEmail(_ enabled: Bool) async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeUpdateSearchableByEmail(
+                enabled: enabled,
+                completionHandler: handler
+            )
+        }
+    }
+
     // MARK: - Private
 
     /// Bridges a SafeAuthBridge completionHandler call to async/await.

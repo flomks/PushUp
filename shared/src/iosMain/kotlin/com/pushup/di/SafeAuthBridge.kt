@@ -8,6 +8,7 @@ import com.pushup.domain.model.AuthException
 import com.pushup.domain.model.AvatarVisibility
 import com.pushup.domain.model.User
 import com.pushup.domain.repository.UserRepository
+import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
 import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
 import com.pushup.domain.usecase.auth.LoginWithEmailUseCase
@@ -252,6 +253,42 @@ object SafeAuthBridge : KoinComponent {
         throw CancellationException()
     } catch (e: Exception) {
         SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to update avatar visibility.")
+    }
+
+    /**
+     * Returns whether the current user has opted in to email-based search.
+     * Returns false when no user is found or settings are unavailable.
+     */
+    suspend fun safeGetSearchableByEmail(): Boolean = try {
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser() ?: return false
+        val settingsRepo = runCatching { get<UserSettingsRepository>() }.getOrNull()
+            ?: return false
+        settingsRepo.get(user.id)?.searchableByEmail ?: false
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
+     * Updates the searchable-by-email setting for the current user.
+     * Persists locally via SQLDelight.
+     */
+    suspend fun safeUpdateSearchableByEmail(enabled: Boolean): SafeAuthResult = try {
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser()
+            ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
+        val settingsRepo = runCatching { get<UserSettingsRepository>() }.getOrNull()
+            ?: return SafeAuthResult(user = null, errorMessage = "Settings not available.")
+        val current = settingsRepo.get(user.id)
+            ?: return SafeAuthResult(user = null, errorMessage = "User settings not found.")
+        settingsRepo.update(current.copy(searchableByEmail = enabled))
+        SafeAuthResult(user = user, errorMessage = null)
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (e: Exception) {
+        SafeAuthResult(user = null, errorMessage = e.message ?: "Failed to update setting.")
     }
 
     private suspend fun safeCall(block: suspend () -> User): SafeAuthResult = try {

@@ -116,7 +116,10 @@ struct AvatarView: View {
 /// ```
 struct AvatarPickerButton: View {
 
-    let image: UIImage?
+    /// A locally held UIImage (just picked, before upload). Takes priority over `url`.
+    var image: UIImage? = nil
+    /// Remote avatar URL to load via AsyncImage (OAuth or custom upload).
+    var url: URL? = nil
     let initials: String
     let isUploading: Bool
     var size: CGFloat = 96
@@ -127,7 +130,7 @@ struct AvatarPickerButton: View {
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottomTrailing) {
-                AvatarView(image: image, initials: initials, size: size)
+                AvatarView(image: image, url: url, initials: initials, size: size)
                     .overlay(uploadOverlay)
                     .shadow(
                         color: AppColors.primary.opacity(0.25),
