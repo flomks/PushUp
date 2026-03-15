@@ -41,13 +41,25 @@
 	<!-- Google Sign-In redirect: reversed iOS client ID -->
 	<key>CFBundleURLTypes</key>
 	<array>
-		<!-- App bundle URL scheme (used for deep links and Supabase OAuth redirect) -->
+		<!-- App bundle URL scheme (used for Supabase OAuth redirect) -->
 		<dict>
 			<key>CFBundleURLName</key>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+		<!-- Custom deep-link scheme: pushup://
+		     Handles pushup://friend-code/<CODE> and other in-app navigation.
+		     When the app is installed, any link starting with pushup:// will
+		     open the app directly. -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.flomks.pushup.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pushup</string>
 			</array>
 		</dict>
 	</array>

@@ -208,27 +208,35 @@ struct MainTabView: View {
 
     // MARK: - Friend Code Deep Link
 
-    /// Handles `pushup://friend-code/<CODE>` deep-links.
+    /// Handles friend-code deep-links in two formats:
+    ///   - Universal Link:  `https://pushup.weareo.fun/friend/<CODE>`
+    ///   - Custom scheme:   `pushup://friend-code/<CODE>`
     ///
-    /// Switches to the Friends tab and opens the Enter Code sheet with the
-    /// code pre-filled so the user only needs to tap "Add Friend".
+    /// Switches to the Friends tab and opens the Enter Code sheet with
+    /// the code pre-filled so the user only needs to tap "Add Friend".
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "pushup",
-              url.host == "friend-code" else { return }
+        let extracted: String?
 
-        // Extract the code from the path: /AB3X7K2M -> "AB3X7K2M"
-        let code = url.pathComponents
-            .filter { $0 != "/" }
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
+        if url.scheme == "https",
+           url.host == "pushup.weareo.fun",
+           url.pathComponents.count >= 3,
+           url.pathComponents[1] == "friend" {
+            // Universal Link: https://pushup.weareo.fun/friend/AB3X7K2M
+            extracted = url.pathComponents[2].uppercased()
+        } else if url.scheme == "pushup", url.host == "friend-code" {
+            // Custom scheme: pushup://friend-code/AB3X7K2M
+            extracted = url.pathComponents
+                .filter { $0 != "/" }
+                .first?
+                .uppercased()
+        } else {
+            return
+        }
 
-        guard let code, !code.isEmpty else { return }
+        guard let code = extracted, !code.isEmpty else { return }
 
-        // Switch to Friends tab and open the Enter Code sheet.
         selectedTab = .friends
         friendCodeViewModel.enteredCode = code
-        // Small delay so the tab switch animation completes first.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             showFriendCodeSheet = true
         }
