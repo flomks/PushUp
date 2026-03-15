@@ -1,7 +1,12 @@
 -- =============================================================================
--- PushUp App Database Schema (v1)
--- Local-first storage for workout tracking and time credit management.
+-- PushUp App Local Database Schema (v2)
+-- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
+--
+-- Schema version history:
+--   v1 (initial) — User, WorkoutSession, PushUpRecord, TimeCredit,
+--                  UserSettings, UserLevel tables.
+--   v2 (1.sqm)   — Added username column to User table.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

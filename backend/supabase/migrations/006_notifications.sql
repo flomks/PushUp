@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration: 005_notifications.sql
+-- Migration: 006_notifications.sql
 -- Description: In-app notifications table for user events such as friend
 --              requests, accepted friendships, etc.
 -- Created: 2026-03-09
@@ -14,7 +14,7 @@
 --     Paste this file and click "Run".
 --
 --   Option C (psql):
---     psql "$DATABASE_URL" -f backend/supabase/migrations/005_notifications.sql
+--     psql "$DATABASE_URL" -f backend/supabase/migrations/006_notifications.sql
 --
 -- HOW TO ROLL BACK:
 --   Execute the "ROLLBACK" section at the bottom of this file.
@@ -166,5 +166,5 @@ CREATE POLICY "notifications_delete_own"
 
 
 -- =============================================================================
--- END OF MIGRATION 005
+-- END OF MIGRATION 006
 -- =============================================================================
