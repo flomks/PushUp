@@ -2,27 +2,31 @@ import SwiftUI
 
 // MARK: - StatsView
 
-/// Dedicated Stats screen with Daily, Weekly, Monthly, and Total tabs.
+/// Dedicated Stats screen with Daily, Weekly, Monthly, Total, Screen Time,
+/// and History segments.
 ///
 /// **Layout**
 /// ```
-/// +-----------------------------------+
-/// |  Stats                [Export]    |  <- navigation bar
-/// |  [Daily | Weekly | Monthly | All] |  <- segmented tab picker
-/// |                                   |
-/// |  [Tab-specific content]           |  <- scrollable content
-/// |                                   |
-/// +-----------------------------------+
+/// +-------------------------------------------+
+/// |  Stats                          [Export]   |  <- navigation bar
+/// |  [Daily][Weekly][Monthly][Total][History]  |  <- scrollable chip picker
+/// |                                            |
+/// |  [Segment-specific content]                |  <- scrollable content
+/// |                                            |
+/// +-------------------------------------------+
 /// ```
 ///
-/// **Tabs**
+/// **Segments**
 /// - Daily   : Color-coded calendar with tap-to-detail
 /// - Weekly  : Swift Charts bar chart + summary cards
 /// - Monthly : Swift Charts line chart + comparison + summary
 /// - Total   : Lifetime stats, streak banner, records, averages
+/// - Screen  : Screen Time stats
+/// - History : Full workout history list (moved here from its own tab so
+///             Friends can have a dedicated tab bar position)
 ///
 /// **Features**
-/// - Pull-to-refresh on all tabs
+/// - Pull-to-refresh on all segments (except History which manages its own)
 /// - Loading skeleton states
 /// - Error alert with retry
 /// - Export sheet (CSV/PDF placeholder)
@@ -101,39 +105,68 @@ struct StatsView: View {
     // MARK: - Tab Picker
 
     private var tabPicker: some View {
-        Picker("Stats Period", selection: $viewModel.selectedTab) {
-            ForEach(StatsTab.allCases) { tab in
-                Text(tab.label).tag(tab)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AppSpacing.xs) {
+                ForEach(StatsTab.allCases) { tab in
+                    tabChip(tab)
+                }
             }
+            .padding(.horizontal, AppSpacing.xxs)
         }
-        .pickerStyle(.segmented)
+    }
+
+    private func tabChip(_ tab: StatsTab) -> some View {
+        let isSelected = viewModel.selectedTab == tab
+        return Button {
+            viewModel.selectedTab = tab
+        } label: {
+            Text(tab.label)
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.textPrimary)
+                .padding(.horizontal, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.xxs + 2)
+                .background(
+                    isSelected ? AppColors.primary : AppColors.backgroundTertiary,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 
     // MARK: - Tab Content
 
     @ViewBuilder
     private var tabContent: some View {
-        ScrollView {
-            LazyVStack(spacing: AppSpacing.md) {
-                switch viewModel.selectedTab {
-                case .daily:
-                    dailyContent
-                case .weekly:
-                    weeklyContent
-                case .monthly:
-                    monthlyContent
-                case .total:
-                    totalContent
-                case .screenTime:
-                    screenTimeContent
+        if viewModel.selectedTab == .history {
+            // History has its own scroll + filter layout; render it directly
+            // without wrapping in another ScrollView.
+            HistoryView()
+        } else {
+            ScrollView {
+                LazyVStack(spacing: AppSpacing.md) {
+                    switch viewModel.selectedTab {
+                    case .daily:
+                        dailyContent
+                    case .weekly:
+                        weeklyContent
+                    case .monthly:
+                        monthlyContent
+                    case .total:
+                        totalContent
+                    case .screenTime:
+                        screenTimeContent
+                    case .history:
+                        EmptyView() // handled above
+                    }
                 }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.sm)
+                .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.top, AppSpacing.sm)
-            .padding(.bottom, AppSpacing.screenVerticalBottom)
-        }
-        .refreshable {
-            await viewModel.refresh()
+            .refreshable {
+                await viewModel.refresh()
+            }
         }
     }
 
