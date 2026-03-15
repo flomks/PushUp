@@ -112,9 +112,9 @@ BEGIN
     avatar_url   = COALESCE(EXCLUDED.avatar_url,   public.users.avatar_url),
     updated_at   = NOW();
 
-  INSERT INTO public.time_credits (user_id)  VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_settings (user_id) VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
-  INSERT INTO public.user_levels (user_id)   VALUES (NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.time_credits  (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.user_settings (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.user_levels   (id, user_id) VALUES (gen_random_uuid(), NEW.id) ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
