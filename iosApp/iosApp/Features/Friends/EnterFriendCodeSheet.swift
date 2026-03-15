@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - EnterFriendCodeSheet
 
-/// Sheet that lets the user type in a friend code.
+/// Sheet that lets the user type in or scan a friend code.
 ///
 /// Can be used in two ways:
 ///   1. As a standalone sheet (e.g. from a deep-link) -- wraps itself in a
@@ -21,6 +21,9 @@ struct EnterFriendCodeSheet: View {
 
     /// Focus state for the code text field.
     @FocusState private var isFieldFocused: Bool
+
+    /// Controls the full-screen QR scanner.
+    @State private var showScanner = false
 
     var body: some View {
         Group {
@@ -41,6 +44,19 @@ struct EnterFriendCodeSheet: View {
                 .presentationDragIndicator(.visible)
             } else {
                 innerContent
+            }
+        }
+        .fullScreenCover(isPresented: $showScanner) {
+            QRScannerView { code in
+                // Code scanned successfully: fill the field and dismiss scanner
+                viewModel.enteredCode = code
+                showScanner = false
+                // Auto-submit after a brief moment so the user sees the filled code
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    viewModel.useFriendCode()
+                }
+            } onCancel: {
+                showScanner = false
             }
         }
         .alert(
@@ -93,50 +109,74 @@ struct EnterFriendCodeSheet: View {
                     Text("Add by Code")
                         .font(AppTypography.title3)
                         .foregroundStyle(AppColors.textPrimary)
-                    Text("Enter the 8-character code your friend shared with you.")
+                    Text("Type your friend's code or scan their QR code.")
                         .font(AppTypography.body)
                         .foregroundStyle(AppColors.textSecondary)
                         .multilineTextAlignment(.center)
                 }
             }
 
-            // Code input field
-            codeInputField
+            // Code input field + scan button side by side
+            codeInputRow
 
             // Submit button
             submitButton
         }
     }
 
-    private var codeInputField: some View {
+    // MARK: - Code input row (text field + scan button)
+
+    private var codeInputRow: some View {
         VStack(spacing: AppSpacing.xs) {
-            TextField("e.g. AB3X7K2M", text: $viewModel.enteredCode)
-                .font(.system(size: 28, weight: .bold, design: .monospaced))
-                .multilineTextAlignment(.center)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-                .keyboardType(.asciiCapable)
-                .focused($isFieldFocused)
-                .onChange(of: viewModel.enteredCode) { _, newValue in
-                    // Normalise: uppercase, strip non-alphanumeric, cap at 16 chars
-                    let cleaned = newValue
-                        .uppercased()
-                        .filter { $0.isLetter || $0.isNumber }
-                        .prefix(16)
-                    if viewModel.enteredCode != String(cleaned) {
-                        viewModel.enteredCode = String(cleaned)
+            HStack(spacing: AppSpacing.xs) {
+                // Text field
+                TextField("e.g. AB3X7K2M", text: $viewModel.enteredCode)
+                    .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                    .focused($isFieldFocused)
+                    .onChange(of: viewModel.enteredCode) { _, newValue in
+                        let cleaned = newValue
+                            .uppercased()
+                            .filter { $0.isLetter || $0.isNumber }
+                            .prefix(16)
+                        if viewModel.enteredCode != String(cleaned) {
+                            viewModel.enteredCode = String(cleaned)
+                        }
                     }
-                }
-                .padding(.vertical, AppSpacing.sm)
-                .padding(.horizontal, AppSpacing.md)
-                .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                        .strokeBorder(
-                            isFieldFocused ? AppColors.primary.opacity(0.5) : Color.clear,
-                            lineWidth: 1.5
+                    .padding(.vertical, AppSpacing.sm)
+                    .padding(.horizontal, AppSpacing.md)
+                    .background(
+                        AppColors.backgroundSecondary,
+                        in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+                            .strokeBorder(
+                                isFieldFocused ? AppColors.primary.opacity(0.5) : Color.clear,
+                                lineWidth: 1.5
+                            )
+                    )
+
+                // QR scan button
+                Button {
+                    isFieldFocused = false
+                    showScanner = true
+                } label: {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppColors.primary)
+                        .frame(width: 52, height: 52)
+                        .background(
+                            AppColors.primary.opacity(0.1),
+                            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
                         )
-                )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Scan QR code")
+            }
 
             if !viewModel.enteredCode.isEmpty {
                 Text("\(viewModel.enteredCode.count) / 16 characters")
@@ -145,6 +185,8 @@ struct EnterFriendCodeSheet: View {
             }
         }
     }
+
+    // MARK: - Submit button
 
     private var submitButton: some View {
         Button {
