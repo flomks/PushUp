@@ -3,6 +3,7 @@ package com.pushup.plugins
 import com.pushup.models.HealthResponse
 import com.pushup.routes.deviceTokenRoutes
 import com.pushup.routes.friendActivityStatsRoutes
+import com.pushup.routes.friendCodeRoutes
 import com.pushup.routes.friendRoutes
 import com.pushup.routes.statsRoutes
 import com.pushup.routes.userDataRoutes
@@ -11,6 +12,7 @@ import com.pushup.routes.userSearchRoutes
 import com.pushup.routes.usernameRoutes
 import com.pushup.service.DeviceTokenService
 import com.pushup.service.FriendActivityStatsService
+import com.pushup.service.FriendCodeService
 import com.pushup.service.FriendshipService
 import com.pushup.service.StatsService
 import com.pushup.service.UserDataService
@@ -29,6 +31,7 @@ fun Application.configureRouting(
     deviceTokenService: DeviceTokenService = DeviceTokenService(),
     friendshipService: FriendshipService = FriendshipService(deviceTokenService),
     friendActivityStatsService: FriendActivityStatsService = FriendActivityStatsService(),
+    friendCodeService: FriendCodeService = FriendCodeService(deviceTokenService),
     databaseReady: Boolean = true,
 ) {
     routing {
@@ -49,5 +52,6 @@ fun Application.configureRouting(
         deviceTokenRoutes(deviceTokenService, databaseReady = databaseReady)
         friendRoutes(friendshipService, databaseReady = databaseReady)
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)
+        friendCodeRoutes(friendCodeService, databaseReady = databaseReady)
     }
 }

@@ -48,8 +48,11 @@ import com.pushup.domain.usecase.auth.LogoutUseCase
 import com.pushup.domain.usecase.auth.RefreshTokenUseCase
 import com.pushup.domain.usecase.auth.RegisterWithEmailUseCase
 import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.FriendCodeApiClient
 import com.pushup.data.api.FriendshipApiClient
+import com.pushup.data.repository.FriendCodeRepositoryImpl
 import com.pushup.data.repository.FriendshipRepositoryImpl
+import com.pushup.domain.repository.FriendCodeRepository
 import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
@@ -183,6 +186,10 @@ val repositoryModule: Module = module {
 
     single<FriendshipRepository> {
         FriendshipRepositoryImpl(apiClient = get())
+    }
+
+    single<FriendCodeRepository> {
+        FriendCodeRepositoryImpl(apiClient = get())
     }
 
     single<LevelRepository> {
@@ -424,6 +431,18 @@ val apiModule: Module = module {
         val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
         val authRepository: AuthRepository = get()
         FriendshipApiClient(
+            httpClient = get(),
+            backendBaseUrl = get(named(BACKEND_BASE_URL)),
+            tokenProvider = { tokenProvider.getToken() },
+            onRefreshToken = { authRepository.refreshToken() },
+        )
+    }
+
+    // Friend code API client
+    single {
+        val tokenProvider: JwtTokenProvider = get(named(JWT_TOKEN_PROVIDER))
+        val authRepository: AuthRepository = get()
+        FriendCodeApiClient(
             httpClient = get(),
             backendBaseUrl = get(named(BACKEND_BASE_URL)),
             tokenProvider = { tokenProvider.getToken() },
