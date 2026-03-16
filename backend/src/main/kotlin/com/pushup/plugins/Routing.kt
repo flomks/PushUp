@@ -120,10 +120,12 @@ fun Application.configureRouting(
                           --r-sm:    12px;
                         }
 
-                        html { height: 100%; }
+                        /* 100dvh = dynamic viewport height, works correctly on
+                           iOS Safari where 100vh includes the browser chrome */
+                        html, body { height: 100%; }
 
                         body {
-                          min-height: 100%;
+                          min-height: 100dvh;
                           font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
                           color: var(--text);
                           display: flex;
@@ -131,11 +133,14 @@ fun Application.configureRouting(
                           align-items: center;
                           justify-content: center;
                           padding: 32px 20px 48px;
+                          /* background-attachment: fixed keeps the gradient
+                             from scrolling on mobile when content overflows */
                           background:
                             radial-gradient(ellipse 90% 55% at 50% -5%,  rgba(59,130,246,.22) 0%, transparent 65%),
                             radial-gradient(ellipse 70% 50% at 85% 105%, rgba(139,92,246,.18) 0%, transparent 65%),
                             radial-gradient(ellipse 50% 40% at 10% 90%,  rgba(59,130,246,.10) 0%, transparent 60%),
                             #07070f;
+                          background-attachment: fixed;
                         }
 
                         /* ── Wordmark ── */
