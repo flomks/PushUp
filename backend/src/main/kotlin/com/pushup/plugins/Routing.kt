@@ -96,6 +96,11 @@ fun Application.configureRouting(
             val appStoreUrl  = "https://apps.apple.com/app/id0000000000"
             val playStoreUrl = "https://play.google.com/store/apps/details?id=com.flomks.pushup"
 
+            // Prevent browsers from caching old versions of this page.
+            call.response.headers.append("Cache-Control", "no-cache, no-store, must-revalidate")
+            call.response.headers.append("Pragma", "no-cache")
+            call.response.headers.append("Expires", "0")
+
             call.respondText(
                 contentType = ContentType.Text.Html,
                 text = """
