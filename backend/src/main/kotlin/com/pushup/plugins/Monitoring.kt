@@ -40,7 +40,9 @@ fun Application.configureMonitoring() {
         header("X-Content-Type-Options", "nosniff")
         header("X-Frame-Options", "DENY")
         header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        header("Content-Security-Policy", "default-src 'none'")
+        // Allow inline styles for the /friend/<code> landing page HTML.
+        // All other responses are JSON so this has no security impact on them.
+        header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
         header("Referrer-Policy", "no-referrer")
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     }
