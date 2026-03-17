@@ -218,6 +218,62 @@ object SafeAuthBridge : KoinComponent {
     }
 
     /**
+     * Fetches the user profile from the cloud (Supabase) and merges any
+     * server-side username / display name into the local database.
+     *
+     * This is used during session restore: when the local DB has been wiped
+     * (e.g. app reinstall) but the Keychain token still exists, the local
+     * User record is recreated with `username = null`. This method checks
+     * whether the server already has a username for this user and, if so,
+     * persists it locally so the "Choose your username" screen is skipped.
+     *
+     * Returns a [SafeAuthResult] with the (potentially updated) [User].
+     * Never throws.
+     */
+    suspend fun safeFetchAndMergeCloudProfile(): SafeAuthResult = try {
+        val userRepo = get<UserRepository>()
+        val user = userRepo.getCurrentUser()
+            ?: return SafeAuthResult(user = null, errorMessage = "No authenticated user found.")
+
+        val syncApi = runCatching { get<CloudSyncApi>() }.getOrNull()
+            ?: return SafeAuthResult(user = user, errorMessage = null) // No API — return local user as-is.
+
+        val remote = syncApi.getUserProfile(user.id)
+        if (remote != null) {
+            val remoteUsername    = remote.username?.trim()?.takeIf { it.isNotBlank() }
+            val remoteDisplayName = remote.displayName?.trim()?.takeIf { it.isNotBlank() }
+            val remoteAvatarUrl   = remote.effectiveAvatarUrl
+            val remoteVisibility  = remote.avatarVisibility
+                ?.let { com.pushup.domain.model.AvatarVisibility.fromDbValue(it) }
+
+            val needsUpdate =
+                (remoteUsername    != null && user.username    != remoteUsername)    ||
+                (remoteDisplayName != null && user.displayName != remoteDisplayName) ||
+                (remoteAvatarUrl   != null && user.avatarUrl   != remoteAvatarUrl)  ||
+                (remoteVisibility  != null && user.avatarVisibility != remoteVisibility)
+
+            if (needsUpdate) {
+                val updated = user.copy(
+                    username         = remoteUsername     ?: user.username,
+                    displayName      = remoteDisplayName  ?: user.displayName,
+                    avatarUrl        = remoteAvatarUrl    ?: user.avatarUrl,
+                    avatarVisibility = remoteVisibility   ?: user.avatarVisibility,
+                )
+                userRepo.updateUser(updated)
+                return SafeAuthResult(user = updated, errorMessage = null)
+            }
+        }
+        SafeAuthResult(user = user, errorMessage = null)
+    } catch (_: CancellationException) {
+        throw CancellationException()
+    } catch (_: Exception) {
+        // Network failure — return the local user as-is so the caller can
+        // still make a decision based on the local state.
+        val fallback = runCatching { get<UserRepository>().getCurrentUser() }.getOrNull()
+        SafeAuthResult(user = fallback, errorMessage = null)
+    }
+
+    /**
      * Updates the avatar URL for the currently authenticated user.
      *
      * Pass `null` to clear the avatar (revert to initials fallback).
