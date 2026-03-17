@@ -190,6 +190,22 @@ final class AuthService: Sendable {
         }
     }
 
+    // MARK: - Cloud Profile Merge
+
+    /// Fetches the user profile from the cloud and merges any server-side
+    /// username / display name into the local database.
+    ///
+    /// Used during session restore: when the local DB has been wiped (e.g. app
+    /// reinstall) but the Keychain token still exists, the local User record is
+    /// recreated with `username = nil`. This method checks whether the server
+    /// already has a username for this user and, if so, persists it locally so
+    /// the "Choose your username" screen is skipped.
+    func fetchAndMergeCloudProfile() async -> AuthServiceResult {
+        await callSafeBridge { handler in
+            SafeAuthBridge.shared.safeFetchAndMergeCloudProfile(completionHandler: handler)
+        }
+    }
+
     // MARK: - Avatar
 
     /// Updates the avatar URL for the currently authenticated user.

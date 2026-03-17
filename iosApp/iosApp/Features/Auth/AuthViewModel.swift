@@ -547,27 +547,48 @@ final class AuthViewModel: NSObject, ObservableObject {
 
     /// Checks whether a valid Supabase token exists and restores the session.
     ///
-    /// If the user is authenticated but has not yet set a username, transitions
-    /// to `.needsDisplayName` so the username setup screen is shown.
+    /// If the user is authenticated but has not yet set a username, the method
+    /// first attempts to fetch the user's profile from the cloud. This handles
+    /// the case where the app was reinstalled (local DB wiped) but the Keychain
+    /// token survived -- the server may already have a username for this user.
+    ///
+    /// Only if the server also confirms no username does the method transition
+    /// to `.needsDisplayName` to show the username setup screen.
     func restoreSession() async {
-        if let user = await AuthService.shared.getCurrentUser() {
-            let needsUsername = (user.username == nil || user.username?.isEmpty == true)
-            if needsUsername {
-                // User is authenticated but hasn't set a username yet.
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            authState = .unauthenticated
+            return
+        }
+
+        let needsUsername = (user.username == nil || user.username?.isEmpty == true)
+
+        if needsUsername {
+            // The local DB has no username. Before showing the setup screen,
+            // check the server -- the user may already have a username that
+            // was lost when the local DB was wiped (e.g. app reinstall).
+            let mergeResult = await AuthService.shared.fetchAndMergeCloudProfile()
+            if let mergedUser = mergeResult.user,
+               let serverUsername = mergedUser.username,
+               !serverUsername.isEmpty {
+                // Server has a username -- the user is fully set up.
+                authState = .authenticated
+                SyncService.shared.syncFromCloudAfterLogin()
+                await PushNotificationService.shared.registerPendingTokenIfNeeded()
+            } else {
+                // Server also has no username -- this is genuinely a new user
+                // (or one who never completed the username setup).
                 usernameInput = ""
                 isUsernameAvailable = nil
                 authState = .needsDisplayName
-            } else {
-                authState = .authenticated
-                // Trigger a background sync on app relaunch so local data is
-                // refreshed from the cloud (picks up changes from other devices
-                // or sessions since the last time the app was open).
-                SyncService.shared.syncFromCloudAfterLogin()
-                // Register any APNs token that arrived before the session was restored.
-                await PushNotificationService.shared.registerPendingTokenIfNeeded()
             }
         } else {
-            authState = .unauthenticated
+            authState = .authenticated
+            // Trigger a background sync on app relaunch so local data is
+            // refreshed from the cloud (picks up changes from other devices
+            // or sessions since the last time the app was open).
+            SyncService.shared.syncFromCloudAfterLogin()
+            // Register any APNs token that arrived before the session was restored.
+            await PushNotificationService.shared.registerPendingTokenIfNeeded()
         }
     }
 
@@ -576,11 +597,13 @@ final class AuthViewModel: NSObject, ObservableObject {
     /// Handles a successful social sign-in result.
     ///
     /// Detects whether this is a new user by checking if the stored username is
-    /// nil or empty. If the username has not been set yet, transitions to
-    /// `.needsDisplayName` (the username setup screen) so the user can choose one.
+    /// nil or empty. When the local username is missing, the method first
+    /// fetches the user's profile from the cloud to check whether a username
+    /// already exists on the server (e.g. the user signed in before on another
+    /// device, or the local DB was wiped by an app reinstall).
     ///
-    /// For returning users who already have a username, transitions directly to
-    /// `.authenticated`.
+    /// Only if the server also confirms no username does the method transition
+    /// to `.needsDisplayName` to show the username setup screen.
     ///
     /// - Parameters:
     ///   - result:        The successful auth result containing the User.
@@ -594,16 +617,25 @@ final class AuthViewModel: NSObject, ObservableObject {
             return
         }
 
-        // A user needs to set their username if they don't have one yet.
-        // This is the single, reliable signal: username is nil until the user
-        // explicitly completes the username setup screen.
         let needsUsername = (user.username == nil || user.username?.isEmpty == true)
 
         if needsUsername {
-            // New user (or user who hasn't set a username yet): show the username screen.
-            usernameInput = ""
-            isUsernameAvailable = nil
-            authState = .needsDisplayName
+            // Local DB has no username. Check the server first -- the user may
+            // already have one (e.g. returning user after app reinstall).
+            let mergeResult = await AuthService.shared.fetchAndMergeCloudProfile()
+            if let mergedUser = mergeResult.user,
+               let serverUsername = mergedUser.username,
+               !serverUsername.isEmpty {
+                // Server has a username -- skip the setup screen.
+                authState = .authenticated
+                SyncService.shared.syncFromCloudAfterLogin()
+                await PushNotificationService.shared.registerPendingTokenIfNeeded()
+            } else {
+                // Server also has no username -- genuinely new user.
+                usernameInput = ""
+                isUsernameAvailable = nil
+                authState = .needsDisplayName
+            }
         } else {
             // Returning user with an existing username: go straight to the app.
             authState = .authenticated
