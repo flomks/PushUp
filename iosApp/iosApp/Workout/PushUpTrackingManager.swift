@@ -625,9 +625,28 @@ final class PushUpTrackingManager: ObservableObject {
             print(
                 "[PushUpTrackingManager] KMP workout finished." +
                 " push-ups=\(summary.session.pushUpCount)" +
-                " credits=\(summary.earnedCredits)"
+                " credits=\(summary.earnedCredits)" +
+                " xp=\(summary.earnedXp)"
             )
             #endif
+
+            // Trigger post-workout cloud sync to upload the session, time
+            // credits, and XP to Supabase. This uses the targeted
+            // syncAfterWorkout() path which skips the full cloud pull to
+            // keep the post-workout flow fast.
+            SyncBridge.shared.syncAfterWorkout(
+                onSuccess: {
+                    #if DEBUG
+                    print("[PushUpTrackingManager] Post-workout sync completed.")
+                    #endif
+                },
+                onError: { errorMessage in
+                    #if DEBUG
+                    print("[PushUpTrackingManager] Post-workout sync failed: \(errorMessage)")
+                    #endif
+                    // Non-fatal: the periodic sync will retry automatically.
+                }
+            )
         } catch {
             #if DEBUG
             print("[PushUpTrackingManager] Failed to finish KMP workout: \(error)")

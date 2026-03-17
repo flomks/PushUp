@@ -55,6 +55,7 @@ object SyncBridge : KoinComponent {
                         val errors = listOfNotNull(
                             result.workoutsError?.message,
                             result.timeCreditError?.message,
+                            result.levelError?.message,
                             result.fromCloudError?.message,
                         )
                         withContext(Dispatchers.Main) { onSuccess(errors.joinToString("; ")) }
