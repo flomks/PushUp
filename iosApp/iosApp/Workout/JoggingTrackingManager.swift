@@ -292,6 +292,12 @@ final class JoggingTrackingManager: ObservableObject {
     private func recordLocationPoint(_ location: CLLocation, sessionId: String) {
         let useCase = self.recordRoutePoint
         let distance = self.distanceMeters
+        // Convert CLLocation timestamp to Kotlinx Instant for the KMP use case.
+        // Kotlin/Native does not export default parameter values to Swift,
+        // so we must pass the timestamp explicitly.
+        let timestamp = Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+            epochMilliseconds: Int64(location.timestamp.timeIntervalSince1970 * 1000.0)
+        )
 
         Task {
             do {
@@ -304,6 +310,7 @@ final class JoggingTrackingManager: ObservableObject {
                         speed: location.speed >= 0 ? KotlinDouble(value: location.speed) : nil,
                         horizontalAccuracy: location.horizontalAccuracy >= 0 ? KotlinDouble(value: location.horizontalAccuracy) : nil,
                         distanceFromStart: distance,
+                        timestamp: timestamp,
                         completionHandler: handler
                     )
                 } as Shared.RoutePoint
