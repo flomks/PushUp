@@ -111,10 +111,7 @@ class SyncTimeCreditUseCase(
             if (local.lastUpdatedAt > remote.lastUpdatedAt) {
                 supabaseClient.updateTimeCredit(
                     userId = local.userId,
-                    request = UpdateTimeCreditRequest(
-                        totalEarnedSeconds = local.totalEarnedSeconds,
-                        totalSpentSeconds = local.totalSpentSeconds,
-                    ),
+                    request = buildUpdateRequest(local),
                 )
                 timeCreditRepository.markAsSynced(local.userId)
                 SyncTimeCreditResult.Synced
@@ -124,6 +121,18 @@ class SyncTimeCreditUseCase(
             }
         }
     }
+
+    /**
+     * Builds the update request including daily reset fields.
+     */
+    private fun buildUpdateRequest(credit: TimeCredit): UpdateTimeCreditRequest =
+        UpdateTimeCreditRequest(
+            totalEarnedSeconds = credit.totalEarnedSeconds,
+            totalSpentSeconds = credit.totalSpentSeconds,
+            dailyEarnedSeconds = credit.dailyEarnedSeconds,
+            dailySpentSeconds = credit.dailySpentSeconds,
+            lastResetAt = credit.lastResetAt?.toString(),
+        )
 
     /**
      * Attempts to create/update the time credit record remotely.
@@ -138,10 +147,7 @@ class SyncTimeCreditUseCase(
         return try {
             supabaseClient.updateTimeCredit(
                 userId = local.userId,
-                request = UpdateTimeCreditRequest(
-                    totalEarnedSeconds = local.totalEarnedSeconds,
-                    totalSpentSeconds = local.totalSpentSeconds,
-                ),
+                request = buildUpdateRequest(local),
             )
             timeCreditRepository.markAsSynced(local.userId)
             SyncTimeCreditResult.Synced

@@ -24,6 +24,7 @@ import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.ApplyDailyResetUseCase
 import com.pushup.domain.usecase.AwardWorkoutXpUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
@@ -231,7 +232,20 @@ val useCaseModule: Module = module {
             clock = get(),
         )
     }
-    factory { GetTimeCreditUseCase(timeCreditRepository = get(), clock = get()) }
+    factory {
+        ApplyDailyResetUseCase(
+            timeCreditRepository = get(),
+            sessionRepository = get(),
+            clock = get(),
+        )
+    }
+    factory {
+        GetTimeCreditUseCase(
+            timeCreditRepository = get(),
+            applyDailyResetUseCase = get(),
+            clock = get(),
+        )
+    }
     factory { SpendTimeCreditUseCase(timeCreditRepository = get(), clock = get()) }
     factory { GetUserSettingsUseCase(settingsRepository = get()) }
     factory { UpdateUserSettingsUseCase(settingsRepository = get()) }

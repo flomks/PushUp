@@ -485,16 +485,27 @@ class SupabaseClient(
  *
  * Falls back to [clock].now() when `updated_at` is absent or unparseable,
  * which can happen if the server omits the field in a partial response.
+ *
+ * For the daily fields, falls back to the all-time balance when the remote
+ * record does not yet have daily fields (backward compatibility with older
+ * server versions).
  */
-private fun TimeCreditDTO.toTimeCreditDomain(clock: Clock): TimeCredit = TimeCredit(
-    userId = userId,
-    totalEarnedSeconds = totalEarnedSeconds,
-    totalSpentSeconds = totalSpentSeconds,
-    lastUpdatedAt = updatedAt
-        ?.let { runCatching { Instant.parse(it) }.getOrNull() }
-        ?: clock.now(),
-    syncStatus = SyncStatus.SYNCED,
-)
+private fun TimeCreditDTO.toTimeCreditDomain(clock: Clock): TimeCredit {
+    val allTimeAvailable = (totalEarnedSeconds - totalSpentSeconds).coerceAtLeast(0L)
+    return TimeCredit(
+        userId = userId,
+        totalEarnedSeconds = totalEarnedSeconds,
+        totalSpentSeconds = totalSpentSeconds,
+        dailyEarnedSeconds = dailyEarnedSeconds ?: allTimeAvailable,
+        dailySpentSeconds = dailySpentSeconds ?: 0L,
+        lastResetAt = lastResetAt
+            ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+        lastUpdatedAt = updatedAt
+            ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+            ?: clock.now(),
+        syncStatus = SyncStatus.SYNCED,
+    )
+}
 
 /**
  * Maps a [UserLevelDTO] to a [UserLevel] domain model.

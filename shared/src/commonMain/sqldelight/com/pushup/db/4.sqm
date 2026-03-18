@@ -1,0 +1,16 @@
+-- Migration 4 -> 5
+-- Adds daily reset fields to the TimeCredit table.
+--
+-- dailyEarnedSeconds: credits available in the current daily period (earned + carry-over).
+--   Initialised to (totalEarnedSeconds - totalSpentSeconds) so existing users keep
+--   their current balance until the first daily reset at 03:00 local time.
+-- dailySpentSeconds: credits spent in the current daily period. Starts at 0.
+-- lastResetAt: epoch millis of the most recent daily reset. NULL until the first reset.
+
+ALTER TABLE TimeCredit ADD COLUMN dailyEarnedSeconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE TimeCredit ADD COLUMN dailySpentSeconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE TimeCredit ADD COLUMN lastResetAt INTEGER;
+
+-- Backfill: set dailyEarnedSeconds to the current available balance so existing
+-- users see the same credit they had before the migration.
+UPDATE TimeCredit SET dailyEarnedSeconds = MAX(0, totalEarnedSeconds - totalSpentSeconds);

@@ -147,6 +147,21 @@ class WorkoutSessionRepositoryImpl(
         ).executeAsList().map { it.toDomain() }
     }
 
+    override suspend fun getByEndedAtRange(
+        userId: String,
+        from: Instant,
+        to: Instant,
+    ): List<WorkoutSession> = safeDbCall(
+        dispatcher,
+        "Failed to get workout sessions for user '$userId' by endedAt range",
+    ) {
+        queries.selectWorkoutSessionsByEndedAtRange(
+            userId = userId,
+            endedAt = from.toEpochMilliseconds(),
+            endedAt_ = to.toEpochMilliseconds(),
+        ).executeAsList().map { it.toDomain() }
+    }
+
     override suspend fun getUnsyncedSessions(userId: String): List<WorkoutSession> = safeDbCall(
         dispatcher,
         "Failed to get unsynced sessions for user '$userId'",

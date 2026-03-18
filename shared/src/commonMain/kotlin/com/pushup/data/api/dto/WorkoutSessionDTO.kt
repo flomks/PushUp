@@ -124,6 +124,9 @@ data class CreatePushUpRecordRequest(
  * @property userId               UUID of the owning user.
  * @property totalEarnedSeconds   Cumulative seconds earned through workouts.
  * @property totalSpentSeconds    Cumulative seconds consumed as screen time.
+ * @property dailyEarnedSeconds   Credits available in the current daily period (earned + carry-over).
+ * @property dailySpentSeconds    Credits spent in the current daily period.
+ * @property lastResetAt          ISO-8601 timestamp of the most recent daily reset, or null.
  * @property updatedAt            ISO-8601 timestamp of last update.
  */
 @Serializable
@@ -132,6 +135,9 @@ data class TimeCreditDTO(
     @SerialName("user_id")                val userId: String,
     @SerialName("total_earned_seconds")   val totalEarnedSeconds: Long,
     @SerialName("total_spent_seconds")    val totalSpentSeconds: Long,
+    @SerialName("daily_earned_seconds")   val dailyEarnedSeconds: Long? = null,
+    @SerialName("daily_spent_seconds")    val dailySpentSeconds: Long? = null,
+    @SerialName("last_reset_at")          val lastResetAt: String? = null,
     @SerialName("updated_at")             val updatedAt: String? = null,
 )
 
@@ -144,6 +150,9 @@ data class TimeCreditDTO(
 data class UpdateTimeCreditRequest(
     @SerialName("total_earned_seconds")   val totalEarnedSeconds: Long? = null,
     @SerialName("total_spent_seconds")    val totalSpentSeconds: Long? = null,
+    @SerialName("daily_earned_seconds")   val dailyEarnedSeconds: Long? = null,
+    @SerialName("daily_spent_seconds")    val dailySpentSeconds: Long? = null,
+    @SerialName("last_reset_at")          val lastResetAt: String? = null,
 )
 
 // =============================================================================

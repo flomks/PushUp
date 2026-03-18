@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v4)
+-- PushUp App Local Database Schema (v5)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 --
@@ -9,6 +9,8 @@
 --   v2 (1.sqm)   — Added username column to User table.
 --   v3 (2.sqm)   — Added searchableByEmail column to UserSettings table.
 --   v4 (3.sqm)   — Added avatarUrl and avatarVisibility columns to User table.
+--   v5 (4.sqm)   — Added daily reset fields to TimeCredit table
+--                   (dailyEarnedSeconds, dailySpentSeconds, lastResetAt).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -72,6 +74,9 @@ CREATE TABLE TimeCredit (
     userId             TEXT    NOT NULL UNIQUE REFERENCES User(id) ON DELETE CASCADE,
     totalEarnedSeconds INTEGER NOT NULL DEFAULT 0,
     totalSpentSeconds  INTEGER NOT NULL DEFAULT 0,
+    dailyEarnedSeconds INTEGER NOT NULL DEFAULT 0,
+    dailySpentSeconds  INTEGER NOT NULL DEFAULT 0,
+    lastResetAt        INTEGER,
     lastUpdatedAt      INTEGER NOT NULL,
     syncStatus         TEXT    NOT NULL DEFAULT 'pending'
 );
@@ -223,6 +228,12 @@ UPDATE WorkoutSession
 SET endedAt = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
+selectWorkoutSessionsByEndedAtRange:
+SELECT *
+FROM WorkoutSession
+WHERE userId = ? AND endedAt >= ? AND endedAt < ?
+ORDER BY endedAt DESC;
+
 countWorkoutSessionsByUserId:
 SELECT COUNT(*)
 FROM WorkoutSession
@@ -279,8 +290,8 @@ WHERE sessionId = ?;
 -- =============================================================================
 
 insertTimeCredit:
-INSERT INTO TimeCredit (id, userId, totalEarnedSeconds, totalSpentSeconds, lastUpdatedAt, syncStatus)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO TimeCredit (id, userId, totalEarnedSeconds, totalSpentSeconds, dailyEarnedSeconds, dailySpentSeconds, lastResetAt, lastUpdatedAt, syncStatus)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectTimeCreditById:
 SELECT *
@@ -293,7 +304,7 @@ FROM TimeCredit;
 
 updateTimeCredit:
 UPDATE TimeCredit
-SET totalEarnedSeconds = ?, totalSpentSeconds = ?, lastUpdatedAt = ?, syncStatus = ?
+SET totalEarnedSeconds = ?, totalSpentSeconds = ?, dailyEarnedSeconds = ?, dailySpentSeconds = ?, lastResetAt = ?, lastUpdatedAt = ?, syncStatus = ?
 WHERE id = ?;
 
 deleteTimeCredit:
@@ -310,8 +321,8 @@ FROM TimeCredit
 WHERE userId = ?;
 
 upsertTimeCredit:
-INSERT OR REPLACE INTO TimeCredit (id, userId, totalEarnedSeconds, totalSpentSeconds, lastUpdatedAt, syncStatus)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO TimeCredit (id, userId, totalEarnedSeconds, totalSpentSeconds, dailyEarnedSeconds, dailySpentSeconds, lastResetAt, lastUpdatedAt, syncStatus)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- =============================================================================
 -- UserSettings Queries

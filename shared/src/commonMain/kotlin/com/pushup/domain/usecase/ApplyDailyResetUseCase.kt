@@ -1,0 +1,161 @@
+package com.pushup.domain.usecase
+
+import com.pushup.domain.model.SyncStatus
+import com.pushup.domain.model.TimeCredit
+import com.pushup.domain.repository.TimeCreditRepository
+import com.pushup.domain.repository.WorkoutSessionRepository
+import kotlin.time.Duration.Companion.hours
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.toLocalDateTime
+
+/**
+ * Use-case: Apply the daily credit reset with carry-over logic.
+ *
+ * ## Reset Rules
+ * Every day at [TimeCredit.DAILY_RESET_HOUR] (03:00) in the device's local
+ * timezone, the daily credit balance is reset:
+ *
+ * 1. Credits earned in the **last hour** before the reset boundary (02:00-03:00)
+ *    are carried over at **100%**.
+ * 2. All other remaining credits are carried over at **[TimeCredit.CARRY_OVER_RATIO]** (20%).
+ * 3. The new daily balance = (100% carry-over) + (20% of the rest).
+ *
+ * ## When is this called?
+ * This use-case should be invoked lazily -- whenever the credit balance is
+ * read or observed. It checks whether the reset boundary has been crossed
+ * since [TimeCredit.lastResetAt] and applies the reset if needed.
+ *
+ * ## Legacy migration
+ * For records where [TimeCredit.lastResetAt] is `null` (pre-migration), the
+ * first invocation sets `lastResetAt` to the most recent reset boundary
+ * without zeroing the balance, preserving the user's existing credits.
+ *
+ * @property timeCreditRepository Repository for reading and updating credit records.
+ * @property sessionRepository Repository for querying workout sessions by endedAt range.
+ * @property clock Clock used for determining the current time.
+ * @property timeZone Timezone used to determine the reset boundary.
+ */
+class ApplyDailyResetUseCase(
+    private val timeCreditRepository: TimeCreditRepository,
+    private val sessionRepository: WorkoutSessionRepository,
+    private val clock: Clock = Clock.System,
+    private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
+) {
+
+    /**
+     * Checks whether a daily reset is due for [userId] and applies it if so.
+     *
+     * @param userId The ID of the user whose credits to check.
+     * @return The (possibly reset) [TimeCredit], or `null` if no record exists.
+     */
+    suspend operator fun invoke(userId: String): TimeCredit? {
+        require(userId.isNotBlank()) { "userId must not be blank" }
+
+        val credit = timeCreditRepository.get(userId) ?: return null
+        val now = clock.now()
+
+        // Calculate the most recent reset boundary (03:00 local time).
+        val mostRecentReset = mostRecentResetBoundary(now)
+
+        // Legacy migration: if lastResetAt is null, this is a pre-migration record.
+        // Set lastResetAt to the most recent boundary without resetting the balance.
+        if (credit.lastResetAt == null) {
+            val migrated = credit.copy(
+                lastResetAt = mostRecentReset,
+                syncStatus = SyncStatus.PENDING,
+                lastUpdatedAt = now,
+            )
+            timeCreditRepository.update(migrated)
+            return migrated
+        }
+
+        // No reset needed if we haven't crossed the boundary.
+        if (credit.lastResetAt >= mostRecentReset) {
+            return credit
+        }
+
+        // A reset is due. Calculate carry-over.
+        val currentAvailable = credit.availableSeconds
+
+        if (currentAvailable <= 0) {
+            // Nothing to carry over -- just reset the counters.
+            val reset = credit.copy(
+                dailyEarnedSeconds = 0L,
+                dailySpentSeconds = 0L,
+                lastResetAt = mostRecentReset,
+                lastUpdatedAt = now,
+                syncStatus = SyncStatus.PENDING,
+            )
+            timeCreditRepository.update(reset)
+            return reset
+        }
+
+        // Calculate credits earned in the full-carry-over window (02:00-03:00).
+        val windowStart = mostRecentReset.minus(
+            TimeCredit.FULL_CARRY_OVER_WINDOW_HOURS.hours,
+        )
+        val recentEarned = getEarnedInWindow(userId, windowStart, mostRecentReset)
+
+        // Credits NOT earned in the recent window = the rest of the available balance.
+        val nonRecentAvailable = (currentAvailable - recentEarned).coerceAtLeast(0L)
+
+        // Carry-over calculation:
+        //   100% of recent credits + 20% of the rest
+        val carryOver = recentEarned + (nonRecentAvailable * TimeCredit.CARRY_OVER_RATIO).toLong()
+
+        val reset = credit.copy(
+            dailyEarnedSeconds = carryOver.coerceAtLeast(0L),
+            dailySpentSeconds = 0L,
+            lastResetAt = mostRecentReset,
+            lastUpdatedAt = now,
+            syncStatus = SyncStatus.PENDING,
+        )
+        timeCreditRepository.update(reset)
+        return reset
+    }
+
+    /**
+     * Calculates the most recent reset boundary (03:00 local time) that is
+     * at or before [now].
+     *
+     * If [now] is before 03:00 today, the boundary is yesterday's 03:00.
+     * If [now] is at or after 03:00 today, the boundary is today's 03:00.
+     */
+    internal fun mostRecentResetBoundary(now: Instant): Instant {
+        val localNow = now.toLocalDateTime(timeZone)
+        val todayDate = localNow.date
+
+        // Today's reset boundary: todayDate at DAILY_RESET_HOUR:00
+        val todayResetInstant = todayDate.atStartOfDayIn(timeZone)
+            .plus(TimeCredit.DAILY_RESET_HOUR.hours)
+
+        return if (now >= todayResetInstant) {
+            todayResetInstant
+        } else {
+            // Before today's reset -- use yesterday's reset boundary.
+            todayDate.atStartOfDayIn(timeZone)
+                .plus(TimeCredit.DAILY_RESET_HOUR.hours)
+                .minus(24.hours)
+        }
+    }
+
+    /**
+     * Sums the `earnedTimeCreditSeconds` of all completed sessions whose
+     * `endedAt` falls within [[from], [to]).
+     *
+     * Uses `endedAt` because that is the moment credits are actually awarded
+     * (see [FinishWorkoutUseCase]).
+     */
+    private suspend fun getEarnedInWindow(
+        userId: String,
+        from: Instant,
+        to: Instant,
+    ): Long {
+        return sessionRepository
+            .getByEndedAtRange(userId, from = from, to = to)
+            .sumOf { it.earnedTimeCreditSeconds }
+    }
+}

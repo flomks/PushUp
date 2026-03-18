@@ -11,6 +11,8 @@ import kotlinx.datetime.Clock
  * This use-case is called by the Screen-Time controller when the user consumes
  * screen time. It verifies that sufficient credits are available before deducting.
  *
+ * Spending deducts from both the all-time total and the daily balance.
+ *
  * Returns a [SpendResult] that is either [SpendResult.Success] (with the updated
  * [TimeCredit]) or [SpendResult.InsufficientCredits] (with the current balance).
  * The use-case never throws for an insufficient-balance condition -- callers
@@ -44,6 +46,9 @@ class SpendTimeCreditUseCase(
                     userId = userId,
                     totalEarnedSeconds = 0L,
                     totalSpentSeconds = 0L,
+                    dailyEarnedSeconds = 0L,
+                    dailySpentSeconds = 0L,
+                    lastResetAt = null,
                     lastUpdatedAt = clock.now(),
                     syncStatus = SyncStatus.PENDING,
                 )
@@ -58,11 +63,13 @@ class SpendTimeCreditUseCase(
         timeCreditRepository.addSpentSeconds(userId, secondsToSpend)
 
         // Build the updated credit locally to avoid an extra DB round-trip.
-        // The new balance is deterministic: addSpentSeconds is an atomic increment.
+        // The new balance is deterministic: addSpentSeconds is an atomic increment
+        // on both totalSpentSeconds and dailySpentSeconds.
         // syncStatus is explicitly set to PENDING to match the DB state written by
         // addSpentSeconds -- the previous status may have been SYNCED.
         val updated = current.copy(
             totalSpentSeconds = current.totalSpentSeconds + secondsToSpend,
+            dailySpentSeconds = current.dailySpentSeconds + secondsToSpend,
             lastUpdatedAt = clock.now(),
             syncStatus = SyncStatus.PENDING,
         )
