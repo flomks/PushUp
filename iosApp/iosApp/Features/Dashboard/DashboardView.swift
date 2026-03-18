@@ -222,8 +222,8 @@ struct DashboardView: View {
         EmptyStateCard(
             icon: .figureStrengthTraining,
             title: "Start your first workout!",
-            message: "Do push-ups and earn time credit for your screen time.",
-            actionTitle: "Start Workout",
+            message: "Do exercises and earn time credit for your screen time.",
+            actionTitle: "Choose Workout",
             action: { selectedTab = .workout }
         )
     }
@@ -232,7 +232,7 @@ struct DashboardView: View {
 
     private var workoutStartButton: some View {
         PrimaryButton(
-            "Start Workout",
+            "Choose Workout",
             icon: .figureStrengthTraining
         ) {
             selectedTab = .workout
