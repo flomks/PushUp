@@ -6,6 +6,7 @@ import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
@@ -150,6 +151,45 @@ object DataBridge : KoinComponent {
     }
 
     /**
+     * Fetches a detailed breakdown of the current daily credit balance for [userId].
+     *
+     * The breakdown shows how the balance is composed: carry-over from the
+     * previous day (20% rule), carry-over from the 02:00-03:00 window (100%),
+     * today's workout earnings, and today's screen time usage.
+     *
+     * Calls [onResult] with a [CreditBreakdownResult], or a zeroed result on error.
+     */
+    fun fetchCreditBreakdown(
+        userId: String,
+        onResult: (CreditBreakdownResult) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val breakdown = get<GetCreditBreakdownUseCase>().invoke(userId)
+                val result = if (breakdown != null) {
+                    CreditBreakdownResult(
+                        availableSeconds = breakdown.availableSeconds,
+                        dailyEarnedSeconds = breakdown.dailyEarnedSeconds,
+                        dailySpentSeconds = breakdown.dailySpentSeconds,
+                        todayWorkoutEarned = breakdown.todayWorkoutEarned,
+                        carryOverPercentSeconds = breakdown.carryOverPercentSeconds,
+                        carryOverLateNightSeconds = breakdown.carryOverLateNightSeconds,
+                        totalEarnedSeconds = breakdown.totalEarnedSeconds,
+                        totalSpentSeconds = breakdown.totalSpentSeconds,
+                    )
+                } else {
+                    CreditBreakdownResult(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L)
+                }
+                withContext(Dispatchers.Main) { onResult(result) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(CreditBreakdownResult(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L))
+                }
+            }
+        }
+    }
+
+    /**
      * Fetches daily stats for [userId] on [date] (ISO-8601 string, e.g. "2026-03-09").
      *
      * Calls [onResult] with a [DailyStatsResult] containing the aggregated values,
@@ -272,6 +312,18 @@ data class WeeklyStatsResult(
     val averagePushUpsPerSession: Double,
     val bestSession: Int,
     val dailyBreakdown: List<DailyStatsResult>,
+)
+
+/** Detailed credit breakdown returned by [DataBridge.fetchCreditBreakdown]. */
+data class CreditBreakdownResult(
+    val availableSeconds: Long,
+    val dailyEarnedSeconds: Long,
+    val dailySpentSeconds: Long,
+    val todayWorkoutEarned: Long,
+    val carryOverPercentSeconds: Long,
+    val carryOverLateNightSeconds: Long,
+    val totalEarnedSeconds: Long,
+    val totalSpentSeconds: Long,
 )
 
 /** All-time stats returned by [DataBridge.fetchTotalStats]. */

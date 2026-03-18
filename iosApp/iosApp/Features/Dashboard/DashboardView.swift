@@ -49,8 +49,10 @@ struct DashboardView: View {
                 dailyEarnedSeconds: viewModel.dailyEarnedSeconds,
                 dailySpentSeconds: viewModel.dailySpentSeconds,
                 todayWorkoutEarned: viewModel.todayWorkoutEarned,
-                carryOverSeconds: viewModel.carryOverSeconds,
-                totalEarnedSeconds: viewModel.totalEarnedSeconds
+                carryOverPercentSeconds: viewModel.carryOverPercentSeconds,
+                carryOverLateNightSeconds: viewModel.carryOverLateNightSeconds,
+                totalEarnedSeconds: viewModel.totalEarnedSeconds,
+                totalSpentSeconds: viewModel.totalSpentSeconds
             )
         }
         .alert("Error", isPresented: showError) {

@@ -17,8 +17,10 @@ struct TimeCreditDetailView: View {
     let dailyEarnedSeconds: Int
     let dailySpentSeconds: Int
     let todayWorkoutEarned: Int
-    let carryOverSeconds: Int
+    let carryOverPercentSeconds: Int
+    let carryOverLateNightSeconds: Int
     let totalEarnedSeconds: Int
+    let totalSpentSeconds: Int
 
     @Environment(\.dismiss) private var dismiss
 
@@ -119,13 +121,23 @@ struct TimeCreditDetailView: View {
 
                 Divider()
 
-                if carryOverSeconds > 0 {
+                if carryOverPercentSeconds > 0 {
                     breakdownRow(
                         icon: .clockArrowCirclepath,
-                        label: "Carry-over from yesterday",
-                        value: formatTimeShort(carryOverSeconds),
+                        label: "Carry-over (20%)",
+                        value: formatTimeShort(carryOverPercentSeconds),
                         tint: AppColors.info,
-                        detail: "20% of unused + 100% of late-night credits"
+                        detail: "20% of unused time from yesterday"
+                    )
+                }
+
+                if carryOverLateNightSeconds > 0 {
+                    breakdownRow(
+                        icon: .moonFill,
+                        label: "Late-night bonus",
+                        value: formatTimeShort(carryOverLateNightSeconds),
+                        tint: AppColors.primaryVariant,
+                        detail: "100% carry-over for workouts between 2-3 AM"
                     )
                 }
 
@@ -139,7 +151,7 @@ struct TimeCreditDetailView: View {
                     )
                 }
 
-                if carryOverSeconds == 0 && todayWorkoutEarned == 0 {
+                if carryOverPercentSeconds == 0 && carryOverLateNightSeconds == 0 && todayWorkoutEarned == 0 {
                     HStack(spacing: AppSpacing.xs) {
                         Image(systemName: AppIcon.infoCircle.rawValue)
                             .foregroundStyle(AppColors.textTertiary)
@@ -292,6 +304,18 @@ struct TimeCreditDetailView: View {
                             .foregroundStyle(AppColors.textSecondary)
                     }
                     .frame(maxWidth: .infinity)
+
+                    Divider().frame(height: 36)
+
+                    VStack(spacing: AppSpacing.xxs) {
+                        Text(formatTimeShort(totalSpentSeconds))
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(AppColors.warning)
+                        Text("Total Used")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -325,14 +349,29 @@ struct TimeCreditDetailView: View {
 // MARK: - Preview
 
 #if DEBUG
-#Preview("Time Credit Detail") {
+#Preview("Time Credit Detail - Full") {
     TimeCreditDetailView(
         availableSeconds: 2700,
         dailyEarnedSeconds: 5400,
         dailySpentSeconds: 2700,
         todayWorkoutEarned: 3600,
-        carryOverSeconds: 1800,
-        totalEarnedSeconds: 36000
+        carryOverPercentSeconds: 600,
+        carryOverLateNightSeconds: 1200,
+        totalEarnedSeconds: 36000,
+        totalSpentSeconds: 28800
+    )
+}
+
+#Preview("Time Credit Detail - No Late Night") {
+    TimeCreditDetailView(
+        availableSeconds: 1800,
+        dailyEarnedSeconds: 3600,
+        dailySpentSeconds: 1800,
+        todayWorkoutEarned: 3000,
+        carryOverPercentSeconds: 600,
+        carryOverLateNightSeconds: 0,
+        totalEarnedSeconds: 18000,
+        totalSpentSeconds: 14400
     )
 }
 
@@ -342,8 +381,10 @@ struct TimeCreditDetailView: View {
         dailyEarnedSeconds: 0,
         dailySpentSeconds: 0,
         todayWorkoutEarned: 0,
-        carryOverSeconds: 0,
-        totalEarnedSeconds: 0
+        carryOverPercentSeconds: 0,
+        carryOverLateNightSeconds: 0,
+        totalEarnedSeconds: 0,
+        totalSpentSeconds: 0
     )
 }
 #endif
