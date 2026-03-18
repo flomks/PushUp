@@ -11,6 +11,7 @@ import com.pushup.data.repository.AuthRepositoryImpl
 import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
+import com.pushup.data.repository.DailyCreditSnapshotRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
 import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.UserSettingsRepositoryImpl
@@ -20,6 +21,7 @@ import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.StatsRepository
+import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
@@ -201,6 +203,13 @@ val repositoryModule: Module = module {
             clock = get(),
         )
     }
+
+    single<DailyCreditSnapshotRepository> {
+        DailyCreditSnapshotRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+        )
+    }
 }
 
 /**
@@ -237,6 +246,7 @@ val useCaseModule: Module = module {
         ApplyDailyResetUseCase(
             timeCreditRepository = get(),
             sessionRepository = get(),
+            snapshotRepository = get(),
             clock = get(),
         )
     }

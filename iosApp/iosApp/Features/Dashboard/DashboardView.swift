@@ -52,7 +52,8 @@ struct DashboardView: View {
                 carryOverPercentSeconds: viewModel.carryOverPercentSeconds,
                 carryOverLateNightSeconds: viewModel.carryOverLateNightSeconds,
                 totalEarnedSeconds: viewModel.totalEarnedSeconds,
-                totalSpentSeconds: viewModel.totalSpentSeconds
+                totalSpentSeconds: viewModel.totalSpentSeconds,
+                userId: viewModel.currentUserId
             )
         }
         .alert("Error", isPresented: showError) {

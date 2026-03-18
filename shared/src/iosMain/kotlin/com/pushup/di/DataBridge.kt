@@ -3,6 +3,7 @@ package com.pushup.di
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -190,6 +191,43 @@ object DataBridge : KoinComponent {
     }
 
     /**
+     * Fetches historical daily credit snapshots for [userId] within a date range.
+     *
+     * Used for building weekly/monthly charts showing earned vs spent over time.
+     *
+     * @param from ISO-8601 date string (inclusive), e.g. "2026-03-11"
+     * @param to ISO-8601 date string (inclusive), e.g. "2026-03-17"
+     * @param onResult Callback with the list of snapshots, ordered by date ascending.
+     */
+    fun fetchCreditHistory(
+        userId: String,
+        from: String,
+        to: String,
+        onResult: (List<CreditHistoryEntry>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val fromDate = LocalDate.parse(from)
+                val toDate = LocalDate.parse(to)
+                val snapshots = get<DailyCreditSnapshotRepository>()
+                    .getByDateRange(userId, fromDate, toDate)
+                val entries = snapshots.map { s ->
+                    CreditHistoryEntry(
+                        date = s.date.toString(),
+                        earnedSeconds = s.earnedSeconds,
+                        spentSeconds = s.spentSeconds,
+                        carryOverSeconds = s.carryOverSeconds,
+                        workoutEarnedSeconds = s.workoutEarnedSeconds,
+                    )
+                }
+                withContext(Dispatchers.Main) { onResult(entries) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    /**
      * Fetches daily stats for [userId] on [date] (ISO-8601 string, e.g. "2026-03-09").
      *
      * Calls [onResult] with a [DailyStatsResult] containing the aggregated values,
@@ -312,6 +350,15 @@ data class WeeklyStatsResult(
     val averagePushUpsPerSession: Double,
     val bestSession: Int,
     val dailyBreakdown: List<DailyStatsResult>,
+)
+
+/** Single day entry for the credit history chart, returned by [DataBridge.fetchCreditHistory]. */
+data class CreditHistoryEntry(
+    val date: String,
+    val earnedSeconds: Long,
+    val spentSeconds: Long,
+    val carryOverSeconds: Long,
+    val workoutEarnedSeconds: Long,
 )
 
 /** Detailed credit breakdown returned by [DataBridge.fetchCreditBreakdown]. */
