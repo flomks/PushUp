@@ -14,6 +14,7 @@ struct JoggingView: View {
 
     @StateObject private var viewModel = JoggingViewModel()
     @Environment(\.dismiss) private var dismiss
+    @State private var showStopConfirmation = false
 
     var body: some View {
         ZStack {
@@ -29,10 +30,7 @@ struct JoggingView: View {
                 finishedView
             }
         }
-        .alert("End Run?", isPresented: Binding(
-            get: { viewModel.phase == .confirmingStop },
-            set: { if !$0 { viewModel.cancelStop() } }
-        )) {
+        .alert("End Run?", isPresented: $showStopConfirmation) {
             Button("Keep Running", role: .cancel) {
                 viewModel.cancelStop()
             }
@@ -41,6 +39,11 @@ struct JoggingView: View {
             }
         } message: {
             Text("Are you sure you want to end your run?")
+        }
+        .onChange(of: viewModel.phase) { _, newPhase in
+            if newPhase == .confirmingStop {
+                showStopConfirmation = true
+            }
         }
     }
 
