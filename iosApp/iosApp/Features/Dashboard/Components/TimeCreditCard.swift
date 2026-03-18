@@ -59,6 +59,7 @@ struct DashboardTimeCreditCard: View {
     let availableSeconds: Int
     let totalEarnedSeconds: Int
     let isLoading: Bool
+    var onTap: (() -> Void)? = nil
 
     // Ring geometry
     private let ringSize: CGFloat = 180
@@ -74,6 +75,8 @@ struct DashboardTimeCreditCard: View {
             }
             .frame(maxWidth: .infinity)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?() }
     }
 
     // MARK: - Header
@@ -163,9 +166,19 @@ struct DashboardTimeCreditCard: View {
 
                 Spacer()
 
-                Text(String(format: "%.0f%%", progressFraction * 100) + " remaining")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                if onTap != nil {
+                    Text("Details")
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.primary)
+
+                    Image(systemName: AppIcon.chevronRight.rawValue)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(AppColors.primary)
+                } else {
+                    Text(String(format: "%.0f%%", progressFraction * 100) + " remaining")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
             }
         } else {
             HStack(spacing: AppSpacing.xs) {
@@ -178,6 +191,12 @@ struct DashboardTimeCreditCard: View {
                     .foregroundStyle(AppColors.textTertiary)
 
                 Spacer()
+
+                if onTap != nil {
+                    Image(systemName: AppIcon.chevronRight.rawValue)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
             }
         }
     }

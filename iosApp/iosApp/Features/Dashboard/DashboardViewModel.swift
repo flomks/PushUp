@@ -64,6 +64,10 @@ final class DashboardViewModel: ObservableObject {
 
     @Published private(set) var availableSeconds: Int = 0
     @Published private(set) var totalEarnedSeconds: Int = 0
+    @Published private(set) var dailyEarnedSeconds: Int = 0
+    @Published private(set) var dailySpentSeconds: Int = 0
+    @Published private(set) var todayWorkoutEarned: Int = 0
+    @Published private(set) var carryOverSeconds: Int = 0
     @Published private(set) var dailyStats: DashboardDailyStats? = nil
     @Published private(set) var weekDays: [DashboardWeekDay] = []
     @Published private(set) var lastSession: DashboardLastSession? = nil
@@ -108,8 +112,10 @@ final class DashboardViewModel: ObservableObject {
         creditObservationJob = DataBridge.shared.observeTimeCredit(userId: userId) { [weak self] credit in
             guard let self else { return }
             let available = Int(credit?.availableSeconds ?? 0)
-            self.availableSeconds   = available
-            self.totalEarnedSeconds = Int(credit?.totalEarnedSeconds ?? 0)
+            self.availableSeconds    = available
+            self.totalEarnedSeconds  = Int(credit?.totalEarnedSeconds ?? 0)
+            self.dailyEarnedSeconds  = Int(credit?.dailyEarnedSeconds ?? 0)
+            self.dailySpentSeconds   = Int(credit?.dailySpentSeconds ?? 0)
 
             let screenTime = ScreenTimeManager.shared
             guard screenTime.authorizationStatus == .authorized,
@@ -193,6 +199,14 @@ final class DashboardViewModel: ObservableObject {
         let todayQuality   = todaySessions.isEmpty ? 0.0
             : todaySessions.reduce(0.0) { $0 + Double($1.quality) } / Double(todaySessions.count)
         let todayBest      = todaySessions.map { Int($0.pushUpCount) }.max() ?? 0
+
+        // Track today's workout-earned credits for the breakdown view.
+        todayWorkoutEarned = todayEarned
+
+        // Carry-over = dailyEarned - todayWorkoutEarned (what was brought from yesterday).
+        // This is an approximation: dailyEarnedSeconds includes both carry-over and
+        // today's workout earnings. The difference is the carry-over amount.
+        carryOverSeconds = max(0, dailyEarnedSeconds - todayEarned)
 
         dailyStats = DashboardDailyStats(
             pushUps: todayPushUps,
