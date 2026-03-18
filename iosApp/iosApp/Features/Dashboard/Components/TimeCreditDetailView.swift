@@ -80,6 +80,12 @@ struct TimeCreditDetailView: View {
         let dayFormatter: DateFormatter = DateFormatter()
         dayFormatter.dateFormat = "EEE"
 
+        // Today's live data from the current credit balance (not from snapshots,
+        // since today's snapshot hasn't been written yet).
+        let todayEarnedMin: Double = Double(dailyEarnedSeconds) / 60.0
+        let todaySpentMin: Double = Double(dailySpentSeconds) / 60.0
+        let todayKey: String = isoFormatter.string(from: today)
+
         DataBridge.shared.fetchCreditHistory(userId: userId, from: fromStr, to: toStr) { rawEntries in
             var entryMap: [String: (earned: Double, spent: Double)] = [:]
             for rawEntry in rawEntries {
@@ -89,21 +95,32 @@ struct TimeCreditDetailView: View {
                 )
             }
 
+            // Override today with live data (snapshot for today doesn't exist yet).
+            entryMap[todayKey] = (earned: todayEarnedMin, spent: todaySpentMin)
+
             var result: [CreditHistoryChartEntry] = []
+            var hasAnyData: Bool = false
             for daysAgo in (0...6).reversed() {
                 let d: Date = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
                 let key: String = isoFormatter.string(from: d)
                 let vals = entryMap[key]
+                let earned: Double = vals?.earned ?? 0
+                let spent: Double = vals?.spent ?? 0
+                if earned > 0 || spent > 0 {
+                    hasAnyData = true
+                }
                 result.append(CreditHistoryChartEntry(
                     id: key,
                     label: dayFormatter.string(from: d),
                     date: d,
-                    earnedMinutes: vals?.earned ?? 0,
-                    spentMinutes: vals?.spent ?? 0
+                    earnedMinutes: earned,
+                    spentMinutes: spent
                 ))
             }
 
-            self.historyEntries = result
+            // Only show entries if there's actual data; otherwise leave empty
+            // so the "No history yet" state is shown.
+            self.historyEntries = hasAnyData ? result : []
             self.isLoadingHistory = false
         }
     }
