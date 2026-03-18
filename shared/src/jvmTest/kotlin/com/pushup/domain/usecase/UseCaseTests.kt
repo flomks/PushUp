@@ -667,7 +667,7 @@ class UseCaseTests {
     fun getTimeCredit_returnsExistingCredit() = runTest {
         insertUser()
         timeCreditRepo.addEarnedSeconds("user-1", 300L)
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         val credit = useCase("user-1")
 
@@ -679,7 +679,7 @@ class UseCaseTests {
     @Test
     fun getTimeCredit_createsEmptyCreditWhenNoneExists() = runTest {
         insertUser()
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         val credit = useCase("user-1")
 
@@ -691,7 +691,7 @@ class UseCaseTests {
     @Test
     fun getTimeCredit_persistsEmptyCreditToDatabase() = runTest {
         insertUser()
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         useCase("user-1")
 
@@ -703,7 +703,7 @@ class UseCaseTests {
     @Test
     fun getTimeCredit_calledTwice_returnsSameData() = runTest {
         insertUser()
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         val first = useCase("user-1")
         val second = useCase("user-1")
@@ -714,7 +714,7 @@ class UseCaseTests {
 
     @Test
     fun getTimeCredit_requiresNonBlankUserId() = runTest {
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         assertFailsWith<IllegalArgumentException> {
             useCase("  ")
@@ -728,11 +728,14 @@ class UseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 100L,
             totalSpentSeconds = 100L,
+            dailyEarnedSeconds = 0L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = fixedClock.now(),
             syncStatus = SyncStatus.PENDING,
         )
         timeCreditRepo.update(credit)
-        val useCase = GetTimeCreditUseCase(timeCreditRepo, fixedClock)
+        val useCase = GetTimeCreditUseCase(timeCreditRepository = timeCreditRepo, clock = fixedClock)
 
         val result = useCase("user-1")
 
@@ -840,6 +843,9 @@ class UseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 300L,
             totalSpentSeconds = 0L,
+            dailyEarnedSeconds = 300L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = fixedClock.now(),
             syncStatus = SyncStatus.SYNCED,
         )

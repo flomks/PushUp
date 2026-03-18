@@ -439,6 +439,9 @@ class RepositoryTests {
             userId = "user-1",
             totalEarnedSeconds = 3600L,
             totalSpentSeconds = 1800L,
+            dailyEarnedSeconds = 1800L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = Instant.fromEpochMilliseconds(1_700_000_000_000L),
             syncStatus = SyncStatus.PENDING,
         )
@@ -460,6 +463,9 @@ class RepositoryTests {
             userId = "user-1",
             totalEarnedSeconds = 1000L,
             totalSpentSeconds = 0L,
+            dailyEarnedSeconds = 1000L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = Instant.fromEpochMilliseconds(1_700_000_000_000L),
             syncStatus = SyncStatus.PENDING,
         )

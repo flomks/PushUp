@@ -319,6 +319,9 @@ class MapperTest {
             userId = "user-1",
             totalEarnedSeconds = 3600L,
             totalSpentSeconds = 1800L,
+            dailyEarnedSeconds = 1800L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = 1_700_000_000_000L,
             syncStatus = "synced",
         )
@@ -328,6 +331,9 @@ class MapperTest {
         assertEquals("user-1", domain.userId)
         assertEquals(3600L, domain.totalEarnedSeconds)
         assertEquals(1800L, domain.totalSpentSeconds)
+        assertEquals(1800L, domain.dailyEarnedSeconds)
+        assertEquals(0L, domain.dailySpentSeconds)
+        assertNull(domain.lastResetAt)
         assertEquals(Instant.fromEpochMilliseconds(1_700_000_000_000L), domain.lastUpdatedAt)
         assertEquals(SyncStatus.SYNCED, domain.syncStatus)
         assertEquals(1800L, domain.availableSeconds)
@@ -340,6 +346,9 @@ class MapperTest {
             userId = "user-2",
             totalEarnedSeconds = 7200L,
             totalSpentSeconds = 7200L,
+            dailyEarnedSeconds = 0L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = Instant.fromEpochMilliseconds(1_700_001_000_000L),
             syncStatus = SyncStatus.PENDING,
         )
@@ -350,6 +359,9 @@ class MapperTest {
         assertEquals("user-2", db.userId)
         assertEquals(7200L, db.totalEarnedSeconds)
         assertEquals(7200L, db.totalSpentSeconds)
+        assertEquals(0L, db.dailyEarnedSeconds)
+        assertEquals(0L, db.dailySpentSeconds)
+        assertNull(db.lastResetAt)
         assertEquals(1_700_001_000_000L, db.lastUpdatedAt)
         assertEquals("pending", db.syncStatus)
     }
@@ -360,6 +372,9 @@ class MapperTest {
             userId = "user-rt",
             totalEarnedSeconds = 5000L,
             totalSpentSeconds = 2500L,
+            dailyEarnedSeconds = 2500L,
+            dailySpentSeconds = 0L,
+            lastResetAt = Instant.fromEpochMilliseconds(1_700_000_000_000L),
             lastUpdatedAt = Instant.fromEpochMilliseconds(1_700_002_000_000L),
             syncStatus = SyncStatus.FAILED,
         )
@@ -369,6 +384,9 @@ class MapperTest {
         assertEquals(original.userId, roundTripped.userId)
         assertEquals(original.totalEarnedSeconds, roundTripped.totalEarnedSeconds)
         assertEquals(original.totalSpentSeconds, roundTripped.totalSpentSeconds)
+        assertEquals(original.dailyEarnedSeconds, roundTripped.dailyEarnedSeconds)
+        assertEquals(original.dailySpentSeconds, roundTripped.dailySpentSeconds)
+        assertEquals(original.lastResetAt, roundTripped.lastResetAt)
         assertEquals(original.lastUpdatedAt, roundTripped.lastUpdatedAt)
         assertEquals(original.syncStatus, roundTripped.syncStatus)
     }
@@ -380,6 +398,9 @@ class MapperTest {
             userId = "user-zero",
             totalEarnedSeconds = 0L,
             totalSpentSeconds = 0L,
+            dailyEarnedSeconds = 0L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = 1_700_000_000_000L,
             syncStatus = "pending",
         )

@@ -49,6 +49,19 @@ interface WorkoutSessionRepository {
     suspend fun getByDateRange(userId: String, from: Instant, to: Instant): List<WorkoutSession>
 
     /**
+     * Retrieves all workout sessions for a user that ended within the given time range.
+     *
+     * Unlike [getByDateRange] which filters on [WorkoutSession.startedAt], this method
+     * filters on [WorkoutSession.endedAt] -- the moment credits were actually awarded.
+     *
+     * @param userId The user whose sessions to retrieve.
+     * @param from Start of the time range (inclusive).
+     * @param to End of the time range (exclusive).
+     * @return Sessions whose [WorkoutSession.endedAt] falls within `[from, to)`.
+     */
+    suspend fun getByEndedAtRange(userId: String, from: Instant, to: Instant): List<WorkoutSession>
+
+    /**
      * Retrieves all sessions for a user that have not yet been synchronized with the backend.
      *
      * @param userId The user whose unsynced sessions to retrieve.

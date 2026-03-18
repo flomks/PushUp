@@ -9,6 +9,7 @@ import com.pushup.db.TimeCredit as DbTimeCredit
  * Converts a SQLDelight [DbTimeCredit] entity to a domain [TimeCredit] model.
  *
  * - `lastUpdatedAt`: epoch milliseconds [Long] -> [Instant]
+ * - `lastResetAt`: epoch milliseconds [Long?] -> [Instant?]
  * - `syncStatus`: [String] -> [SyncStatus] enum
  *
  * Note: the DB entity carries an `id` column that is not present in the
@@ -18,6 +19,9 @@ fun DbTimeCredit.toDomain(): TimeCredit = TimeCredit(
     userId = userId,
     totalEarnedSeconds = totalEarnedSeconds,
     totalSpentSeconds = totalSpentSeconds,
+    dailyEarnedSeconds = dailyEarnedSeconds,
+    dailySpentSeconds = dailySpentSeconds,
+    lastResetAt = lastResetAt?.let { Instant.fromEpochMilliseconds(it) },
     lastUpdatedAt = Instant.fromEpochMilliseconds(lastUpdatedAt),
     syncStatus = syncStatusFromString(syncStatus),
 )
@@ -33,6 +37,9 @@ fun TimeCredit.toDbEntity(id: String): DbTimeCredit = DbTimeCredit(
     userId = userId,
     totalEarnedSeconds = totalEarnedSeconds,
     totalSpentSeconds = totalSpentSeconds,
+    dailyEarnedSeconds = dailyEarnedSeconds,
+    dailySpentSeconds = dailySpentSeconds,
+    lastResetAt = lastResetAt?.toEpochMilliseconds(),
     lastUpdatedAt = lastUpdatedAt.toEpochMilliseconds(),
     syncStatus = syncStatusToString(syncStatus),
 )

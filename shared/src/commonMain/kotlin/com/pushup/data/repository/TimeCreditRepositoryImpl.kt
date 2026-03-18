@@ -87,6 +87,9 @@ class TimeCreditRepositoryImpl(
                 userId = credit.userId,
                 totalEarnedSeconds = credit.totalEarnedSeconds,
                 totalSpentSeconds = credit.totalSpentSeconds,
+                dailyEarnedSeconds = credit.dailyEarnedSeconds,
+                dailySpentSeconds = credit.dailySpentSeconds,
+                lastResetAt = credit.lastResetAt?.toEpochMilliseconds(),
                 lastUpdatedAt = credit.lastUpdatedAt.toEpochMilliseconds(),
                 syncStatus = syncStatusToString(credit.syncStatus),
             )
@@ -98,7 +101,8 @@ class TimeCreditRepositoryImpl(
     }
 
     /**
-     * Atomically adds earned seconds and triggers a background sync.
+     * Atomically adds earned seconds to both the all-time total and the daily
+     * balance, then triggers a background sync.
      *
      * The new totals are computed inside the transaction and passed directly to
      * [triggerBackgroundSync] -- no second DB read is needed, which avoids a
@@ -121,6 +125,9 @@ class TimeCreditRepositoryImpl(
                     queries.updateTimeCredit(
                         totalEarnedSeconds = newEarned,
                         totalSpentSeconds = newSpent,
+                        dailyEarnedSeconds = existing.dailyEarnedSeconds + seconds,
+                        dailySpentSeconds = existing.dailySpentSeconds,
+                        lastResetAt = existing.lastResetAt,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                         id = existing.id,
@@ -133,6 +140,9 @@ class TimeCreditRepositoryImpl(
                         userId = userId,
                         totalEarnedSeconds = newEarned,
                         totalSpentSeconds = newSpent,
+                        dailyEarnedSeconds = seconds,
+                        dailySpentSeconds = 0L,
+                        lastResetAt = null,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                     )
@@ -143,7 +153,8 @@ class TimeCreditRepositoryImpl(
     }
 
     /**
-     * Atomically adds spent seconds and triggers a background sync.
+     * Atomically adds spent seconds to both the all-time total and the daily
+     * balance, then triggers a background sync.
      *
      * The new totals are computed inside the transaction and passed directly to
      * [triggerBackgroundSync] -- no second DB read is needed, which avoids a
@@ -166,6 +177,9 @@ class TimeCreditRepositoryImpl(
                     queries.updateTimeCredit(
                         totalEarnedSeconds = newEarned,
                         totalSpentSeconds = newSpent,
+                        dailyEarnedSeconds = existing.dailyEarnedSeconds,
+                        dailySpentSeconds = existing.dailySpentSeconds + seconds,
+                        lastResetAt = existing.lastResetAt,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                         id = existing.id,
@@ -178,6 +192,9 @@ class TimeCreditRepositoryImpl(
                         userId = userId,
                         totalEarnedSeconds = newEarned,
                         totalSpentSeconds = newSpent,
+                        dailyEarnedSeconds = 0L,
+                        dailySpentSeconds = seconds,
+                        lastResetAt = null,
                         lastUpdatedAt = now,
                         syncStatus = syncStatusToString(SyncStatus.PENDING),
                     )
@@ -197,6 +214,9 @@ class TimeCreditRepositoryImpl(
             queries.updateTimeCredit(
                 totalEarnedSeconds = existing.totalEarnedSeconds,
                 totalSpentSeconds = existing.totalSpentSeconds,
+                dailyEarnedSeconds = existing.dailyEarnedSeconds,
+                dailySpentSeconds = existing.dailySpentSeconds,
+                lastResetAt = existing.lastResetAt,
                 lastUpdatedAt = clock.now().toEpochMilliseconds(),
                 syncStatus = syncStatusToString(SyncStatus.SYNCED),
                 id = existing.id,
@@ -251,6 +271,9 @@ class TimeCreditRepositoryImpl(
                         queries.updateTimeCredit(
                             totalEarnedSeconds = existing.totalEarnedSeconds,
                             totalSpentSeconds = existing.totalSpentSeconds,
+                            dailyEarnedSeconds = existing.dailyEarnedSeconds,
+                            dailySpentSeconds = existing.dailySpentSeconds,
+                            lastResetAt = existing.lastResetAt,
                             lastUpdatedAt = clock.now().toEpochMilliseconds(),
                             syncStatus = syncStatusToString(SyncStatus.SYNCED),
                             id = existing.id,

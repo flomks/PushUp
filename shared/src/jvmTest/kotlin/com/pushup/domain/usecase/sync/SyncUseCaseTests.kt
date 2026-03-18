@@ -167,6 +167,9 @@ class SyncUseCaseTests {
             userId = userId,
             totalEarnedSeconds = earned,
             totalSpentSeconds = spent,
+            dailyEarnedSeconds = (earned - spent).coerceAtLeast(0L),
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = lastUpdatedAt,
             syncStatus = SyncStatus.PENDING,
         )
@@ -471,6 +474,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 300L,
             totalSpentSeconds = 100L,
+            dailyEarnedSeconds = 200L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant,
             syncStatus = SyncStatus.SYNCED,
         )
@@ -493,6 +499,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 500L,
             totalSpentSeconds = 200L,
+            dailyEarnedSeconds = 300L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant.plus(kotlin.time.Duration.parse("PT1H")),
             syncStatus = SyncStatus.SYNCED,
         )
@@ -520,6 +529,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 100L,
             totalSpentSeconds = 50L,
+            dailyEarnedSeconds = 50L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant, // older
             syncStatus = SyncStatus.SYNCED,
         )
@@ -692,6 +704,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 600L,
             totalSpentSeconds = 200L,
+            dailyEarnedSeconds = 400L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant,
             syncStatus = SyncStatus.SYNCED,
         )
@@ -716,6 +731,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 500L,
             totalSpentSeconds = 100L,
+            dailyEarnedSeconds = 400L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant.plus(kotlin.time.Duration.parse("PT1H")),
             syncStatus = SyncStatus.SYNCED,
         )
@@ -740,6 +758,9 @@ class SyncUseCaseTests {
             userId = "user-1",
             totalEarnedSeconds = 100L,
             totalSpentSeconds = 50L,
+            dailyEarnedSeconds = 50L,
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = baseInstant, // older
             syncStatus = SyncStatus.SYNCED,
         )
@@ -1056,10 +1077,15 @@ class FakeCloudSyncApi : CloudSyncApi {
         request: UpdateTimeCreditRequest,
     ): TimeCredit {
         updateTimeCreditCalled = true
+        val earned = request.totalEarnedSeconds ?: 0L
+        val spent = request.totalSpentSeconds ?: 0L
         return TimeCredit(
             userId = userId,
-            totalEarnedSeconds = request.totalEarnedSeconds ?: 0L,
-            totalSpentSeconds = request.totalSpentSeconds ?: 0L,
+            totalEarnedSeconds = earned,
+            totalSpentSeconds = spent,
+            dailyEarnedSeconds = (earned - spent).coerceAtLeast(0L),
+            dailySpentSeconds = 0L,
+            lastResetAt = null,
             lastUpdatedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(1_700_000_000_000L),
             syncStatus = SyncStatus.SYNCED,
         )

@@ -60,7 +60,16 @@ private fun makeTestCredit(
     totalSpentSeconds: Long = 1800L,
     lastUpdatedAt: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
     syncStatus: SyncStatus = SyncStatus.PENDING,
-) = TimeCredit(userId, totalEarnedSeconds, totalSpentSeconds, lastUpdatedAt, syncStatus)
+) = TimeCredit(
+    userId = userId,
+    totalEarnedSeconds = totalEarnedSeconds,
+    totalSpentSeconds = totalSpentSeconds,
+    dailyEarnedSeconds = (totalEarnedSeconds - totalSpentSeconds).coerceAtLeast(0L),
+    dailySpentSeconds = 0L,
+    lastResetAt = null,
+    lastUpdatedAt = lastUpdatedAt,
+    syncStatus = syncStatus,
+)
 
 /**
  * Tests for the cloud-sync extensions of [WorkoutSessionRepositoryImpl],

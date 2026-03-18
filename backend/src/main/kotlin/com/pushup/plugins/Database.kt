@@ -220,6 +220,9 @@ object TimeCredits : Table("time_credits") {
     val userId             = uuid("user_id").references(Users.id)
     val totalEarnedSeconds = long("total_earned_seconds")
     val totalSpentSeconds  = long("total_spent_seconds")
+    val dailyEarnedSeconds = long("daily_earned_seconds").default(0L)
+    val dailySpentSeconds  = long("daily_spent_seconds").default(0L)
+    val lastResetAt        = timestampWithTimeZone("last_reset_at").nullable()
     val updatedAt          = timestampWithTimeZone("updated_at")
 
     override val primaryKey = PrimaryKey(id)
