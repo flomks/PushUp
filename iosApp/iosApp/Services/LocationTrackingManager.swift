@@ -53,10 +53,21 @@ final class LocationTrackingManager: NSObject, ObservableObject {
     private let locationManager: CLLocationManager
 
     /// Minimum horizontal accuracy in meters. Locations with worse accuracy are discarded.
-    private let accuracyThreshold: Double = 50.0
+    private let accuracyThreshold: Double = 20.0
 
     /// Minimum distance between updates in meters.
     private let distanceFilter: Double = 5.0
+
+    /// Number of initial GPS fixes to discard (warmup phase).
+    /// The first few GPS readings after starting are often inaccurate cached positions.
+    private let warmupPointCount: Int = 3
+
+    /// Counter for received GPS points since tracking started.
+    private var receivedPointCount: Int = 0
+
+    /// Minimum speed in m/s to count distance. Below this, the user is likely
+    /// stationary and GPS drift should not be counted as movement.
+    private let minimumSpeedForDistance: Double = 0.3
 
     // MARK: - Init
 
@@ -101,6 +112,7 @@ final class LocationTrackingManager: NSObject, ObservableObject {
         currentSpeed = 0.0
         currentLocation = nil
         lastError = nil
+        receivedPointCount = 0
 
         // Enable background updates
         locationManager.allowsBackgroundLocationUpdates = true
@@ -181,7 +193,7 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
         guard location.horizontalAccuracy >= 0,
               location.horizontalAccuracy <= accuracyThreshold else {
             #if DEBUG
-            print("[LocationTrackingManager] Discarded inaccurate location: accuracy=\(location.horizontalAccuracy)m")
+            print("[LocationTrackingManager] Discarded inaccurate location: accuracy=\(String(format: "%.0f", location.horizontalAccuracy))m")
             #endif
             return
         }
@@ -195,11 +207,33 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
             return
         }
 
+        receivedPointCount += 1
+
+        // Warmup phase: discard the first few GPS fixes which are often
+        // inaccurate cached positions (especially indoors). We still update
+        // the current location for the map, but do NOT count distance.
+        if receivedPointCount <= warmupPointCount {
+            #if DEBUG
+            print("[LocationTrackingManager] Warmup point \(receivedPointCount)/\(warmupPointCount) -- distance not counted")
+            #endif
+            currentLocation = location
+            currentSpeed = location.speed >= 0 ? location.speed : 0.0
+            // Only start recording route points after warmup
+            if receivedPointCount == warmupPointCount {
+                recordedLocations.append(location)
+            }
+            return
+        }
+
         // Calculate distance from previous point
         if let lastLocation = recordedLocations.last {
             let delta = location.distance(from: lastLocation)
-            // Ignore tiny movements that are likely GPS noise
-            if delta >= 1.0 {
+            // Only count distance if:
+            // 1. Movement is >= 2m (filter GPS noise)
+            // 2. User is actually moving (speed >= minimum threshold)
+            // 3. The delta is plausible (< 50m between updates to filter GPS jumps)
+            let effectiveSpeed = location.speed >= 0 ? location.speed : 0.0
+            if delta >= 2.0 && delta < 50.0 && effectiveSpeed >= minimumSpeedForDistance {
                 totalDistanceMeters += delta
             }
         }

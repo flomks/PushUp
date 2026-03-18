@@ -4,9 +4,11 @@ import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.isTransient
 import com.pushup.domain.model.AvatarVisibility
+import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -54,6 +56,7 @@ class SyncFromCloudUseCase(
     private val sessionRepository: WorkoutSessionRepository,
     private val timeCreditRepository: TimeCreditRepository,
     private val userRepository: UserRepository,
+    private val joggingSessionRepository: JoggingSessionRepository? = null,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
     private val maxRetries: Int = 3,
@@ -76,6 +79,7 @@ class SyncFromCloudUseCase(
         }
 
         val sessionsResult = fetchAndMergeSessions()
+        val joggingResult = fetchAndMergeJoggingSessions()
         val timeCreditSynced = fetchAndMergeTimeCredit(userId)
         // Pull the user's display name from Supabase and update locally if it changed.
         // Errors are swallowed so a profile fetch failure does not block the rest of the sync.
@@ -86,6 +90,8 @@ class SyncFromCloudUseCase(
             sessionsInsertedOrUpdated = sessionsResult.insertedOrUpdated,
             sessionsKeptLocal = sessionsResult.keptLocal,
             sessionsFailed = sessionsResult.failed,
+            joggingSessionsDownloaded = joggingResult.downloaded,
+            joggingSessionsInsertedOrUpdated = joggingResult.insertedOrUpdated,
             timeCreditSynced = timeCreditSynced,
         )
     }
@@ -170,6 +176,60 @@ class SyncFromCloudUseCase(
                 false
             }
         }
+    }
+
+    // =========================================================================
+    // JoggingSession pull
+    // =========================================================================
+
+    private suspend fun fetchAndMergeJoggingSessions(): SessionsMergeResult {
+        val repo = joggingSessionRepository
+            ?: return SessionsMergeResult(downloaded = 0, insertedOrUpdated = 0, keptLocal = 0, failed = 0)
+
+        val remoteSessions = fetchRemoteJoggingSessionsWithRetry()
+            ?: return SessionsMergeResult(downloaded = 0, insertedOrUpdated = 0, keptLocal = 0, failed = 1)
+
+        var insertedOrUpdated = 0
+        var keptLocal = 0
+        var failed = 0
+
+        for (remote in remoteSessions) {
+            try {
+                val local = repo.getById(remote.id)
+                val shouldWrite = local == null || remote.startedAt > local.startedAt
+                if (shouldWrite) {
+                    repo.save(remote.copy(syncStatus = SyncStatus.SYNCED))
+                    insertedOrUpdated++
+                } else {
+                    keptLocal++
+                }
+            } catch (_: Exception) {
+                failed++
+            }
+        }
+
+        return SessionsMergeResult(
+            downloaded = remoteSessions.size,
+            insertedOrUpdated = insertedOrUpdated,
+            keptLocal = keptLocal,
+            failed = failed,
+        )
+    }
+
+    private suspend fun fetchRemoteJoggingSessionsWithRetry(): List<JoggingSession>? {
+        repeat(maxRetries) { attempt ->
+            try {
+                return supabaseClient.getJoggingSessions()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiException) {
+                if (!e.isTransient) return null
+                delay(baseDelayMs * (1L shl attempt))
+            } catch (_: Exception) {
+                delay(baseDelayMs * (1L shl attempt))
+            }
+        }
+        return null
     }
 
     // =========================================================================
@@ -295,6 +355,8 @@ data class SyncFromCloudResult(
     val sessionsInsertedOrUpdated: Int,
     val sessionsKeptLocal: Int,
     val sessionsFailed: Int,
+    val joggingSessionsDownloaded: Int = 0,
+    val joggingSessionsInsertedOrUpdated: Int = 0,
     val timeCreditSynced: Boolean,
 ) {
     /** `true` when the pull completed without any failures. */
