@@ -267,100 +267,144 @@ struct JoggingView: View {
     // MARK: - Finished View
 
     private var finishedView: some View {
-        VStack(spacing: AppSpacing.xl) {
-            Spacer()
-
-            // Celebration
-            VStack(spacing: AppSpacing.md) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(AppColors.success)
-
-                Text("Run Complete!")
-                    .font(AppTypography.title1)
-                    .foregroundStyle(AppColors.textPrimary)
-            }
-
-            // Stats summary
-            VStack(spacing: AppSpacing.md) {
-                summaryRow(icon: "figure.run", label: "Distance", value: viewModel.formattedDistance)
-                summaryRow(icon: "clock", label: "Duration", value: viewModel.formattedDuration)
-                summaryRow(icon: "speedometer", label: "Avg Pace", value: viewModel.formattedPace)
-                summaryRow(icon: "flame.fill", label: "Calories", value: "\(viewModel.caloriesBurned) cal")
-
-                Divider()
-                    .padding(.vertical, AppSpacing.xs)
-
-                // Earned time
+        ScrollView {
+            VStack(spacing: 0) {
+                // Top bar: title + share icon
                 HStack {
-                    Image(icon: .clockBadgeCheckmark)
-                        .font(.system(size: 24))
-                        .foregroundStyle(AppColors.success)
+                    Text("Run Complete")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Spacer()
+
+                    // Share button (top-right icon)
+                    Button {
+                        prepareShareImage()
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.backgroundSecondary)
+                                .frame(width: 40, height: 40)
+
+                            if isRenderingShareImage {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(AppColors.textPrimary)
+                            }
+                        }
+                    }
+                    .disabled(isRenderingShareImage)
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.lg)
+                .padding(.bottom, AppSpacing.md)
+
+                // Hero distance
+                VStack(spacing: 4) {
+                    Text(viewModel.formattedDistance)
+                        .font(.system(size: 56, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .monospacedDigit()
+
+                    Text("total distance")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppColors.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(1)
+                }
+                .padding(.bottom, AppSpacing.lg)
+
+                // Stats row
+                HStack(spacing: 0) {
+                    finishedStat(value: viewModel.formattedDuration, label: "Duration")
+                    finishedDivider
+                    finishedStat(value: viewModel.formattedPace, label: "Avg Pace")
+                    finishedDivider
+                    finishedStat(value: "\(viewModel.caloriesBurned)", label: "Calories")
+                }
+                .padding(.vertical, AppSpacing.md)
+                .background(AppColors.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+
+                // Earned screen time card
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AppColors.success.opacity(0.15))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "clock.badge.checkmark")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(AppColors.success)
+                    }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Screen Time Earned")
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                        Text("\(viewModel.earnedMinutes) min")
-                            .font(AppTypography.title2)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppColors.textTertiary)
+                        Text("+\(viewModel.earnedMinutes) min")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
                             .foregroundStyle(AppColors.success)
                     }
 
                     Spacer()
                 }
-            }
-            .padding(AppSpacing.lg)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(AppSpacing.md)
+                .background(AppColors.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.sm)
 
-            Spacer()
-
-            // Action buttons
-            VStack(spacing: AppSpacing.sm) {
-                // Share button
-                Button {
-                    prepareShareImage()
-                } label: {
-                    HStack(spacing: AppSpacing.xs) {
-                        if isRenderingShareImage {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        Text("Share Run")
-                            .font(AppTypography.bodySemibold)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.md)
-                    .background(AppColors.info, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                }
-                .disabled(isRenderingShareImage)
-                .padding(.horizontal, AppSpacing.xl)
+                Spacer(minLength: AppSpacing.xl)
 
                 // Done button
                 Button {
                     dismiss()
                 } label: {
-                    Text("Back to Workouts")
-                        .font(AppTypography.bodySemibold)
+                    Text("Done")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppSpacing.md)
-                        .background(AppColors.primary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                        .frame(height: 50)
+                        .background(AppColors.primary, in: RoundedRectangle(cornerRadius: 14))
                 }
-                .padding(.horizontal, AppSpacing.xl)
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.bottom, AppSpacing.xl)
             }
-            .padding(.bottom, AppSpacing.xl)
         }
         .sheet(isPresented: $showShareSheet) {
             if let image = shareImage {
                 ShareSheet(items: [image])
             }
         }
+    }
+
+    // MARK: - Finished View Helpers
+
+    private func finishedStat(value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(AppColors.textPrimary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(AppColors.textTertiary)
+                .tracking(0.5)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private var finishedDivider: some View {
+        Rectangle()
+            .fill(AppColors.separator.opacity(0.3))
+            .frame(width: 1, height: 30)
     }
 
     // MARK: - Share Image Generation
@@ -377,12 +421,10 @@ struct JoggingView: View {
         let earnedMinutes = viewModel.earnedMinutes
 
         Task {
-            // Generate map snapshot with route drawn on it
             let mapSnapshot = await JoggingMapSnapshotGenerator.generateSnapshot(
                 coordinates: coordinates
             )
 
-            // Render the full share card as an image
             let image = JoggingShareRenderer.renderShareImage(
                 mapSnapshot: mapSnapshot,
                 distance: distance,
