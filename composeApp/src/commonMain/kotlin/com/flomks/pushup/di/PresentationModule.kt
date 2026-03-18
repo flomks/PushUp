@@ -4,8 +4,12 @@ import com.flomks.pushup.friends.FriendRequestsViewModel
 import com.flomks.pushup.friends.FriendsListViewModel
 import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.UserSearchViewModel
+import com.flomks.pushup.history.HistoryViewModel
 import com.flomks.pushup.profile.ProfileViewModel
 import com.pushup.domain.repository.FriendshipRepository
+import com.pushup.domain.repository.JoggingSessionRepository
+import com.pushup.domain.repository.RoutePointRepository
+import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetUserLevelUseCase
@@ -50,6 +54,15 @@ val presentationModule = module {
             getUserUseCase = get<GetOrCreateLocalUserUseCase>(),
             getUserLevelUseCase = get<GetUserLevelUseCase>(),
             getTotalStatsUseCase = get<GetTotalStatsUseCase>(),
+        )
+    }
+
+    viewModel {
+        HistoryViewModel(
+            getUserUseCase = get<GetOrCreateLocalUserUseCase>(),
+            workoutSessionRepository = get<WorkoutSessionRepository>(),
+            joggingSessionRepository = get<JoggingSessionRepository>(),
+            routePointRepository = get<RoutePointRepository>(),
         )
     }
 }

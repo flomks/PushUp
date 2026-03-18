@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -35,6 +36,9 @@ import com.flomks.pushup.friends.FriendStatsViewModel
 import com.flomks.pushup.friends.InboxState
 import com.flomks.pushup.friends.UserSearchScreen
 import com.flomks.pushup.friends.UserSearchViewModel
+import com.flomks.pushup.history.HistoryScreen
+import com.flomks.pushup.history.HistoryViewModel
+import com.flomks.pushup.history.JoggingDetailScreen
 import com.flomks.pushup.profile.ProfileScreen
 import com.flomks.pushup.profile.ProfileViewModel
 import org.koin.compose.viewmodel.koinViewModel
@@ -56,15 +60,21 @@ fun App() {
 }
 
 /**
- * Top-level screen with two main sections:
+ * Top-level screen with three main sections:
  * - "Profile" tab: shows the user's level, XP progress, and lifetime stats.
+ * - "History" tab: unified activity history (push-ups + running) with detail views.
  * - "Social" tab: the existing friends / notifications section.
  */
 @Composable
 fun MainScreen(
     profileViewModel: ProfileViewModel = koinViewModel(),
+    historyViewModel: HistoryViewModel = koinViewModel(),
 ) {
     var selectedMainTab by remember { mutableIntStateOf(0) }
+
+    // Navigation state for jogging detail within the History tab.
+    // null = show the history list, non-null = show detail for that session ID.
+    var joggingDetailId by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top-level tab row
@@ -82,7 +92,21 @@ fun MainScreen(
             )
             Tab(
                 selected = selectedMainTab == 1,
-                onClick = { selectedMainTab = 1 },
+                onClick = {
+                    selectedMainTab = 1
+                    joggingDetailId = null
+                },
+                text = { Text("History") },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = "History",
+                    )
+                },
+            )
+            Tab(
+                selected = selectedMainTab == 2,
+                onClick = { selectedMainTab = 2 },
                 text = { Text("Social") },
                 icon = {
                     Icon(
@@ -95,7 +119,22 @@ fun MainScreen(
 
         when (selectedMainTab) {
             0 -> ProfileScreen(viewModel = profileViewModel)
-            1 -> FriendsSection()
+            1 -> {
+                val detailId = joggingDetailId
+                if (detailId != null) {
+                    JoggingDetailScreen(
+                        viewModel = historyViewModel,
+                        sessionId = detailId,
+                        onBack = { joggingDetailId = null },
+                    )
+                } else {
+                    HistoryScreen(
+                        viewModel = historyViewModel,
+                        onJoggingClick = { sessionId -> joggingDetailId = sessionId },
+                    )
+                }
+            }
+            2 -> FriendsSection()
         }
     }
 }
