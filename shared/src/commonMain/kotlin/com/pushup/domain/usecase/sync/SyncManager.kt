@@ -55,6 +55,7 @@ class SyncManager(
     private val syncWorkoutsUseCase: SyncWorkoutsUseCase,
     private val syncTimeCreditUseCase: SyncTimeCreditUseCase,
     private val syncLevelUseCase: SyncLevelUseCase,
+    private val syncJoggingUseCase: SyncJoggingUseCase? = null,
     private val syncFromCloudUseCase: SyncFromCloudUseCase,
     private val authRepository: AuthRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
@@ -85,6 +86,7 @@ class SyncManager(
             ?: return SyncResult.Skipped(reason = "User not authenticated")
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
+        val joggingResult = syncJoggingUseCase?.let { runCatching { it(userId) } }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
         val levelResult = runCatching { syncLevelUseCase(userId) }
         val fromCloudResult = runCatching { syncFromCloudUseCase(userId) }
@@ -92,6 +94,8 @@ class SyncManager(
         return SyncResult.Completed(
             workouts = workoutsResult.getOrNull(),
             workoutsError = workoutsResult.exceptionOrNull(),
+            jogging = joggingResult?.getOrNull(),
+            joggingError = joggingResult?.exceptionOrNull(),
             timeCredit = creditResult.getOrNull(),
             timeCreditError = creditResult.exceptionOrNull(),
             level = levelResult.getOrNull(),
@@ -116,12 +120,15 @@ class SyncManager(
             ?: return SyncResult.Skipped(reason = "User not authenticated")
 
         val workoutsResult = runCatching { syncWorkoutsUseCase(userId) }
+        val joggingResult = syncJoggingUseCase?.let { runCatching { it(userId) } }
         val creditResult = runCatching { syncTimeCreditUseCase(userId) }
         val levelResult = runCatching { syncLevelUseCase(userId) }
 
         return SyncResult.Completed(
             workouts = workoutsResult.getOrNull(),
             workoutsError = workoutsResult.exceptionOrNull(),
+            jogging = joggingResult?.getOrNull(),
+            joggingError = joggingResult?.exceptionOrNull(),
             timeCredit = creditResult.getOrNull(),
             timeCreditError = creditResult.exceptionOrNull(),
             level = levelResult.getOrNull(),
@@ -246,6 +253,8 @@ sealed class SyncResult {
     data class Completed(
         val workouts: SyncWorkoutsResult?,
         val workoutsError: Throwable?,
+        val jogging: SyncJoggingResult? = null,
+        val joggingError: Throwable? = null,
         val timeCredit: SyncTimeCreditResult?,
         val timeCreditError: Throwable?,
         val level: SyncLevelResult?,
@@ -257,10 +266,12 @@ sealed class SyncResult {
         /** `true` when all invoked use-cases completed without errors. */
         val isFullSuccess: Boolean
             get() = workoutsError == null &&
+                joggingError == null &&
                 timeCreditError == null &&
                 levelError == null &&
                 fromCloudError == null &&
                 workouts?.isFullSuccess != false &&
+                jogging?.isFullSuccess != false &&
                 fromCloud?.isFullSuccess != false
     }
 }

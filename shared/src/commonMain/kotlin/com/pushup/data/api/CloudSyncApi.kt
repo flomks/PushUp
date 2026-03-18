@@ -1,13 +1,18 @@
 package com.pushup.data.api
 
+import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.SetUsernameRequest
+import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
+import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.WorkoutSession
@@ -120,4 +125,47 @@ interface CloudSyncApi {
      * @throws ApiException if the username is taken or invalid.
      */
     suspend fun setUsername(request: SetUsernameRequest): String
+
+    // =========================================================================
+    // JoggingSession CRUD
+    // =========================================================================
+
+    /**
+     * Returns all jogging sessions for the authenticated user, newest first.
+     */
+    suspend fun getJoggingSessions(): List<JoggingSession>
+
+    /**
+     * Returns a single jogging session by [id].
+     *
+     * @throws ApiException.NotFound if no session with [id] exists.
+     */
+    suspend fun getJoggingSession(id: String): JoggingSession
+
+    /**
+     * Creates a new jogging session and returns the server-assigned row.
+     */
+    suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession
+
+    /**
+     * Partially updates a jogging session and returns the updated row.
+     */
+    suspend fun updateJoggingSession(
+        id: String,
+        request: UpdateJoggingSessionRequest,
+    ): JoggingSession
+
+    // =========================================================================
+    // RoutePoint CRUD
+    // =========================================================================
+
+    /**
+     * Returns all route points for [sessionId], ordered by timestamp ascending.
+     */
+    suspend fun getRoutePoints(sessionId: String): List<RoutePoint>
+
+    /**
+     * Bulk-inserts route points in a single request.
+     */
+    suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint>
 }

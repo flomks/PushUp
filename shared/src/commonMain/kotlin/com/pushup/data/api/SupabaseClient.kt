@@ -1,10 +1,15 @@
 package com.pushup.data.api
 
+import com.pushup.data.api.dto.CreateJoggingSessionRequest
 import com.pushup.data.api.dto.CreatePushUpRecordRequest
+import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.JoggingSessionDTO
 import com.pushup.data.api.dto.PushUpRecordDTO
+import com.pushup.data.api.dto.RoutePointDTO
 import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.TimeCreditDTO
+import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
@@ -14,8 +19,10 @@ import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
+import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.PushUpRecord
+import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.UserLevel
@@ -456,6 +463,103 @@ class SupabaseClient(
         }.also { it.expectSuccess() }
 
         username
+    }
+
+    // =========================================================================
+    // JoggingSession CRUD
+    // =========================================================================
+
+    override suspend fun getJoggingSessions(): List<JoggingSession> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/jogging_sessions") {
+            supabaseHeaders(token)
+            url.parameters.append("order", "started_at.desc")
+        }.also { it.expectSuccess() }
+            .body<List<JoggingSessionDTO>>()
+            .map { it.toDomain() }
+    }
+
+    override suspend fun getJoggingSession(id: String): JoggingSession = withRetry {
+        val token = tokenProvider()
+        val list = httpClient.get("$restBase/jogging_sessions") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$id")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<JoggingSessionDTO>>()
+
+        list.firstOrNull()?.toDomain()
+            ?: throw ApiException.NotFound(
+                message = "JoggingSession not found: $id",
+                resourceType = "JoggingSession",
+                resourceId = id,
+            )
+    }
+
+    override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession =
+        withRetry {
+            val token = tokenProvider()
+            httpClient.post("$restBase/jogging_sessions") {
+                supabaseHeaders(token)
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }.also { it.expectSuccess() }
+                .body<List<JoggingSessionDTO>>()
+                .first()
+                .toDomain()
+        }
+
+    override suspend fun updateJoggingSession(
+        id: String,
+        request: UpdateJoggingSessionRequest,
+    ): JoggingSession = withRetry {
+        val token = tokenProvider()
+        val list = httpClient.patch("$restBase/jogging_sessions") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("id", "eq.$id")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<JoggingSessionDTO>>()
+
+        list.firstOrNull()?.toDomain()
+            ?: throw ApiException.NotFound(
+                message = "JoggingSession not found: $id",
+                resourceType = "JoggingSession",
+                resourceId = id,
+            )
+    }
+
+    // =========================================================================
+    // RoutePoint CRUD
+    // =========================================================================
+
+    override suspend fun getRoutePoints(sessionId: String): List<RoutePoint> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/route_points") {
+            supabaseHeaders(token)
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("order", "timestamp.asc")
+        }.also { it.expectSuccess() }
+            .body<List<RoutePointDTO>>()
+            .map { it.toDomain() }
+    }
+
+    override suspend fun createRoutePoints(
+        requests: List<CreateRoutePointRequest>,
+    ): List<RoutePoint> = withRetry {
+        if (requests.isEmpty()) return@withRetry emptyList()
+        val token = tokenProvider()
+        httpClient.post("$restBase/route_points") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(requests)
+        }.also { it.expectSuccess() }
+            .body<List<RoutePointDTO>>()
+            .map { it.toDomain() }
     }
 
     // =========================================================================

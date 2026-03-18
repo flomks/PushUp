@@ -67,6 +67,7 @@ import com.pushup.domain.repository.FriendCodeRepository
 import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
+import com.pushup.domain.usecase.sync.SyncJoggingUseCase
 import com.pushup.domain.usecase.sync.SyncLevelUseCase
 import com.pushup.domain.usecase.sync.SyncManager
 import com.pushup.domain.usecase.sync.SyncTimeCreditUseCase
@@ -223,6 +224,8 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull(named(NETWORK_MONITOR)),
         )
     }
 
@@ -349,10 +352,19 @@ val useCaseModule: Module = module {
         )
     }
     factory {
+        SyncJoggingUseCase(
+            sessionRepository = get(),
+            routePointRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
         SyncFromCloudUseCase(
             sessionRepository = get(),
             timeCreditRepository = get(),
             userRepository = get(),
+            joggingSessionRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
         )
@@ -362,6 +374,7 @@ val useCaseModule: Module = module {
             syncWorkoutsUseCase = get(),
             syncTimeCreditUseCase = get(),
             syncLevelUseCase = get(),
+            syncJoggingUseCase = get(),
             syncFromCloudUseCase = get(),
             authRepository = get(),
         )
