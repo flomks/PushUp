@@ -5,12 +5,15 @@ import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.application.Application
 import io.ktor.server.application.log
 import org.jetbrains.exposed.sql.Column
+import org.jetbrains.exposed.sql.CustomFunction
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Index
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.kotlin.datetime.timestampWithTimeZone
+import org.jetbrains.exposed.sql.javatime.JavaInstantColumnType
 import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
+import org.jetbrains.exposed.sql.stringParam
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.vendors.currentDialect
 import org.jetbrains.exposed.sql.IColumnType
@@ -394,6 +397,61 @@ object FriendCodes : Table("friend_codes") {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Jogging tables -- mirror the public.jogging_sessions and public.route_points
+// PostgreSQL tables created by migration 015.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the public.jogging_sessions table in Supabase.
+ * One row per GPS-tracked jogging workout.
+ */
+object JoggingSessions : Table("jogging_sessions") {
+    val id                   = uuid("id")
+    val userId               = uuid("user_id").references(Users.id)
+    val startedAt            = timestampWithTimeZone("started_at")
+    val endedAt              = timestampWithTimeZone("ended_at").nullable()
+    val distanceMeters       = float("distance_meters")
+    val durationSeconds      = integer("duration_seconds")
+    val avgPaceSecondsPerKm  = integer("avg_pace_seconds_per_km").nullable()
+    val caloriesBurned       = integer("calories_burned")
+    val earnedTimeCredits    = integer("earned_time_credits")
+    val createdAt            = timestampWithTimeZone("created_at")
+    val updatedAt            = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+
+    /**
+     * PostgreSQL DATE_TRUNC('day', started_at) expression.
+     * Used as GROUP BY key for per-day aggregation.
+     */
+    val startedAtDay = CustomFunction<java.time.Instant>(
+        functionName = "DATE_TRUNC",
+        columnType = JavaInstantColumnType(),
+        stringParam("day"),
+        startedAt,
+    )
+}
+
+/**
+ * Mirrors the public.route_points table in Supabase.
+ * GPS breadcrumbs recorded during a jogging session.
+ */
+object RoutePoints : Table("route_points") {
+    val id                  = uuid("id")
+    val sessionId           = uuid("session_id").references(JoggingSessions.id)
+    val timestamp           = timestampWithTimeZone("timestamp")
+    val latitude            = double("latitude")
+    val longitude           = double("longitude")
+    val altitude            = float("altitude").nullable()
+    val speed               = float("speed").nullable()
+    val horizontalAccuracy  = float("horizontal_accuracy").nullable()
+    val distanceFromStart   = float("distance_from_start")
+    val createdAt           = timestampWithTimeZone("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
 /**
  * Configures a HikariCP connection pool pointing at the Supabase PostgreSQL
  * database and connects Exposed to it.
@@ -463,9 +521,11 @@ fun Application.configureDatabase(): Boolean {
             DeviceTokens,
             UserLevels,
             Notifications,
+            JoggingSessions,
+            RoutePoints,
         )
     }
-    log.info("Schema check complete (device_tokens, user_levels, notifications tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, notifications, jogging_sessions, route_points tables ensured)")
 
     return true
 }

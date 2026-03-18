@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v6)
+-- PushUp App Local Database Schema (v7)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 -- Dates are stored as TEXT in ISO-8601 format (YYYY-MM-DD).
@@ -14,6 +14,8 @@
 --                   (dailyEarnedSeconds, dailySpentSeconds, lastResetAt).
 --   v6 (5.sqm)   — Added DailyCreditSnapshot table for historical daily
 --                   credit tracking (charts).
+--   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for
+--                   GPS-tracked jogging workouts.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -454,3 +456,158 @@ ORDER BY date ASC;
 deleteDailyCreditSnapshotsByUserId:
 DELETE FROM DailyCreditSnapshot
 WHERE userId = ?;
+
+-- =============================================================================
+-- JoggingSession
+-- Tracks a single GPS-tracked jogging workout from start to finish.
+-- syncStatus: 'pending' | 'syncing' | 'synced' | 'failed'
+-- =============================================================================
+
+CREATE TABLE JoggingSession (
+    id                    TEXT    NOT NULL PRIMARY KEY,
+    userId                TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    startedAt             INTEGER NOT NULL,
+    endedAt               INTEGER,
+    distanceMeters        REAL    NOT NULL DEFAULT 0.0,
+    durationSeconds       INTEGER NOT NULL DEFAULT 0,
+    avgPaceSecondsPerKm   INTEGER,
+    caloriesBurned        INTEGER NOT NULL DEFAULT 0,
+    earnedTimeCredits     INTEGER NOT NULL DEFAULT 0,
+    syncStatus            TEXT    NOT NULL DEFAULT 'pending',
+    updatedAt             INTEGER NOT NULL
+);
+
+CREATE INDEX idx_jogging_session_user_id    ON JoggingSession(userId);
+CREATE INDEX idx_jogging_session_started_at ON JoggingSession(startedAt);
+CREATE INDEX idx_jogging_session_sync       ON JoggingSession(syncStatus);
+
+-- =============================================================================
+-- RoutePoint
+-- Individual GPS breadcrumb recorded during a jogging session.
+-- =============================================================================
+
+CREATE TABLE RoutePoint (
+    id                    TEXT    NOT NULL PRIMARY KEY,
+    sessionId             TEXT    NOT NULL REFERENCES JoggingSession(id) ON DELETE CASCADE,
+    timestamp             INTEGER NOT NULL,
+    latitude              REAL    NOT NULL,
+    longitude             REAL    NOT NULL,
+    altitude              REAL,
+    speed                 REAL,
+    horizontalAccuracy    REAL,
+    distanceFromStart     REAL    NOT NULL DEFAULT 0.0
+);
+
+CREATE INDEX idx_route_point_session_id ON RoutePoint(sessionId);
+CREATE INDEX idx_route_point_timestamp  ON RoutePoint(sessionId, timestamp);
+
+-- =============================================================================
+-- JoggingSession Queries
+-- =============================================================================
+
+insertJoggingSession:
+INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectJoggingSessionById:
+SELECT *
+FROM JoggingSession
+WHERE id = ?;
+
+selectAllJoggingSessions:
+SELECT *
+FROM JoggingSession
+ORDER BY startedAt DESC;
+
+updateJoggingSession:
+UPDATE JoggingSession
+SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+upsertJoggingSession:
+INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteJoggingSession:
+DELETE FROM JoggingSession
+WHERE id = ?;
+
+selectJoggingSessionsByUserId:
+SELECT *
+FROM JoggingSession
+WHERE userId = ?
+ORDER BY startedAt DESC;
+
+selectJoggingSessionsByDateRange:
+SELECT *
+FROM JoggingSession
+WHERE userId = ? AND startedAt >= ? AND startedAt <= ?
+ORDER BY startedAt DESC;
+
+selectUnsyncedJoggingSessions:
+SELECT *
+FROM JoggingSession
+WHERE syncStatus != 'synced'
+ORDER BY updatedAt ASC;
+
+selectUnsyncedJoggingSessionsByUserId:
+SELECT *
+FROM JoggingSession
+WHERE userId = ? AND syncStatus != 'synced'
+ORDER BY updatedAt ASC;
+
+updateJoggingSessionSyncStatus:
+UPDATE JoggingSession
+SET syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+updateJoggingSessionStats:
+UPDATE JoggingSession
+SET distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+updateJoggingSessionEnd:
+UPDATE JoggingSession
+SET endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+countJoggingSessionsByUserId:
+SELECT COUNT(*)
+FROM JoggingSession
+WHERE userId = ?;
+
+deleteJoggingSessionsByUserId:
+DELETE FROM JoggingSession
+WHERE userId = ?;
+
+-- =============================================================================
+-- RoutePoint Queries
+-- =============================================================================
+
+insertRoutePoint:
+INSERT INTO RoutePoint (id, sessionId, timestamp, latitude, longitude, altitude, speed, horizontalAccuracy, distanceFromStart)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectRoutePointById:
+SELECT *
+FROM RoutePoint
+WHERE id = ?;
+
+selectRoutePointsBySessionId:
+SELECT *
+FROM RoutePoint
+WHERE sessionId = ?
+ORDER BY timestamp ASC;
+
+countRoutePointsBySessionId:
+SELECT COUNT(*)
+FROM RoutePoint
+WHERE sessionId = ?;
+
+deleteRoutePointsBySessionId:
+DELETE FROM RoutePoint
+WHERE sessionId = ?;
+
+deleteRoutePoint:
+DELETE FROM RoutePoint
+WHERE id = ?;

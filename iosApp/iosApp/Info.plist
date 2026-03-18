@@ -10,6 +10,12 @@
 	<key>NSCameraUsageDescription</key>
 	<string>PushUp uses the camera to detect and count your push-ups in real time using pose estimation.</string>
 
+	<!-- Location permission descriptions for jogging GPS tracking -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>PushUp uses your location to track your jogging route, distance, and pace during workouts.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>PushUp uses your location in the background to continue tracking your jogging route while the app is minimized.</string>
+
 	<!-- Photo library permission (for avatar upload in Profile) -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>PushUp uses your photo library so you can set a profile picture.</string>
@@ -62,6 +68,15 @@
 				<string>pushup</string>
 			</array>
 		</dict>
+	</array>
+
+	<!-- Background Modes: location updates for jogging GPS tracking.
+	     Allows the app to continue receiving GPS updates while backgrounded
+	     during an active jogging session. Required for accurate route tracking. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
 	</array>
 
 	<!-- UILaunchStoryboardName is set via INFOPLIST_KEY_UILaunchStoryboardName
