@@ -71,6 +71,7 @@ struct DashboardView: View {
                 // 1. Time credit hero card (tappable for detail breakdown)
                 DashboardTimeCreditCard(
                     availableSeconds: viewModel.availableSeconds,
+                    dailyEarnedSeconds: viewModel.dailyEarnedSeconds,
                     totalEarnedSeconds: viewModel.totalEarnedSeconds,
                     isLoading: viewModel.isLoading,
                     onTap: { showTimeCreditDetail = true }

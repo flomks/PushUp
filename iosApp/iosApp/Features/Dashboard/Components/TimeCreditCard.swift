@@ -57,6 +57,7 @@ private enum CreditLevel {
 struct DashboardTimeCreditCard: View {
 
     let availableSeconds: Int
+    let dailyEarnedSeconds: Int
     let totalEarnedSeconds: Int
     let isLoading: Bool
     var onTap: (() -> Void)? = nil
@@ -154,13 +155,13 @@ struct DashboardTimeCreditCard: View {
 
     @ViewBuilder
     private var footerRow: some View {
-        if totalEarnedSeconds > 0 {
+        if dailyEarnedSeconds > 0 {
             HStack(spacing: AppSpacing.xs) {
                 Image(systemName: AppIcon.checkmarkCircleFill.rawValue)
                     .foregroundStyle(AppColors.success)
                     .font(.system(size: AppSpacing.iconSizeSmall))
 
-                Text("Total earned: \(formattedTotalEarned)")
+                Text("Today's budget: \(formattedDailyBudget)")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
 
@@ -221,8 +222,8 @@ struct DashboardTimeCreditCard: View {
     // MARK: - Computed Properties
 
     private var progressFraction: CGFloat {
-        guard totalEarnedSeconds > 0 else { return 0 }
-        return min(1.0, CGFloat(max(0, availableSeconds)) / CGFloat(totalEarnedSeconds))
+        guard dailyEarnedSeconds > 0 else { return 0 }
+        return min(1.0, CGFloat(max(0, availableSeconds)) / CGFloat(dailyEarnedSeconds))
     }
 
     private var formattedTime: String {
@@ -233,14 +234,25 @@ struct DashboardTimeCreditCard: View {
         return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
-    private var formattedTotalEarned: String {
-        let minutes = totalEarnedSeconds / 60
-        if minutes >= 60 {
-            let h = minutes / 60
-            let m = minutes % 60
+    /// Formats the daily budget as "X min" or "X min YYs" (seconds only when non-zero).
+    private var formattedDailyBudget: String {
+        let clamped = max(0, dailyEarnedSeconds)
+        let totalMinutes = clamped / 60
+        let remainingSeconds = clamped % 60
+
+        if totalMinutes >= 60 {
+            let h = totalMinutes / 60
+            let m = totalMinutes % 60
+            if remainingSeconds > 0 {
+                return m > 0 ? "\(h)h \(m)m \(remainingSeconds)s" : "\(h)h \(remainingSeconds)s"
+            }
             return m > 0 ? "\(h)h \(m)m" : "\(h)h"
         }
-        return "\(minutes) Min"
+
+        if remainingSeconds > 0 {
+            return "\(totalMinutes) min \(String(format: "%02d", remainingSeconds))s"
+        }
+        return "\(totalMinutes) min"
     }
 }
 
@@ -252,24 +264,28 @@ struct DashboardTimeCreditCard: View {
         VStack(spacing: AppSpacing.md) {
             DashboardTimeCreditCard(
                 availableSeconds: 5400,
-                totalEarnedSeconds: 9000,
+                dailyEarnedSeconds: 9000,
+                totalEarnedSeconds: 36000,
                 isLoading: false
             )
 
             DashboardTimeCreditCard(
                 availableSeconds: 900,
-                totalEarnedSeconds: 9000,
+                dailyEarnedSeconds: 9000,
+                totalEarnedSeconds: 36000,
                 isLoading: false
             )
 
             DashboardTimeCreditCard(
                 availableSeconds: 0,
+                dailyEarnedSeconds: 0,
                 totalEarnedSeconds: 0,
                 isLoading: false
             )
 
             DashboardTimeCreditCard(
                 availableSeconds: 0,
+                dailyEarnedSeconds: 0,
                 totalEarnedSeconds: 0,
                 isLoading: true
             )
