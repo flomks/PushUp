@@ -365,6 +365,7 @@ val useCaseModule: Module = module {
             timeCreditRepository = get(),
             userRepository = get(),
             joggingSessionRepository = get(),
+            routePointRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
         )
