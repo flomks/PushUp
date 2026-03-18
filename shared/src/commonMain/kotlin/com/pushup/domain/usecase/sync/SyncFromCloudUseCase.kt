@@ -9,6 +9,7 @@ import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.JoggingSessionRepository
+import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -57,6 +58,7 @@ class SyncFromCloudUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val userRepository: UserRepository,
     private val joggingSessionRepository: JoggingSessionRepository? = null,
+    private val routePointRepository: RoutePointRepository? = null,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
     private val maxRetries: Int = 3,
@@ -199,6 +201,10 @@ class SyncFromCloudUseCase(
                 val shouldWrite = local == null || remote.startedAt > local.startedAt
                 if (shouldWrite) {
                     repo.save(remote.copy(syncStatus = SyncStatus.SYNCED))
+                    // INSERT OR REPLACE triggers ON DELETE CASCADE which removes
+                    // local route points. Re-download them from the server so the
+                    // route map is not empty after a cloud sync.
+                    fetchAndMergeRoutePoints(remote.id)
                     insertedOrUpdated++
                 } else {
                     keptLocal++
@@ -214,6 +220,28 @@ class SyncFromCloudUseCase(
             keptLocal = keptLocal,
             failed = failed,
         )
+    }
+
+    /**
+     * Downloads route points for a jogging session from the server and saves
+     * them locally. This is needed because [JoggingSessionRepository.save]
+     * uses INSERT OR REPLACE which triggers ON DELETE CASCADE on the RoutePoint
+     * table, deleting all local route points for the session.
+     */
+    private suspend fun fetchAndMergeRoutePoints(sessionId: String) {
+        val rpRepo = routePointRepository ?: return
+        try {
+            val remotePoints = supabaseClient.getRoutePoints(sessionId)
+            for (point in remotePoints) {
+                try {
+                    rpRepo.save(point)
+                } catch (_: Exception) {
+                    // Best-effort: skip individual points that fail (e.g. duplicates)
+                }
+            }
+        } catch (_: Exception) {
+            // Non-fatal: route points are a nice-to-have, not critical for the session
+        }
     }
 
     private suspend fun fetchRemoteJoggingSessionsWithRetry(): List<JoggingSession>? {
