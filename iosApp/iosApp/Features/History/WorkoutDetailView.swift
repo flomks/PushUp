@@ -28,7 +28,7 @@ import SwiftUI
 /// ```
 struct WorkoutDetailView: View {
 
-    let session: WorkoutSession
+    let session: PushUpSession
 
     @Environment(\.dismiss) private var dismiss
 
@@ -472,7 +472,7 @@ struct DetailPushUpRecord: Identifiable {
 
 #if DEBUG
 #Preview("WorkoutDetailView") {
-    let session = WorkoutSession(
+    let session = PushUpSession(
         id: UUID(),
         startDate: Date().addingTimeInterval(-3600),
         pushUpCount: 42,
@@ -486,7 +486,7 @@ struct DetailPushUpRecord: Identifiable {
 }
 
 #Preview("WorkoutDetailView - Dark") {
-    let session = WorkoutSession(
+    let session = PushUpSession(
         id: UUID(),
         startDate: Date(),
         pushUpCount: 28,
