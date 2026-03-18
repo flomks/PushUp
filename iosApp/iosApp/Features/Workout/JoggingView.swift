@@ -15,6 +15,9 @@ struct JoggingView: View {
     @StateObject private var viewModel = JoggingViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var showStopConfirmation = false
+    @State private var showShareSheet = false
+    @State private var shareImage: UIImage?
+    @State private var isRenderingShareImage = false
 
     var body: some View {
         ZStack {
@@ -313,19 +316,90 @@ struct JoggingView: View {
 
             Spacer()
 
-            // Done button
-            Button {
-                dismiss()
-            } label: {
-                Text("Back to Workouts")
-                    .font(AppTypography.bodySemibold)
+            // Action buttons
+            VStack(spacing: AppSpacing.sm) {
+                // Share button
+                Button {
+                    prepareShareImage()
+                } label: {
+                    HStack(spacing: AppSpacing.xs) {
+                        if isRenderingShareImage {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        Text("Share Run")
+                            .font(AppTypography.bodySemibold)
+                    }
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, AppSpacing.md)
-                    .background(AppColors.primary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                    .background(AppColors.info, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                }
+                .disabled(isRenderingShareImage)
+                .padding(.horizontal, AppSpacing.xl)
+
+                // Done button
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Back to Workouts")
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.md)
+                        .background(AppColors.primary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                }
+                .padding(.horizontal, AppSpacing.xl)
             }
-            .padding(.horizontal, AppSpacing.xl)
             .padding(.bottom, AppSpacing.xl)
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
+            }
+        }
+    }
+
+    // MARK: - Share Image Generation
+
+    private func prepareShareImage() {
+        guard !isRenderingShareImage else { return }
+        isRenderingShareImage = true
+
+        let coordinates = viewModel.routeLocations.map { $0.coordinate }
+        let distance = viewModel.formattedDistance
+        let duration = viewModel.formattedDuration
+        let pace = viewModel.formattedPace
+        let calories = "\(viewModel.caloriesBurned) cal"
+        let earnedMinutes = viewModel.earnedMinutes
+
+        Task {
+            // Generate map snapshot with route drawn on it
+            let mapSnapshot = await JoggingMapSnapshotGenerator.generateSnapshot(
+                coordinates: coordinates
+            )
+
+            // Render the full share card as an image
+            let image = JoggingShareRenderer.renderShareImage(
+                mapSnapshot: mapSnapshot,
+                routeCoordinates: coordinates,
+                distance: distance,
+                duration: duration,
+                pace: pace,
+                calories: calories,
+                earnedMinutes: earnedMinutes,
+                date: Date()
+            )
+
+            shareImage = image
+            isRenderingShareImage = false
+
+            if image != nil {
+                showShareSheet = true
+            }
         }
     }
 
