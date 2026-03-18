@@ -42,6 +42,10 @@ struct WorkoutView: View {
 
     @StateObject private var viewModel = WorkoutViewModel()
 
+    /// Dismiss action for the fullScreenCover presentation.
+    /// Used by the close button (idle) and "Back to Dashboard" (finished).
+    @Environment(\.dismiss) private var dismiss
+
     // MARK: - Body
 
     var body: some View {
@@ -69,11 +73,6 @@ struct WorkoutView: View {
         }
         .ignoresSafeArea()
         .toolbar(.hidden, for: .navigationBar)
-        // Give the tab bar a solid material background so it is clearly
-        // visible over the camera feed. Without this the tab bar is
-        // transparent and blends into the camera image.
-        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
         .onAppear {
             // Start the camera preview so the user can see themselves
             // before tapping "Start". The tracking pipeline (pose detection
@@ -122,7 +121,7 @@ struct WorkoutView: View {
 
     private var idleOverlay: some View {
         GeometryReader { geo in
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
 
@@ -135,7 +134,7 @@ struct WorkoutView: View {
                             .foregroundStyle(.white)
                             .symbolRenderingMode(.hierarchical)
 
-                        Text("Start Workout")
+                        Text("Push-Ups")
                             .font(AppTypography.roundedTitle)
                             .foregroundStyle(.white)
 
@@ -150,14 +149,35 @@ struct WorkoutView: View {
 
                     startButton(bottomInset: geo.safeAreaInsets.bottom)
                 }
+
+                // Close button -- returns to the workout selection hub
+                closeButton
+                    .padding(.top, geo.safeAreaInsets.top + AppSpacing.sm)
+                    .padding(.leading, AppSpacing.md)
             }
         }
     }
 
+    // MARK: - Close Button
+
+    private var closeButton: some View {
+        Button {
+            viewModel.stopPreview()
+            dismiss()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel("Back to workout selection")
+    }
+
     private func startButton(bottomInset: CGFloat) -> some View {
         // bottomInset = home indicator safe area (~34pt Face ID, 0pt Home button).
-        // Tab bar height is always 49pt. We add a 16pt gap above the button.
-        // Total bottom padding = homeIndicator + tabBar + gap.
+        // Presented as fullScreenCover so no tab bar offset needed.
         Button {
             viewModel.startWorkout()
         } label: {
@@ -175,7 +195,7 @@ struct WorkoutView: View {
         }
         .buttonStyle(ScaleButtonStyle())
         .padding(.horizontal, AppSpacing.xl)
-        .padding(.bottom, bottomInset + 49 + AppSpacing.md)
+        .padding(.bottom, bottomInset + AppSpacing.lg)
         .padding(.top, AppSpacing.md)
     }
 
@@ -228,7 +248,11 @@ struct WorkoutView: View {
     ///
     /// Replaces the previous inline summary card with the rich
     /// `WorkoutSummaryView` that includes animated counters, confetti,
-    /// share functionality, and a "Zurueck zum Dashboard" button.
+    /// share functionality, and a "Back" button.
+    ///
+    /// The `onDashboard` callback dismisses the fullScreenCover so the
+    /// user returns to the workout selection hub. The view model is reset
+    /// first so the next presentation starts fresh.
     private var finishedOverlay: some View {
         WorkoutSummaryView(
             pushUpCount: viewModel.pushUpCount,
@@ -239,6 +263,7 @@ struct WorkoutView: View {
             isNewRecord: viewModel.isNewRecord,
             onDashboard: {
                 viewModel.resetForNewWorkout()
+                dismiss()
             }
         )
         .ignoresSafeArea()
