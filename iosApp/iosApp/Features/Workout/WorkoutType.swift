@@ -69,10 +69,10 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
     var icon: AppIcon {
         switch self {
         case .pushUps:      return .figureStrengthTraining
-        case .plank:        return .figureYoga
-        case .jumpingJacks: return .figureJumpingJacks
+        case .plank:        return .figurePilates
+        case .jumpingJacks: return .figureJumpRope
         case .squats:       return .figureCrossTraining
-        case .crunches:     return .figureCrunches
+        case .crunches:     return .figureCoreTraining
         case .jogging:      return .figureRun
         }
     }
