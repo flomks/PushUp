@@ -121,6 +121,8 @@ struct WorkoutView: View {
 
     private var idleOverlay: some View {
         GeometryReader { geo in
+            let topInset = max(geo.safeAreaInsets.top, AppSpacing.xxl)
+
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
@@ -150,26 +152,31 @@ struct WorkoutView: View {
                     startButton(bottomInset: geo.safeAreaInsets.bottom)
                 }
 
-                // Close button -- returns to the workout selection hub
-                closeButton
-                    .padding(.top, geo.safeAreaInsets.top + AppSpacing.sm)
+                // Back button -- positioned below Dynamic Island / notch
+                backButton
+                    .padding(.top, topInset + AppSpacing.sm)
                     .padding(.leading, AppSpacing.md)
             }
         }
     }
 
-    // MARK: - Close Button
+    // MARK: - Back Button
 
-    private var closeButton: some View {
+    private var backButton: some View {
         Button {
             viewModel.stopPreview()
             dismiss()
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
-                .background(.ultraThinMaterial, in: Circle())
+            HStack(spacing: AppSpacing.xxs) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Back")
+                    .font(AppTypography.subheadlineSemibold)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, AppSpacing.sm)
+            .frame(height: 36)
+            .background(.ultraThinMaterial, in: Capsule())
         }
         .buttonStyle(ScaleButtonStyle())
         .accessibilityLabel("Back to workout selection")
@@ -202,27 +209,31 @@ struct WorkoutView: View {
     // MARK: - Active Overlay
 
     private var activeOverlay: some View {
-        VStack(spacing: 0) {
-            topHUD
-                .padding(.top, AppSpacing.xxl)
-                .padding(.horizontal, AppSpacing.md)
+        GeometryReader { geo in
+            let topInset = max(geo.safeAreaInsets.top, AppSpacing.xxl)
 
-            Spacer()
+            VStack(spacing: 0) {
+                topHUD
+                    .padding(.top, topInset + AppSpacing.sm)
+                    .padding(.horizontal, AppSpacing.md)
 
-            VStack(spacing: AppSpacing.sm) {
-                LiveCounterView(count: viewModel.pushUpCount)
-                FormScoreIndicator(score: viewModel.formScore)
+                Spacer()
+
+                VStack(spacing: AppSpacing.sm) {
+                    LiveCounterView(count: viewModel.pushUpCount)
+                    FormScoreIndicator(score: viewModel.formScore)
+                }
+                .padding(.bottom, AppSpacing.lg)
+
+                Spacer()
+
+                WorkoutControls(
+                    showPoseOverlay: $viewModel.showPoseOverlay,
+                    onStop: { viewModel.requestStop() },
+                    onSwitchCamera: { viewModel.switchCamera() }
+                )
+                .padding(.bottom, max(geo.safeAreaInsets.bottom, AppSpacing.md))
             }
-            .padding(.bottom, AppSpacing.lg)
-
-            Spacer()
-
-            WorkoutControls(
-                showPoseOverlay: $viewModel.showPoseOverlay,
-                onStop: { viewModel.requestStop() },
-                onSwitchCamera: { viewModel.switchCamera() }
-            )
-            .padding(.bottom, AppSpacing.xl)
         }
     }
 
