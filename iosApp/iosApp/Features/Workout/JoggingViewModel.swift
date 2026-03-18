@@ -44,9 +44,17 @@ final class JoggingViewModel: ObservableObject {
 
     // MARK: - Init
 
-    init(trackingManager: JoggingTrackingManager = JoggingTrackingManager()) {
+    /// Creates a view model with the given tracking manager.
+    /// Must be called from the main actor since JoggingTrackingManager is @MainActor-isolated.
+    init(trackingManager: JoggingTrackingManager) {
         self.trackingManager = trackingManager
         observeTrackingManager()
+    }
+
+    /// Convenience initialiser that creates a default tracking manager.
+    /// Must be called from the main actor.
+    convenience init() {
+        self.init(trackingManager: JoggingTrackingManager())
     }
 
     // MARK: - Public API

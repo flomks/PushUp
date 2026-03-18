@@ -96,7 +96,7 @@ final class JoggingTrackingManager: ObservableObject {
     // MARK: - Init
 
     init(
-        locationManager: LocationTrackingManager = LocationTrackingManager(),
+        locationManager: LocationTrackingManager,
         getCurrentUser: GetCurrentUserUseCase,
         startJogging: StartJoggingUseCase,
         recordRoutePoint: RecordRoutePointUseCase,
@@ -110,9 +110,11 @@ final class JoggingTrackingManager: ObservableObject {
     }
 
     /// Convenience initialiser that resolves use cases from the Koin DI graph.
+    /// Must be called from the main actor since LocationTrackingManager is @MainActor-isolated.
     convenience init() {
         let helper = DIHelper.shared
         self.init(
+            locationManager: LocationTrackingManager(),
             getCurrentUser: helper.getCurrentUserUseCase(),
             startJogging: helper.startJoggingUseCase(),
             recordRoutePoint: helper.recordRoutePointUseCase(),
