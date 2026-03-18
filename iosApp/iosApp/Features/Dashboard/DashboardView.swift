@@ -16,6 +16,9 @@ struct DashboardView: View {
     /// button can switch tabs without pushing a new navigation destination.
     @Binding var selectedTab: Tab
 
+    /// Controls whether the time credit detail sheet is presented.
+    @State private var showTimeCreditDetail = false
+
     /// Controls whether the error alert is presented. Derived from
     /// `viewModel.errorMessage` and properly clears it on dismiss.
     private var showError: Binding<Bool> {
@@ -40,6 +43,16 @@ struct DashboardView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar { refreshToolbarItem }
         .task { await viewModel.startObserving() }
+        .sheet(isPresented: $showTimeCreditDetail) {
+            TimeCreditDetailView(
+                availableSeconds: viewModel.availableSeconds,
+                dailyEarnedSeconds: viewModel.dailyEarnedSeconds,
+                dailySpentSeconds: viewModel.dailySpentSeconds,
+                todayWorkoutEarned: viewModel.todayWorkoutEarned,
+                carryOverSeconds: viewModel.carryOverSeconds,
+                totalEarnedSeconds: viewModel.totalEarnedSeconds
+            )
+        }
         .alert("Error", isPresented: showError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -53,11 +66,12 @@ struct DashboardView: View {
         ScrollView {
             LazyVStack(spacing: AppSpacing.md) {
 
-                // 1. Time credit hero card
+                // 1. Time credit hero card (tappable for detail breakdown)
                 DashboardTimeCreditCard(
                     availableSeconds: viewModel.availableSeconds,
                     totalEarnedSeconds: viewModel.totalEarnedSeconds,
-                    isLoading: viewModel.isLoading
+                    isLoading: viewModel.isLoading,
+                    onTap: { showTimeCreditDetail = true }
                 )
 
                 // 1b. Screen Time status (only shown when authorized + selection exists)
