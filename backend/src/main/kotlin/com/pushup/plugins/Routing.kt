@@ -5,6 +5,7 @@ import com.pushup.routes.deviceTokenRoutes
 import com.pushup.routes.friendActivityStatsRoutes
 import com.pushup.routes.friendCodeRoutes
 import com.pushup.routes.friendRoutes
+import com.pushup.routes.joggingStatsRoutes
 import com.pushup.routes.statsRoutes
 import com.pushup.routes.userDataRoutes
 import com.pushup.routes.userRoutes
@@ -14,6 +15,7 @@ import com.pushup.service.DeviceTokenService
 import com.pushup.service.FriendActivityStatsService
 import com.pushup.service.FriendCodeService
 import com.pushup.service.FriendshipService
+import com.pushup.service.JoggingStatsService
 import com.pushup.service.StatsService
 import com.pushup.service.UserDataService
 import com.pushup.service.UserSearchService
@@ -34,6 +36,7 @@ fun Application.configureRouting(
     friendshipService: FriendshipService = FriendshipService(deviceTokenService),
     friendActivityStatsService: FriendActivityStatsService = FriendActivityStatsService(),
     friendCodeService: FriendCodeService = FriendCodeService(deviceTokenService),
+    joggingStatsService: JoggingStatsService = JoggingStatsService(),
     databaseReady: Boolean = true,
 ) {
     routing {
@@ -425,5 +428,6 @@ fun Application.configureRouting(
         friendRoutes(friendshipService, databaseReady = databaseReady)
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)
         friendCodeRoutes(friendCodeService, databaseReady = databaseReady)
+        joggingStatsRoutes(joggingStatsService)
     }
 }

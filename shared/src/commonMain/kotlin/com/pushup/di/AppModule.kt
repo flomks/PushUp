@@ -8,8 +8,10 @@ import com.pushup.data.api.SupabaseAuthClient
 import com.pushup.data.api.SupabaseClient
 import com.pushup.data.api.createHttpClient
 import com.pushup.data.repository.AuthRepositoryImpl
+import com.pushup.data.repository.JoggingSessionRepositoryImpl
 import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
+import com.pushup.data.repository.RoutePointRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
 import com.pushup.data.repository.DailyCreditSnapshotRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -18,8 +20,10 @@ import com.pushup.data.repository.UserSettingsRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.repository.AuthRepository
+import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
+import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.TimeCreditRepository
@@ -40,8 +44,11 @@ import com.pushup.domain.usecase.GetUserLevelUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.IdGenerator
+import com.pushup.domain.usecase.FinishJoggingUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
+import com.pushup.domain.usecase.RecordRoutePointUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
+import com.pushup.domain.usecase.StartJoggingUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
@@ -210,6 +217,21 @@ val repositoryModule: Module = module {
             dispatcher = get(named(DB_DISPATCHER)),
         )
     }
+
+    single<JoggingSessionRepository> {
+        JoggingSessionRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+        )
+    }
+
+    single<RoutePointRepository> {
+        RoutePointRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+        )
+    }
 }
 
 /**
@@ -273,6 +295,27 @@ val useCaseModule: Module = module {
     factory { GetTotalStatsUseCase(statsRepository = get()) }
     factory { GetUserLevelUseCase(levelRepository = get()) }
     factory { AwardWorkoutXpUseCase(levelRepository = get()) }
+
+    // Jogging use-cases
+    factory { StartJoggingUseCase(sessionRepository = get(), clock = get(), idGenerator = get()) }
+    factory {
+        RecordRoutePointUseCase(
+            sessionRepository = get(),
+            routePointRepository = get(),
+            clock = get(),
+            idGenerator = get(),
+        )
+    }
+    factory {
+        FinishJoggingUseCase(
+            sessionRepository = get(),
+            routePointRepository = get(),
+            timeCreditRepository = get(),
+            settingsRepository = get(),
+            levelRepository = get(),
+            clock = get(),
+        )
+    }
 
     // Auth use-cases (Task 1B.8)
     factory { RegisterWithEmailUseCase(authRepository = get()) }

@@ -33,6 +33,9 @@ struct WorkoutSelectionView: View {
     /// Controls whether the push-up workout (camera) view is presented.
     @State private var showPushUpWorkout = false
 
+    /// Controls whether the jogging workout view is presented.
+    @State private var showJoggingWorkout = false
+
     /// Controls whether a timer-based workout view is presented.
     @State private var showTimerWorkout = false
 
@@ -51,11 +54,11 @@ struct WorkoutSelectionView: View {
                 // Hero card for Push-Ups (primary exercise)
                 pushUpHeroCard
 
+                // Jogging card (GPS-tracked)
+                joggingCard
+
                 // Grid of other available exercises
                 exerciseGrid
-
-                // Coming soon section
-                comingSoonSection
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, AppSpacing.sm)
@@ -66,6 +69,9 @@ struct WorkoutSelectionView: View {
         .navigationBarTitleDisplayMode(.large)
         .fullScreenCover(isPresented: $showPushUpWorkout) {
             WorkoutView()
+        }
+        .fullScreenCover(isPresented: $showJoggingWorkout) {
+            JoggingView()
         }
         .sheet(item: $selectedWorkout) { workout in
             TimerWorkoutPlaceholderView(workoutType: workout)
@@ -175,6 +181,92 @@ struct WorkoutSelectionView: View {
         .buttonStyle(ScaleButtonStyle())
     }
 
+    // MARK: - Jogging Card
+
+    private var joggingCard: some View {
+        Button {
+            showJoggingWorkout = true
+        } label: {
+            HStack(spacing: AppSpacing.md) {
+                // Left: Icon with gradient background
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: WorkoutType.jogging.gradientColors,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 60, height: 60)
+
+                    Image(icon: WorkoutType.jogging.icon)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .symbolRenderingMode(.hierarchical)
+                }
+
+                // Middle: Text content
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    HStack(spacing: AppSpacing.xs) {
+                        Text(WorkoutType.jogging.displayName)
+                            .font(AppTypography.subheadlineSemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        // "GPS" badge
+                        Text("GPS")
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, AppSpacing.xs)
+                            .padding(.vertical, 2)
+                            .background(
+                                AppColors.info,
+                                in: Capsule()
+                            )
+                    }
+
+                    Text(WorkoutType.jogging.subtitle)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+
+                    // Earn rate
+                    HStack(spacing: AppSpacing.xxs) {
+                        Image(icon: .clockBadgeCheckmark)
+                            .font(.system(size: AppSpacing.iconSizeSmall))
+                            .foregroundStyle(AppColors.success)
+
+                        Text(WorkoutType.jogging.earnHint)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.success)
+                    }
+                }
+
+                Spacer()
+
+                // Right: Chevron
+                Image(icon: .chevronRight)
+                    .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                    .foregroundStyle(AppColors.textTertiary)
+            }
+            .padding(AppSpacing.md)
+            .background(AppColors.backgroundSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [AppColors.info.opacity(0.3), AppColors.info.opacity(0.1)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+
     // MARK: - Exercise Grid
 
     private var exerciseGrid: some View {
@@ -195,29 +287,6 @@ struct WorkoutSelectionView: View {
         }
     }
 
-    // MARK: - Coming Soon Section
-
-    private var comingSoonSection: some View {
-        VStack(spacing: AppSpacing.sm) {
-            HStack {
-                Rectangle()
-                    .fill(AppColors.separator)
-                    .frame(height: 1)
-
-                Text("COMING SOON")
-                    .font(AppTypography.captionSemibold)
-                    .foregroundStyle(AppColors.textTertiary)
-
-                Rectangle()
-                    .fill(AppColors.separator)
-                    .frame(height: 1)
-            }
-            .padding(.top, AppSpacing.sm)
-
-            // Jogging card (locked)
-            ComingSoonCard(workoutType: .jogging)
-        }
-    }
 }
 
 // MARK: - ExerciseCard

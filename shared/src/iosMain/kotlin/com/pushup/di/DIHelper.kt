@@ -3,9 +3,12 @@ package com.pushup.di
 import com.pushup.data.storage.TokenStorage
 import com.pushup.domain.model.AuthToken
 import com.pushup.domain.model.User
+import com.pushup.domain.usecase.FinishJoggingUseCase
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
+import com.pushup.domain.usecase.RecordRoutePointUseCase
+import com.pushup.domain.usecase.StartJoggingUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
 import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
@@ -27,11 +30,16 @@ import org.koin.core.component.get
  */
 object DIHelper : KoinComponent {
 
-    // Workout use cases
+    // Workout use cases (push-ups)
     fun getOrCreateLocalUserUseCase(): GetOrCreateLocalUserUseCase = get()
     fun startWorkoutUseCase(): StartWorkoutUseCase = get()
     fun recordPushUpUseCase(): RecordPushUpUseCase = get()
     fun finishWorkoutUseCase(): FinishWorkoutUseCase = get()
+
+    // Jogging use cases
+    fun startJoggingUseCase(): StartJoggingUseCase = get()
+    fun recordRoutePointUseCase(): RecordRoutePointUseCase = get()
+    fun finishJoggingUseCase(): FinishJoggingUseCase = get()
 
     // Auth use case accessors — used by AuthService.swift via completionHandler bridge
     fun loginWithEmailUseCase(): LoginWithEmailUseCase = get()

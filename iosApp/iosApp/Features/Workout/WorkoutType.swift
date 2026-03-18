@@ -49,7 +49,7 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
         case .jumpingJacks: return "Count your reps"
         case .squats:       return "Count your reps"
         case .crunches:     return "Count your reps"
-        case .jogging:      return "Coming soon"
+        case .jogging:      return "GPS-tracked route"
         }
     }
 
@@ -61,7 +61,7 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
         case .jumpingJacks: return "1 min per 20 reps"
         case .squats:       return "1 min per 15 reps"
         case .crunches:     return "1 min per 15 reps"
-        case .jogging:      return "Track with GPS"
+        case .jogging:      return "1 min per 1 km"
         }
     }
 
@@ -104,10 +104,8 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
     /// Whether this exercise is fully implemented and available to use.
     var isAvailable: Bool {
         switch self {
-        case .pushUps, .plank, .jumpingJacks, .squats, .crunches:
+        case .pushUps, .plank, .jumpingJacks, .squats, .crunches, .jogging:
             return true
-        case .jogging:
-            return false
         }
     }
 
@@ -115,6 +113,16 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
     var usesCameraTracking: Bool {
         switch self {
         case .pushUps:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this exercise uses GPS-based tracking.
+    var usesGPSTracking: Bool {
+        switch self {
+        case .jogging:
             return true
         default:
             return false
