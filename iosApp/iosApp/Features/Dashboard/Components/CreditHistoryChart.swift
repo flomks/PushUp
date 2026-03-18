@@ -1,6 +1,5 @@
 import Charts
 import SwiftUI
-import Shared
 
 // MARK: - CreditHistoryChartEntry
 
