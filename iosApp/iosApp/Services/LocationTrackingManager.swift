@@ -209,25 +209,28 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
 
         receivedPointCount += 1
 
-        // Warmup phase: discard the first few GPS fixes which are often
-        // inaccurate cached positions (especially indoors). We still update
-        // the current location for the map, but do NOT count distance.
+        // Always update current location and route for the map display,
+        // so the user sees their position from the very first GPS fix.
+        currentLocation = location
+        currentSpeed = location.speed >= 0 ? location.speed : 0.0
+        recordedLocations.append(location)
+
+        // Warmup phase: the first few GPS fixes are often inaccurate cached
+        // positions (especially indoors). We show them on the map but do NOT
+        // count any distance during this phase.
         if receivedPointCount <= warmupPointCount {
             #if DEBUG
             print("[LocationTrackingManager] Warmup point \(receivedPointCount)/\(warmupPointCount) -- distance not counted")
             #endif
-            currentLocation = location
-            currentSpeed = location.speed >= 0 ? location.speed : 0.0
-            // Only start recording route points after warmup
-            if receivedPointCount == warmupPointCount {
-                recordedLocations.append(location)
-            }
             return
         }
 
-        // Calculate distance from previous point
-        if let lastLocation = recordedLocations.last {
-            let delta = location.distance(from: lastLocation)
+        // Calculate distance from previous point (skip warmup points for distance)
+        // Use the point just before this one (which may be a warmup point -- that is
+        // fine because we only add distance when the user is actually moving).
+        if recordedLocations.count >= 2 {
+            let previousLocation = recordedLocations[recordedLocations.count - 2]
+            let delta = location.distance(from: previousLocation)
             // Only count distance if:
             // 1. Movement is >= 2m (filter GPS noise)
             // 2. User is actually moving (speed >= minimum threshold)
@@ -237,11 +240,5 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
                 totalDistanceMeters += delta
             }
         }
-
-        // Update speed (use CLLocation's speed if valid, otherwise 0)
-        currentSpeed = location.speed >= 0 ? location.speed : 0.0
-
-        currentLocation = location
-        recordedLocations.append(location)
     }
 }
