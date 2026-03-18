@@ -224,20 +224,17 @@ class SyncFromCloudUseCase(
 
     /**
      * Downloads route points for a jogging session from the server and saves
-     * them locally. This is needed because [JoggingSessionRepository.save]
-     * uses INSERT OR REPLACE which triggers ON DELETE CASCADE on the RoutePoint
-     * table, deleting all local route points for the session.
+     * them locally using idempotent INSERT OR IGNORE.
+     *
+     * This ensures the route map has data after a cloud sync, even if the
+     * local route points were previously lost or this is a fresh device.
      */
     private suspend fun fetchAndMergeRoutePoints(sessionId: String) {
         val rpRepo = routePointRepository ?: return
         try {
             val remotePoints = supabaseClient.getRoutePoints(sessionId)
             for (point in remotePoints) {
-                try {
-                    rpRepo.save(point)
-                } catch (_: Exception) {
-                    // Best-effort: skip individual points that fail (e.g. duplicates)
-                }
+                rpRepo.saveIfAbsent(point)
             }
         } catch (_: Exception) {
             // Non-fatal: route points are a nice-to-have, not critical for the session

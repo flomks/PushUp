@@ -45,6 +45,7 @@ import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.IdGenerator
 import com.pushup.domain.usecase.FinishJoggingUseCase
+import com.pushup.domain.usecase.LiveJoggingSessionManager
 import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.RecordRoutePointUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
@@ -367,6 +368,13 @@ val useCaseModule: Module = module {
             joggingSessionRepository = get(),
             routePointRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    single {
+        LiveJoggingSessionManager(
+            cloudSyncApi = get<CloudSyncApi>(),
+            routePointRepository = get(),
             networkMonitor = get(named(NETWORK_MONITOR)),
         )
     }

@@ -3,11 +3,13 @@ package com.pushup.data.api
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.LiveJoggingStatusDTO
 import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
@@ -168,4 +170,26 @@ interface CloudSyncApi {
      * Bulk-inserts route points in a single request.
      */
     suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint>
+
+    // =========================================================================
+    // Live Jogging Status (Presence)
+    // =========================================================================
+
+    /**
+     * Upserts the live jogging status for the authenticated user.
+     * This signals to friends that the user is currently running.
+     */
+    suspend fun upsertLiveJoggingStatus(request: UpsertLiveJoggingStatusRequest)
+
+    /**
+     * Deletes the live jogging status for the authenticated user.
+     * This signals that the user has stopped running.
+     */
+    suspend fun deleteLiveJoggingStatus(userId: String)
+
+    /**
+     * Returns the live jogging status for a list of user IDs.
+     * Used to check which friends are currently running.
+     */
+    suspend fun getLiveJoggingStatuses(userIds: List<String>): List<LiveJoggingStatusDTO>
 }

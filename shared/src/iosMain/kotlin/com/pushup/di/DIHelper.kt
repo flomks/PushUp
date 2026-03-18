@@ -6,6 +6,7 @@ import com.pushup.domain.model.User
 import com.pushup.domain.usecase.FinishJoggingUseCase
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
+import com.pushup.domain.usecase.LiveJoggingSessionManager
 import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.RecordRoutePointUseCase
 import com.pushup.domain.usecase.StartJoggingUseCase
@@ -40,6 +41,7 @@ object DIHelper : KoinComponent {
     fun startJoggingUseCase(): StartJoggingUseCase = get()
     fun recordRoutePointUseCase(): RecordRoutePointUseCase = get()
     fun finishJoggingUseCase(): FinishJoggingUseCase = get()
+    fun liveJoggingSessionManager(): LiveJoggingSessionManager = get()
 
     // Auth use case accessors — used by AuthService.swift via completionHandler bridge
     fun loginWithEmailUseCase(): LoginWithEmailUseCase = get()

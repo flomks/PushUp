@@ -41,24 +41,51 @@ class JoggingSessionRepositoryImpl(
 
     private val queries get() = database.databaseQueries
 
+    /**
+     * Saves a jogging session using UPDATE-first, INSERT-fallback strategy.
+     *
+     * **Why not INSERT OR REPLACE?**
+     * SQLite implements INSERT OR REPLACE as DELETE + INSERT. Because the
+     * [RoutePoint] table has `ON DELETE CASCADE` on `sessionId`, a REPLACE
+     * silently deletes all route points for the session. This UPDATE-first
+     * approach preserves child rows.
+     */
     override suspend fun save(session: JoggingSession): Unit = safeDbCall(
         dispatcher,
         "Failed to save jogging session '${session.id}'",
     ) {
         val now = clock.now().toEpochMilliseconds()
-        queries.upsertJoggingSession(
-            id = session.id,
-            userId = session.userId,
-            startedAt = session.startedAt.toEpochMilliseconds(),
-            endedAt = session.endedAt?.toEpochMilliseconds(),
-            distanceMeters = session.distanceMeters,
-            durationSeconds = session.durationSeconds,
-            avgPaceSecondsPerKm = session.avgPaceSecondsPerKm?.toLong(),
-            caloriesBurned = session.caloriesBurned.toLong(),
-            earnedTimeCredits = session.earnedTimeCreditSeconds,
-            syncStatus = syncStatusToString(session.syncStatus),
-            updatedAt = now,
-        )
+        val existing = queries.selectJoggingSessionById(session.id).executeAsOneOrNull()
+        if (existing != null) {
+            // UPDATE existing row -- preserves RoutePoint child rows
+            queries.updateJoggingSession(
+                startedAt = session.startedAt.toEpochMilliseconds(),
+                endedAt = session.endedAt?.toEpochMilliseconds(),
+                distanceMeters = session.distanceMeters,
+                durationSeconds = session.durationSeconds,
+                avgPaceSecondsPerKm = session.avgPaceSecondsPerKm?.toLong(),
+                caloriesBurned = session.caloriesBurned.toLong(),
+                earnedTimeCredits = session.earnedTimeCreditSeconds,
+                syncStatus = syncStatusToString(session.syncStatus),
+                updatedAt = now,
+                id = session.id,
+            )
+        } else {
+            // INSERT new row -- no child rows to lose
+            queries.insertJoggingSession(
+                id = session.id,
+                userId = session.userId,
+                startedAt = session.startedAt.toEpochMilliseconds(),
+                endedAt = session.endedAt?.toEpochMilliseconds(),
+                distanceMeters = session.distanceMeters,
+                durationSeconds = session.durationSeconds,
+                avgPaceSecondsPerKm = session.avgPaceSecondsPerKm?.toLong(),
+                caloriesBurned = session.caloriesBurned.toLong(),
+                earnedTimeCredits = session.earnedTimeCreditSeconds,
+                syncStatus = syncStatusToString(session.syncStatus),
+                updatedAt = now,
+            )
+        }
     }
 
     override suspend fun getById(id: String): JoggingSession? = safeDbCall(

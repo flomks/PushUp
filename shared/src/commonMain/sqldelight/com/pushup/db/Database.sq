@@ -588,6 +588,10 @@ insertRoutePoint:
 INSERT INTO RoutePoint (id, sessionId, timestamp, latitude, longitude, altitude, speed, horizontalAccuracy, distanceFromStart)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+insertOrIgnoreRoutePoint:
+INSERT OR IGNORE INTO RoutePoint (id, sessionId, timestamp, latitude, longitude, altitude, speed, horizontalAccuracy, distanceFromStart)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
 selectRoutePointById:
 SELECT *
 FROM RoutePoint
@@ -611,3 +615,42 @@ WHERE sessionId = ?;
 deleteRoutePoint:
 DELETE FROM RoutePoint
 WHERE id = ?;
+
+-- =============================================================================
+-- LiveJoggingStatus
+-- Ephemeral presence record indicating a user is currently running.
+-- Created when a jogging session starts, deleted when it ends.
+-- Designed for Supabase Realtime subscriptions (friends can watch for changes).
+-- =============================================================================
+
+CREATE TABLE LiveJoggingStatus (
+    userId                TEXT    NOT NULL PRIMARY KEY REFERENCES User(id) ON DELETE CASCADE,
+    sessionId             TEXT    NOT NULL REFERENCES JoggingSession(id) ON DELETE CASCADE,
+    startedAt             INTEGER NOT NULL,
+    lastLatitude          REAL,
+    lastLongitude         REAL,
+    lastDistanceMeters    REAL    NOT NULL DEFAULT 0.0,
+    lastDurationSeconds   INTEGER NOT NULL DEFAULT 0,
+    lastUpdatedAt         INTEGER NOT NULL
+);
+
+-- =============================================================================
+-- LiveJoggingStatus Queries
+-- =============================================================================
+
+upsertLiveJoggingStatus:
+INSERT OR REPLACE INTO LiveJoggingStatus (userId, sessionId, startedAt, lastLatitude, lastLongitude, lastDistanceMeters, lastDurationSeconds, lastUpdatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLiveJoggingStatusByUserId:
+SELECT *
+FROM LiveJoggingStatus
+WHERE userId = ?;
+
+deleteLiveJoggingStatusByUserId:
+DELETE FROM LiveJoggingStatus
+WHERE userId = ?;
+
+deleteLiveJoggingStatusBySessionId:
+DELETE FROM LiveJoggingStatus
+WHERE sessionId = ?;
