@@ -121,6 +121,8 @@ struct WorkoutView: View {
 
     private var idleOverlay: some View {
         GeometryReader { geo in
+            let topInset = max(geo.safeAreaInsets.top, AppSpacing.xxl)
+
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(0.45)
                     .ignoresSafeArea()
@@ -150,9 +152,9 @@ struct WorkoutView: View {
                     startButton(bottomInset: geo.safeAreaInsets.bottom)
                 }
 
-                // Close button -- returns to the workout selection hub
+                // Close button -- positioned below Dynamic Island / notch
                 closeButton
-                    .padding(.top, geo.safeAreaInsets.top + AppSpacing.sm)
+                    .padding(.top, topInset + AppSpacing.sm)
                     .padding(.leading, AppSpacing.md)
             }
         }
@@ -202,27 +204,31 @@ struct WorkoutView: View {
     // MARK: - Active Overlay
 
     private var activeOverlay: some View {
-        VStack(spacing: 0) {
-            topHUD
-                .padding(.top, AppSpacing.xxl)
-                .padding(.horizontal, AppSpacing.md)
+        GeometryReader { geo in
+            let topInset = max(geo.safeAreaInsets.top, AppSpacing.xxl)
 
-            Spacer()
+            VStack(spacing: 0) {
+                topHUD
+                    .padding(.top, topInset + AppSpacing.sm)
+                    .padding(.horizontal, AppSpacing.md)
 
-            VStack(spacing: AppSpacing.sm) {
-                LiveCounterView(count: viewModel.pushUpCount)
-                FormScoreIndicator(score: viewModel.formScore)
+                Spacer()
+
+                VStack(spacing: AppSpacing.sm) {
+                    LiveCounterView(count: viewModel.pushUpCount)
+                    FormScoreIndicator(score: viewModel.formScore)
+                }
+                .padding(.bottom, AppSpacing.lg)
+
+                Spacer()
+
+                WorkoutControls(
+                    showPoseOverlay: $viewModel.showPoseOverlay,
+                    onStop: { viewModel.requestStop() },
+                    onSwitchCamera: { viewModel.switchCamera() }
+                )
+                .padding(.bottom, max(geo.safeAreaInsets.bottom, AppSpacing.md))
             }
-            .padding(.bottom, AppSpacing.lg)
-
-            Spacer()
-
-            WorkoutControls(
-                showPoseOverlay: $viewModel.showPoseOverlay,
-                onStop: { viewModel.requestStop() },
-                onSwitchCamera: { viewModel.switchCamera() }
-            )
-            .padding(.bottom, AppSpacing.xl)
         }
     }
 
