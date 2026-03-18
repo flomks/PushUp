@@ -152,26 +152,31 @@ struct WorkoutView: View {
                     startButton(bottomInset: geo.safeAreaInsets.bottom)
                 }
 
-                // Close button -- positioned below Dynamic Island / notch
-                closeButton
+                // Back button -- positioned below Dynamic Island / notch
+                backButton
                     .padding(.top, topInset + AppSpacing.sm)
                     .padding(.leading, AppSpacing.md)
             }
         }
     }
 
-    // MARK: - Close Button
+    // MARK: - Back Button
 
-    private var closeButton: some View {
+    private var backButton: some View {
         Button {
             viewModel.stopPreview()
             dismiss()
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: AppSpacing.minimumTapTarget, height: AppSpacing.minimumTapTarget)
-                .background(.ultraThinMaterial, in: Circle())
+            HStack(spacing: AppSpacing.xxs) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Back")
+                    .font(AppTypography.subheadlineSemibold)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, AppSpacing.sm)
+            .frame(height: 36)
+            .background(.ultraThinMaterial, in: Capsule())
         }
         .buttonStyle(ScaleButtonStyle())
         .accessibilityLabel("Back to workout selection")
