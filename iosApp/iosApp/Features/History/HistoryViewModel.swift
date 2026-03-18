@@ -24,7 +24,7 @@ enum HistoryFilter: Int, CaseIterable, Identifiable {
 // MARK: - HistoryItem
 
 /// A unified history item that wraps either a push-up workout or a jogging session.
-enum HistoryItem: Identifiable {
+enum HistoryItem: Identifiable, Equatable {
     case pushUp(PushUpSession)
     case jogging(JoggingSessionItem)
 
@@ -33,6 +33,10 @@ enum HistoryItem: Identifiable {
         case .pushUp(let s):  return s.id
         case .jogging(let s): return s.id
         }
+    }
+
+    static func == (lhs: HistoryItem, rhs: HistoryItem) -> Bool {
+        lhs.id == rhs.id
     }
 
     var startDate: Date {

@@ -36,17 +36,8 @@ struct HistoryView: View {
 
     @StateObject private var viewModel = HistoryViewModel()
 
-    /// The push-up session currently shown in the detail sheet.
-    @State private var selectedPushUp: PushUpSession? = nil
-
-    /// The jogging session currently shown in the detail sheet.
-    @State private var selectedJogging: JoggingSessionItem? = nil
-
-    /// Whether the push-up detail sheet is presented.
-    @State private var showPushUpDetail: Bool = false
-
-    /// Whether the jogging detail sheet is presented.
-    @State private var showJoggingDetail: Bool = false
+    /// The currently selected history item for the detail sheet.
+    @State private var selectedItem: HistoryItem? = nil
 
     private var showError: Binding<Bool> {
         Binding(
@@ -87,15 +78,13 @@ struct HistoryView: View {
                 Text("This will permanently delete the workout from \(item.shortDateString) at \(item.timeString).")
             }
         }
-        .sheet(isPresented: $showPushUpDetail) {
-            if let session = selectedPushUp {
+        .sheet(item: $selectedItem) { item in
+            switch item {
+            case .pushUp(let session):
                 WorkoutDetailView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
-            }
-        }
-        .sheet(isPresented: $showJoggingDetail) {
-            if let session = selectedJogging {
+            case .jogging(let session):
                 JoggingDetailView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
@@ -198,7 +187,7 @@ struct HistoryView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .onTapGesture {
-                                    handleItemTap(item)
+                                    selectedItem = item
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
@@ -228,19 +217,6 @@ struct HistoryView: View {
                 await viewModel.refresh()
             }
             .accessibilityIdentifier("history_list")
-        }
-    }
-
-    // MARK: - Item Tap Handler
-
-    private func handleItemTap(_ item: HistoryItem) {
-        switch item {
-        case .pushUp(let session):
-            selectedPushUp = session
-            showPushUpDetail = true
-        case .jogging(let session):
-            selectedJogging = session
-            showJoggingDetail = true
         }
     }
 
