@@ -1,17 +1,21 @@
+import Charts
 import SwiftUI
 import Shared
+
+// MARK: - CreditHistoryChartEntry
+
+/// A single data point for the credit history chart.
+struct CreditHistoryChartEntry: Identifiable {
+    let id: String
+    let label: String
+    let date: Date
+    let earnedMinutes: Double
+    let spentMinutes: Double
+}
 
 // MARK: - TimeCreditDetailView
 
 /// Sheet view showing a detailed breakdown of the user's current time credit.
-///
-/// Displays:
-/// - Current available balance (hero)
-/// - How the balance is composed (carry-over from yesterday + today's workouts)
-/// - How much has been spent today
-/// - Daily reset info (next reset time)
-///
-/// Presented as a sheet when the user taps the TimeCreditCard on the Dashboard.
 struct TimeCreditDetailView: View {
 
     let availableSeconds: Int
@@ -26,7 +30,7 @@ struct TimeCreditDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var historyEntries: [CreditHistoryChartEntry] = []
-    @State private var isLoadingHistory = true
+    @State private var isLoadingHistory: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -35,7 +39,7 @@ struct TimeCreditDetailView: View {
                     heroSection
                     breakdownSection
                     spentSection
-                    CreditHistoryChart(entries: historyEntries, isLoading: isLoadingHistory)
+                    historyChartSection
                     resetInfoSection
                     allTimeSection
                 }
@@ -52,58 +56,168 @@ struct TimeCreditDetailView: View {
                         .font(AppTypography.bodySemibold)
                 }
             }
-            .task { await loadHistory() }
+            .task { loadHistory() }
         }
     }
 
     // MARK: - History Loading
 
-    private func loadHistory() async {
+    private func loadHistory() {
         guard !userId.isEmpty else {
             isLoadingHistory = false
             return
         }
 
-        let calendar = Calendar.current
-        let today = Date()
-        // Fetch the last 7 days of snapshots.
-        let sevenDaysAgo = calendar.date(byAdding: .day, value: -6, to: today)!
+        let calendar: Calendar = Calendar.current
+        let today: Date = Date()
+        let sevenDaysAgo: Date = calendar.date(byAdding: .day, value: -6, to: today)!
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let fromStr = formatter.string(from: sevenDaysAgo)
-        let toStr = formatter.string(from: today)
+        let isoFormatter: DateFormatter = DateFormatter()
+        isoFormatter.dateFormat = "yyyy-MM-dd"
+        let fromStr: String = isoFormatter.string(from: sevenDaysAgo)
+        let toStr: String = isoFormatter.string(from: today)
 
-        let dayFormatter = DateFormatter()
+        let dayFormatter: DateFormatter = DateFormatter()
         dayFormatter.dateFormat = "EEE"
 
-        DataBridge.shared.fetchCreditHistory(userId: userId, from: fromStr, to: toStr) { (rawEntries: [CreditHistoryEntry]) in
-            // Build chart entries for all 7 days, filling gaps with zeros.
+        DataBridge.shared.fetchCreditHistory(userId: userId, from: fromStr, to: toStr) { rawEntries in
             var entryMap: [String: (earned: Double, spent: Double)] = [:]
             for rawEntry in rawEntries {
-                let dateKey: String = rawEntry.date
-                let earned: Double = Double(rawEntry.earnedSeconds) / 60.0
-                let spent: Double = Double(rawEntry.spentSeconds) / 60.0
-                entryMap[dateKey] = (earned: earned, spent: spent)
-            }
-
-            var chartEntries: [CreditHistoryChartEntry] = []
-            for daysAgo in (0...6).reversed() {
-                let date: Date = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
-                let dateStr: String = formatter.string(from: date)
-                let values = entryMap[dateStr]
-                let entry = CreditHistoryChartEntry(
-                    id: dateStr,
-                    label: dayFormatter.string(from: date),
-                    date: date,
-                    earnedMinutes: values?.earned ?? 0,
-                    spentMinutes: values?.spent ?? 0
+                entryMap[rawEntry.date] = (
+                    earned: Double(rawEntry.earnedSeconds) / 60.0,
+                    spent: Double(rawEntry.spentSeconds) / 60.0
                 )
-                chartEntries.append(entry)
             }
 
-            self.historyEntries = chartEntries
+            var result: [CreditHistoryChartEntry] = []
+            for daysAgo in (0...6).reversed() {
+                let d: Date = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
+                let key: String = isoFormatter.string(from: d)
+                let vals = entryMap[key]
+                result.append(CreditHistoryChartEntry(
+                    id: key,
+                    label: dayFormatter.string(from: d),
+                    date: d,
+                    earnedMinutes: vals?.earned ?? 0,
+                    spentMinutes: vals?.spent ?? 0
+                ))
+            }
+
+            self.historyEntries = result
             self.isLoadingHistory = false
+        }
+    }
+
+    // MARK: - History Chart Section
+
+    private var historyChartSection: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                HStack {
+                    Label("Weekly Overview", icon: .chartLineUptrendXYAxis)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Spacer()
+                }
+
+                Divider()
+
+                if isLoadingHistory {
+                    HStack(alignment: .bottom, spacing: AppSpacing.xs) {
+                        ForEach(0..<7, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(AppColors.fill)
+                                .frame(height: CGFloat([56, 84, 42, 112, 70, 98, 56][i]))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 140)
+                    .redacted(reason: .placeholder)
+                } else if historyEntries.isEmpty {
+                    VStack(spacing: AppSpacing.sm) {
+                        Image(systemName: AppIcon.chartLineUptrendXYAxis.rawValue)
+                            .font(.system(size: 32))
+                            .foregroundStyle(AppColors.textTertiary)
+                        Text("No history yet")
+                            .font(AppTypography.subheadline)
+                            .foregroundStyle(AppColors.textSecondary)
+                        Text("Credit history will appear after your first daily reset at 3:00 AM.")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textTertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 160)
+                } else {
+                    Chart {
+                        ForEach(historyEntries) { entry in
+                            BarMark(
+                                x: .value("Day", entry.label),
+                                y: .value("Budget", entry.earnedMinutes)
+                            )
+                            .foregroundStyle(AppColors.primary.opacity(0.3))
+                            .cornerRadius(4)
+                        }
+                        ForEach(historyEntries) { entry in
+                            BarMark(
+                                x: .value("Day", entry.label),
+                                y: .value("Used", entry.spentMinutes)
+                            )
+                            .foregroundStyle(AppColors.warning.opacity(0.7))
+                            .cornerRadius(4)
+                        }
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .automatic) { value in
+                            AxisValueLabel {
+                                if let label = value.as(String.self) {
+                                    Text(label)
+                                        .font(AppTypography.caption2)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                        }
+                    }
+                    .chartYAxis {
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                                .foregroundStyle(AppColors.fill)
+                            AxisValueLabel {
+                                if let intVal = value.as(Int.self) {
+                                    Text("\(intVal)m")
+                                        .font(AppTypography.caption2)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                        }
+                    }
+                    .chartPlotStyle { plotArea in
+                        plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
+                    }
+                    .chartLegend(.hidden)
+                    .frame(height: 180)
+
+                    // Legend
+                    HStack(spacing: AppSpacing.md) {
+                        HStack(spacing: AppSpacing.xxs) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppColors.primary.opacity(0.3))
+                                .frame(width: 12, height: 12)
+                            Text("Daily Budget")
+                                .font(AppTypography.caption2)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                        HStack(spacing: AppSpacing.xxs) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppColors.warning.opacity(0.7))
+                                .frame(width: 12, height: 12)
+                            Text("Screen Time")
+                                .font(AppTypography.caption2)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -223,7 +337,6 @@ struct TimeCreditDetailView: View {
 
                 Divider()
 
-                // Total daily budget
                 HStack {
                     Text("Daily Budget")
                         .font(AppTypography.bodySemibold)
@@ -406,7 +519,7 @@ struct TimeCreditDetailView: View {
 // MARK: - Preview
 
 #if DEBUG
-#Preview("Time Credit Detail - Full") {
+#Preview("Time Credit Detail") {
     TimeCreditDetailView(
         availableSeconds: 2700,
         dailyEarnedSeconds: 5400,
@@ -416,34 +529,6 @@ struct TimeCreditDetailView: View {
         carryOverLateNightSeconds: 1200,
         totalEarnedSeconds: 36000,
         totalSpentSeconds: 28800,
-        userId: "preview-user"
-    )
-}
-
-#Preview("Time Credit Detail - No Late Night") {
-    TimeCreditDetailView(
-        availableSeconds: 1800,
-        dailyEarnedSeconds: 3600,
-        dailySpentSeconds: 1800,
-        todayWorkoutEarned: 3000,
-        carryOverPercentSeconds: 600,
-        carryOverLateNightSeconds: 0,
-        totalEarnedSeconds: 18000,
-        totalSpentSeconds: 14400,
-        userId: "preview-user"
-    )
-}
-
-#Preview("Time Credit Detail - Empty") {
-    TimeCreditDetailView(
-        availableSeconds: 0,
-        dailyEarnedSeconds: 0,
-        dailySpentSeconds: 0,
-        todayWorkoutEarned: 0,
-        carryOverPercentSeconds: 0,
-        carryOverLateNightSeconds: 0,
-        totalEarnedSeconds: 0,
-        totalSpentSeconds: 0,
         userId: "preview-user"
     )
 }
