@@ -5,6 +5,7 @@ import com.pushup.data.api.dto.CreatePushUpRecordRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.JoggingSessionDTO
+import com.pushup.data.api.dto.LiveJoggingStatusDTO
 import com.pushup.data.api.dto.PushUpRecordDTO
 import com.pushup.data.api.dto.RoutePointDTO
 import com.pushup.data.api.dto.SetUsernameRequest
@@ -13,6 +14,7 @@ import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UserLevelDTO
 import com.pushup.data.api.dto.UserProfileDTO
@@ -560,6 +562,43 @@ class SupabaseClient(
         }.also { it.expectSuccess() }
             .body<List<RoutePointDTO>>()
             .map { it.toDomain() }
+    }
+
+    // =========================================================================
+    // Live Jogging Status (Presence)
+    // =========================================================================
+
+    override suspend fun upsertLiveJoggingStatus(
+        request: UpsertLiveJoggingStatusRequest,
+    ): Unit = withRetry {
+        val token = tokenProvider()
+        httpClient.post("$restBase/live_jogging_status") {
+            supabaseHeaders(token)
+            header("Prefer", "resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+    }
+
+    override suspend fun deleteLiveJoggingStatus(userId: String): Unit = withRetry {
+        val token = tokenProvider()
+        httpClient.delete("$restBase/live_jogging_status") {
+            supabaseHeaders(token)
+            url.parameters.append("user_id", "eq.$userId")
+        }.also { it.expectSuccess() }
+    }
+
+    override suspend fun getLiveJoggingStatuses(
+        userIds: List<String>,
+    ): List<LiveJoggingStatusDTO> = withRetry {
+        if (userIds.isEmpty()) return@withRetry emptyList()
+        val token = tokenProvider()
+        val inFilter = userIds.joinToString(",") { "\"$it\"" }
+        httpClient.get("$restBase/live_jogging_status") {
+            supabaseHeaders(token)
+            url.parameters.append("user_id", "in.($inFilter)")
+        }.also { it.expectSuccess() }
+            .body<List<LiveJoggingStatusDTO>>()
     }
 
     // =========================================================================

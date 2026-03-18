@@ -86,8 +86,10 @@ final class JoggingTrackingManager: ObservableObject {
     private let startJogging: StartJoggingUseCase
     private let recordRoutePoint: RecordRoutePointUseCase
     private let finishJogging: FinishJoggingUseCase
+    private let liveSessionManager: LiveJoggingSessionManager
 
     private var activeSessionId: String?
+    private var activeUserId: String?
     private var sessionStartDate: Date?
     private var sessionTimer: Timer?
     private var locationCancellable: AnyCancellable?
@@ -100,13 +102,15 @@ final class JoggingTrackingManager: ObservableObject {
         getCurrentUser: GetCurrentUserUseCase,
         startJogging: StartJoggingUseCase,
         recordRoutePoint: RecordRoutePointUseCase,
-        finishJogging: FinishJoggingUseCase
+        finishJogging: FinishJoggingUseCase,
+        liveSessionManager: LiveJoggingSessionManager
     ) {
         self.locationManager = locationManager
         self.getCurrentUser = getCurrentUser
         self.startJogging = startJogging
         self.recordRoutePoint = recordRoutePoint
         self.finishJogging = finishJogging
+        self.liveSessionManager = liveSessionManager
     }
 
     /// Convenience initialiser that resolves use cases from the Koin DI graph.
@@ -118,7 +122,8 @@ final class JoggingTrackingManager: ObservableObject {
             getCurrentUser: helper.getCurrentUserUseCase(),
             startJogging: helper.startJoggingUseCase(),
             recordRoutePoint: helper.recordRoutePointUseCase(),
-            finishJogging: helper.finishJoggingUseCase()
+            finishJogging: helper.finishJoggingUseCase(),
+            liveSessionManager: helper.liveJoggingSessionManager()
         )
     }
 
@@ -189,6 +194,9 @@ final class JoggingTrackingManager: ObservableObject {
 
         let sessionId = activeSessionId
 
+        // Stop live session streaming (flushes remaining points, removes presence)
+        liveSessionManager.stop()
+
         // Stop GPS
         locationManager.stopTracking()
         locationCancellable?.cancel()
@@ -196,6 +204,7 @@ final class JoggingTrackingManager: ObservableObject {
 
         isTracking = false
         activeSessionId = nil
+        activeUserId = nil
         stopSessionTimer()
 
         Task {
@@ -268,6 +277,14 @@ final class JoggingTrackingManager: ObservableObject {
             guard !Task.isCancelled else { return }
 
             activeSessionId = session.id
+            activeUserId = user.id
+
+            // Start live session streaming (batched route uploads + presence)
+            let startInstant = Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+                epochMilliseconds: Int64(Date().timeIntervalSince1970 * 1000.0)
+            )
+            liveSessionManager.start(userId: user.id, sessionId: session.id, startedAt: startInstant)
+
             #if DEBUG
             print("[JoggingTrackingManager] KMP jogging session started: \(session.id)")
             #endif
@@ -301,7 +318,7 @@ final class JoggingTrackingManager: ObservableObject {
 
         Task {
             do {
-                _ = try await withKMPSuspend { handler in
+                let routePoint = try await withKMPSuspend { handler in
                     useCase.invoke(
                         sessionId: sessionId,
                         latitude: location.coordinate.latitude,
@@ -314,6 +331,9 @@ final class JoggingTrackingManager: ObservableObject {
                         completionHandler: handler
                     )
                 } as Shared.RoutePoint
+
+                // Enqueue for batched upload to Supabase (fire-and-forget)
+                liveSessionManager.enqueueRoutePoint(point: routePoint)
             } catch {
                 // Non-fatal: route point recording failure does not stop the session
                 #if DEBUG

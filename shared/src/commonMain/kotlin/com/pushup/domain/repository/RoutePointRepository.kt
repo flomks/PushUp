@@ -11,8 +11,15 @@ import com.pushup.domain.model.RoutePoint
  */
 interface RoutePointRepository {
 
-    /** Persists a new route point. */
+    /** Persists a new route point. Throws if a point with the same ID already exists. */
     suspend fun save(routePoint: RoutePoint)
+
+    /**
+     * Persists a route point if no point with the same ID exists.
+     * Silently ignores duplicates (INSERT OR IGNORE).
+     * Useful for idempotent cloud-sync downloads.
+     */
+    suspend fun saveIfAbsent(routePoint: RoutePoint)
 
     /** Retrieves a route point by its unique [id]. */
     suspend fun getById(id: String): RoutePoint?

@@ -155,3 +155,41 @@ fun RoutePoint.toCreateRequest(): CreateRoutePointRequest = CreateRoutePointRequ
     horizontalAccuracy = horizontalAccuracy?.toFloat(),
     distanceFromStart = distanceFromStart.toFloat(),
 )
+
+// =============================================================================
+// Live Jogging Status DTOs (Presence / Real-time)
+// =============================================================================
+
+/**
+ * DTO for the live_jogging_status table in Supabase.
+ *
+ * This is an ephemeral presence record: it exists while a user is actively
+ * running and is deleted when the session ends. Designed for Supabase Realtime
+ * subscriptions so friends can see who is currently running.
+ */
+@Serializable
+data class LiveJoggingStatusDTO(
+    @SerialName("user_id")              val userId: String,
+    @SerialName("session_id")           val sessionId: String,
+    @SerialName("started_at")           val startedAt: String,
+    @SerialName("last_latitude")        val lastLatitude: Double? = null,
+    @SerialName("last_longitude")       val lastLongitude: Double? = null,
+    @SerialName("last_distance_meters") val lastDistanceMeters: Float = 0f,
+    @SerialName("last_duration_seconds") val lastDurationSeconds: Int = 0,
+    @SerialName("last_updated_at")      val lastUpdatedAt: String,
+)
+
+/**
+ * Request body for upserting a live jogging status.
+ */
+@Serializable
+data class UpsertLiveJoggingStatusRequest(
+    @SerialName("user_id")              val userId: String,
+    @SerialName("session_id")           val sessionId: String,
+    @SerialName("started_at")           val startedAt: String,
+    @SerialName("last_latitude")        val lastLatitude: Double? = null,
+    @SerialName("last_longitude")       val lastLongitude: Double? = null,
+    @SerialName("last_distance_meters") val lastDistanceMeters: Float = 0f,
+    @SerialName("last_duration_seconds") val lastDurationSeconds: Int = 0,
+    @SerialName("last_updated_at")      val lastUpdatedAt: String,
+)

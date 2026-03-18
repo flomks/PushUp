@@ -33,6 +33,23 @@ class RoutePointRepositoryImpl(
         )
     }
 
+    override suspend fun saveIfAbsent(routePoint: RoutePoint): Unit = safeDbCall(
+        dispatcher,
+        "Failed to save-if-absent route point '${routePoint.id}'",
+    ) {
+        queries.insertOrIgnoreRoutePoint(
+            id = routePoint.id,
+            sessionId = routePoint.sessionId,
+            timestamp = routePoint.timestamp.toEpochMilliseconds(),
+            latitude = routePoint.latitude,
+            longitude = routePoint.longitude,
+            altitude = routePoint.altitude,
+            speed = routePoint.speed,
+            horizontalAccuracy = routePoint.horizontalAccuracy,
+            distanceFromStart = routePoint.distanceFromStart,
+        )
+    }
+
     override suspend fun getById(id: String): RoutePoint? = safeDbCall(
         dispatcher,
         "Failed to get route point '$id'",
