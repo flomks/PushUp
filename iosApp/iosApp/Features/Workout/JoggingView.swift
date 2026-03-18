@@ -385,7 +385,6 @@ struct JoggingView: View {
             // Render the full share card as an image
             let image = JoggingShareRenderer.renderShareImage(
                 mapSnapshot: mapSnapshot,
-                routeCoordinates: coordinates,
                 distance: distance,
                 duration: duration,
                 pace: pace,

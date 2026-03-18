@@ -6,7 +6,7 @@ import SwiftUI
 
 /// A self-contained card view designed to be rendered as a PNG image for sharing.
 ///
-/// Layout (390 x 520 pt):
+/// Layout (1080 x 1350 px at 3x = 360 x 450 pt):
 /// ┌──────────────────────────────┐
 /// │  Map snapshot with route     │  (top ~55%)
 /// ├──────────────────────────────┤
@@ -21,7 +21,6 @@ import SwiftUI
 struct JoggingShareCard: View {
 
     let mapSnapshot: UIImage?
-    let routeCoordinates: [CLLocationCoordinate2D]
     let distance: String
     let duration: String
     let pace: String
@@ -29,14 +28,19 @@ struct JoggingShareCard: View {
     let earnedMinutes: Int
     let date: Date
 
-    private let cardWidth: CGFloat = 390
-    private let cardHeight: CGFloat = 520
+    private let cardWidth: CGFloat = 360
+    private let cardHeight: CGFloat = 480
+
+    private let bgTop = Color(red: 0.10, green: 0.10, blue: 0.18)
+    private let bgBottom = Color(red: 0.09, green: 0.13, blue: 0.24)
+    private let accentBlue = Color(red: 0.30, green: 0.65, blue: 1.0)
+    private let accentGreen = Color(red: 0.20, green: 0.83, blue: 0.60)
 
     var body: some View {
         VStack(spacing: 0) {
             // Map area
             mapArea
-                .frame(height: 280)
+                .frame(height: 260)
                 .clipped()
 
             // Stats
@@ -47,7 +51,7 @@ struct JoggingShareCard: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(Color.white.opacity(0.08))
                 .frame(height: 1)
                 .padding(.horizontal, 20)
 
@@ -64,12 +68,13 @@ struct JoggingShareCard: View {
         .frame(width: cardWidth, height: cardHeight)
         .background(
             LinearGradient(
-                colors: [Color(hex: 0x1A1A2E), Color(hex: 0x16213E)],
+                colors: [bgTop, bgBottom],
                 startPoint: .top,
                 endPoint: .bottom
             )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        // No clipShape -- the renderer handles the rounded corners via Core Graphics
+        // to avoid white corner artifacts from ImageRenderer.
     }
 
     // MARK: - Map Area
@@ -80,37 +85,53 @@ struct JoggingShareCard: View {
                 Image(uiImage: snapshot)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: cardWidth, height: 260)
+                    .clipped()
             } else {
-                Color(hex: 0x0D1117)
-                Image(systemName: "map")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Color.white.opacity(0.3))
-            }
-
-            // Gradient overlay at bottom for smooth transition
-            VStack {
-                Spacer()
+                // Fallback when no map is available (e.g. very short run)
                 LinearGradient(
-                    colors: [.clear, Color(hex: 0x1A1A2E)],
+                    colors: [
+                        Color(red: 0.05, green: 0.07, blue: 0.09),
+                        Color(red: 0.08, green: 0.10, blue: 0.14),
+                    ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 40)
+                VStack(spacing: 8) {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(Color.white.opacity(0.15))
+                    Text("Route")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.15))
+                }
+            }
+
+            // Gradient overlay at bottom for smooth transition into stats
+            VStack {
+                Spacer()
+                LinearGradient(
+                    colors: [.clear, bgTop],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 50)
             }
 
             // Date badge top-left
             VStack {
                 HStack {
                     Text(formattedDate)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Capsule())
                     Spacer()
                 }
-                .padding(.leading, 12)
-                .padding(.top, 12)
+                .padding(.leading, 14)
+                .padding(.top, 14)
                 Spacer()
             }
         }
@@ -119,12 +140,12 @@ struct JoggingShareCard: View {
     // MARK: - Stats Grid
 
     private var statsGrid: some View {
-        HStack(spacing: 16) {
-            VStack(spacing: 12) {
+        HStack(spacing: 14) {
+            VStack(spacing: 10) {
                 shareStatItem(value: distance, label: "DISTANCE", icon: "figure.run")
                 shareStatItem(value: pace, label: "AVG PACE", icon: "speedometer")
             }
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 shareStatItem(value: duration, label: "DURATION", icon: "clock")
                 shareStatItem(value: calories, label: "CALORIES", icon: "flame.fill")
             }
@@ -134,8 +155,8 @@ struct JoggingShareCard: View {
     private func shareStatItem(value: String, label: String, icon: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
-                .foregroundStyle(Color(hex: 0x4DA6FF))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(accentBlue)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -147,16 +168,17 @@ struct JoggingShareCard: View {
                     .minimumScaleFactor(0.7)
 
                 Text(label)
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.5))
-                    .tracking(0.5)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.4))
+                    .tracking(0.8)
             }
 
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Earned Time
@@ -164,12 +186,12 @@ struct JoggingShareCard: View {
     private var earnedTimeBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "clock.badge.checkmark")
-                .font(.system(size: 16))
-                .foregroundStyle(Color(hex: 0x34D399))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(accentGreen)
 
             Text("+\(earnedMinutes) min screen time earned")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color(hex: 0x34D399))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(accentGreen)
 
             Spacer()
         }
@@ -182,7 +204,7 @@ struct JoggingShareCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "figure.strengthtraining.traditional")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x4DA6FF))
+                    .foregroundStyle(accentBlue)
 
                 Text("PushUp")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -193,7 +215,7 @@ struct JoggingShareCard: View {
 
             Text("Earn screen time with fitness")
                 .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.4))
+                .foregroundStyle(Color.white.opacity(0.35))
         }
     }
 
@@ -203,18 +225,6 @@ struct JoggingShareCard: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "d MMM yyyy, HH:mm"
         return formatter.string(from: date)
-    }
-}
-
-// MARK: - Color Hex Extension (private to this file)
-
-private extension Color {
-    init(hex: UInt) {
-        self.init(
-            red: Double((hex >> 16) & 0xFF) / 255.0,
-            green: Double((hex >> 8) & 0xFF) / 255.0,
-            blue: Double(hex & 0xFF) / 255.0
-        )
     }
 }
 
@@ -231,42 +241,52 @@ enum JoggingMapSnapshotGenerator {
     ///
     /// - Parameters:
     ///   - coordinates: The GPS coordinates of the route.
-    ///   - size: The desired image size in points.
+    ///   - size: The desired image size in **pixels** (not points).
+    ///           Rendered at the screen's native scale for maximum sharpness.
     /// - Returns: A `UIImage` of the map with the route, or `nil` if generation fails.
     static func generateSnapshot(
         coordinates: [CLLocationCoordinate2D],
-        size: CGSize = CGSize(width: 390, height: 280)
+        size: CGSize = CGSize(width: 1080, height: 780)
     ) async -> UIImage? {
-        guard coordinates.count >= 2 else { return nil }
+        // Accept even a single coordinate (show the user's position)
+        guard !coordinates.isEmpty else { return nil }
 
         // Calculate the bounding region with padding
-        let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-        var region = MKCoordinateRegion(polyline.boundingMapRect)
-
-        // Add 30% padding around the route
-        region.span.latitudeDelta *= 1.3
-        region.span.longitudeDelta *= 1.3
-
-        // Ensure minimum zoom level
-        region.span.latitudeDelta = max(region.span.latitudeDelta, 0.005)
-        region.span.longitudeDelta = max(region.span.longitudeDelta, 0.005)
+        let region: MKCoordinateRegion
+        if coordinates.count >= 2 {
+            let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+            var r = MKCoordinateRegion(polyline.boundingMapRect)
+            // Add 40% padding around the route
+            r.span.latitudeDelta *= 1.4
+            r.span.longitudeDelta *= 1.4
+            // Ensure minimum zoom level
+            r.span.latitudeDelta = max(r.span.latitudeDelta, 0.003)
+            r.span.longitudeDelta = max(r.span.longitudeDelta, 0.003)
+            region = r
+        } else {
+            // Single point: show a small area around it
+            region = MKCoordinateRegion(
+                center: coordinates[0],
+                span: MKCoordinateSpan(latitudeDelta: 0.005, longitudeDelta: 0.005)
+            )
+        }
 
         let options = MKMapSnapshotter.Options()
         options.region = region
+        // Render at full pixel size for maximum sharpness.
+        // scale = 1.0 because we are specifying the size in pixels directly.
         options.size = size
-        options.scale = UIScreen.main.scale
-        options.mapType = .standard
+        options.scale = 1.0
+        options.mapType = .mutedStandard
         options.showsBuildings = true
         options.pointOfInterestFilter = .excludingAll
-
-        // Use dark appearance for the map to match the card style
         options.traitCollection = UITraitCollection(userInterfaceStyle: .dark)
 
         let snapshotter = MKMapSnapshotter(options: options)
 
         do {
             let snapshot = try await snapshotter.start()
-            return drawRoute(on: snapshot, coordinates: coordinates)
+            return drawRoute(on: snapshot, coordinates: coordinates, pixelSize: size)
         } catch {
             #if DEBUG
             print("[JoggingMapSnapshotGenerator] Snapshot failed: \(error)")
@@ -278,11 +298,13 @@ enum JoggingMapSnapshotGenerator {
     /// Draws the route polyline on the map snapshot image.
     private static func drawRoute(
         on snapshot: MKMapSnapshotter.Snapshot,
-        coordinates: [CLLocationCoordinate2D]
+        coordinates: [CLLocationCoordinate2D],
+        pixelSize: CGSize
     ) -> UIImage {
         let image = snapshot.image
 
-        UIGraphicsBeginImageContextWithOptions(image.size, true, image.scale)
+        // Use scale=1 because the image is already at the desired pixel size
+        UIGraphicsBeginImageContextWithOptions(image.size, true, 1.0)
         defer { UIGraphicsEndImageContext() }
 
         // Draw the base map
@@ -295,30 +317,42 @@ enum JoggingMapSnapshotGenerator {
         // Convert coordinates to points in the snapshot
         let points = coordinates.map { snapshot.point(for: $0) }
 
-        // Draw route shadow
-        context.setStrokeColor(UIColor.black.withAlphaComponent(0.3).cgColor)
-        context.setLineWidth(7.0)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-        drawPath(context: context, points: points)
-        context.strokePath()
+        if points.count >= 2 {
+            // Draw route glow/shadow
+            context.setStrokeColor(UIColor.black.withAlphaComponent(0.4).cgColor)
+            context.setLineWidth(10.0)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            drawPath(context: context, points: points)
+            context.strokePath()
 
-        // Draw route line
-        context.setStrokeColor(UIColor(red: 0.3, green: 0.65, blue: 1.0, alpha: 1.0).cgColor)
-        context.setLineWidth(4.0)
-        context.setLineCap(.round)
-        context.setLineJoin(.round)
-        drawPath(context: context, points: points)
-        context.strokePath()
+            // Draw route line
+            context.setStrokeColor(UIColor(red: 0.30, green: 0.65, blue: 1.0, alpha: 1.0).cgColor)
+            context.setLineWidth(5.0)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            drawPath(context: context, points: points)
+            context.strokePath()
+        }
 
         // Draw start marker (green dot)
         if let first = points.first {
-            drawMarker(context: context, at: first, color: UIColor(red: 0.2, green: 0.83, blue: 0.6, alpha: 1.0), radius: 6)
+            drawMarker(
+                context: context,
+                at: first,
+                color: UIColor(red: 0.20, green: 0.83, blue: 0.60, alpha: 1.0),
+                radius: 8
+            )
         }
 
-        // Draw end marker (red dot)
+        // Draw end marker (blue dot) -- only if we have a route
         if let last = points.last, points.count > 1 {
-            drawMarker(context: context, at: last, color: UIColor(red: 1.0, green: 0.35, blue: 0.35, alpha: 1.0), radius: 6)
+            drawMarker(
+                context: context,
+                at: last,
+                color: UIColor(red: 0.30, green: 0.65, blue: 1.0, alpha: 1.0),
+                radius: 8
+            )
         }
 
         return UIGraphicsGetImageFromCurrentImageContext() ?? image
@@ -334,12 +368,13 @@ enum JoggingMapSnapshotGenerator {
 
     private static func drawMarker(context: CGContext, at point: CGPoint, color: UIColor, radius: CGFloat) {
         // White border
+        let borderRadius = radius + 3
         context.setFillColor(UIColor.white.cgColor)
         context.fillEllipse(in: CGRect(
-            x: point.x - radius - 2,
-            y: point.y - radius - 2,
-            width: (radius + 2) * 2,
-            height: (radius + 2) * 2
+            x: point.x - borderRadius,
+            y: point.y - borderRadius,
+            width: borderRadius * 2,
+            height: borderRadius * 2
         ))
         // Colored fill
         context.setFillColor(color.cgColor)
@@ -355,25 +390,16 @@ enum JoggingMapSnapshotGenerator {
 // MARK: - Share Image Renderer
 
 /// Renders the JoggingShareCard as a UIImage for sharing.
+///
+/// Uses `ImageRenderer` to convert the SwiftUI card to a bitmap, then applies
+/// rounded corners via Core Graphics to avoid the white-corner artifact that
+/// occurs when `clipShape` is used with `ImageRenderer`.
 @MainActor
 enum JoggingShareRenderer {
 
-    /// Renders the share card to a PNG-ready UIImage.
-    ///
-    /// - Parameters:
-    ///   - mapSnapshot: Pre-generated map snapshot image.
-    ///   - routeCoordinates: GPS coordinates for the route.
-    ///   - distance: Formatted distance string.
-    ///   - duration: Formatted duration string.
-    ///   - pace: Formatted pace string.
-    ///   - calories: Formatted calories string.
-    ///   - earnedMinutes: Screen time minutes earned.
-    ///   - date: The date of the run.
-    /// - Returns: A rendered UIImage, or nil if rendering fails.
     @MainActor
     static func renderShareImage(
         mapSnapshot: UIImage?,
-        routeCoordinates: [CLLocationCoordinate2D],
         distance: String,
         duration: String,
         pace: String,
@@ -383,7 +409,6 @@ enum JoggingShareRenderer {
     ) -> UIImage? {
         let card = JoggingShareCard(
             mapSnapshot: mapSnapshot,
-            routeCoordinates: routeCoordinates,
             distance: distance,
             duration: duration,
             pace: pace,
@@ -393,7 +418,26 @@ enum JoggingShareRenderer {
         )
 
         let renderer = ImageRenderer(content: card)
-        renderer.scale = 3.0 // 3x for crisp sharing
-        return renderer.uiImage
+        renderer.scale = 3.0
+
+        guard let rawImage = renderer.uiImage else { return nil }
+
+        // Apply rounded corners via Core Graphics to avoid white corner artifacts.
+        // ImageRenderer does not correctly handle clipShape transparency.
+        return applyRoundedCorners(to: rawImage, cornerRadius: 20.0 * 3.0)
+    }
+
+    /// Clips the image to a rounded rectangle with the given corner radius (in pixels).
+    private static func applyRoundedCorners(to image: UIImage, cornerRadius: CGFloat) -> UIImage {
+        let size = image.size
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        defer { UIGraphicsEndImageContext() }
+
+        let rect = CGRect(origin: .zero, size: size)
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: cornerRadius)
+        path.addClip()
+        image.draw(in: rect)
+
+        return UIGraphicsGetImageFromCurrentImageContext() ?? image
     }
 }
