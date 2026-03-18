@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - HistoryView
 
-/// Workout history screen showing all past sessions grouped by day.
+/// Unified workout history screen showing all past sessions grouped by day.
 ///
 /// **Layout**
 /// ```
@@ -12,21 +12,23 @@ import SwiftUI
 /// |  [Search by date...]              |  <- search field
 /// |                                   |
 /// |  Today                            |  <- section header
-/// |  [WorkoutListItem]                |
-/// |  [WorkoutListItem]                |
+/// |  [HistoryListItem - Push-Up]      |
+/// |  [HistoryListItem - Running]      |
 /// |                                   |
 /// |  Yesterday                        |  <- section header
-/// |  [WorkoutListItem]                |
+/// |  [HistoryListItem]                |
 /// |  ...                              |
 /// +-----------------------------------+
 /// ```
 ///
 /// **Features**
+/// - Unified list of push-up workouts and running sessions
 /// - Grouped list with section headers (Today / Yesterday / date)
 /// - Filter chips: All, Last Month, Last Week
 /// - Date search field
 /// - Swipe-to-delete with confirmation alert
-/// - Tap -> WorkoutDetailView sheet
+/// - Tap push-up -> WorkoutDetailView sheet
+/// - Tap running -> JoggingDetailView sheet (with interactive route map)
 /// - Pull-to-refresh
 /// - Empty state: "No workouts yet"
 /// - Loading state
@@ -34,11 +36,17 @@ struct HistoryView: View {
 
     @StateObject private var viewModel = HistoryViewModel()
 
-    /// The session currently shown in the detail sheet.
-    @State private var selectedSession: WorkoutSession? = nil
+    /// The push-up session currently shown in the detail sheet.
+    @State private var selectedPushUp: PushUpSession? = nil
 
-    /// Whether the detail sheet is presented.
-    @State private var showDetail: Bool = false
+    /// The jogging session currently shown in the detail sheet.
+    @State private var selectedJogging: JoggingSessionItem? = nil
+
+    /// Whether the push-up detail sheet is presented.
+    @State private var showPushUpDetail: Bool = false
+
+    /// Whether the jogging detail sheet is presented.
+    @State private var showJoggingDetail: Bool = false
 
     private var showError: Binding<Bool> {
         Binding(
@@ -75,13 +83,20 @@ struct HistoryView: View {
                 viewModel.cancelDelete()
             }
         } message: {
-            if let session = viewModel.sessionPendingDeletion {
-                Text("This will permanently delete the workout from \(session.shortDateString) at \(session.timeString).")
+            if let item = viewModel.itemPendingDeletion {
+                Text("This will permanently delete the workout from \(item.shortDateString) at \(item.timeString).")
             }
         }
-        .sheet(isPresented: $showDetail) {
-            if let session = selectedSession {
+        .sheet(isPresented: $showPushUpDetail) {
+            if let session = selectedPushUp {
                 WorkoutDetailView(session: session)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(isPresented: $showJoggingDetail) {
+            if let session = selectedJogging {
+                JoggingDetailView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
@@ -169,13 +184,11 @@ struct HistoryView: View {
         if viewModel.isEmpty {
             emptyStateView
         } else {
-            // Use List for native swipe-to-delete support.
-            // Custom row background + separator removal preserves the card design.
             List {
                 ForEach(viewModel.filteredSections) { section in
                     Section {
-                        ForEach(section.sessions) { session in
-                            WorkoutListItem(session: session)
+                        ForEach(section.items) { item in
+                            HistoryListItem(item: item)
                                 .listRowInsets(EdgeInsets(
                                     top: AppSpacing.xxs,
                                     leading: AppSpacing.screenHorizontal,
@@ -185,24 +198,23 @@ struct HistoryView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .onTapGesture {
-                                    selectedSession = session
-                                    showDetail = true
+                                    handleItemTap(item)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
-                                        viewModel.requestDelete(session)
+                                        viewModel.requestDelete(item)
                                     } label: {
                                         Label("Delete", icon: .trash)
                                     }
                                 }
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        viewModel.requestDelete(session)
+                                        viewModel.requestDelete(item)
                                     } label: {
                                         Label("Delete Workout", icon: .trash)
                                     }
                                 }
-                                .accessibilityIdentifier("history_session_\(session.id.uuidString)")
+                                .accessibilityIdentifier("history_item_\(item.id.uuidString)")
                         }
                     } header: {
                         sectionHeader(section.title)
@@ -216,6 +228,19 @@ struct HistoryView: View {
                 await viewModel.refresh()
             }
             .accessibilityIdentifier("history_list")
+        }
+    }
+
+    // MARK: - Item Tap Handler
+
+    private func handleItemTap(_ item: HistoryItem) {
+        switch item {
+        case .pushUp(let session):
+            selectedPushUp = session
+            showPushUpDetail = true
+        case .jogging(let session):
+            selectedJogging = session
+            showJoggingDetail = true
         }
     }
 
@@ -244,7 +269,6 @@ struct HistoryView: View {
                 Spacer(minLength: AppSpacing.xxl)
 
                 if viewModel.hasAnyData {
-                    // Has data but filter/search returned nothing
                     EmptyStateCard(
                         icon: .calendarBadgeCheckmark,
                         title: "No workouts found",
@@ -253,7 +277,6 @@ struct HistoryView: View {
                             : "No workouts match your search."
                     )
                 } else {
-                    // No workouts at all
                     EmptyStateCard(
                         icon: .figureStrengthTraining,
                         title: "No workouts yet",

@@ -1,10 +1,14 @@
 package com.pushup.di
 
+import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.PushUpRecord
+import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.repository.DailyCreditSnapshotRepository
+import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.PushUpRecordRepository
+import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
@@ -78,6 +82,54 @@ object DataBridge : KoinComponent {
             .collect { sessions ->
                 withContext(Dispatchers.Main) { onUpdate(sessions) }
             }
+    }
+
+    // =========================================================================
+    // Jogging session observation
+    // =========================================================================
+
+    /**
+     * Observes all jogging sessions for [userId] from the local SQLite database.
+     *
+     * The [onUpdate] callback is called immediately with the current list and
+     * again whenever the database changes (e.g. after a jog is finished).
+     *
+     * @return A [Job] — cancel it when the observer is no longer needed.
+     */
+    fun observeJoggingSessions(
+        userId: String,
+        onUpdate: (List<JoggingSession>) -> Unit,
+    ): Job = scope.launch {
+        get<JoggingSessionRepository>()
+            .observeAllByUserId(userId)
+            .catch { /* ignore errors — best-effort live updates */ }
+            .collect { sessions ->
+                withContext(Dispatchers.Main) { onUpdate(sessions) }
+            }
+    }
+
+    // =========================================================================
+    // Route points
+    // =========================================================================
+
+    /**
+     * Fetches all GPS route points for a given jogging [sessionId] from the local DB.
+     *
+     * Route points are returned in ascending timestamp order. The callback receives
+     * an empty list when no route points exist for the session.
+     */
+    fun fetchRoutePointsForSession(
+        sessionId: String,
+        onResult: (List<RoutePoint>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val points = get<RoutePointRepository>().getBySessionId(sessionId)
+                withContext(Dispatchers.Main) { onResult(points) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
     }
 
     // =========================================================================
