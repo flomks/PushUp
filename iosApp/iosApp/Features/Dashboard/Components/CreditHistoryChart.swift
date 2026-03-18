@@ -1,6 +1,5 @@
 import Charts
 import SwiftUI
-import Shared
 
 // MARK: - CreditHistoryChartEntry
 
@@ -11,6 +10,16 @@ struct CreditHistoryChartEntry: Identifiable {
     let date: Date
     let earnedMinutes: Double
     let spentMinutes: Double
+}
+
+// MARK: - ChartDataPoint (internal)
+
+/// Flattened data point for Swift Charts -- one per series per day.
+private struct ChartDataPoint: Identifiable {
+    let id: String
+    let label: String
+    let minutes: Double
+    let series: String
 }
 
 // MARK: - CreditHistoryChart
@@ -63,53 +72,45 @@ struct CreditHistoryChart: View {
         }
     }
 
+    // MARK: - Flattened data for Charts
+
+    private var chartDataPoints: [ChartDataPoint] {
+        var points: [ChartDataPoint] = []
+        for entry in entries {
+            points.append(ChartDataPoint(
+                id: "\(entry.id)-budget",
+                label: entry.label,
+                minutes: entry.earnedMinutes,
+                series: "Budget"
+            ))
+            points.append(ChartDataPoint(
+                id: "\(entry.id)-used",
+                label: entry.label,
+                minutes: entry.spentMinutes,
+                series: "Used"
+            ))
+        }
+        return points
+    }
+
     // MARK: - Chart
 
-    @ViewBuilder
     private var chartContent: some View {
-        Chart {
-            ForEach(entries) { entry in
-                // Earned line (daily budget)
-                LineMark(
-                    x: .value("Day", entry.label),
-                    y: .value("Minutes", entry.earnedMinutes),
-                    series: .value("Type", "Budget")
-                )
-                .foregroundStyle(AppColors.primary)
-                .lineStyle(StrokeStyle(lineWidth: 2.5))
-                .symbol {
-                    Circle()
-                        .fill(AppColors.primary)
-                        .frame(width: 7, height: 7)
-                }
+        let points = chartDataPoints
+        let yMax = computeMaxY()
 
-                // Area fill under earned line
-                AreaMark(
-                    x: .value("Day", entry.label),
-                    y: .value("Minutes", entry.earnedMinutes),
-                    series: .value("Type", "Budget")
-                )
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [AppColors.primary.opacity(0.15), AppColors.primary.opacity(0.02)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-                // Spent line (screen time used)
-                LineMark(
-                    x: .value("Day", entry.label),
-                    y: .value("Minutes", entry.spentMinutes),
-                    series: .value("Type", "Used")
-                )
-                .foregroundStyle(AppColors.warning)
-                .lineStyle(StrokeStyle(lineWidth: 2.5))
-                .symbol {
-                    Circle()
-                        .fill(AppColors.warning)
-                        .frame(width: 7, height: 7)
-                }
+        return Chart(points) { point in
+            LineMark(
+                x: .value("Day", point.label),
+                y: .value("Minutes", point.minutes),
+                series: .value("Series", point.series)
+            )
+            .foregroundStyle(point.series == "Budget" ? AppColors.primary : AppColors.warning)
+            .lineStyle(StrokeStyle(lineWidth: 2.5))
+            .symbol {
+                Circle()
+                    .fill(point.series == "Budget" ? AppColors.primary : AppColors.warning)
+                    .frame(width: 7, height: 7)
             }
         }
         .chartXAxis {
@@ -139,16 +140,19 @@ struct CreditHistoryChart: View {
         .chartPlotStyle { plotArea in
             plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
         }
-        .chartYScale(domain: 0 ... maxYValue)
+        .chartForegroundStyleScale([
+            "Budget": AppColors.primary,
+            "Used": AppColors.warning,
+        ])
+        .chartYScale(domain: 0 ... yMax)
+        .chartLegend(.hidden)
         .frame(height: 180)
-        .animation(.spring(duration: 0.6, bounce: 0.15), value: entries.map(\.earnedMinutes))
     }
 
-    private var maxYValue: Double {
+    private func computeMaxY() -> Double {
         let maxEarned = entries.map(\.earnedMinutes).max() ?? 0
         let maxSpent = entries.map(\.spentMinutes).max() ?? 0
         let maxVal = max(maxEarned, maxSpent)
-        // Add 20% headroom, minimum 10 minutes
         return max(10, maxVal * 1.2)
     }
 
@@ -198,10 +202,11 @@ struct CreditHistoryChart: View {
     private var chartSkeleton: some View {
         VStack(spacing: AppSpacing.xs) {
             HStack(alignment: .bottom, spacing: AppSpacing.xs) {
-                ForEach([0.4, 0.6, 0.3, 0.8, 0.5, 0.7, 0.4], id: \.self) { fraction in
+                ForEach(0..<7, id: \.self) { index in
+                    let heights: [CGFloat] = [0.4, 0.6, 0.3, 0.8, 0.5, 0.7, 0.4]
                     RoundedRectangle(cornerRadius: 4)
                         .fill(AppColors.fill)
-                        .frame(height: 140 * fraction)
+                        .frame(height: 140 * heights[index])
                 }
             }
             .frame(maxWidth: .infinity)
@@ -217,22 +222,24 @@ struct CreditHistoryChart: View {
 #Preview("Credit History Chart") {
     let calendar = Calendar.current
     let today = Date()
-    let entries: [CreditHistoryChartEntry] = (0..<7).reversed().map { daysAgo in
+    let sampleEntries: [CreditHistoryChartEntry] = (0..<7).reversed().map { daysAgo in
         let date = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE"
+        let earnedValues: [Double] = [45, 30, 60, 0, 50, 35, 40]
+        let spentValues: [Double] = [30, 25, 55, 0, 40, 20, 15]
         return CreditHistoryChartEntry(
             id: "\(daysAgo)",
             label: formatter.string(from: date),
             date: date,
-            earnedMinutes: Double([45, 30, 60, 0, 50, 35, 40][6 - daysAgo]),
-            spentMinutes: Double([30, 25, 55, 0, 40, 20, 15][6 - daysAgo])
+            earnedMinutes: earnedValues[6 - daysAgo],
+            spentMinutes: spentValues[6 - daysAgo]
         )
     }
 
     ScrollView {
         VStack(spacing: AppSpacing.md) {
-            CreditHistoryChart(entries: entries, isLoading: false)
+            CreditHistoryChart(entries: sampleEntries, isLoading: false)
             CreditHistoryChart(entries: [], isLoading: false)
             CreditHistoryChart(entries: [], isLoading: true)
         }
