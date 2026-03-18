@@ -55,7 +55,7 @@ enum Tab: Int, CaseIterable, Identifiable {
     var placeholderDescription: String {
         switch self {
         case .dashboard: return "Your time credit and daily statistics will appear here."
-        case .workout:   return "Start a workout here and count your push-ups in real time."
+        case .workout:   return "Choose from push-ups, plank, squats, and more to earn screen time."
         case .stats:     return "Daily, weekly, monthly statistics and workout history will appear here."
         case .friends:   return "Find friends, manage requests, and see your friends list."
         case .profile:   return "Your profile, avatar, and account information will appear here."
@@ -121,13 +121,15 @@ struct MainTabView: View {
                 .tag(Tab.dashboard)
                 .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
 
-                // Workout tab -- real implementation (Task 3.6)
-                WorkoutView()
-                    .tabItem {
-                        Label(Tab.workout.label, icon: Tab.workout.icon)
-                    }
-                    .tag(Tab.workout)
-                    .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
+                // Workout tab -- exercise selection hub with navigation
+                NavigationStack {
+                    WorkoutSelectionView()
+                }
+                .tabItem {
+                    Label(Tab.workout.label, icon: Tab.workout.icon)
+                }
+                .tag(Tab.workout)
+                .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
 
                 // Stats tab -- real implementation (Task 3.8)
                 // History is accessible via the "History" segment inside StatsView.
