@@ -77,6 +77,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published private(set) var isRefreshing: Bool = false
+    @Published private(set) var currentUserId: String = ""
 
     // MARK: - Private
 
@@ -107,6 +108,7 @@ final class DashboardViewModel: ObservableObject {
             return
         }
         let userId = user.id
+        self.currentUserId = userId
 
         // Observe time credit — updates availableSeconds and totalEarnedSeconds,
         // drives app blocking state, and keeps the DeviceActivity threshold

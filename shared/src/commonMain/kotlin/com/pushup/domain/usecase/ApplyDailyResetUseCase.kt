@@ -1,14 +1,18 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.DailyCreditSnapshot
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
+import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlin.time.Duration.Companion.hours
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -23,6 +27,11 @@ import kotlinx.datetime.toLocalDateTime
  * 2. All other remaining credits are carried over at **[TimeCredit.CARRY_OVER_RATIO]** (20%).
  * 3. The new daily balance = (100% carry-over) + (20% of the rest).
  *
+ * ## Snapshot
+ * Before applying the reset, a [DailyCreditSnapshot] is written for the day
+ * that just ended. This preserves the historical record of how much credit
+ * was available and how much was spent, enabling weekly/monthly charts.
+ *
  * ## When is this called?
  * This use-case should be invoked lazily -- whenever the credit balance is
  * read or observed. It checks whether the reset boundary has been crossed
@@ -35,12 +44,14 @@ import kotlinx.datetime.toLocalDateTime
  *
  * @property timeCreditRepository Repository for reading and updating credit records.
  * @property sessionRepository Repository for querying workout sessions by endedAt range.
+ * @property snapshotRepository Repository for persisting daily credit snapshots.
  * @property clock Clock used for determining the current time.
  * @property timeZone Timezone used to determine the reset boundary.
  */
 class ApplyDailyResetUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val sessionRepository: WorkoutSessionRepository,
+    private val snapshotRepository: DailyCreditSnapshotRepository? = null,
     private val clock: Clock = Clock.System,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
@@ -77,7 +88,10 @@ class ApplyDailyResetUseCase(
             return credit
         }
 
-        // A reset is due. Calculate carry-over.
+        // A reset is due. First, save a snapshot of the day that just ended.
+        saveSnapshot(userId, credit, mostRecentReset)
+
+        // Now calculate carry-over.
         val currentAvailable = credit.availableSeconds
 
         if (currentAvailable <= 0) {
@@ -139,6 +153,52 @@ class ApplyDailyResetUseCase(
             todayDate.atStartOfDayIn(timeZone)
                 .plus(TimeCredit.DAILY_RESET_HOUR.hours)
                 .minus(24.hours)
+        }
+    }
+
+    /**
+     * Saves a [DailyCreditSnapshot] for the day that just ended.
+     *
+     * The snapshot date is the calendar day BEFORE the reset boundary.
+     * For example, if the reset fires at 03:00 on 2026-03-18, the snapshot
+     * is for 2026-03-17.
+     *
+     * The carry-over and workout-earned values are computed from the session
+     * data to ensure accuracy.
+     */
+    private suspend fun saveSnapshot(
+        userId: String,
+        credit: TimeCredit,
+        resetBoundary: Instant,
+    ) {
+        val repo = snapshotRepository ?: return
+
+        // The snapshot covers the day before the reset boundary.
+        // Reset at 03:00 on March 18 -> snapshot date is March 17.
+        val resetLocal = resetBoundary.toLocalDateTime(timeZone)
+        val snapshotDate = resetLocal.date.minus(1, DateTimeUnit.DAY)
+
+        // Calculate workout-earned for the ending day:
+        // Sessions that ended between the PREVIOUS reset and this reset.
+        val previousReset = resetBoundary.minus(24.hours)
+        val workoutEarned = getEarnedInWindow(userId, previousReset, resetBoundary)
+
+        // Carry-over = dailyEarned - workoutEarned (what was brought from the day before).
+        val carryOver = (credit.dailyEarnedSeconds - workoutEarned).coerceAtLeast(0L)
+
+        val snapshot = DailyCreditSnapshot(
+            userId = userId,
+            date = snapshotDate,
+            earnedSeconds = credit.dailyEarnedSeconds,
+            spentSeconds = credit.dailySpentSeconds,
+            carryOverSeconds = carryOver,
+            workoutEarnedSeconds = workoutEarned,
+        )
+
+        try {
+            repo.save(snapshot)
+        } catch (_: Exception) {
+            // Best-effort: snapshot failure must not block the reset.
         }
     }
 

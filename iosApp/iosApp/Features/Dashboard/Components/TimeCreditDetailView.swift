@@ -1,4 +1,5 @@
 import SwiftUI
+import Shared
 
 // MARK: - TimeCreditDetailView
 
@@ -21,8 +22,11 @@ struct TimeCreditDetailView: View {
     let carryOverLateNightSeconds: Int
     let totalEarnedSeconds: Int
     let totalSpentSeconds: Int
+    let userId: String
 
     @Environment(\.dismiss) private var dismiss
+    @State private var historyEntries: [CreditHistoryChartEntry] = []
+    @State private var isLoadingHistory = true
 
     var body: some View {
         NavigationStack {
@@ -31,6 +35,7 @@ struct TimeCreditDetailView: View {
                     heroSection
                     breakdownSection
                     spentSection
+                    CreditHistoryChart(entries: historyEntries, isLoading: isLoadingHistory)
                     resetInfoSection
                     allTimeSection
                 }
@@ -47,6 +52,57 @@ struct TimeCreditDetailView: View {
                         .font(AppTypography.bodySemibold)
                 }
             }
+            .task { await loadHistory() }
+        }
+    }
+
+    // MARK: - History Loading
+
+    private func loadHistory() async {
+        guard !userId.isEmpty else {
+            isLoadingHistory = false
+            return
+        }
+
+        let calendar = Calendar.current
+        let today = Date()
+        // Fetch the last 7 days of snapshots.
+        let sevenDaysAgo = calendar.date(byAdding: .day, value: -6, to: today)!
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let fromStr = formatter.string(from: sevenDaysAgo)
+        let toStr = formatter.string(from: today)
+
+        let dayFormatter = DateFormatter()
+        dayFormatter.dateFormat = "EEE"
+
+        DataBridge.shared.fetchCreditHistory(userId: userId, from: fromStr, to: toStr) { entries in
+            // Build chart entries for all 7 days, filling gaps with zeros.
+            var entryMap: [String: (earned: Double, spent: Double)] = [:]
+            for entry in entries {
+                entryMap[entry.date] = (
+                    earned: Double(entry.earnedSeconds) / 60.0,
+                    spent: Double(entry.spentSeconds) / 60.0
+                )
+            }
+
+            var chartEntries: [CreditHistoryChartEntry] = []
+            for daysAgo in (0...6).reversed() {
+                let date = calendar.date(byAdding: .day, value: -daysAgo, to: today)!
+                let dateStr = formatter.string(from: date)
+                let values = entryMap[dateStr]
+                chartEntries.append(CreditHistoryChartEntry(
+                    id: dateStr,
+                    label: dayFormatter.string(from: date),
+                    date: date,
+                    earnedMinutes: values?.earned ?? 0,
+                    spentMinutes: values?.spent ?? 0
+                ))
+            }
+
+            self.historyEntries = chartEntries
+            self.isLoadingHistory = false
         }
     }
 
@@ -358,7 +414,8 @@ struct TimeCreditDetailView: View {
         carryOverPercentSeconds: 600,
         carryOverLateNightSeconds: 1200,
         totalEarnedSeconds: 36000,
-        totalSpentSeconds: 28800
+        totalSpentSeconds: 28800,
+        userId: "preview-user"
     )
 }
 
@@ -371,7 +428,8 @@ struct TimeCreditDetailView: View {
         carryOverPercentSeconds: 600,
         carryOverLateNightSeconds: 0,
         totalEarnedSeconds: 18000,
-        totalSpentSeconds: 14400
+        totalSpentSeconds: 14400,
+        userId: "preview-user"
     )
 }
 
@@ -384,7 +442,8 @@ struct TimeCreditDetailView: View {
         carryOverPercentSeconds: 0,
         carryOverLateNightSeconds: 0,
         totalEarnedSeconds: 0,
-        totalSpentSeconds: 0
+        totalSpentSeconds: 0,
+        userId: "preview-user"
     )
 }
 #endif

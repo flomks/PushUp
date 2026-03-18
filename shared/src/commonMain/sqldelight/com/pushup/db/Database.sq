@@ -1,7 +1,8 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v5)
+-- PushUp App Local Database Schema (v6)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
+-- Dates are stored as TEXT in ISO-8601 format (YYYY-MM-DD).
 --
 -- Schema version history:
 --   v1 (initial) — User, WorkoutSession, PushUpRecord, TimeCredit,
@@ -11,6 +12,8 @@
 --   v4 (3.sqm)   — Added avatarUrl and avatarVisibility columns to User table.
 --   v5 (4.sqm)   — Added daily reset fields to TimeCredit table
 --                   (dailyEarnedSeconds, dailySpentSeconds, lastResetAt).
+--   v6 (5.sqm)   — Added DailyCreditSnapshot table for historical daily
+--                   credit tracking (charts).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -407,4 +410,47 @@ WHERE userId = ?;
 
 deleteUserLevel:
 DELETE FROM UserLevel
+WHERE userId = ?;
+
+-- =============================================================================
+-- DailyCreditSnapshot
+-- Historical record of daily credit balance, written at each daily reset.
+-- date is stored as TEXT in ISO-8601 format (YYYY-MM-DD).
+-- One row per user per day (userId + date is unique).
+-- =============================================================================
+
+CREATE TABLE DailyCreditSnapshot (
+    id                   TEXT    NOT NULL PRIMARY KEY,
+    userId               TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    date                 TEXT    NOT NULL,
+    earnedSeconds        INTEGER NOT NULL DEFAULT 0,
+    spentSeconds         INTEGER NOT NULL DEFAULT 0,
+    carryOverSeconds     INTEGER NOT NULL DEFAULT 0,
+    workoutEarnedSeconds INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX idx_daily_credit_snapshot_user_date ON DailyCreditSnapshot(userId, date);
+CREATE INDEX idx_daily_credit_snapshot_user_id ON DailyCreditSnapshot(userId);
+
+-- =============================================================================
+-- DailyCreditSnapshot Queries
+-- =============================================================================
+
+insertOrReplaceDailyCreditSnapshot:
+INSERT OR REPLACE INTO DailyCreditSnapshot (id, userId, date, earnedSeconds, spentSeconds, carryOverSeconds, workoutEarnedSeconds)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectDailyCreditSnapshotByUserAndDate:
+SELECT *
+FROM DailyCreditSnapshot
+WHERE userId = ? AND date = ?;
+
+selectDailyCreditSnapshotsByDateRange:
+SELECT *
+FROM DailyCreditSnapshot
+WHERE userId = ? AND date >= ? AND date <= ?
+ORDER BY date ASC;
+
+deleteDailyCreditSnapshotsByUserId:
+DELETE FROM DailyCreditSnapshot
 WHERE userId = ?;
