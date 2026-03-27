@@ -366,7 +366,7 @@ final class DashboardViewModel: ObservableObject {
         }()
 
         return LastSessionSnapshot(
-            startedAt: session.startedAt,
+            startedAt: Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds)),
             durationSeconds: duration,
             earnedSeconds: Int(session.earnedTimeCreditSeconds),
             qualityScore: Double(session.quality),
@@ -385,7 +385,7 @@ final class DashboardViewModel: ObservableObject {
         }()
 
         return LastSessionSnapshot(
-            startedAt: session.startedAt,
+            startedAt: Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds)),
             durationSeconds: Int(session.durationSeconds),
             earnedSeconds: Int(session.earnedTimeCreditSeconds),
             qualityScore: 0.0,
