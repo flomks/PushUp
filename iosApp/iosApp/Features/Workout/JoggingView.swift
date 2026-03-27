@@ -500,7 +500,10 @@ struct JoggingView: View {
     // MARK: - Route Map
 
     private var routeMapView: some View {
-        Map(position: $mapPosition, interactionModes: [.pan, .zoom, .pitch, .rotate]) {
+        Map(
+            position: $mapPosition,
+            interactionModes: isMapFocusMode ? [.pan, .zoom, .pitch, .rotate] : []
+        ) {
             // Route polyline
             if viewModel.routeLocations.count >= 2 {
                 MapPolyline(
@@ -586,7 +589,7 @@ struct JoggingView: View {
         // Tight zoom for active "runner-fixed" mode.
         let region = MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.0038, longitudeDelta: 0.0038)
+            span: MKCoordinateSpan(latitudeDelta: 0.0014, longitudeDelta: 0.0014)
         )
         if animated {
             withAnimation(.easeInOut(duration: 0.25)) {
