@@ -170,6 +170,7 @@ struct TimeCreditDetailView: View {
                         1.0,
                         ceil(historyEntries.map { max($0.earnedMinutes, $0.spentMinutes) }.max() ?? 0.0)
                     )
+                    let yAxisValues = makeYAxisValues(maxMinuteValue: maxMinuteValue)
 
                     Chart {
                         ForEach(historyEntries) { entry in
@@ -202,12 +203,12 @@ struct TimeCreditDetailView: View {
                         }
                     }
                     .chartYAxis {
-                        AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                        AxisMarks(position: .leading, values: yAxisValues) { value in
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
                                 .foregroundStyle(AppColors.fill)
                             AxisValueLabel {
                                 if let minuteVal = value.as(Double.self) {
-                                    Text("\(Int(minuteVal.rounded()))m")
+                                    Text("\(Int(minuteVal))m")
                                         .font(AppTypography.caption2)
                                         .foregroundStyle(AppColors.textSecondary)
                                 }
@@ -536,6 +537,34 @@ struct TimeCreditDetailView: View {
             return "\(clamped)s"
         }
         return "\(minutes) min"
+    }
+
+    private func makeYAxisValues(maxMinuteValue: Double) -> [Double] {
+        let maxInt = Int(maxMinuteValue)
+        if maxInt <= 1 { return [0, 1] }
+
+        let step: Int
+        switch maxInt {
+        case 0...6:
+            step = 1
+        case 7...20:
+            step = 2
+        case 21...60:
+            step = 5
+        default:
+            step = 10
+        }
+
+        var values: [Double] = []
+        var current = 0
+        while current <= maxInt {
+            values.append(Double(current))
+            current += step
+        }
+        if values.last != Double(maxInt) {
+            values.append(Double(maxInt))
+        }
+        return values
     }
 
 }

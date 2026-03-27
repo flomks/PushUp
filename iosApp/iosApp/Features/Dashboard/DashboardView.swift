@@ -103,10 +103,14 @@ struct DashboardView: View {
                 // 5. "Workout starten" quick-action button
                 workoutStartButton
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, AppSpacing.sm)
             .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
+        // Keep vertical bounce enabled so pull-to-refresh remains reliable
+        // even when content height is close to viewport height.
+        .scrollBounceBehavior(.always, axes: .vertical)
         .refreshable {
             await viewModel.refresh()
         }
