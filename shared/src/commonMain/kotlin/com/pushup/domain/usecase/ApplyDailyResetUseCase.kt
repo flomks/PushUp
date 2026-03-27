@@ -55,6 +55,9 @@ class ApplyDailyResetUseCase(
     private val clock: Clock = Clock.System,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
+    private companion object {
+        const val MIN_PERCENT_CARRY_OVER_SECONDS: Long = 60L
+    }
 
     /**
      * Checks whether a daily reset is due for [userId] and applies it if so.
@@ -112,7 +115,13 @@ class ApplyDailyResetUseCase(
 
                 // Carry-over calculation:
                 //   100% of recent credits + 20% of the rest
-                (recentEarned + (nonRecentAvailable * TimeCredit.CARRY_OVER_RATIO).toLong())
+                val percentCarryOver = (nonRecentAvailable * TimeCredit.CARRY_OVER_RATIO).toLong()
+                val appliedPercentCarryOver = if (percentCarryOver >= MIN_PERCENT_CARRY_OVER_SECONDS) {
+                    percentCarryOver
+                } else {
+                    0L
+                }
+                (recentEarned + appliedPercentCarryOver)
                     .coerceAtLeast(0L)
             }
 
