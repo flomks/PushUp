@@ -1,6 +1,8 @@
 package com.pushup.data.api.dto
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingSegment
+import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
 import kotlinx.datetime.Instant
@@ -25,6 +27,11 @@ data class JoggingSessionDTO(
     @SerialName("avg_pace_seconds_per_km")  val avgPaceSecondsPerKm: Int? = null,
     @SerialName("calories_burned")          val caloriesBurned: Int,
     @SerialName("earned_time_credits")      val earnedTimeCredits: Int,
+    @SerialName("active_duration_seconds")  val activeDurationSeconds: Int = 0,
+    @SerialName("pause_duration_seconds")   val pauseDurationSeconds: Int = 0,
+    @SerialName("active_distance_meters")   val activeDistanceMeters: Float = 0f,
+    @SerialName("pause_distance_meters")    val pauseDistanceMeters: Float = 0f,
+    @SerialName("pause_count")              val pauseCount: Int = 0,
     @SerialName("created_at")               val createdAt: String? = null,
     @SerialName("updated_at")               val updatedAt: String? = null,
 )
@@ -42,6 +49,11 @@ data class CreateJoggingSessionRequest(
     @SerialName("avg_pace_seconds_per_km")  val avgPaceSecondsPerKm: Int? = null,
     @SerialName("calories_burned")          val caloriesBurned: Int = 0,
     @SerialName("earned_time_credits")      val earnedTimeCredits: Int = 0,
+    @SerialName("active_duration_seconds")  val activeDurationSeconds: Int = 0,
+    @SerialName("pause_duration_seconds")   val pauseDurationSeconds: Int = 0,
+    @SerialName("active_distance_meters")   val activeDistanceMeters: Float = 0f,
+    @SerialName("pause_distance_meters")    val pauseDistanceMeters: Float = 0f,
+    @SerialName("pause_count")              val pauseCount: Int = 0,
 )
 
 /**
@@ -55,6 +67,11 @@ data class UpdateJoggingSessionRequest(
     @SerialName("avg_pace_seconds_per_km")  val avgPaceSecondsPerKm: Int? = null,
     @SerialName("calories_burned")          val caloriesBurned: Int? = null,
     @SerialName("earned_time_credits")      val earnedTimeCredits: Int? = null,
+    @SerialName("active_duration_seconds")  val activeDurationSeconds: Int? = null,
+    @SerialName("pause_duration_seconds")   val pauseDurationSeconds: Int? = null,
+    @SerialName("active_distance_meters")   val activeDistanceMeters: Float? = null,
+    @SerialName("pause_distance_meters")    val pauseDistanceMeters: Float? = null,
+    @SerialName("pause_count")              val pauseCount: Int? = null,
 )
 
 // =============================================================================
@@ -93,6 +110,27 @@ data class CreateRoutePointRequest(
     @SerialName("distance_from_start")  val distanceFromStart: Float = 0f,
 )
 
+@Serializable
+data class JoggingSegmentDTO(
+    @SerialName("id")                val id: String,
+    @SerialName("session_id")        val sessionId: String,
+    @SerialName("segment_type")      val segmentType: String,
+    @SerialName("started_at")        val startedAt: String,
+    @SerialName("ended_at")          val endedAt: String? = null,
+    @SerialName("distance_meters")   val distanceMeters: Float = 0f,
+    @SerialName("duration_seconds")  val durationSeconds: Int = 0,
+)
+
+@Serializable
+data class CreateJoggingSegmentRequest(
+    @SerialName("session_id")        val sessionId: String,
+    @SerialName("segment_type")      val segmentType: String,
+    @SerialName("started_at")        val startedAt: String,
+    @SerialName("ended_at")          val endedAt: String? = null,
+    @SerialName("distance_meters")   val distanceMeters: Float = 0f,
+    @SerialName("duration_seconds")  val durationSeconds: Int = 0,
+)
+
 // =============================================================================
 // Domain model mappers
 // =============================================================================
@@ -110,6 +148,11 @@ fun JoggingSessionDTO.toDomain(): JoggingSession = JoggingSession(
     avgPaceSecondsPerKm = avgPaceSecondsPerKm,
     caloriesBurned = caloriesBurned,
     earnedTimeCreditSeconds = earnedTimeCredits.toLong(),
+    activeDurationSeconds = activeDurationSeconds.toLong(),
+    pauseDurationSeconds = pauseDurationSeconds.toLong(),
+    activeDistanceMeters = activeDistanceMeters.toDouble(),
+    pauseDistanceMeters = pauseDistanceMeters.toDouble(),
+    pauseCount = pauseCount,
     syncStatus = SyncStatus.SYNCED,
 )
 
@@ -125,6 +168,11 @@ fun JoggingSession.toCreateRequest(): CreateJoggingSessionRequest = CreateJoggin
     avgPaceSecondsPerKm = avgPaceSecondsPerKm,
     caloriesBurned = caloriesBurned,
     earnedTimeCredits = earnedTimeCreditSeconds.toInt(),
+    activeDurationSeconds = activeDurationSeconds.toInt(),
+    pauseDurationSeconds = pauseDurationSeconds.toInt(),
+    activeDistanceMeters = activeDistanceMeters.toFloat(),
+    pauseDistanceMeters = pauseDistanceMeters.toFloat(),
+    pauseCount = pauseCount,
 )
 
 /**
@@ -154,6 +202,25 @@ fun RoutePoint.toCreateRequest(): CreateRoutePointRequest = CreateRoutePointRequ
     speed = speed?.toFloat(),
     horizontalAccuracy = horizontalAccuracy?.toFloat(),
     distanceFromStart = distanceFromStart.toFloat(),
+)
+
+fun JoggingSegmentDTO.toDomain(): JoggingSegment = JoggingSegment(
+    id = id,
+    sessionId = sessionId,
+    type = if (segmentType.lowercase() == "pause") JoggingSegmentType.PAUSE else JoggingSegmentType.RUN,
+    startedAt = Instant.parse(startedAt),
+    endedAt = endedAt?.let { Instant.parse(it) },
+    distanceMeters = distanceMeters.toDouble(),
+    durationSeconds = durationSeconds.toLong(),
+)
+
+fun JoggingSegment.toCreateRequest(): CreateJoggingSegmentRequest = CreateJoggingSegmentRequest(
+    sessionId = sessionId,
+    segmentType = if (type == JoggingSegmentType.PAUSE) "pause" else "run",
+    startedAt = startedAt.toString(),
+    endedAt = endedAt?.toString(),
+    distanceMeters = distanceMeters.toFloat(),
+    durationSeconds = durationSeconds.toInt(),
 )
 
 // =============================================================================

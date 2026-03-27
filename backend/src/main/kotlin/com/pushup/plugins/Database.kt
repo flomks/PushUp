@@ -416,6 +416,11 @@ object JoggingSessions : Table("jogging_sessions") {
     val avgPaceSecondsPerKm  = integer("avg_pace_seconds_per_km").nullable()
     val caloriesBurned       = integer("calories_burned")
     val earnedTimeCredits    = integer("earned_time_credits")
+    val activeDurationSeconds = integer("active_duration_seconds").default(0)
+    val pauseDurationSeconds  = integer("pause_duration_seconds").default(0)
+    val activeDistanceMeters  = float("active_distance_meters").default(0f)
+    val pauseDistanceMeters   = float("pause_distance_meters").default(0f)
+    val pauseCount            = integer("pause_count").default(0)
     val createdAt            = timestampWithTimeZone("created_at")
     val updatedAt            = timestampWithTimeZone("updated_at")
 
@@ -448,6 +453,19 @@ object RoutePoints : Table("route_points") {
     val horizontalAccuracy  = float("horizontal_accuracy").nullable()
     val distanceFromStart   = float("distance_from_start")
     val createdAt           = timestampWithTimeZone("created_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+object JoggingSegments : Table("jogging_segments") {
+    val id               = uuid("id")
+    val sessionId        = uuid("session_id").references(JoggingSessions.id)
+    val segmentType      = text("segment_type")
+    val startedAt        = timestampWithTimeZone("started_at")
+    val endedAt          = timestampWithTimeZone("ended_at").nullable()
+    val distanceMeters   = float("distance_meters")
+    val durationSeconds  = integer("duration_seconds")
+    val createdAt        = timestampWithTimeZone("created_at")
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -523,9 +541,10 @@ fun Application.configureDatabase(): Boolean {
             Notifications,
             JoggingSessions,
             RoutePoints,
+            JoggingSegments,
         )
     }
-    log.info("Schema check complete (device_tokens, user_levels, notifications, jogging_sessions, route_points tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, notifications, jogging_sessions, route_points, jogging_segments tables ensured)")
 
     return true
 }

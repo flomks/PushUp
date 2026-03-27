@@ -274,6 +274,11 @@ class JoggingSessionRepositoryImpl(
                                 avgPaceSecondsPerKm = session.avgPaceSecondsPerKm,
                                 caloriesBurned = session.caloriesBurned,
                                 earnedTimeCredits = session.earnedTimeCreditSeconds.toInt(),
+                                activeDurationSeconds = session.activeDurationSeconds.toInt(),
+                                pauseDurationSeconds = session.pauseDurationSeconds.toInt(),
+                                activeDistanceMeters = session.activeDistanceMeters.toFloat(),
+                                pauseDistanceMeters = session.pauseDistanceMeters.toFloat(),
+                                pauseCount = session.pauseCount,
                             ),
                         )
                     } catch (_: Exception) {

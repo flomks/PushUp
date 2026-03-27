@@ -8,6 +8,7 @@ import com.pushup.data.api.isTransient
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.repository.JoggingSessionRepository
+import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.RoutePointRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
@@ -31,6 +32,7 @@ import kotlinx.coroutines.delay
  */
 class SyncJoggingUseCase(
     private val sessionRepository: JoggingSessionRepository,
+    private val segmentRepository: JoggingSegmentRepository,
     private val routePointRepository: RoutePointRepository,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
@@ -111,6 +113,7 @@ class SyncJoggingUseCase(
             supabaseClient.createJoggingSession(session.toCreateRequest())
             // Upload route points for this session
             uploadRoutePoints(session.id)
+            uploadSegments(session.id)
             sessionRepository.markAsSynced(session.id)
             UploadOutcome.SYNCED
         } catch (e: ApiException.Conflict) {
@@ -133,6 +136,12 @@ class SyncJoggingUseCase(
         }
     }
 
+    private suspend fun uploadSegments(sessionId: String) {
+        val segments = segmentRepository.getBySessionId(sessionId)
+        val requests = segments.map { it.toCreateRequest() }
+        supabaseClient.replaceJoggingSegments(sessionId, requests)
+    }
+
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
         return try {
             val remote = supabaseClient.getJoggingSession(local.id)
@@ -146,10 +155,16 @@ class SyncJoggingUseCase(
                         avgPaceSecondsPerKm = local.avgPaceSecondsPerKm,
                         caloriesBurned = local.caloriesBurned,
                         earnedTimeCredits = local.earnedTimeCreditSeconds.toInt(),
+                        activeDurationSeconds = local.activeDurationSeconds.toInt(),
+                        pauseDurationSeconds = local.pauseDurationSeconds.toInt(),
+                        activeDistanceMeters = local.activeDistanceMeters.toFloat(),
+                        pauseDistanceMeters = local.pauseDistanceMeters.toFloat(),
+                        pauseCount = local.pauseCount,
                     ),
                 )
                 // Also re-upload route points in case they changed
                 uploadRoutePoints(local.id)
+                uploadSegments(local.id)
             }
             sessionRepository.markAsSynced(local.id)
             UploadOutcome.SKIPPED

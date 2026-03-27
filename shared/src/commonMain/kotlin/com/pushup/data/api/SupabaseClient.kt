@@ -1,10 +1,12 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateJoggingSegmentRequest
 import com.pushup.data.api.dto.CreatePushUpRecordRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.JoggingSessionDTO
+import com.pushup.data.api.dto.JoggingSegmentDTO
 import com.pushup.data.api.dto.LiveJoggingStatusDTO
 import com.pushup.data.api.dto.PushUpRecordDTO
 import com.pushup.data.api.dto.RoutePointDTO
@@ -22,6 +24,7 @@ import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.RoutePoint
@@ -562,6 +565,39 @@ class SupabaseClient(
         }.also { it.expectSuccess() }
             .body<List<RoutePointDTO>>()
             .map { it.toDomain() }
+    }
+
+    override suspend fun getJoggingSegments(sessionId: String): List<JoggingSegment> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/jogging_segments") {
+            supabaseHeaders(token)
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("order", "started_at.asc")
+        }.also { it.expectSuccess() }
+            .body<List<JoggingSegmentDTO>>()
+            .map { it.toDomain() }
+    }
+
+    override suspend fun replaceJoggingSegments(
+        sessionId: String,
+        requests: List<CreateJoggingSegmentRequest>,
+    ) {
+        val token = tokenProvider()
+        withRetry {
+            httpClient.delete("$restBase/jogging_segments") {
+                supabaseHeaders(token)
+                url.parameters.append("session_id", "eq.$sessionId")
+            }.also { it.expectSuccess() }
+        }
+        if (requests.isEmpty()) return
+        withRetry {
+            httpClient.post("$restBase/jogging_segments") {
+                supabaseHeaders(token)
+                header("Prefer", "return=minimal")
+                contentType(ContentType.Application.Json)
+                setBody(requests)
+            }.also { it.expectSuccess() }
+        }
     }
 
     // =========================================================================

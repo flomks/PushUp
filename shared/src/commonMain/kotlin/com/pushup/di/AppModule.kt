@@ -370,6 +370,7 @@ val useCaseModule: Module = module {
     factory {
         SyncJoggingUseCase(
             sessionRepository = get(),
+            segmentRepository = get(),
             routePointRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
@@ -381,6 +382,7 @@ val useCaseModule: Module = module {
             timeCreditRepository = get(),
             userRepository = get(),
             joggingSessionRepository = get(),
+            joggingSegmentRepository = get(),
             routePointRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),

@@ -1,6 +1,7 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateJoggingSegmentRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.LiveJoggingStatusDTO
@@ -14,6 +15,7 @@ import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.UserLevel
@@ -170,6 +172,24 @@ interface CloudSyncApi {
      * Bulk-inserts route points in a single request.
      */
     suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint>
+
+    /**
+     * Returns all pause/run segments for [sessionId], ordered by start time.
+     */
+    suspend fun getJoggingSegments(sessionId: String): List<JoggingSegment> {
+        return emptyList()
+    }
+
+    /**
+     * Replaces all segments for [sessionId] with the provided list.
+     * Default implementation is a no-op for compatibility with test fakes.
+     */
+    suspend fun replaceJoggingSegments(
+        sessionId: String,
+        requests: List<CreateJoggingSegmentRequest>,
+    ) {
+        // no-op default
+    }
 
     // =========================================================================
     // Live Jogging Status (Presence)

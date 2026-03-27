@@ -487,13 +487,29 @@ final class JoggingTrackingManager: ObservableObject {
             )
         }
         do {
-            _ = try await withKMPSuspend { handler in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let lock = NSLock()
+                var hasResumed = false
+
                 self.saveJoggingSegments.invoke(
                     sessionId: sessionId,
-                    segments: mappedSegments,
-                    completionHandler: handler
-                )
-            } as KotlinUnit
+                    segments: mappedSegments
+                ) { error in
+                    lock.lock()
+                    guard !hasResumed else {
+                        lock.unlock()
+                        return
+                    }
+                    hasResumed = true
+                    lock.unlock()
+
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: ())
+                    }
+                }
+            }
         } catch {
             #if DEBUG
             print("[JoggingTrackingManager] Failed to save jogging segments: \(error)")

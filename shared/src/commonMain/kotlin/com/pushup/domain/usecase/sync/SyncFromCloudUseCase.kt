@@ -8,6 +8,7 @@ import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.TimeCreditRepository
@@ -58,6 +59,7 @@ class SyncFromCloudUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val userRepository: UserRepository,
     private val joggingSessionRepository: JoggingSessionRepository? = null,
+    private val joggingSegmentRepository: JoggingSegmentRepository? = null,
     private val routePointRepository: RoutePointRepository? = null,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
@@ -205,6 +207,7 @@ class SyncFromCloudUseCase(
                     // local route points. Re-download them from the server so the
                     // route map is not empty after a cloud sync.
                     fetchAndMergeRoutePoints(remote.id)
+                    fetchAndMergeJoggingSegments(remote.id)
                     insertedOrUpdated++
                 } else {
                     keptLocal++
@@ -238,6 +241,16 @@ class SyncFromCloudUseCase(
             }
         } catch (_: Exception) {
             // Non-fatal: route points are a nice-to-have, not critical for the session
+        }
+    }
+
+    private suspend fun fetchAndMergeJoggingSegments(sessionId: String) {
+        val segRepo = joggingSegmentRepository ?: return
+        try {
+            val remoteSegments = supabaseClient.getJoggingSegments(sessionId)
+            segRepo.replaceSegmentsForSession(sessionId, remoteSegments)
+        } catch (_: Exception) {
+            // Non-fatal: timeline remains optional if fetch fails.
         }
     }
 
