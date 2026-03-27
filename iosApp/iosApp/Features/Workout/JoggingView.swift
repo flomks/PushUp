@@ -290,9 +290,6 @@ struct JoggingView: View {
                         endPoint: .bottom
                     )
                     .ignoresSafeArea()
-
-                    activeTrackDecoration
-                        .ignoresSafeArea()
                 } else {
                     // Keep the map clean; only a subtle top fade for readability.
                     LinearGradient(
@@ -328,16 +325,31 @@ struct JoggingView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.leading, 12)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.45), in: Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+                        .frame(width: 50, height: 44)
+                        .background(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 22,
+                                bottomLeadingRadius: 22,
+                                bottomTrailingRadius: 14,
+                                topTrailingRadius: 14
+                            )
+                            .fill(Color.black.opacity(0.45))
+                        )
+                        .overlay(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 22,
+                                bottomLeadingRadius: 22,
+                                bottomTrailingRadius: 14,
+                                topTrailingRadius: 14
+                            )
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                // Move further inside screen for clear visibility.
-                .padding(.leading, 8)
-                .padding(.bottom, 92)
+                // Same Y-axis as the bottom-right X button (44pt button + 24pt bottom inset).
+                .padding(.bottom, 24)
+                // Protrude from the left screen edge.
+                .offset(x: -16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             } else {
                 Button {
@@ -348,16 +360,31 @@ struct JoggingView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.leading, 16)
-                        .padding(.trailing, 12)
-                        .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.45), in: Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+                        .frame(width: 50, height: 44)
+                        .background(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 14,
+                                bottomLeadingRadius: 14,
+                                bottomTrailingRadius: 22,
+                                topTrailingRadius: 22
+                            )
+                            .fill(Color.black.opacity(0.45))
+                        )
+                        .overlay(
+                            UnevenRoundedRectangle(
+                                topLeadingRadius: 14,
+                                bottomLeadingRadius: 14,
+                                bottomTrailingRadius: 22,
+                                topTrailingRadius: 22
+                            )
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                // Move further inside screen for clear visibility.
-                .padding(.trailing, 8)
-                .padding(.bottom, 92)
+                // Same Y-axis as the bottom-right X button (44pt button + 24pt bottom inset).
+                .padding(.bottom, 24)
+                // Protrude from the right screen edge.
+                .offset(x: 16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
@@ -596,9 +623,6 @@ struct JoggingView: View {
             )
             .ignoresSafeArea()
 
-            activeTrackDecoration
-                .ignoresSafeArea()
-
             VStack(spacing: 18) {
                 HStack {
                     Text("Run Complete")
@@ -818,36 +842,6 @@ struct JoggingView: View {
         guard let pace = viewModel.currentPaceSecondsPerKm, pace > 0 else { return "--.--" }
         let paceMinutes = Double(pace) / 60.0
         return String(format: "%.2f", paceMinutes)
-    }
-
-    private var activeTrackDecoration: some View {
-        GeometryReader { proxy in
-            Path { path in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                path.move(to: CGPoint(x: w * 0.04, y: h * 0.52))
-                path.addCurve(
-                    to: CGPoint(x: w * 0.92, y: h * 0.61),
-                    control1: CGPoint(x: w * 0.22, y: h * 0.42),
-                    control2: CGPoint(x: w * 0.68, y: h * 0.77)
-                )
-                path.addCurve(
-                    to: CGPoint(x: w * 0.60, y: h * 0.96),
-                    control1: CGPoint(x: w * 1.05, y: h * 0.44),
-                    control2: CGPoint(x: w * 0.78, y: h * 0.90)
-                )
-            }
-            .stroke(
-                Color.orange,
-                style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round)
-            )
-
-            Circle()
-                .fill(Color.green)
-                .frame(width: 20, height: 20)
-                .position(x: proxy.size.width * 0.61, y: proxy.size.height * 0.96)
-        }
-        .allowsHitTesting(false)
     }
 
     private func activeInfoPill(title: String, value: String) -> some View {
