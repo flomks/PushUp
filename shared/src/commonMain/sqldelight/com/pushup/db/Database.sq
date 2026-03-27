@@ -551,24 +551,8 @@ SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPace
 WHERE id = ?;
 
 upsertJoggingSession:
-INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    userId = excluded.userId,
-    startedAt = excluded.startedAt,
-    endedAt = excluded.endedAt,
-    distanceMeters = excluded.distanceMeters,
-    durationSeconds = excluded.durationSeconds,
-    avgPaceSecondsPerKm = excluded.avgPaceSecondsPerKm,
-    caloriesBurned = excluded.caloriesBurned,
-    earnedTimeCredits = excluded.earnedTimeCredits,
-    activeDurationSeconds = excluded.activeDurationSeconds,
-    pauseDurationSeconds = excluded.pauseDurationSeconds,
-    activeDistanceMeters = excluded.activeDistanceMeters,
-    pauseDistanceMeters = excluded.pauseDistanceMeters,
-    pauseCount = excluded.pauseCount,
-    syncStatus = excluded.syncStatus,
-    updatedAt = excluded.updatedAt;
+INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteJoggingSession:
 DELETE FROM JoggingSession
