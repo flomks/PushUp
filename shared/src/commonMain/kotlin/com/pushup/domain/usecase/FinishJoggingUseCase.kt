@@ -51,8 +51,27 @@ class FinishJoggingUseCase(
         }
 
         val now = clock.now()
-        val durationSeconds = (now - session.startedAt).inWholeSeconds
+        val wallDurationSeconds = (now - session.startedAt).inWholeSeconds
         val distanceMeters = session.distanceMeters
+
+        val segments = segmentRepository.getBySessionId(sessionId)
+        val activeDuration = segments
+            .filter { it.type == JoggingSegmentType.RUN }
+            .sumOf { it.durationSeconds }
+        val pauseDuration = segments
+            .filter { it.type == JoggingSegmentType.PAUSE }
+            .sumOf { it.durationSeconds }
+        val activeDistance = segments
+            .filter { it.type == JoggingSegmentType.RUN }
+            .sumOf { it.distanceMeters }
+        val pauseDistance = segments
+            .filter { it.type == JoggingSegmentType.PAUSE }
+            .sumOf { it.distanceMeters }
+        val pauseCount = segments.count { it.type == JoggingSegmentType.PAUSE }
+
+        // Use active duration whenever segment data is available so pause time does
+        // not dilute pace and other workout statistics.
+        val durationSeconds = if (activeDuration > 0L) activeDuration else wallDurationSeconds
 
         // Calculate pace
         val avgPace = if (distanceMeters >= 100.0) {
@@ -82,21 +101,6 @@ class FinishJoggingUseCase(
             caloriesBurned = caloriesBurned,
             earnedTimeCreditSeconds = earnedCredits,
         )
-
-        val segments = segmentRepository.getBySessionId(sessionId)
-        val activeDuration = segments
-            .filter { it.type == JoggingSegmentType.RUN }
-            .sumOf { it.durationSeconds }
-        val pauseDuration = segments
-            .filter { it.type == JoggingSegmentType.PAUSE }
-            .sumOf { it.durationSeconds }
-        val activeDistance = segments
-            .filter { it.type == JoggingSegmentType.RUN }
-            .sumOf { it.distanceMeters }
-        val pauseDistance = segments
-            .filter { it.type == JoggingSegmentType.PAUSE }
-            .sumOf { it.distanceMeters }
-        val pauseCount = segments.count { it.type == JoggingSegmentType.PAUSE }
 
         sessionRepository.updateSegmentMetrics(
             id = sessionId,

@@ -107,11 +107,19 @@ final class JoggingTrackingManager: ObservableObject {
     private var locationCancellable: AnyCancellable?
     private var startSessionTask: Task<Void, Never>?
     private var lastProcessedLocation: CLLocation?
+    private var routeDistanceMeters: Double = 0.0
     private var segmentEvents: [LocalJoggingSegment] = []
     private var currentSegmentStartDate: Date?
     private var currentSegmentDistanceStart: Double = 0
     private var pauseStartedAt: Date?
     private var accumulatedPauseDuration: TimeInterval = 0
+
+    // GPS filtering constants used for distance accumulation.
+    private let accuracyThreshold: Double = 20.0
+    private let minimumDeltaMeters: Double = 2.0
+    private let maximumDeltaMeters: Double = 50.0
+    private let minimumSpeedForDistance: Double = 0.3
+    private let maximumLocationAgeSeconds: TimeInterval = 10.0
 
     // MARK: - Init
 
@@ -191,7 +199,7 @@ final class JoggingTrackingManager: ObservableObject {
                     self.recordLocationPoint(
                         latest,
                         sessionId: sessionId,
-                        totalDistance: self.distanceMeters,
+                        totalDistance: self.activeDistanceMeters,
                         activeDurationSeconds: Int64(self.activeDuration)
                     )
                 }
@@ -259,7 +267,7 @@ final class JoggingTrackingManager: ObservableObject {
         isPaused = true
         pauseStartedAt = now
         currentSegmentStartDate = now
-        currentSegmentDistanceStart = distanceMeters
+        currentSegmentDistanceStart = routeDistanceMeters
     }
 
     func resumeTracking() {
@@ -279,7 +287,7 @@ final class JoggingTrackingManager: ObservableObject {
         isPaused = false
         pauseStartedAt = nil
         currentSegmentStartDate = resumeTime
-        currentSegmentDistanceStart = distanceMeters
+        currentSegmentDistanceStart = routeDistanceMeters
     }
 
     // MARK: - Private: State
@@ -296,6 +304,7 @@ final class JoggingTrackingManager: ObservableObject {
         caloriesBurned = 0
         routeLocations = []
         activeSessionId = nil
+        routeDistanceMeters = 0
         isPaused = false
         pauseStartedAt = nil
         accumulatedPauseDuration = 0
@@ -438,20 +447,49 @@ final class JoggingTrackingManager: ObservableObject {
 
     private func consumeLocations(_ locations: [CLLocation]) {
         guard let latest = locations.last else { return }
+        guard isValidForDistance(latest) else {
+            lastProcessedLocation = latest
+            distanceMeters = activeDistanceMeters
+            return
+        }
         defer { lastProcessedLocation = latest }
 
-        guard let previous = lastProcessedLocation else {
-            distanceMeters = activeDistanceMeters + pauseDistanceMeters
+        guard let previous = lastProcessedLocation, isValidForDistance(previous) else {
+            distanceMeters = activeDistanceMeters
             return
         }
 
         let delta = max(0, latest.distance(from: previous))
+        guard delta >= minimumDeltaMeters, delta < maximumDeltaMeters else {
+            distanceMeters = activeDistanceMeters
+            return
+        }
+
+        let dt = max(0.001, latest.timestamp.timeIntervalSince(previous.timestamp))
+        let derivedSpeed = delta / dt
+        let gpsSpeed = latest.speed >= 0 ? latest.speed : derivedSpeed
+        guard gpsSpeed >= minimumSpeedForDistance else {
+            distanceMeters = activeDistanceMeters
+            return
+        }
+
+        routeDistanceMeters += delta
         if isPaused {
             pauseDistanceMeters += delta
         } else {
             activeDistanceMeters += delta
         }
-        distanceMeters = activeDistanceMeters + pauseDistanceMeters
+        // Statistics are based on active movement only. Pause movement remains
+        // visible in the full route and pause segments, but does not affect stats.
+        distanceMeters = activeDistanceMeters
+    }
+
+    private func isValidForDistance(_ location: CLLocation) -> Bool {
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= accuracyThreshold else {
+            return false
+        }
+        let age = -location.timestamp.timeIntervalSinceNow
+        return age < maximumLocationAgeSeconds
     }
 
     private func currentPauseDuration(at now: Date) -> TimeInterval {
@@ -474,7 +512,7 @@ final class JoggingTrackingManager: ObservableObject {
     private func finalizeSegment(at end: Date, isPauseSegment: Bool) {
         guard let start = currentSegmentStartDate else { return }
         let duration = max(0, Int64(end.timeIntervalSince(start)))
-        let distance = max(0, distanceMeters - currentSegmentDistanceStart)
+        let distance = max(0, routeDistanceMeters - currentSegmentDistanceStart)
         let segment = LocalJoggingSegment(
             id: UUID().uuidString,
             startedAt: start,
@@ -484,6 +522,7 @@ final class JoggingTrackingManager: ObservableObject {
             isPause: isPauseSegment
         )
         segmentEvents.append(segment)
+        currentSegmentDistanceStart = routeDistanceMeters
     }
 
     private func persistSegmentsIfPossible(sessionId: String?) async {
