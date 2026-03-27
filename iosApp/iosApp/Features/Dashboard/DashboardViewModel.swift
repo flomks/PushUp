@@ -5,11 +5,10 @@ import Shared
 
 /// View-layer model for today's workout statistics.
 struct DashboardDailyStats {
-    let pushUps: Int
+    let activeMinutes: Int
     let sessions: Int
     let earnedMinutes: Int
     let averageQuality: Double
-    let bestSession: Int
 }
 
 // MARK: - DashboardWeekDay
@@ -18,7 +17,7 @@ struct DashboardDailyStats {
 struct DashboardWeekDay: Identifiable {
     let id: Int          // 0 = Mon ... 6 = Sun
     let label: String    // "Mo", "Di", ...
-    let pushUps: Int
+    let sessions: Int
     let isToday: Bool
 }
 
@@ -26,7 +25,9 @@ struct DashboardWeekDay: Identifiable {
 
 /// Compact summary of the most recent completed workout session.
 struct DashboardLastSession {
-    let pushUpCount: Int
+    let primaryMetricValue: String
+    let primaryMetricLabel: String
+    let primaryMetricIcon: AppIcon
     let durationSeconds: Int
     let earnedSeconds: Int
     let qualityScore: Double
@@ -82,7 +83,10 @@ final class DashboardViewModel: ObservableObject {
     // MARK: - Private
 
     private var sessionObservationJob: Kotlinx_coroutines_coreJob?
+    private var joggingObservationJob: Kotlinx_coroutines_coreJob?
     private var creditObservationJob: Kotlinx_coroutines_coreJob?
+    private var pushUpSessions: [Shared.WorkoutSession] = []
+    private var joggingSessions: [Shared.JoggingSession] = []
 
     // MARK: - Init
 
@@ -92,6 +96,7 @@ final class DashboardViewModel: ObservableObject {
 
     deinit {
         sessionObservationJob?.cancel(cause: nil)
+        joggingObservationJob?.cancel(cause: nil)
         creditObservationJob?.cancel(cause: nil)
     }
 
@@ -169,9 +174,16 @@ final class DashboardViewModel: ObservableObject {
         // Observe sessions — rebuilds daily stats, weekly chart, and last session
         sessionObservationJob = DataBridge.shared.observeSessions(userId: userId) { [weak self] sessions in
             guard let self else { return }
-            self.isLoading = false
-            self.isRefreshing = false
-            self.rebuildDashboard(from: sessions)
+            self.pushUpSessions = sessions
+            self.rebuildDashboard()
+        }
+
+        // Observe jogging sessions — merge with push-up sessions so dashboard
+        // reflects all activity types (not just strength workouts).
+        joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: userId) { [weak self] sessions in
+            guard let self else { return }
+            self.joggingSessions = sessions
+            self.rebuildDashboard()
         }
     }
 
@@ -187,13 +199,17 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Private: Dashboard Computation
 
-    /// Rebuilds all dashboard properties from the current list of KMP sessions.
-    private func rebuildDashboard(from kmpSessions: [Shared.WorkoutSession]) {
-        // Only completed sessions
-        let completed = kmpSessions.filter { $0.endedAt != nil }
-        hasEverWorkedOut = !completed.isEmpty
+    /// Rebuilds all dashboard properties from the current push-up + jogging sessions.
+    private func rebuildDashboard() {
+        isLoading = false
+        isRefreshing = false
 
-        guard !completed.isEmpty else {
+        // Only completed sessions
+        let completedPushUps = pushUpSessions.filter { $0.endedAt != nil }
+        let completedJogging = joggingSessions.filter { $0.endedAt != nil }
+        hasEverWorkedOut = !completedPushUps.isEmpty || !completedJogging.isEmpty
+
+        guard hasEverWorkedOut else {
             applyEmptyState()
             return
         }
@@ -202,23 +218,32 @@ final class DashboardViewModel: ObservableObject {
         let today    = calendar.startOfDay(for: Date())
 
         // --- Today's stats ---
-        let todaySessions = completed.filter { session in
+        let todayPushUpSessions = completedPushUps.filter { session in
+            let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            return calendar.startOfDay(for: startDate) == today
+        }
+        let todayJoggingSessions = completedJogging.filter { session in
             let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
             return calendar.startOfDay(for: startDate) == today
         }
 
-        let todayPushUps   = todaySessions.reduce(0) { $0 + Int($1.pushUpCount) }
-        let todayEarned    = todaySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
-        let todayQuality   = todaySessions.isEmpty ? 0.0
-            : todaySessions.reduce(0.0) { $0 + Double($1.quality) } / Double(todaySessions.count)
-        let todayBest      = todaySessions.map { Int($0.pushUpCount) }.max() ?? 0
+        let pushUpDuration = todayPushUpSessions.reduce(0) { total, session in
+            guard let endedAt = session.endedAt else { return total }
+            return total + max(0, Int(endedAt.epochSeconds - session.startedAt.epochSeconds))
+        }
+        let joggingDuration = todayJoggingSessions.reduce(0) { total, session in
+            total + max(0, Int(session.durationSeconds))
+        }
+        let todayEarned = todayPushUpSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            + todayJoggingSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+        let todayQuality = todayPushUpSessions.isEmpty ? 0.0
+            : todayPushUpSessions.reduce(0.0) { $0 + Double($1.quality) } / Double(todayPushUpSessions.count)
 
         dailyStats = DashboardDailyStats(
-            pushUps: todayPushUps,
-            sessions: todaySessions.count,
+            activeMinutes: (pushUpDuration + joggingDuration) / 60,
+            sessions: todayPushUpSessions.count + todayJoggingSessions.count,
             earnedMinutes: todayEarned / 60,
-            averageQuality: todayQuality,
-            bestSession: todayBest
+            averageQuality: todayQuality
         )
 
         // --- Weekly chart (Mon–Sun of current week) ---
@@ -230,24 +255,40 @@ final class DashboardViewModel: ObservableObject {
             let dayStart = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
             let dayEnd   = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
 
-            let dayPushUps = completed.filter { session in
+            let dayPushUpSessions = completedPushUps.filter { session in
                 let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
                 return startDate >= dayStart && startDate < dayEnd
-            }.reduce(0) { $0 + Int($1.pushUpCount) }
+            }.count
+            let dayJoggingSessions = completedJogging.filter { session in
+                let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return startDate >= dayStart && startDate < dayEnd
+            }.count
 
             return DashboardWeekDay(
                 id: idx,
                 label: label,
-                pushUps: dayPushUps,
+                sessions: dayPushUpSessions + dayJoggingSessions,
                 isToday: idx == todayIndex
             )
         }
 
         // --- Last session ---
-        if let latest = completed.first {
-            let startDate = Date(timeIntervalSince1970: Double(latest.startedAt.epochSeconds))
-            let endDate   = latest.endedAt.map { Date(timeIntervalSince1970: Double($0.epochSeconds)) }
-            let duration  = endDate.map { Int($0.timeIntervalSince(startDate)) } ?? 0
+        let latestPushUp: (date: Date, session: Shared.WorkoutSession)? = completedPushUps
+            .compactMap { session in
+                let date = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return (date: date, session: session)
+            }
+            .max(by: { $0.date < $1.date })
+        let latestJogging: (date: Date, session: Shared.JoggingSession)? = completedJogging
+            .compactMap { session in
+                let date = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return (date: date, session: session)
+            }
+            .max(by: { $0.date < $1.date })
+
+        if let latest = selectLatestSession(pushUp: latestPushUp, jogging: latestJogging) {
+            let startDate = latest.startedAt
+            let duration = latest.durationSeconds
 
             let dayStart = calendar.startOfDay(for: startDate)
             let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
@@ -262,10 +303,12 @@ final class DashboardViewModel: ObservableObject {
             }
 
             lastSession = DashboardLastSession(
-                pushUpCount: Int(latest.pushUpCount),
+                primaryMetricValue: latest.primaryMetricValue,
+                primaryMetricLabel: latest.primaryMetricLabel,
+                primaryMetricIcon: latest.primaryMetricIcon,
                 durationSeconds: duration,
-                earnedSeconds: Int(latest.earnedTimeCreditSeconds),
-                qualityScore: Double(latest.quality),
+                earnedSeconds: latest.earnedSeconds,
+                qualityScore: latest.qualityScore,
                 relativeDate: relativeDate
             )
         } else {
@@ -282,7 +325,73 @@ final class DashboardViewModel: ObservableObject {
 
         let todayIndex = WeekdayHelper.todayIndex()
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
-            DashboardWeekDay(id: idx, label: label, pushUps: 0, isToday: idx == todayIndex)
+            DashboardWeekDay(id: idx, label: label, sessions: 0, isToday: idx == todayIndex)
         }
+    }
+
+    private struct LastSessionSnapshot {
+        let startedAt: Date
+        let durationSeconds: Int
+        let earnedSeconds: Int
+        let qualityScore: Double
+        let primaryMetricValue: String
+        let primaryMetricLabel: String
+        let primaryMetricIcon: AppIcon
+    }
+
+    private func selectLatestSession(
+        pushUp: (date: Date, session: Shared.WorkoutSession)?,
+        jogging: (date: Date, session: Shared.JoggingSession)?
+    ) -> LastSessionSnapshot? {
+        guard pushUp != nil || jogging != nil else { return nil }
+
+        if let pushUp, let jogging {
+            return pushUp.date >= jogging.date
+                ? mapPushUpSnapshot(pushUp.session)
+                : mapJoggingSnapshot(jogging.session)
+        }
+        if let pushUp {
+            return mapPushUpSnapshot(pushUp.session)
+        }
+        if let jogging {
+            return mapJoggingSnapshot(jogging.session)
+        }
+        return nil
+    }
+
+    private func mapPushUpSnapshot(_ session: Shared.WorkoutSession) -> LastSessionSnapshot {
+        let duration: Int = {
+            guard let endedAt = session.endedAt else { return 0 }
+            return max(0, Int(endedAt.epochSeconds - session.startedAt.epochSeconds))
+        }()
+
+        return LastSessionSnapshot(
+            startedAt: session.startedAt,
+            durationSeconds: duration,
+            earnedSeconds: Int(session.earnedTimeCreditSeconds),
+            qualityScore: Double(session.quality),
+            primaryMetricValue: "\(session.pushUpCount)",
+            primaryMetricLabel: "Push-Ups",
+            primaryMetricIcon: .figureStrengthTraining
+        )
+    }
+
+    private func mapJoggingSnapshot(_ session: Shared.JoggingSession) -> LastSessionSnapshot {
+        let distanceLabel: String = {
+            if session.distanceMeters >= 1000 {
+                return String(format: "%.2f km", session.distanceMeters / 1000.0)
+            }
+            return "\(Int(session.distanceMeters)) m"
+        }()
+
+        return LastSessionSnapshot(
+            startedAt: session.startedAt,
+            durationSeconds: Int(session.durationSeconds),
+            earnedSeconds: Int(session.earnedTimeCreditSeconds),
+            qualityScore: 0.0,
+            primaryMetricValue: distanceLabel,
+            primaryMetricLabel: "Distance",
+            primaryMetricIcon: .figureRun
+        )
     }
 }

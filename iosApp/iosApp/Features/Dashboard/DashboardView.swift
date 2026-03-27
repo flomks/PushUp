@@ -152,13 +152,17 @@ struct DashboardView: View {
     @ViewBuilder
     private func lastSessionMetrics(_ session: DashboardLastSession) -> some View {
         VStack(spacing: AppSpacing.sm) {
-            // Push-up count hero
+            // Primary metric (push-ups or running distance)
             VStack(spacing: AppSpacing.xxs) {
-                Text("\(session.pushUpCount)")
+                Image(systemName: session.primaryMetricIcon.rawValue)
+                    .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                    .foregroundStyle(AppColors.primary)
+
+                Text(session.primaryMetricValue)
                     .font(AppTypography.displayMedium)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Push-Ups")
+                Text(session.primaryMetricLabel)
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -185,7 +189,9 @@ struct DashboardView: View {
 
                 metricItem(
                     icon: .starFill,
-                    value: String(format: "%.0f%%", session.qualityScore * 100),
+                    value: session.qualityScore > 0
+                        ? String(format: "%.0f%%", session.qualityScore * 100)
+                        : "--",
                     label: "Quality",
                     tint: AppColors.formScoreColor(session.qualityScore)
                 )
@@ -227,9 +233,9 @@ struct DashboardView: View {
     @ViewBuilder
     private var emptyStateSection: some View {
         EmptyStateCard(
-            icon: .figureStrengthTraining,
-            title: "Start your first workout!",
-            message: "Do exercises and earn time credit for your screen time.",
+            icon: .figureRun,
+            title: "Start your first activity!",
+            message: "Track workouts or running and earn time credit for screen time.",
             actionTitle: "Choose Workout",
             action: { selectedTab = .workout }
         )

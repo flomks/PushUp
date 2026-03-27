@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - WeeklyChart
 
-/// Bar chart showing push-up counts for each day of the current week.
+/// Bar chart showing activity session counts for each day of the current week.
 ///
 /// Each bar is proportionally scaled to the week's maximum. Today's bar
 /// is highlighted with the primary gradient. Days with no activity show
@@ -22,7 +22,7 @@ struct WeeklyChart: View {
     private let barMinHeight: CGFloat = 4
 
     var body: some View {
-        let total = days.map(\.pushUps).reduce(0, +)
+        let total = days.map(\.sessions).reduce(0, +)
 
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
@@ -35,7 +35,7 @@ struct WeeklyChart: View {
                 Spacer()
 
                 if !isLoading, total > 0 {
-                    Text("\(total) Push-Ups")
+                    Text("\(total) Sessions")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
                 }
@@ -59,13 +59,13 @@ struct WeeklyChart: View {
 
     @ViewBuilder
     private var chartBars: some View {
-        let maxValue = days.map(\.pushUps).max() ?? 1
+        let maxValue = days.map(\.sessions).max() ?? 1
 
         HStack(alignment: .bottom, spacing: AppSpacing.xs) {
             ForEach(days) { day in
                 DayBar(
                     day: day,
-                    maxPushUps: maxValue,
+                    maxSessions: maxValue,
                     barMaxHeight: barMaxHeight,
                     barMinHeight: barMinHeight
                 )
@@ -109,7 +109,7 @@ struct WeeklyChart: View {
     private static let defaultEmptyDays: [DashboardWeekDay] = {
         let todayIdx = WeekdayHelper.todayIndex()
         return WeekdayHelper.dayLabels.enumerated().map { idx, label in
-            DashboardWeekDay(id: idx, label: label, pushUps: 0, isToday: idx == todayIdx)
+            DashboardWeekDay(id: idx, label: label, sessions: 0, isToday: idx == todayIdx)
         }
     }()
 }
@@ -119,27 +119,27 @@ struct WeeklyChart: View {
 private struct DayBar: View {
 
     let day: DashboardWeekDay
-    let maxPushUps: Int
+    let maxSessions: Int
     let barMaxHeight: CGFloat
     let barMinHeight: CGFloat
 
     @State private var appeared = false
 
     private var heightFraction: CGFloat {
-        guard maxPushUps > 0, day.pushUps > 0 else { return 0 }
-        return CGFloat(day.pushUps) / CGFloat(maxPushUps)
+        guard maxSessions > 0, day.sessions > 0 else { return 0 }
+        return CGFloat(day.sessions) / CGFloat(maxSessions)
     }
 
     private var barHeight: CGFloat {
-        guard day.pushUps > 0 else { return barMinHeight }
+        guard day.sessions > 0 else { return barMinHeight }
         return max(barMinHeight, barMaxHeight * heightFraction)
     }
 
     var body: some View {
         VStack(spacing: AppSpacing.xxs) {
-            // Push-up count label
-            if day.isToday || day.pushUps > 0 {
-                Text(day.pushUps > 0 ? "\(day.pushUps)" : "")
+            // Activity session count label
+            if day.isToday || day.sessions > 0 {
+                Text(day.sessions > 0 ? "\(day.sessions)" : "")
                     .font(AppTypography.caption2)
                     .foregroundStyle(day.isToday ? AppColors.primary : AppColors.textSecondary)
                     .frame(height: 14)
@@ -167,7 +167,7 @@ private struct DayBar: View {
     }
 
     private var barFill: AnyShapeStyle {
-        if day.isToday && day.pushUps > 0 {
+        if day.isToday && day.sessions > 0 {
             return AnyShapeStyle(
                 LinearGradient(
                     colors: [AppColors.primary, AppColors.secondary],
@@ -175,7 +175,7 @@ private struct DayBar: View {
                     endPoint: .top
                 )
             )
-        } else if day.pushUps > 0 {
+        } else if day.sessions > 0 {
             return AnyShapeStyle(AppColors.primary.opacity(0.35))
         } else {
             return AnyShapeStyle(AppColors.fill)
@@ -249,13 +249,13 @@ private struct SkeletonBar: View {
 #if DEBUG
 #Preview("WeeklyChart") {
     let sampleDays: [DashboardWeekDay] = [
-        DashboardWeekDay(id: 0, label: "Mo", pushUps: 35, isToday: false),
-        DashboardWeekDay(id: 1, label: "Di", pushUps: 0,  isToday: false),
-        DashboardWeekDay(id: 2, label: "Mi", pushUps: 52, isToday: false),
-        DashboardWeekDay(id: 3, label: "Do", pushUps: 18, isToday: false),
-        DashboardWeekDay(id: 4, label: "Fr", pushUps: 42, isToday: true),
-        DashboardWeekDay(id: 5, label: "Sa", pushUps: 0,  isToday: false),
-        DashboardWeekDay(id: 6, label: "So", pushUps: 0,  isToday: false),
+        DashboardWeekDay(id: 0, label: "Mo", sessions: 1, isToday: false),
+        DashboardWeekDay(id: 1, label: "Di", sessions: 0,  isToday: false),
+        DashboardWeekDay(id: 2, label: "Mi", sessions: 2, isToday: false),
+        DashboardWeekDay(id: 3, label: "Do", sessions: 1, isToday: false),
+        DashboardWeekDay(id: 4, label: "Fr", sessions: 2, isToday: true),
+        DashboardWeekDay(id: 5, label: "Sa", sessions: 0,  isToday: false),
+        DashboardWeekDay(id: 6, label: "So", sessions: 0,  isToday: false),
     ]
 
     ScrollView {

@@ -47,15 +47,15 @@ struct WorkoutSelectionView: View {
 
                 // Section header
                 sectionHeader(
-                    title: "Choose Your Workout",
-                    subtitle: "Earn screen time with every exercise"
+                    title: "Choose Activity",
+                    subtitle: "Earn screen time with strength and running"
                 )
-
-                // Hero card for Push-Ups (primary exercise)
-                pushUpHeroCard
 
                 // Jogging card (GPS-tracked)
                 joggingCard
+
+                // Hero card for Push-Ups
+                pushUpHeroCard
 
                 // Grid of other available exercises
                 exerciseGrid

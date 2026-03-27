@@ -5,7 +5,7 @@ import SwiftUI
 /// Card displaying today's aggregated workout statistics in a 2x2 grid
 /// of `StatCard` components from the design system.
 ///
-/// Shows push-ups, sessions, earned time, and average quality for the
+/// Shows active minutes, sessions, earned time, and average quality for the
 /// current day. Renders a skeleton loading state when `isLoading` is true.
 ///
 /// Usage:
@@ -60,10 +60,10 @@ struct DailyStatsCard: View {
     private func statsGrid(_ stats: DashboardDailyStats) -> some View {
         LazyVGrid(columns: Self.gridColumns, spacing: AppSpacing.xs) {
             StatCard(
-                title: "Push-Ups",
-                value: "\(stats.pushUps)",
+                title: "Active Time",
+                value: "\(stats.activeMinutes) min",
                 subtitle: "Today",
-                icon: .figureStrengthTraining,
+                icon: .clock,
                 tint: AppColors.primary
             )
 
@@ -110,11 +110,11 @@ struct DailyStatsCard: View {
                 .foregroundStyle(AppColors.textTertiary)
 
             VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text("No workout yet today")
+                Text("No activity yet today")
                     .font(AppTypography.bodySemibold)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Start a workout to earn time credit.")
+                Text("Start an activity to earn time credit.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }
@@ -180,11 +180,10 @@ private struct SkeletonStatCard: View {
 
             DailyStatsCard(
                 stats: DashboardDailyStats(
-                    pushUps: 42,
+                    activeMinutes: 24,
                     sessions: 2,
                     earnedMinutes: 14,
-                    averageQuality: 0.84,
-                    bestSession: 28
+                    averageQuality: 0.84
                 ),
                 isLoading: false
             )
