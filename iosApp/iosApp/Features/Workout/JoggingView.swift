@@ -536,7 +536,6 @@ struct JoggingView: View {
             }
 
             guard !isMapFocusMode else { return }
-            guard let last else { return }
             let region = MKCoordinateRegion(
                 center: last.coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
