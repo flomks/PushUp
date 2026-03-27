@@ -32,6 +32,7 @@ import kotlinx.datetime.toLocalDateTime
 class GetCreditBreakdownUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val sessionRepository: WorkoutSessionRepository,
+    private val applyDailyResetUseCase: ApplyDailyResetUseCase? = null,
     private val clock: Clock = Clock.System,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
@@ -44,7 +45,7 @@ class GetCreditBreakdownUseCase(
     suspend operator fun invoke(userId: String): CreditBreakdown? {
         require(userId.isNotBlank()) { "userId must not be blank" }
 
-        val credit = timeCreditRepository.get(userId) ?: return null
+        val credit = applyDailyResetUseCase?.invoke(userId) ?: timeCreditRepository.get(userId) ?: return null
         val now = clock.now()
 
         // Calculate the most recent reset boundary (03:00 local time).

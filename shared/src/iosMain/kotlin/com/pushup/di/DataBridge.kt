@@ -16,6 +16,7 @@ import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
+import com.pushup.domain.usecase.ApplyDailyResetUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -148,6 +149,10 @@ object DataBridge : KoinComponent {
         userId: String,
         onUpdate: (TimeCredit?) -> Unit,
     ): Job = scope.launch {
+        // Ensure a due daily reset is applied before the observer starts emitting.
+        // This avoids showing stale credit values when the app opens after days offline.
+        runCatching { get<ApplyDailyResetUseCase>().invoke(userId) }
+
         get<TimeCreditRepository>()
             .observeCredit(userId)
             .catch { /* ignore errors — best-effort live updates */ }

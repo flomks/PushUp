@@ -287,6 +287,7 @@ val useCaseModule: Module = module {
         GetCreditBreakdownUseCase(
             timeCreditRepository = get(),
             sessionRepository = get(),
+            applyDailyResetUseCase = get(),
             clock = get(),
         )
     }
