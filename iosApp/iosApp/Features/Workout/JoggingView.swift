@@ -290,6 +290,7 @@ struct JoggingView: View {
                         endPoint: .bottom
                     )
                     .ignoresSafeArea()
+                    .allowsHitTesting(false)
                 } else {
                     // Keep the map clean; only a subtle top fade for readability.
                     LinearGradient(
@@ -301,6 +302,7 @@ struct JoggingView: View {
                         endPoint: .center
                     )
                     .ignoresSafeArea()
+                    .allowsHitTesting(false)
                 }
 
                 // Stats UI layer (slides out with swipe effect)
