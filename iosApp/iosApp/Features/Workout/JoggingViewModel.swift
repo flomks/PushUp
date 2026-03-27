@@ -142,9 +142,10 @@ final class JoggingViewModel: ObservableObject {
         isLoadingRunSocialData = true
 
         if let currentUser = await AuthService.shared.getCurrentUser() {
+            let safeDisplayName = currentUser.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
             let me = RunParticipant(
                 id: currentUser.id,
-                displayName: (currentUser.displayName?.isEmpty == false ? currentUser.displayName! : "You"),
+                displayName: safeDisplayName.isEmpty ? "You" : safeDisplayName,
                 username: currentUser.username,
                 status: .running
             )
