@@ -39,6 +39,9 @@ class SyncJoggingUseCase(
     private val maxRetries: Int = 3,
     private val baseDelayMs: Long = 500L,
 ) {
+    private val distanceEpsilonMeters = 1.0
+    private val durationEpsilonSeconds = 2L
+
 
     /**
      * Uploads all unsynced jogging sessions for [userId] to Supabase.
@@ -165,9 +168,19 @@ class SyncJoggingUseCase(
                 // Also re-upload route points in case they changed
                 uploadRoutePoints(local.id)
                 uploadSegments(local.id)
+                sessionRepository.markAsSynced(local.id)
+                return UploadOutcome.SYNCED
             }
-            sessionRepository.markAsSynced(local.id)
-            UploadOutcome.SKIPPED
+
+            // Only mark as synced when the effective payload already matches.
+            // This avoids silently treating divergent rows as synchronized.
+            if (sessionsEffectivelyEqual(local, remote)) {
+                sessionRepository.markAsSynced(local.id)
+                UploadOutcome.SKIPPED
+            } else {
+                markFailed(local.id)
+                UploadOutcome.FAILED
+            }
         } catch (e: ApiException) {
             if (e.isTransient) throw e
             markFailed(local.id)
@@ -183,6 +196,25 @@ class SyncJoggingUseCase(
             // Best-effort
         }
     }
+
+    private fun sessionsEffectivelyEqual(local: JoggingSession, remote: JoggingSession): Boolean {
+        return local.startedAt == remote.startedAt &&
+            local.endedAt == remote.endedAt &&
+            nearlyEqual(local.distanceMeters, remote.distanceMeters, distanceEpsilonMeters) &&
+            nearlyEqual(local.activeDistanceMeters, remote.activeDistanceMeters, distanceEpsilonMeters) &&
+            nearlyEqual(local.pauseDistanceMeters, remote.pauseDistanceMeters, distanceEpsilonMeters) &&
+            nearlyEqual(local.durationSeconds, remote.durationSeconds, durationEpsilonSeconds) &&
+            nearlyEqual(local.activeDurationSeconds, remote.activeDurationSeconds, durationEpsilonSeconds) &&
+            nearlyEqual(local.pauseDurationSeconds, remote.pauseDurationSeconds, durationEpsilonSeconds) &&
+            local.avgPaceSecondsPerKm == remote.avgPaceSecondsPerKm &&
+            local.caloriesBurned == remote.caloriesBurned &&
+            local.earnedTimeCreditSeconds == remote.earnedTimeCreditSeconds &&
+            local.pauseCount == remote.pauseCount
+    }
+
+    private fun nearlyEqual(a: Double, b: Double, tolerance: Double): Boolean = kotlin.math.abs(a - b) <= tolerance
+
+    private fun nearlyEqual(a: Long, b: Long, tolerance: Long): Boolean = kotlin.math.abs(a - b) <= tolerance
 
     private enum class UploadOutcome { SYNCED, SKIPPED, FAILED }
 }

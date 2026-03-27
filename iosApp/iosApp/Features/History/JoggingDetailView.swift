@@ -40,6 +40,10 @@ struct JoggingDetailView: View {
     /// Map camera position.
     @State private var mapPosition: MapCameraPosition = .automatic
 
+    private var smoothedRouteCoordinates: [CLLocationCoordinate2D] {
+        RouteSmoothing.smoothCoordinates(routePoints.map(\.coordinate))
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -116,7 +120,7 @@ struct JoggingDetailView: View {
 
             // Set initial map region to fit the route
             if !mapped.isEmpty {
-                let coords = mapped.map { $0.coordinate }
+                let coords = RouteSmoothing.smoothCoordinates(mapped.map { $0.coordinate })
                 let region = Self.regionForCoordinates(coords)
                 mapPosition = .region(region)
             }
@@ -303,9 +307,9 @@ struct JoggingDetailView: View {
     private var routeMap: some View {
         Map(position: $mapPosition, interactionModes: [.pan, .zoom]) {
             // Route polyline
-            if routePoints.count >= 2 {
+            if smoothedRouteCoordinates.count >= 2 {
                 MapPolyline(
-                    coordinates: routePoints.map { $0.coordinate }
+                    coordinates: smoothedRouteCoordinates
                 )
                 .stroke(AppColors.info, lineWidth: 4)
             }

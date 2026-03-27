@@ -1,0 +1,6 @@
+-- v9 migration: jogging query performance and safer write paths
+CREATE INDEX IF NOT EXISTS idx_jogging_session_user_started_at
+ON JoggingSession(userId, startedAt DESC);
+
+CREATE INDEX IF NOT EXISTS idx_jogging_session_user_sync_updated_at
+ON JoggingSession(userId, syncStatus, updatedAt);

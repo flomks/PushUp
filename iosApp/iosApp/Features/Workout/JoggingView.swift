@@ -23,6 +23,7 @@ struct JoggingView: View {
     @State private var isRenderingShareImage = false
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var isFollowingRunner = false
+    @State private var isCurrentMarkerPulsing = false
 
     var body: some View {
         ZStack {
@@ -359,14 +360,14 @@ struct JoggingView: View {
             ZStack(alignment: .topTrailing) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(speedValueDisplay)
-                        .font(.system(size: 62, weight: .bold, design: .rounded))
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
                     Text("KM/H")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.7))
                         .tracking(1)
                         .padding(.leading, 8)
@@ -399,7 +400,7 @@ struct JoggingView: View {
                         .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundStyle(Color.orange)
                         .tracking(2)
-                        .padding(.top, 78)
+                        .padding(.top, 98)
                 }
             }
 
@@ -499,15 +500,41 @@ struct JoggingView: View {
 
     // MARK: - Route Map
 
+    private var displayRouteCoordinates: [CLLocationCoordinate2D] {
+        RouteSmoothing.smoothCoordinates(viewModel.routeLocations.map(\.coordinate))
+    }
+
     private var routeMapView: some View {
         Map(
             position: $mapPosition,
             interactionModes: isMapFocusMode ? [.pan, .zoom, .pitch, .rotate] : []
         ) {
+            // Start marker
+            if let start = viewModel.routeLocations.first {
+                Annotation("Start", coordinate: start.coordinate) {
+                    VStack(spacing: 4) {
+                        Text("START")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.9), in: Capsule())
+
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 12, height: 12)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white, lineWidth: 2)
+                            )
+                    }
+                }
+            }
+
             // Route polyline
-            if viewModel.routeLocations.count >= 2 {
+            if displayRouteCoordinates.count >= 2 {
                 MapPolyline(
-                    coordinates: viewModel.routeLocations.map { $0.coordinate }
+                    coordinates: displayRouteCoordinates
                 )
                 .stroke(AppColors.info, lineWidth: 4)
             }
@@ -517,6 +544,12 @@ struct JoggingView: View {
                 Annotation("", coordinate: current.coordinate) {
                     ZStack {
                         Circle()
+                            .stroke(AppColors.info.opacity(0.45), lineWidth: 2)
+                            .frame(width: 30, height: 30)
+                            .scaleEffect(isCurrentMarkerPulsing ? 1.35 : 0.75)
+                            .opacity(isCurrentMarkerPulsing ? 0.0 : 0.9)
+
+                        Circle()
                             .fill(AppColors.info)
                             .frame(width: 16, height: 16)
                         Circle()
@@ -524,6 +557,35 @@ struct JoggingView: View {
                             .frame(width: 8, height: 8)
                     }
                     .shadow(color: AppColors.info.opacity(0.5), radius: 6)
+                    .onAppear {
+                        guard !isCurrentMarkerPulsing else { return }
+                        withAnimation(.easeOut(duration: 1.3).repeatForever(autoreverses: false)) {
+                            isCurrentMarkerPulsing = true
+                        }
+                    }
+                }
+            }
+
+            // End marker (shown on finished screen)
+            if viewModel.phase == .finished,
+               let end = viewModel.routeLocations.last {
+                Annotation("End", coordinate: end.coordinate) {
+                    VStack(spacing: 4) {
+                        Text("END")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.9), in: Capsule())
+
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 12, height: 12)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white, lineWidth: 2)
+                            )
+                    }
                 }
             }
         }
@@ -602,7 +664,7 @@ struct JoggingView: View {
 
     private func showEntireRoute() {
         isFollowingRunner = false
-        let coordinates = viewModel.routeLocations.map(\.coordinate)
+        let coordinates = displayRouteCoordinates
         guard !coordinates.isEmpty else { return }
         let region = mapRegionForCoordinates(coordinates)
         withAnimation(.easeInOut(duration: 0.3)) {
@@ -809,7 +871,7 @@ struct JoggingView: View {
         guard !isRenderingShareImage else { return }
         isRenderingShareImage = true
 
-        let coordinates = viewModel.routeLocations.map { $0.coordinate }
+        let coordinates = displayRouteCoordinates
         let distance = viewModel.formattedDistance
         let duration = viewModel.formattedDuration
         let pace = viewModel.formattedPace

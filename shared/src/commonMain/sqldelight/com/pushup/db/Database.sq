@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v8)
+-- PushUp App Local Database Schema (v9)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 -- Dates are stored as TEXT in ISO-8601 format (YYYY-MM-DD).
@@ -16,6 +16,7 @@
 --                   credit tracking (charts).
 --   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for GPS-tracked jogging workouts.
 --   v8 (7.sqm)   — Added Jogging pause/run segment support and split active/pause metrics.
+--   v9 (8.sqm)   — Added composite jogging indexes and safe UPSERT (no REPLACE delete semantics).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -485,6 +486,8 @@ CREATE TABLE JoggingSession (
 CREATE INDEX idx_jogging_session_user_id    ON JoggingSession(userId);
 CREATE INDEX idx_jogging_session_started_at ON JoggingSession(startedAt);
 CREATE INDEX idx_jogging_session_sync       ON JoggingSession(syncStatus);
+CREATE INDEX idx_jogging_session_user_started_at ON JoggingSession(userId, startedAt DESC);
+CREATE INDEX idx_jogging_session_user_sync_updated_at ON JoggingSession(userId, syncStatus, updatedAt);
 
 -- =============================================================================
 -- RoutePoint
@@ -548,8 +551,24 @@ SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPace
 WHERE id = ?;
 
 upsertJoggingSession:
-INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    userId = excluded.userId,
+    startedAt = excluded.startedAt,
+    endedAt = excluded.endedAt,
+    distanceMeters = excluded.distanceMeters,
+    durationSeconds = excluded.durationSeconds,
+    avgPaceSecondsPerKm = excluded.avgPaceSecondsPerKm,
+    caloriesBurned = excluded.caloriesBurned,
+    earnedTimeCredits = excluded.earnedTimeCredits,
+    activeDurationSeconds = excluded.activeDurationSeconds,
+    pauseDurationSeconds = excluded.pauseDurationSeconds,
+    activeDistanceMeters = excluded.activeDistanceMeters,
+    pauseDistanceMeters = excluded.pauseDistanceMeters,
+    pauseCount = excluded.pauseCount,
+    syncStatus = excluded.syncStatus,
+    updatedAt = excluded.updatedAt;
 
 deleteJoggingSession:
 DELETE FROM JoggingSession
