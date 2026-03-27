@@ -200,8 +200,8 @@ struct TimeCreditDetailView: View {
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
                                 .foregroundStyle(AppColors.fill)
                             AxisValueLabel {
-                                if let intVal = value.as(Int.self) {
-                                    Text("\(intVal)m")
+                                if let minuteVal = value.as(Double.self) {
+                                    Text(formatAxisMinutes(minuteVal))
                                         .font(AppTypography.caption2)
                                         .foregroundStyle(AppColors.textSecondary)
                                 }
@@ -530,6 +530,22 @@ struct TimeCreditDetailView: View {
             return "\(clamped)s"
         }
         return "\(minutes) min"
+    }
+
+    private func formatAxisMinutes(_ minutes: Double) -> String {
+        let clamped = max(0.0, minutes)
+        if clamped < 1.0 {
+            let seconds = Int((clamped * 60.0).rounded())
+            return "\(seconds)s"
+        }
+        if clamped < 10.0 {
+            let rounded = (clamped * 10.0).rounded() / 10.0
+            if rounded.rounded(.towardZero) == rounded {
+                return "\(Int(rounded))m"
+            }
+            return "\(rounded)m"
+        }
+        return "\(Int(clamped.rounded()))m"
     }
 }
 
