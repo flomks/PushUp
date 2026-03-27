@@ -7,9 +7,8 @@ struct KilometerProgressRing: View {
     let distanceMeters: Double
 
     static let ringDiameter: CGFloat = 255
-    private static let trackLineWidth: CGFloat = 2
-    private static let progressLineWidth: CGFloat = 2.8
-    private static let headDotDiameter: CGFloat = 8
+    fileprivate static let trackLineWidth: CGFloat = 2
+    fileprivate static let progressLineWidth: CGFloat = 2.8
 
     private var progress01: CGFloat {
         let d = distanceMeters.truncatingRemainder(dividingBy: 1000)
@@ -41,24 +40,53 @@ struct KilometerProgressRing: View {
                 }
             }
 
-            headDot
+            KilometerRingHeadMarker(progress01: progress01)
         }
         .frame(width: Self.ringDiameter, height: Self.ringDiameter)
+        .animation(.easeOut(duration: 0.08), value: distanceMeters)
     }
+}
 
-    private var headDot: some View {
+// MARK: - Head marker
+
+private struct KilometerRingHeadMarker: View {
+    let progress01: CGFloat
+
+    private static let coreDiameter: CGFloat = 13
+    private static let haloDiameter: CGFloat = 28
+
+    var body: some View {
         GeometryReader { geo in
             let size = min(geo.size.width, geo.size.height)
-            let r = (size - Self.progressLineWidth) / 2
+            let radius = (size - KilometerProgressRing.progressLineWidth) / 2
             let angle = -CGFloat.pi / 2 + progress01 * 2 * CGFloat.pi
-            let cx = size / 2 + r * cos(angle)
-            let cy = size / 2 + r * sin(angle)
+            let cx = size / 2 + radius * cos(angle)
+            let cy = size / 2 + radius * sin(angle)
 
-            Circle()
-                .fill(Color.white)
-                .frame(width: Self.headDotDiameter, height: Self.headDotDiameter)
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: progress01 <= 0.0001)) { context in
+                let t = context.date.timeIntervalSinceReferenceDate
+                let breath = 1.0 + 0.18 * sin(t * 2 * .pi / 1.25)
+                let haloPulse = 1.0 + 0.12 * sin(t * 2 * .pi / 1.25 + 0.4)
+
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.22 + 0.18 * sin(t * 2 * .pi / 1.25)))
+                        .frame(width: Self.haloDiameter, height: Self.haloDiameter)
+                        .scaleEffect(haloPulse)
+
+                    Circle()
+                        .stroke(Color.white.opacity(0.95), lineWidth: 2.2)
+                        .frame(width: Self.coreDiameter + 5, height: Self.coreDiameter + 5)
+                        .scaleEffect(breath)
+
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: Self.coreDiameter, height: Self.coreDiameter)
+                        .shadow(color: Color.white.opacity(0.9), radius: 5 + 4 * sin(t * 2 * .pi / 1.25))
+                }
                 .position(x: cx, y: cy)
                 .opacity(progress01 > 0.0001 ? 1 : 0)
+            }
         }
         .allowsHitTesting(false)
     }

@@ -27,6 +27,7 @@ struct JoggingView: View {
 #if DEBUG
     /// Temporary: simulates 0→1000 m for ring + DIST only; remove when no longer needed.
     @State private var simulatedDistanceMeters: Double?
+    @State private var distanceSimulationTask: Task<Void, Never>?
 #endif
 
     var body: some View {
@@ -445,7 +446,11 @@ struct JoggingView: View {
                 .frame(width: KilometerProgressRing.ringDiameter, height: KilometerProgressRing.ringDiameter)
 
                 HStack(spacing: 18) {
+#if DEBUG
+                    activeInfoPill(title: "DIST", value: displayDistancePillText())
+#else
                     activeInfoPill(title: "DIST", value: formatDistanceMeters(effectiveDistanceMeters))
+#endif
                     activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
                 }
 
@@ -965,6 +970,18 @@ struct JoggingView: View {
     }
 
 #if DEBUG
+    /// DIST during simulation uses tenths of a meter so the value steps visibly with the timer; live GPS uses `formatDistanceMeters`.
+    private func displayDistancePillText() -> String {
+        if simulatedDistanceMeters != nil {
+            let m = effectiveDistanceMeters
+            if m >= 1000 {
+                return String(format: "%.2f km", m / 1000.0)
+            }
+            return String(format: "%.1f m", m)
+        }
+        return formatDistanceMeters(effectiveDistanceMeters)
+    }
+
     private var testDistanceSimulationButton: some View {
         Button {
             startSimulatedKilometerTest()
@@ -980,13 +997,24 @@ struct JoggingView: View {
     }
 
     private func startSimulatedKilometerTest() {
+        distanceSimulationTask?.cancel()
         simulatedDistanceMeters = 0
-        // Target slightly under 1000 m so remainder stays in (0, 1000) and the ring reads “full”.
-        withAnimation(.linear(duration: 10)) {
-            simulatedDistanceMeters = 999.99
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
+
+        let duration: TimeInterval = 10
+        let targetMeters = 999.99
+        let stepCount = 200
+        let stepNanos = UInt64((duration / Double(stepCount)) * 1_000_000_000)
+
+        distanceSimulationTask = Task { @MainActor in
+            for step in 0...stepCount {
+                guard !Task.isCancelled else { return }
+                let t = Double(step) / Double(stepCount)
+                simulatedDistanceMeters = t * targetMeters
+                if step < stepCount {
+                    try? await Task.sleep(nanoseconds: stepNanos)
+                }
+            }
+            guard !Task.isCancelled else { return }
             simulatedDistanceMeters = nil
         }
     }
