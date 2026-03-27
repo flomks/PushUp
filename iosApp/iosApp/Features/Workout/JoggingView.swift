@@ -337,8 +337,9 @@ struct JoggingView: View {
                             .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .allowsHitTesting(true)
                     // Make it look like it comes from the left edge
-                    .offset(x: -24, y: -24)
+                    .offset(x: -38, y: -24)
                     .padding(.bottom, 24)
 
                     Spacer()
@@ -360,12 +361,15 @@ struct JoggingView: View {
                             .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .allowsHitTesting(true)
                     // Make it look like it comes from the right edge
-                    .offset(x: 24, y: -24)
+                    .offset(x: 38, y: -24)
                     .padding(.bottom, 24)
                 }
             }
         }
+        // Let map gestures pass through everywhere except actual buttons.
+        .allowsHitTesting(false)
     }
 
     private var statsOverlay: some View {
@@ -539,13 +543,7 @@ struct JoggingView: View {
         }
         .mapStyle(.standard(elevation: .flat))
         .mapControlVisibility(isMapFocusMode ? .visible : .hidden)
-        .mapControls {
-            if isMapFocusMode {
-                MapUserLocationButton()
-                MapCompass()
-                MapScaleView()
-            }
-        }
+        .mapControls {}
         .onChange(of: viewModel.routeLocations.last) { _, last in
             guard !isMapFocusMode else { return }
             guard let last else { return }
@@ -553,6 +551,37 @@ struct JoggingView: View {
                 center: last.coordinate,
                 span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
             )
+            mapPosition = .region(region)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if isMapFocusMode {
+                VStack(spacing: 10) {
+                    Button {
+                        recenterOnCurrentLocation()
+                    } label: {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background(Color.black.opacity(0.55), in: Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+                // Place controls lower to avoid Dynamic Island area
+                .padding(.trailing, 14)
+                .padding(.bottom, 90)
+            }
+        }
+    }
+
+    private func recenterOnCurrentLocation() {
+        guard let last = viewModel.routeLocations.last else { return }
+        let region = MKCoordinateRegion(
+            center: last.coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+        )
+        withAnimation(.easeInOut(duration: 0.25)) {
             mapPosition = .region(region)
         }
     }
