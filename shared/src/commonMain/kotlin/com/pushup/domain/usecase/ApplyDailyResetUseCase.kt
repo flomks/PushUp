@@ -88,47 +88,47 @@ class ApplyDailyResetUseCase(
             return credit
         }
 
-        // A reset is due. First, save a snapshot of the day that just ended.
-        saveSnapshot(userId, credit, mostRecentReset)
+        // A reset is due. Apply each missed daily boundary one by one so carry-over
+        // compounds correctly day-by-day (instead of a single reset over many days).
+        var workingCredit = credit
+        var boundary = nextResetBoundary(credit.lastResetAt)
 
-        // Now calculate carry-over.
-        val currentAvailable = credit.availableSeconds
+        while (boundary <= mostRecentReset) {
+            // Save snapshot for the day that just ended at this boundary.
+            saveSnapshot(userId, workingCredit, boundary)
 
-        if (currentAvailable <= 0) {
-            // Nothing to carry over -- just reset the counters.
-            val reset = credit.copy(
-                dailyEarnedSeconds = 0L,
+            val currentAvailable = workingCredit.availableSeconds
+            val nextDailyEarned = if (currentAvailable <= 0L) {
+                0L
+            } else {
+                // Credits earned in the full-carry-over window (02:00-03:00).
+                val windowStart = boundary.minus(
+                    TimeCredit.FULL_CARRY_OVER_WINDOW_HOURS.hours,
+                )
+                val recentEarned = getEarnedInWindow(userId, windowStart, boundary)
+
+                // Credits NOT earned in the recent window = the rest of the available balance.
+                val nonRecentAvailable = (currentAvailable - recentEarned).coerceAtLeast(0L)
+
+                // Carry-over calculation:
+                //   100% of recent credits + 20% of the rest
+                (recentEarned + (nonRecentAvailable * TimeCredit.CARRY_OVER_RATIO).toLong())
+                    .coerceAtLeast(0L)
+            }
+
+            workingCredit = workingCredit.copy(
+                dailyEarnedSeconds = nextDailyEarned,
                 dailySpentSeconds = 0L,
-                lastResetAt = mostRecentReset,
+                lastResetAt = boundary,
                 lastUpdatedAt = now,
                 syncStatus = SyncStatus.PENDING,
             )
-            timeCreditRepository.update(reset)
-            return reset
+
+            boundary = nextResetBoundary(boundary)
         }
 
-        // Calculate credits earned in the full-carry-over window (02:00-03:00).
-        val windowStart = mostRecentReset.minus(
-            TimeCredit.FULL_CARRY_OVER_WINDOW_HOURS.hours,
-        )
-        val recentEarned = getEarnedInWindow(userId, windowStart, mostRecentReset)
-
-        // Credits NOT earned in the recent window = the rest of the available balance.
-        val nonRecentAvailable = (currentAvailable - recentEarned).coerceAtLeast(0L)
-
-        // Carry-over calculation:
-        //   100% of recent credits + 20% of the rest
-        val carryOver = recentEarned + (nonRecentAvailable * TimeCredit.CARRY_OVER_RATIO).toLong()
-
-        val reset = credit.copy(
-            dailyEarnedSeconds = carryOver.coerceAtLeast(0L),
-            dailySpentSeconds = 0L,
-            lastResetAt = mostRecentReset,
-            lastUpdatedAt = now,
-            syncStatus = SyncStatus.PENDING,
-        )
-        timeCreditRepository.update(reset)
-        return reset
+        timeCreditRepository.update(workingCredit)
+        return workingCredit
     }
 
     /**
@@ -154,6 +154,18 @@ class ApplyDailyResetUseCase(
                 .plus(TimeCredit.DAILY_RESET_HOUR.hours)
                 .minus(24.hours)
         }
+    }
+
+    /**
+     * Calculates the next local 03:00 reset boundary after [currentBoundary].
+     */
+    internal fun nextResetBoundary(currentBoundary: Instant): Instant {
+        val nextDate = currentBoundary
+            .toLocalDateTime(timeZone)
+            .date
+            .plus(1, DateTimeUnit.DAY)
+        return nextDate.atStartOfDayIn(timeZone)
+            .plus(TimeCredit.DAILY_RESET_HOUR.hours)
     }
 
     /**
