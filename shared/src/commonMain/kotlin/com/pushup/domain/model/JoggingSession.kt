@@ -32,6 +32,11 @@ data class JoggingSession(
     val avgPaceSecondsPerKm: Int?,
     val caloriesBurned: Int,
     val earnedTimeCreditSeconds: Long,
+    val activeDurationSeconds: Long = 0,
+    val pauseDurationSeconds: Long = 0,
+    val activeDistanceMeters: Double = 0.0,
+    val pauseDistanceMeters: Double = 0.0,
+    val pauseCount: Int = 0,
     val syncStatus: SyncStatus,
 ) {
     init {
@@ -43,6 +48,11 @@ data class JoggingSession(
         require(earnedTimeCreditSeconds >= 0) {
             "JoggingSession.earnedTimeCreditSeconds must be >= 0, was $earnedTimeCreditSeconds"
         }
+        require(activeDurationSeconds >= 0) { "JoggingSession.activeDurationSeconds must be >= 0, was $activeDurationSeconds" }
+        require(pauseDurationSeconds >= 0) { "JoggingSession.pauseDurationSeconds must be >= 0, was $pauseDurationSeconds" }
+        require(activeDistanceMeters >= 0.0) { "JoggingSession.activeDistanceMeters must be >= 0, was $activeDistanceMeters" }
+        require(pauseDistanceMeters >= 0.0) { "JoggingSession.pauseDistanceMeters must be >= 0, was $pauseDistanceMeters" }
+        require(pauseCount >= 0) { "JoggingSession.pauseCount must be >= 0, was $pauseCount" }
         endedAt?.let { end ->
             require(end >= startedAt) {
                 "JoggingSession.endedAt ($end) must not precede startedAt ($startedAt)"

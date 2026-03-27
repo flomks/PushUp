@@ -10,6 +10,8 @@ enum JoggingTrackingError: LocalizedError, Equatable, Sendable {
     case alreadyTracking
     case notTracking
     case locationPermissionDenied
+    case alreadyPaused
+    case notPaused
     case sessionStartFailed(String)
     case sessionFinishFailed(String)
 
@@ -21,6 +23,10 @@ enum JoggingTrackingError: LocalizedError, Equatable, Sendable {
             return "No jogging session is currently active."
         case .locationPermissionDenied:
             return "Location permission is required for jogging tracking."
+        case .alreadyPaused:
+            return "The run is already paused."
+        case .notPaused:
+            return "The run is not paused."
         case .sessionStartFailed(let reason):
             return "Failed to start jogging session: \(reason)"
         case .sessionFinishFailed(let reason):
@@ -56,12 +62,17 @@ final class JoggingTrackingManager: ObservableObject {
 
     /// Whether a jogging session is currently active.
     @Published private(set) var isTracking: Bool = false
+    @Published private(set) var isPaused: Bool = false
 
     /// Total distance covered in meters.
     @Published private(set) var distanceMeters: Double = 0.0
+    @Published private(set) var activeDistanceMeters: Double = 0.0
+    @Published private(set) var pauseDistanceMeters: Double = 0.0
 
     /// Elapsed time of the current session in seconds.
     @Published private(set) var sessionDuration: TimeInterval = 0
+    @Published private(set) var activeDuration: TimeInterval = 0
+    @Published private(set) var pauseDuration: TimeInterval = 0
 
     /// Current pace in seconds per kilometer, or nil if not enough data.
     @Published private(set) var currentPaceSecondsPerKm: Int?
@@ -86,6 +97,7 @@ final class JoggingTrackingManager: ObservableObject {
     private let startJogging: StartJoggingUseCase
     private let recordRoutePoint: RecordRoutePointUseCase
     private let finishJogging: FinishJoggingUseCase
+    private let saveJoggingSegments: SaveJoggingSegmentsUseCase
     private let liveSessionManager: LiveJoggingSessionManager
 
     private var activeSessionId: String?
@@ -94,6 +106,11 @@ final class JoggingTrackingManager: ObservableObject {
     private var sessionTimer: Timer?
     private var locationCancellable: AnyCancellable?
     private var startSessionTask: Task<Void, Never>?
+    private var lastProcessedLocation: CLLocation?
+    private var segmentEvents: [LocalJoggingSegment] = []
+    private var currentSegmentStartDate: Date?
+    private var currentSegmentDistanceStart: Double = 0
+    private var pauseStartedAt: Date?
 
     // MARK: - Init
 
@@ -103,6 +120,7 @@ final class JoggingTrackingManager: ObservableObject {
         startJogging: StartJoggingUseCase,
         recordRoutePoint: RecordRoutePointUseCase,
         finishJogging: FinishJoggingUseCase,
+        saveJoggingSegments: SaveJoggingSegmentsUseCase,
         liveSessionManager: LiveJoggingSessionManager
     ) {
         self.locationManager = locationManager
@@ -110,6 +128,7 @@ final class JoggingTrackingManager: ObservableObject {
         self.startJogging = startJogging
         self.recordRoutePoint = recordRoutePoint
         self.finishJogging = finishJogging
+        self.saveJoggingSegments = saveJoggingSegments
         self.liveSessionManager = liveSessionManager
     }
 
@@ -123,6 +142,7 @@ final class JoggingTrackingManager: ObservableObject {
             startJogging: helper.startJoggingUseCase(),
             recordRoutePoint: helper.recordRoutePointUseCase(),
             finishJogging: helper.finishJoggingUseCase(),
+            saveJoggingSegments: helper.saveJoggingSegmentsUseCase(),
             liveSessionManager: helper.liveJoggingSessionManager()
         )
     }
@@ -162,17 +182,25 @@ final class JoggingTrackingManager: ObservableObject {
             .sink { [weak self] locations in
                 guard let self else { return }
                 self.routeLocations = locations
-                self.distanceMeters = self.locationManager.totalDistanceMeters
                 self.currentSpeed = self.locationManager.currentSpeed
+                self.consumeLocations(locations)
 
                 // Record route point for the latest location
                 if let latest = locations.last, let sessionId = self.activeSessionId {
-                    self.recordLocationPoint(latest, sessionId: sessionId)
+                    self.recordLocationPoint(
+                        latest,
+                        sessionId: sessionId,
+                        totalDistance: self.distanceMeters,
+                        activeDurationSeconds: Int64(self.activeDuration)
+                    )
                 }
             }
 
         isTracking = true
+        isPaused = false
         sessionStartDate = Date()
+        currentSegmentStartDate = sessionStartDate
+        currentSegmentDistanceStart = 0
         startSessionTimer()
 
         startSessionTask = Task {
@@ -202,26 +230,68 @@ final class JoggingTrackingManager: ObservableObject {
         locationCancellable?.cancel()
         locationCancellable = nil
 
+        let endTime = Date()
+        finalizeCurrentSegment(at: endTime)
+
         isTracking = false
+        isPaused = false
         activeSessionId = nil
         activeUserId = nil
         stopSessionTimer()
 
         Task {
+            await persistSegmentsIfPossible(sessionId: sessionId)
             await finishKMPSession(sessionId: sessionId)
         }
+    }
+
+    func pauseTracking() {
+        guard isTracking else { return }
+        guard !isPaused else {
+            lastError = .alreadyPaused
+            return
+        }
+        isPaused = true
+        pauseStartedAt = Date()
+        finalizeCurrentSegment(at: pauseStartedAt ?? Date())
+        currentSegmentStartDate = pauseStartedAt
+        currentSegmentDistanceStart = distanceMeters
+    }
+
+    func resumeTracking() {
+        guard isTracking else { return }
+        guard isPaused else {
+            lastError = .notPaused
+            return
+        }
+        let resumeTime = Date()
+        finalizeCurrentSegment(at: resumeTime)
+        isPaused = false
+        pauseStartedAt = nil
+        currentSegmentStartDate = resumeTime
+        currentSegmentDistanceStart = distanceMeters
     }
 
     // MARK: - Private: State
 
     private func resetState() {
         distanceMeters = 0.0
+        activeDistanceMeters = 0.0
+        pauseDistanceMeters = 0.0
         sessionDuration = 0
+        activeDuration = 0
+        pauseDuration = 0
         currentPaceSecondsPerKm = nil
         currentSpeed = 0.0
         caloriesBurned = 0
         routeLocations = []
         activeSessionId = nil
+        isPaused = false
+        pauseStartedAt = nil
+        lastProcessedLocation = nil
+        segmentEvents = []
+        currentSegmentStartDate = nil
+        currentSegmentDistanceStart = 0
     }
 
     // MARK: - Private: Session Timer
@@ -234,16 +304,21 @@ final class JoggingTrackingManager: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let start = self.sessionStartDate else { return }
-                self.sessionDuration = Date().timeIntervalSince(start)
+                let now = Date()
+                self.sessionDuration = now.timeIntervalSince(start)
+                self.pauseDuration = self.currentPauseDuration(at: now)
+                self.activeDuration = max(0, self.sessionDuration - self.pauseDuration)
 
                 // Update pace
-                if self.distanceMeters >= 100 {
-                    let paceSecondsPerKm = Int((self.sessionDuration / self.distanceMeters) * 1000.0)
+                if self.activeDistanceMeters >= 100, self.activeDuration > 0 {
+                    let paceSecondsPerKm = Int((self.activeDuration / self.activeDistanceMeters) * 1000.0)
                     self.currentPaceSecondsPerKm = paceSecondsPerKm
+                } else {
+                    self.currentPaceSecondsPerKm = nil
                 }
 
                 // Update calories (rough: 60 cal/km)
-                self.caloriesBurned = Int(self.distanceMeters / 1000.0 * 60.0)
+                self.caloriesBurned = Int(self.activeDistanceMeters / 1000.0 * 60.0)
             }
         }
     }
@@ -252,6 +327,8 @@ final class JoggingTrackingManager: ObservableObject {
         sessionTimer?.invalidate()
         sessionTimer = nil
         sessionDuration = 0
+        activeDuration = 0
+        pauseDuration = 0
     }
 
     // MARK: - Private: KMP Calls
@@ -306,9 +383,13 @@ final class JoggingTrackingManager: ObservableObject {
     }
 
     /// Records a single GPS location as a route point in the KMP session.
-    private func recordLocationPoint(_ location: CLLocation, sessionId: String) {
+    private func recordLocationPoint(
+        _ location: CLLocation,
+        sessionId: String,
+        totalDistance: Double,
+        activeDurationSeconds: Int64
+    ) {
         let useCase = self.recordRoutePoint
-        let distance = self.distanceMeters
         // Convert CLLocation timestamp to Kotlinx Instant for the KMP use case.
         // Kotlin/Native does not export default parameter values to Swift,
         // so we must pass the timestamp explicitly.
@@ -326,7 +407,8 @@ final class JoggingTrackingManager: ObservableObject {
                         altitude: location.altitude >= 0 ? KotlinDouble(value: location.altitude) : nil,
                         speed: location.speed >= 0 ? KotlinDouble(value: location.speed) : nil,
                         horizontalAccuracy: location.horizontalAccuracy >= 0 ? KotlinDouble(value: location.horizontalAccuracy) : nil,
-                        distanceFromStart: distance,
+                        distanceFromStart: totalDistance,
+                        activeDurationSecondsOverride: KotlinLong(value: activeDurationSeconds),
                         timestamp: timestamp,
                         completionHandler: handler
                     )
@@ -340,6 +422,82 @@ final class JoggingTrackingManager: ObservableObject {
                 print("[JoggingTrackingManager] Failed to record route point: \(error)")
                 #endif
             }
+        }
+    }
+
+    private func consumeLocations(_ locations: [CLLocation]) {
+        guard let latest = locations.last else { return }
+        defer { lastProcessedLocation = latest }
+
+        guard let previous = lastProcessedLocation else {
+            distanceMeters = activeDistanceMeters + pauseDistanceMeters
+            return
+        }
+
+        let delta = max(0, latest.distance(from: previous))
+        if isPaused {
+            pauseDistanceMeters += delta
+        } else {
+            activeDistanceMeters += delta
+        }
+        distanceMeters = activeDistanceMeters + pauseDistanceMeters
+    }
+
+    private func currentPauseDuration(at now: Date) -> TimeInterval {
+        guard let pauseStartedAt else { return pauseDuration }
+        return pauseDuration + now.timeIntervalSince(pauseStartedAt)
+    }
+
+    private func finalizeCurrentSegment(at end: Date) {
+        guard let start = currentSegmentStartDate else { return }
+        let duration = max(0, Int64(end.timeIntervalSince(start)))
+        let distance = max(0, distanceMeters - currentSegmentDistanceStart)
+        let segment = LocalJoggingSegment(
+            id: UUID().uuidString,
+            startedAt: start,
+            endedAt: end,
+            distanceMeters: distance,
+            durationSeconds: duration,
+            isPause: isPaused
+        )
+        segmentEvents.append(segment)
+
+        if isPaused, let pauseStartedAt {
+            pauseDuration += max(0, end.timeIntervalSince(pauseStartedAt))
+        }
+    }
+
+    private func persistSegmentsIfPossible(sessionId: String?) async {
+        guard let sessionId else { return }
+        let mappedSegments: [Shared.JoggingSegment] = segmentEvents.map { segment in
+            let startedAt = Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+                epochMilliseconds: Int64(segment.startedAt.timeIntervalSince1970 * 1000.0)
+            )
+            let endedAt = Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+                epochMilliseconds: Int64(segment.endedAt.timeIntervalSince1970 * 1000.0)
+            )
+            return Shared.JoggingSegment(
+                id: segment.id,
+                sessionId: sessionId,
+                type: segment.isPause ? .pause : .run,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                distanceMeters: segment.distanceMeters,
+                durationSeconds: segment.durationSeconds
+            )
+        }
+        do {
+            _ = try await withKMPSuspend { handler in
+                self.saveJoggingSegments.invoke(
+                    sessionId: sessionId,
+                    segments: mappedSegments,
+                    completionHandler: handler
+                )
+            } as KotlinUnit
+        } catch {
+            #if DEBUG
+            print("[JoggingTrackingManager] Failed to save jogging segments: \(error)")
+            #endif
         }
     }
 
@@ -384,6 +542,15 @@ final class JoggingTrackingManager: ObservableObject {
             lastError = .sessionFinishFailed(error.localizedDescription)
         }
     }
+}
+
+private struct LocalJoggingSegment {
+    let id: String
+    let startedAt: Date
+    let endedAt: Date
+    let distanceMeters: Double
+    let durationSeconds: Int64
+    let isPause: Bool
 }
 
 // MARK: - KMP Coroutine Bridge (reused from PushUpTrackingManager)

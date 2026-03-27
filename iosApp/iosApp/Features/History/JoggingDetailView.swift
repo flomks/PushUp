@@ -35,6 +35,7 @@ struct JoggingDetailView: View {
 
     /// The selected route point for the tooltip.
     @State private var selectedPoint: RoutePointItem? = nil
+    @State private var segments: [JoggingSegmentItem] = []
 
     /// Map camera position.
     @State private var mapPosition: MapCameraPosition = .automatic
@@ -51,6 +52,10 @@ struct JoggingDetailView: View {
                         routeMapSection
                         if !routePoints.isEmpty {
                             routeDetailsCard
+                        }
+                        pauseInsightsCard
+                        if !segments.isEmpty {
+                            segmentsTimelineCard
                         }
                         if let selected = selectedPoint {
                             selectedPointCard(selected)
@@ -77,7 +82,10 @@ struct JoggingDetailView: View {
                     .accessibilityIdentifier("jogging_detail_close_button")
                 }
             }
-            .task { loadRoutePoints() }
+            .task {
+                loadRoutePoints()
+                loadSegments()
+            }
         }
         .accessibilityIdentifier("jogging_detail_screen")
     }
@@ -111,6 +119,26 @@ struct JoggingDetailView: View {
                 let coords = mapped.map { $0.coordinate }
                 let region = Self.regionForCoordinates(coords)
                 mapPosition = .region(region)
+            }
+        }
+    }
+
+    private func loadSegments() {
+        DataBridge.shared.fetchJoggingSegmentsForSession(sessionId: session.kmpSessionId) { kmpSegments in
+            self.segments = kmpSegments.map { segment in
+                let startMs = segment.startedAt.epochSeconds * 1_000 + Int64(segment.startedAt.nanosecondsOfSecond) / 1_000_000
+                let endEpochSeconds = segment.endedAt?.epochSeconds ?? segment.startedAt.epochSeconds
+                let endNanos = segment.endedAt?.nanosecondsOfSecond ?? segment.startedAt.nanosecondsOfSecond
+                let endMs = endEpochSeconds * 1_000 + Int64(endNanos) / 1_000_000
+
+                return JoggingSegmentItem(
+                    id: segment.id,
+                    type: segment.type.name.lowercased() == "pause" ? .pause : .run,
+                    startedAt: Date(timeIntervalSince1970: Double(startMs) / 1_000.0),
+                    endedAt: Date(timeIntervalSince1970: Double(endMs) / 1_000.0),
+                    distanceMeters: segment.distanceMeters,
+                    durationSeconds: Int(segment.durationSeconds)
+                )
             }
         }
     }
@@ -443,6 +471,64 @@ struct JoggingDetailView: View {
         .accessibilityIdentifier("jogging_detail_route_details")
     }
 
+    private var pauseInsightsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Pause Insights", icon: .clockArrowCirclepath)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Divider()
+
+                detailRow(label: "Active Time", value: formatDuration(session.activeDurationSeconds))
+                detailRow(label: "Pause Time", value: formatDuration(session.pauseDurationSeconds))
+                detailRow(label: "Active Distance", value: formatDistance(session.activeDistanceMeters))
+                detailRow(label: "Pause Distance", value: formatDistance(session.pauseDistanceMeters))
+                detailRow(label: "Pauses", value: "\(session.pauseCount)")
+            }
+        }
+    }
+
+    private var segmentsTimelineCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Run Timeline", icon: .listBulletRectangle)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Divider()
+
+                ForEach(segments) { segment in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(segment.type == .pause ? AppColors.warning : AppColors.success)
+                            .frame(width: 9, height: 9)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(segment.type == .pause ? "Pause" : "Run")
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("\(Self.timeFormatter.string(from: segment.startedAt)) - \(Self.timeFormatter.string(from: segment.endedAt))")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(formatDuration(segment.durationSeconds))
+                                .font(AppTypography.captionSemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text(formatDistance(segment.distanceMeters))
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     @ViewBuilder
@@ -472,6 +558,19 @@ struct JoggingDetailView: View {
             if diff > 0 { gain += diff }
         }
         return gain
+    }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    private func formatDistance(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.2f km", meters / 1000.0)
+        }
+        return "\(Int(meters)) m"
     }
 
     /// Computes a map region that fits all the given coordinates with padding.
@@ -531,6 +630,20 @@ struct RoutePointItem: Identifiable {
     let timestamp: Date
 }
 
+struct JoggingSegmentItem: Identifiable {
+    enum SegmentType {
+        case run
+        case pause
+    }
+
+    let id: String
+    let type: SegmentType
+    let startedAt: Date
+    let endedAt: Date
+    let distanceMeters: Double
+    let durationSeconds: Int
+}
+
 // MARK: - Previews
 
 #if DEBUG
@@ -543,7 +656,12 @@ struct RoutePointItem: Identifiable {
         durationSeconds: 1845,
         avgPaceSecondsPerKm: 352,
         caloriesBurned: 420,
-        earnedMinutes: 8
+        earnedMinutes: 8,
+        activeDurationSeconds: 1700,
+        pauseDurationSeconds: 145,
+        activeDistanceMeters: 5100,
+        pauseDistanceMeters: 130,
+        pauseCount: 1
     )
 
     JoggingDetailView(session: session)
@@ -558,7 +676,12 @@ struct RoutePointItem: Identifiable {
         durationSeconds: 780,
         avgPaceSecondsPerKm: 371,
         caloriesBurned: 180,
-        earnedMinutes: 4
+        earnedMinutes: 4,
+        activeDurationSeconds: 760,
+        pauseDurationSeconds: 20,
+        activeDistanceMeters: 2050,
+        pauseDistanceMeters: 50,
+        pauseCount: 1
     )
 
     JoggingDetailView(session: session)

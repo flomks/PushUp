@@ -144,6 +144,11 @@ struct JoggingSessionItem: Identifiable {
     let caloriesBurned: Int
     /// Time credit earned in whole minutes.
     let earnedMinutes: Int
+    let activeDurationSeconds: Int
+    let pauseDurationSeconds: Int
+    let activeDistanceMeters: Double
+    let pauseDistanceMeters: Double
+    let pauseCount: Int
 
     /// Distance in km.
     var distanceKm: Double { distanceMeters / 1000.0 }
@@ -466,7 +471,12 @@ final class HistoryViewModel: ObservableObject {
             durationSeconds: Int(kmpSession.durationSeconds),
             avgPaceSecondsPerKm: kmpSession.avgPaceSecondsPerKm?.intValue,
             caloriesBurned: Int(kmpSession.caloriesBurned),
-            earnedMinutes: Int(kmpSession.earnedTimeCreditSeconds / 60)
+            earnedMinutes: Int(kmpSession.earnedTimeCreditSeconds / 60),
+            activeDurationSeconds: Int(kmpSession.activeDurationSeconds),
+            pauseDurationSeconds: Int(kmpSession.pauseDurationSeconds),
+            activeDistanceMeters: kmpSession.activeDistanceMeters,
+            pauseDistanceMeters: kmpSession.pauseDistanceMeters,
+            pauseCount: Int(kmpSession.pauseCount)
         )
     }
 

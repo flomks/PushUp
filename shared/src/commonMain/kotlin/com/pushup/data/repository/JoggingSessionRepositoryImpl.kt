@@ -66,6 +66,11 @@ class JoggingSessionRepositoryImpl(
                 avgPaceSecondsPerKm = session.avgPaceSecondsPerKm?.toLong(),
                 caloriesBurned = session.caloriesBurned.toLong(),
                 earnedTimeCredits = session.earnedTimeCreditSeconds,
+                activeDurationSeconds = session.activeDurationSeconds,
+                pauseDurationSeconds = session.pauseDurationSeconds,
+                activeDistanceMeters = session.activeDistanceMeters,
+                pauseDistanceMeters = session.pauseDistanceMeters,
+                pauseCount = session.pauseCount.toLong(),
                 syncStatus = syncStatusToString(session.syncStatus),
                 updatedAt = now,
                 id = session.id,
@@ -82,6 +87,11 @@ class JoggingSessionRepositoryImpl(
                 avgPaceSecondsPerKm = session.avgPaceSecondsPerKm?.toLong(),
                 caloriesBurned = session.caloriesBurned.toLong(),
                 earnedTimeCredits = session.earnedTimeCreditSeconds,
+                activeDurationSeconds = session.activeDurationSeconds,
+                pauseDurationSeconds = session.pauseDurationSeconds,
+                activeDistanceMeters = session.activeDistanceMeters,
+                pauseDistanceMeters = session.pauseDistanceMeters,
+                pauseCount = session.pauseCount.toLong(),
                 syncStatus = syncStatusToString(session.syncStatus),
                 updatedAt = now,
             )
@@ -183,6 +193,29 @@ class JoggingSessionRepositoryImpl(
     ) {
         queries.updateJoggingSessionSyncStatus(
             syncStatus = syncStatusToString(SyncStatus.SYNCED),
+            updatedAt = clock.now().toEpochMilliseconds(),
+            id = id,
+        )
+    }
+
+    override suspend fun updateSegmentMetrics(
+        id: String,
+        activeDurationSeconds: Long,
+        pauseDurationSeconds: Long,
+        activeDistanceMeters: Double,
+        pauseDistanceMeters: Double,
+        pauseCount: Int,
+    ): Unit = safeDbCall(
+        dispatcher,
+        "Failed to update segment metrics for jogging session '$id'",
+    ) {
+        queries.updateJoggingSegmentMetrics(
+            activeDurationSeconds = activeDurationSeconds,
+            pauseDurationSeconds = pauseDurationSeconds,
+            activeDistanceMeters = activeDistanceMeters,
+            pauseDistanceMeters = pauseDistanceMeters,
+            pauseCount = pauseCount.toLong(),
+            syncStatus = syncStatusToString(SyncStatus.PENDING),
             updatedAt = clock.now().toEpochMilliseconds(),
             id = id,
         )

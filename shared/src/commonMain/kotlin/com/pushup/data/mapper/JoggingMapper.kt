@@ -1,10 +1,13 @@
 package com.pushup.data.mapper
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingSegment
+import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
 import kotlinx.datetime.Instant
 import com.pushup.db.JoggingSession as DbJoggingSession
+import com.pushup.db.JoggingSegment as DbJoggingSegment
 import com.pushup.db.RoutePoint as DbRoutePoint
 
 // =============================================================================
@@ -24,6 +27,11 @@ fun DbJoggingSession.toDomain(): JoggingSession = JoggingSession(
     avgPaceSecondsPerKm = avgPaceSecondsPerKm?.toIntChecked("JoggingSession.avgPaceSecondsPerKm"),
     caloriesBurned = caloriesBurned.toIntChecked("JoggingSession.caloriesBurned"),
     earnedTimeCreditSeconds = earnedTimeCredits,
+    activeDurationSeconds = activeDurationSeconds,
+    pauseDurationSeconds = pauseDurationSeconds,
+    activeDistanceMeters = activeDistanceMeters,
+    pauseDistanceMeters = pauseDistanceMeters,
+    pauseCount = pauseCount.toIntChecked("JoggingSession.pauseCount"),
     syncStatus = syncStatusFromString(syncStatus),
 )
 
@@ -40,8 +48,27 @@ fun JoggingSession.toDbEntity(updatedAt: Instant): DbJoggingSession = DbJoggingS
     avgPaceSecondsPerKm = avgPaceSecondsPerKm?.toLong(),
     caloriesBurned = caloriesBurned.toLong(),
     earnedTimeCredits = earnedTimeCreditSeconds,
+    activeDurationSeconds = activeDurationSeconds,
+    pauseDurationSeconds = pauseDurationSeconds,
+    activeDistanceMeters = activeDistanceMeters,
+    pauseDistanceMeters = pauseDistanceMeters,
+    pauseCount = pauseCount.toLong(),
     syncStatus = syncStatusToString(syncStatus),
     updatedAt = updatedAt.toEpochMilliseconds(),
+)
+
+// =============================================================================
+// JoggingSegment mappers
+// =============================================================================
+
+fun DbJoggingSegment.toDomain(): JoggingSegment = JoggingSegment(
+    id = id,
+    sessionId = sessionId,
+    type = if (type == "pause") JoggingSegmentType.PAUSE else JoggingSegmentType.RUN,
+    startedAt = Instant.fromEpochMilliseconds(startedAt),
+    endedAt = endedAt?.let { Instant.fromEpochMilliseconds(it) },
+    distanceMeters = distanceMeters,
+    durationSeconds = durationSeconds,
 )
 
 // =============================================================================

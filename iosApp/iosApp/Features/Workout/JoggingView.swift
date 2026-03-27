@@ -17,6 +17,7 @@ struct JoggingView: View {
     @Environment(\.openURL) private var openURL
     @State private var showStopConfirmation = false
     @State private var showShareSheet = false
+    @State private var showParticipantsSheet = false
     @State private var shareImage: UIImage?
     @State private var isRenderingShareImage = false
 
@@ -48,6 +49,9 @@ struct JoggingView: View {
             if newPhase == .confirmingStop {
                 showStopConfirmation = true
             }
+        }
+        .sheet(isPresented: $showParticipantsSheet) {
+            runParticipantsSheet
         }
     }
 
@@ -294,7 +298,25 @@ struct JoggingView: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    Spacer(minLength: 8)
+
+                    Spacer(minLength: 12)
+
+                    Button {
+                        showParticipantsSheet = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("\(viewModel.runParticipants.count)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.black.opacity(0.35), in: Capsule())
+                    }
+
                     Text("KM/H")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.7))
@@ -302,6 +324,14 @@ struct JoggingView: View {
                 }
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.top, 24)
+
+                if viewModel.isPaused {
+                    Text("PAUSED")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.orange)
+                        .tracking(2)
+                        .padding(.top, 10)
+                }
 
                 Spacer()
 
@@ -342,7 +372,8 @@ struct JoggingView: View {
 
                     HStack(spacing: 18) {
                         activeInfoPill(title: "DIST", value: viewModel.formattedDistance)
-                        activeInfoPill(title: "CAL", value: "\(viewModel.caloriesBurned)")
+                        activeInfoPill(title: "ACTIVE", value: formatDurationSeconds(Int(viewModel.activeDuration)))
+                        activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
                     }
                 }
 
@@ -363,13 +394,17 @@ struct JoggingView: View {
                     }
 
                     Button {
-                        viewModel.requestStop()
+                        if viewModel.isPaused {
+                            viewModel.resumeWorkout()
+                        } else {
+                            viewModel.pauseWorkout()
+                        }
                     } label: {
                         Circle()
                             .fill(Color.orange)
                             .frame(width: 82, height: 82)
                             .overlay(
-                                Image(systemName: "stop.fill")
+                                Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
                                     .font(.system(size: 28, weight: .bold))
                                     .foregroundStyle(.white)
                             )
@@ -713,6 +748,120 @@ struct JoggingView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color.black.opacity(0.3), in: Capsule())
+    }
+
+    private var runParticipantsSheet: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if viewModel.isLoadingRunSocialData {
+                    Spacer()
+                    ProgressView("Loading runners...")
+                    Spacer()
+                } else {
+                    List {
+                        Section("Wer laeuft mit") {
+                            if viewModel.runParticipants.isEmpty {
+                                Text("Noch keine Teilnehmer im Lauf.")
+                                    .foregroundStyle(AppColors.textSecondary)
+                            } else {
+                                ForEach(viewModel.runParticipants) { participant in
+                                    participantRow(participant)
+                                }
+                            }
+                        }
+
+                        Section("Zum Lauf einladen") {
+                            if viewModel.inviteableFriends.isEmpty {
+                                Text("Keine weiteren Freunde verfuegbar.")
+                                    .foregroundStyle(AppColors.textSecondary)
+                            } else {
+                                ForEach(viewModel.inviteableFriends) { friend in
+                                    HStack(spacing: 12) {
+                                        participantAvatar(initials: friend.initials)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(friend.displayName)
+                                                .font(AppTypography.bodySemibold)
+                                            if let username = friend.username {
+                                                Text("@\(username)")
+                                                    .font(AppTypography.caption1)
+                                                    .foregroundStyle(AppColors.textSecondary)
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Button {
+                                            viewModel.inviteFriendToRun(friend.id)
+                                        } label: {
+                                            Text("Einladen")
+                                                .font(AppTypography.captionSemibold)
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(Color.orange, in: Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.vertical, 2)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Laufgruppe")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showParticipantsSheet = false }
+                }
+            }
+            .task {
+                await viewModel.loadRunSocialData()
+            }
+        }
+    }
+
+    private func participantRow(_ participant: RunParticipant) -> some View {
+        HStack(spacing: 12) {
+            participantAvatar(initials: participant.initials)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(participant.displayName)
+                    .font(AppTypography.bodySemibold)
+                if let username = participant.username {
+                    Text("@\(username)")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+            }
+
+            Spacer()
+
+            Text(participant.status == .running ? "Running" : "Invited")
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(participant.status == .running ? AppColors.success : AppColors.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    (participant.status == .running ? AppColors.success : AppColors.warning).opacity(0.14),
+                    in: Capsule()
+                )
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func participantAvatar(initials: String) -> some View {
+        Circle()
+            .fill(Color.orange.opacity(0.18))
+            .frame(width: 34, height: 34)
+            .overlay(
+                Text(initials)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.orange)
+            )
     }
 
     private func summaryRow(icon: String, label: String, value: String) -> some View {

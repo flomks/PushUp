@@ -1,6 +1,7 @@
 package com.pushup.di
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
@@ -13,6 +14,7 @@ import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
+import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
@@ -127,6 +129,23 @@ object DataBridge : KoinComponent {
             try {
                 val points = get<RoutePointRepository>().getBySessionId(sessionId)
                 withContext(Dispatchers.Main) { onResult(points) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    /**
+     * Fetches all pause/run timeline segments for a jogging [sessionId].
+     */
+    fun fetchJoggingSegmentsForSession(
+        sessionId: String,
+        onResult: (List<JoggingSegment>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val segments = get<GetJoggingSegmentsUseCase>().invoke(sessionId)
+                withContext(Dispatchers.Main) { onResult(segments) }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(emptyList()) }
             }

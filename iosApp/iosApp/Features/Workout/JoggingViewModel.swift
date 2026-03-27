@@ -14,6 +14,30 @@ enum JoggingPhase: Equatable {
     case finished
 }
 
+enum RunParticipantStatus: String {
+    case running
+    case invited
+}
+
+struct RunParticipant: Identifiable, Equatable {
+    let id: String
+    let displayName: String
+    let username: String?
+    var status: RunParticipantStatus
+
+    var initials: String {
+        let source = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty else { return "?" }
+        let parts = source
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        }
+        return String(source.prefix(2)).uppercased()
+    }
+}
+
 // MARK: - JoggingViewModel
 
 /// View model for the jogging workout screen.
@@ -31,13 +55,21 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var phase: JoggingPhase = .idle
     @Published private(set) var distanceMeters: Double = 0.0
     @Published private(set) var sessionDuration: TimeInterval = 0
+    @Published private(set) var activeDuration: TimeInterval = 0
+    @Published private(set) var pauseDuration: TimeInterval = 0
     @Published private(set) var currentPaceSecondsPerKm: Int?
     @Published private(set) var currentSpeed: Double = 0.0
     @Published private(set) var caloriesBurned: Int = 0
     @Published private(set) var routeLocations: [CLLocation] = []
+    @Published private(set) var isPaused: Bool = false
+    @Published private(set) var activeDistanceMeters: Double = 0.0
+    @Published private(set) var pauseDistanceMeters: Double = 0.0
     @Published private(set) var lastError: JoggingTrackingError?
     @Published private(set) var earnedMinutes: Int = 0
     @Published private(set) var dashboard: RunningDashboardData = .empty
+    @Published private(set) var runParticipants: [RunParticipant] = []
+    @Published private(set) var inviteableFriends: [RunParticipant] = []
+    @Published private(set) var isLoadingRunSocialData: Bool = false
 
     // MARK: - Private
 
@@ -53,6 +85,7 @@ final class JoggingViewModel: ObservableObject {
         self.trackingManager = trackingManager
         observeTrackingManager()
         Task { await startDashboardObserving() }
+        Task { await loadRunSocialData() }
     }
 
     /// Convenience initialiser that creates a default tracking manager.
@@ -97,6 +130,63 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.locationManager.requestAuthorization()
     }
 
+    func pauseWorkout() {
+        trackingManager.pauseTracking()
+    }
+
+    func resumeWorkout() {
+        trackingManager.resumeTracking()
+    }
+
+    func loadRunSocialData() async {
+        isLoadingRunSocialData = true
+
+        if let currentUser = await AuthService.shared.getCurrentUser() {
+            let me = RunParticipant(
+                id: currentUser.id,
+                displayName: (currentUser.displayName?.isEmpty == false ? currentUser.displayName! : "You"),
+                username: currentUser.username,
+                status: .running
+            )
+            if !runParticipants.contains(where: { $0.id == me.id }) {
+                runParticipants = [me]
+            }
+        }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            FriendsBridge.shared.getFriends(
+                onResult: { [weak self] friends in
+                    guard let self else { continuation.resume(); return }
+                    let mapped = friends.map {
+                        RunParticipant(
+                            id: $0.id,
+                            displayName: ($0.displayName?.isEmpty == false ? $0.displayName! : ($0.username ?? "Unknown")),
+                            username: $0.username,
+                            status: .invited
+                        )
+                    }
+                    self.inviteableFriends = mapped
+                    self.isLoadingRunSocialData = false
+                    continuation.resume()
+                },
+                onError: { [weak self] _ in
+                    self?.inviteableFriends = []
+                    self?.isLoadingRunSocialData = false
+                    continuation.resume()
+                }
+            )
+        }
+    }
+
+    func inviteFriendToRun(_ friendId: String) {
+        guard let idx = inviteableFriends.firstIndex(where: { $0.id == friendId }) else { return }
+        var invited = inviteableFriends.remove(at: idx)
+        invited.status = .invited
+        if !runParticipants.contains(where: { $0.id == invited.id }) {
+            runParticipants.append(invited)
+        }
+    }
+
     // MARK: - Formatted Values
 
     /// Distance formatted as "X.XX km" or "XXX m".
@@ -110,7 +200,7 @@ final class JoggingViewModel: ObservableObject {
 
     /// Duration formatted as "MM:SS" or "H:MM:SS".
     var formattedDuration: String {
-        let totalSeconds = Int(sessionDuration)
+        let totalSeconds = Int(activeDuration)
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
@@ -167,6 +257,12 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.$sessionDuration
             .receive(on: DispatchQueue.main)
             .assign(to: &$sessionDuration)
+        trackingManager.$activeDuration
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$activeDuration)
+        trackingManager.$pauseDuration
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pauseDuration)
 
         trackingManager.$currentPaceSecondsPerKm
             .receive(on: DispatchQueue.main)
@@ -183,6 +279,15 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.$routeLocations
             .receive(on: DispatchQueue.main)
             .assign(to: &$routeLocations)
+        trackingManager.$isPaused
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$isPaused)
+        trackingManager.$activeDistanceMeters
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$activeDistanceMeters)
+        trackingManager.$pauseDistanceMeters
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pauseDistanceMeters)
 
         trackingManager.$lastError
             .receive(on: DispatchQueue.main)

@@ -45,6 +45,7 @@ class RecordRoutePointUseCase(
         speed: Double?,
         horizontalAccuracy: Double?,
         distanceFromStart: Double,
+        activeDurationSecondsOverride: Long? = null,
         timestamp: Instant = clock.now(),
     ): RoutePoint {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }
@@ -72,7 +73,7 @@ class RecordRoutePointUseCase(
         routePointRepository.save(routePoint)
 
         // Update session running stats
-        val durationSeconds = (timestamp - session.startedAt).inWholeSeconds
+        val durationSeconds = activeDurationSecondsOverride ?: (timestamp - session.startedAt).inWholeSeconds
         val avgPace = if (distanceFromStart >= 100.0) { // Need at least 100m for meaningful pace
             ((durationSeconds.toDouble() / distanceFromStart) * 1000.0).toInt()
         } else {

@@ -1,0 +1,21 @@
+-- Migration 7 -> 8
+-- Adds pause/run aggregate fields and jogging segment timeline storage.
+
+ALTER TABLE JoggingSession ADD COLUMN activeDurationSeconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE JoggingSession ADD COLUMN pauseDurationSeconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE JoggingSession ADD COLUMN activeDistanceMeters REAL NOT NULL DEFAULT 0.0;
+ALTER TABLE JoggingSession ADD COLUMN pauseDistanceMeters REAL NOT NULL DEFAULT 0.0;
+ALTER TABLE JoggingSession ADD COLUMN pauseCount INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE JoggingSegment (
+    id                TEXT    NOT NULL PRIMARY KEY,
+    sessionId         TEXT    NOT NULL REFERENCES JoggingSession(id) ON DELETE CASCADE,
+    type              TEXT    NOT NULL,
+    startedAt         INTEGER NOT NULL,
+    endedAt           INTEGER,
+    distanceMeters    REAL    NOT NULL DEFAULT 0.0,
+    durationSeconds   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_jogging_segment_session_id ON JoggingSegment(sessionId);
+CREATE INDEX idx_jogging_segment_started_at ON JoggingSegment(sessionId, startedAt);

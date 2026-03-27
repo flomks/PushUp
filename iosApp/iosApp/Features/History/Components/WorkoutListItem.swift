@@ -362,7 +362,12 @@ struct StarRatingView: View {
         durationSeconds: 1845,
         avgPaceSecondsPerKm: 352,
         caloriesBurned: 420,
-        earnedMinutes: 8
+        earnedMinutes: 8,
+        activeDurationSeconds: 1700,
+        pauseDurationSeconds: 145,
+        activeDistanceMeters: 5100,
+        pauseDistanceMeters: 130,
+        pauseCount: 1
     )
 
     ScrollView {

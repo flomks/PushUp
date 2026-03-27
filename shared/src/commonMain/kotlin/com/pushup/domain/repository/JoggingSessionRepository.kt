@@ -54,6 +54,18 @@ interface JoggingSessionRepository {
         earnedTimeCreditSeconds: Long,
     )
 
+    /**
+     * Persists derived pause/run aggregate metrics for an existing jogging session.
+     */
+    suspend fun updateSegmentMetrics(
+        id: String,
+        activeDurationSeconds: Long,
+        pauseDurationSeconds: Long,
+        activeDistanceMeters: Double,
+        pauseDistanceMeters: Double,
+        pauseCount: Int,
+    )
+
     /** Marks the session as successfully synced with the backend. */
     suspend fun markAsSynced(id: String)
 

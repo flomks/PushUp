@@ -1,7 +1,9 @@
 package com.pushup.domain.usecase
 
 import com.pushup.domain.model.JoggingSummary
+import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.LevelCalculator
+import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.RoutePointRepository
@@ -22,6 +24,7 @@ import kotlinx.datetime.Clock
  */
 class FinishJoggingUseCase(
     private val sessionRepository: JoggingSessionRepository,
+    private val segmentRepository: JoggingSegmentRepository,
     private val routePointRepository: RoutePointRepository,
     private val timeCreditRepository: TimeCreditRepository,
     private val settingsRepository: UserSettingsRepository,
@@ -78,6 +81,30 @@ class FinishJoggingUseCase(
             avgPaceSecondsPerKm = avgPace,
             caloriesBurned = caloriesBurned,
             earnedTimeCreditSeconds = earnedCredits,
+        )
+
+        val segments = segmentRepository.getBySessionId(sessionId)
+        val activeDuration = segments
+            .filter { it.type == JoggingSegmentType.RUN }
+            .sumOf { it.durationSeconds }
+        val pauseDuration = segments
+            .filter { it.type == JoggingSegmentType.PAUSE }
+            .sumOf { it.durationSeconds }
+        val activeDistance = segments
+            .filter { it.type == JoggingSegmentType.RUN }
+            .sumOf { it.distanceMeters }
+        val pauseDistance = segments
+            .filter { it.type == JoggingSegmentType.PAUSE }
+            .sumOf { it.distanceMeters }
+        val pauseCount = segments.count { it.type == JoggingSegmentType.PAUSE }
+
+        sessionRepository.updateSegmentMetrics(
+            id = sessionId,
+            activeDurationSeconds = activeDuration,
+            pauseDurationSeconds = pauseDuration,
+            activeDistanceMeters = activeDistance,
+            pauseDistanceMeters = pauseDistance,
+            pauseCount = pauseCount,
         )
 
         if (earnedCredits > 0) {

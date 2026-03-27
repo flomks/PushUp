@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v7)
+-- PushUp App Local Database Schema (v8)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 -- Dates are stored as TEXT in ISO-8601 format (YYYY-MM-DD).
@@ -14,8 +14,8 @@
 --                   (dailyEarnedSeconds, dailySpentSeconds, lastResetAt).
 --   v6 (5.sqm)   — Added DailyCreditSnapshot table for historical daily
 --                   credit tracking (charts).
---   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for
---                   GPS-tracked jogging workouts.
+--   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for GPS-tracked jogging workouts.
+--   v8 (7.sqm)   — Added Jogging pause/run segment support and split active/pause metrics.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -473,6 +473,11 @@ CREATE TABLE JoggingSession (
     avgPaceSecondsPerKm   INTEGER,
     caloriesBurned        INTEGER NOT NULL DEFAULT 0,
     earnedTimeCredits     INTEGER NOT NULL DEFAULT 0,
+    activeDurationSeconds INTEGER NOT NULL DEFAULT 0,
+    pauseDurationSeconds  INTEGER NOT NULL DEFAULT 0,
+    activeDistanceMeters  REAL    NOT NULL DEFAULT 0.0,
+    pauseDistanceMeters   REAL    NOT NULL DEFAULT 0.0,
+    pauseCount            INTEGER NOT NULL DEFAULT 0,
     syncStatus            TEXT    NOT NULL DEFAULT 'pending',
     updatedAt             INTEGER NOT NULL
 );
@@ -502,12 +507,30 @@ CREATE INDEX idx_route_point_session_id ON RoutePoint(sessionId);
 CREATE INDEX idx_route_point_timestamp  ON RoutePoint(sessionId, timestamp);
 
 -- =============================================================================
+-- JoggingSegment
+-- Segmented timeline entries for running/pause phases in a jog.
+-- =============================================================================
+
+CREATE TABLE JoggingSegment (
+    id                TEXT    NOT NULL PRIMARY KEY,
+    sessionId         TEXT    NOT NULL REFERENCES JoggingSession(id) ON DELETE CASCADE,
+    type              TEXT    NOT NULL, -- 'run' | 'pause'
+    startedAt         INTEGER NOT NULL,
+    endedAt           INTEGER,
+    distanceMeters    REAL    NOT NULL DEFAULT 0.0,
+    durationSeconds   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_jogging_segment_session_id ON JoggingSegment(sessionId);
+CREATE INDEX idx_jogging_segment_started_at ON JoggingSegment(sessionId, startedAt);
+
+-- =============================================================================
 -- JoggingSession Queries
 -- =============================================================================
 
 insertJoggingSession:
-INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectJoggingSessionById:
 SELECT *
@@ -521,12 +544,12 @@ ORDER BY startedAt DESC;
 
 updateJoggingSession:
 UPDATE JoggingSession
-SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
+SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, activeDurationSeconds = ?, pauseDurationSeconds = ?, activeDistanceMeters = ?, pauseDistanceMeters = ?, pauseCount = ?, syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
 upsertJoggingSession:
-INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteJoggingSession:
 DELETE FROM JoggingSession
@@ -569,6 +592,11 @@ WHERE id = ?;
 updateJoggingSessionEnd:
 UPDATE JoggingSession
 SET endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, syncStatus = ?, updatedAt = ?
+WHERE id = ?;
+
+updateJoggingSegmentMetrics:
+UPDATE JoggingSession
+SET activeDurationSeconds = ?, pauseDurationSeconds = ?, activeDistanceMeters = ?, pauseDistanceMeters = ?, pauseCount = ?, syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
 countJoggingSessionsByUserId:
@@ -615,6 +643,24 @@ WHERE sessionId = ?;
 deleteRoutePoint:
 DELETE FROM RoutePoint
 WHERE id = ?;
+
+-- =============================================================================
+-- JoggingSegment Queries
+-- =============================================================================
+
+insertJoggingSegment:
+INSERT INTO JoggingSegment (id, sessionId, type, startedAt, endedAt, distanceMeters, durationSeconds)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteJoggingSegmentsBySessionId:
+DELETE FROM JoggingSegment
+WHERE sessionId = ?;
+
+selectJoggingSegmentsBySessionId:
+SELECT *
+FROM JoggingSegment
+WHERE sessionId = ?
+ORDER BY startedAt ASC;
 
 -- =============================================================================
 -- LiveJoggingStatus
