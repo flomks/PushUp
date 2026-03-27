@@ -114,13 +114,6 @@ final class JoggingTrackingManager: ObservableObject {
     private var pauseStartedAt: Date?
     private var accumulatedPauseDuration: TimeInterval = 0
 
-    // GPS filtering constants used for distance accumulation.
-    private let accuracyThreshold: Double = 20.0
-    private let minimumDeltaMeters: Double = 2.0
-    private let maximumDeltaMeters: Double = 50.0
-    private let minimumSpeedForDistance: Double = 0.3
-    private let maximumLocationAgeSeconds: TimeInterval = 10.0
-
     // MARK: - Init
 
     init(
@@ -191,7 +184,7 @@ final class JoggingTrackingManager: ObservableObject {
             .sink { [weak self] locations in
                 guard let self else { return }
                 self.routeLocations = locations
-                self.currentSpeed = self.locationManager.currentSpeed
+                self.currentSpeed = self.effectiveSpeedMetersPerSecond(latest: locations.last)
                 self.consumeLocations(locations)
 
                 // Record route point for the latest location
@@ -445,31 +438,54 @@ final class JoggingTrackingManager: ObservableObject {
         }
     }
 
+    /// Core Location can deliver **multiple** fixes per `didUpdateLocations` callback.
+    /// Processing only `locations.last` skips intermediate points and undercounts distance.
     private func consumeLocations(_ locations: [CLLocation]) {
-        guard let latest = locations.last else { return }
-        guard isValidForDistance(latest) else {
+        guard !locations.isEmpty else { return }
+
+        let startIndex: Int
+        if let anchor = lastProcessedLocation {
+            // Prefer matching the previous anchor in the array (stable across batch deliveries).
+            if let idx = locations.firstIndex(where: { $0.distance(from: anchor) < 1.0 }) {
+                startIndex = idx + 1
+            } else {
+                startIndex = locations.firstIndex(where: { $0.timestamp > anchor.timestamp }) ?? locations.count
+            }
+        } else {
+            startIndex = 0
+        }
+
+        guard startIndex < locations.count else {
+            distanceMeters = activeDistanceMeters
+            return
+        }
+
+        for i in startIndex..<locations.count {
+            consumeSingleLocation(locations[i])
+        }
+    }
+
+    private func consumeSingleLocation(_ latest: CLLocation) {
+        guard RouteDistanceCalculator.isFixUsable(latest) else {
+            distanceMeters = activeDistanceMeters
+            return
+        }
+
+        guard let previous = lastProcessedLocation else {
             lastProcessedLocation = latest
             distanceMeters = activeDistanceMeters
             return
         }
-        defer { lastProcessedLocation = latest }
 
-        guard let previous = lastProcessedLocation, isValidForDistance(previous) else {
+        guard RouteDistanceCalculator.isFixUsable(previous) else {
+            lastProcessedLocation = latest
             distanceMeters = activeDistanceMeters
             return
         }
 
-        let delta = max(0, latest.distance(from: previous))
-        guard delta >= minimumDeltaMeters, delta < maximumDeltaMeters else {
+        guard let delta = RouteDistanceCalculator.acceptableSegmentMeters(from: previous, to: latest) else {
             distanceMeters = activeDistanceMeters
-            return
-        }
-
-        let dt = max(0.001, latest.timestamp.timeIntervalSince(previous.timestamp))
-        let derivedSpeed = delta / dt
-        let gpsSpeed = latest.speed >= 0 ? latest.speed : derivedSpeed
-        guard gpsSpeed >= minimumSpeedForDistance else {
-            distanceMeters = activeDistanceMeters
+            lastProcessedLocation = latest
             return
         }
 
@@ -479,17 +495,21 @@ final class JoggingTrackingManager: ObservableObject {
         } else {
             activeDistanceMeters += delta
         }
-        // Statistics are based on active movement only. Pause movement remains
-        // visible in the full route and pause segments, but does not affect stats.
         distanceMeters = activeDistanceMeters
+        lastProcessedLocation = latest
     }
 
-    private func isValidForDistance(_ location: CLLocation) -> Bool {
-        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= accuracyThreshold else {
-            return false
-        }
-        let age = -location.timestamp.timeIntervalSinceNow
-        return age < maximumLocationAgeSeconds
+    /// Prefer GPS speed; when invalid (common on iOS), derive from last two route points.
+    private func effectiveSpeedMetersPerSecond(latest: CLLocation?) -> Double {
+        guard let latest else { return 0 }
+        if latest.speed >= 0 { return latest.speed }
+        guard routeLocations.count >= 2 else { return 0 }
+        let a = routeLocations[routeLocations.count - 2]
+        let b = routeLocations[routeLocations.count - 1]
+        let dt = b.timestamp.timeIntervalSince(a.timestamp)
+        guard dt > 0.2 else { return 0 }
+        let d = b.distance(from: a)
+        return d / dt
     }
 
     private func currentPauseDuration(at now: Date) -> TimeInterval {
