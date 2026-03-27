@@ -338,8 +338,9 @@ struct JoggingView: View {
                     }
                     .buttonStyle(.plain)
                     .allowsHitTesting(true)
-                    // Make it look like it comes from the left edge
-                    .offset(x: -38, y: -24)
+                    // Make it look like it comes from the left edge (but stay visible)
+                    .padding(.leading, -18)
+                    .offset(y: -24)
                     .padding(.bottom, 24)
 
                     Spacer()
@@ -362,8 +363,9 @@ struct JoggingView: View {
                     }
                     .buttonStyle(.plain)
                     .allowsHitTesting(true)
-                    // Make it look like it comes from the right edge
-                    .offset(x: 38, y: -24)
+                    // Make it look like it comes from the right edge (but stay visible)
+                    .padding(.trailing, -18)
+                    .offset(y: -24)
                     .padding(.bottom, 24)
                 }
             }
@@ -383,12 +385,13 @@ struct JoggingView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
 
-                    Spacer(minLength: 8)
-
                     Text("KM/H")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.7))
                         .tracking(1)
+                        .padding(.leading, 8)
+
+                    Spacer(minLength: 8)
                 }
 
                 Button {
