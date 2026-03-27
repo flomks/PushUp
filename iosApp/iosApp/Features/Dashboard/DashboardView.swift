@@ -66,8 +66,8 @@ struct DashboardView: View {
     // MARK: - Scroll Content
 
     private var scrollContent: some View {
-        ScrollView {
-            LazyVStack(spacing: AppSpacing.md) {
+        List {
+            VStack(spacing: AppSpacing.md) {
 
                 // 1. Time credit hero card (tappable for detail breakdown)
                 DashboardTimeCreditCard(
@@ -107,10 +107,13 @@ struct DashboardView: View {
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, AppSpacing.sm)
             .padding(.bottom, AppSpacing.screenVerticalBottom)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
-        // Keep vertical bounce enabled so pull-to-refresh remains reliable
-        // even when content height is close to viewport height.
-        .scrollBounceBehavior(.always, axes: .vertical)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(AppColors.backgroundPrimary)
         .refreshable {
             await viewModel.refresh()
         }
