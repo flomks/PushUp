@@ -267,71 +267,121 @@ struct JoggingView: View {
     // MARK: - Active View
 
     private var activeView: some View {
-        VStack(spacing: 0) {
-            // Route map (top half)
+        ZStack {
             routeMapView
-                .frame(maxHeight: .infinity)
+                .ignoresSafeArea()
 
-            // Stats panel (bottom half)
-            VStack(spacing: AppSpacing.md) {
-                // Primary stat: Distance
-                VStack(spacing: AppSpacing.xxs) {
-                    Text(viewModel.formattedDistance)
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .monospacedDigit()
-
-                    Text("Distance")
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
-                }
-                .padding(.top, AppSpacing.md)
-
-                // Secondary stats grid
-                HStack(spacing: AppSpacing.md) {
-                    statItem(value: viewModel.formattedDuration, label: "Duration", icon: "clock")
-                    statItem(value: viewModel.formattedPace, label: "Pace", icon: "speedometer")
-                    statItem(value: viewModel.formattedSpeed, label: "Speed", icon: "gauge.with.dots.needle.33percent")
-                }
-                .padding(.horizontal, AppSpacing.md)
-
-                // Calories
-                HStack(spacing: AppSpacing.xs) {
-                    Image(systemName: "flame.fill")
-                        .foregroundStyle(AppColors.warning)
-                    Text("\(viewModel.caloriesBurned) cal")
-                        .font(AppTypography.subheadlineSemibold)
-                        .foregroundStyle(AppColors.textPrimary)
-                }
-
-                // Stop button
-                Button {
-                    viewModel.requestStop()
-                } label: {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 16))
-                        Text("End Run")
-                            .font(AppTypography.bodySemibold)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.md)
-                    .background(AppColors.error, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                }
-                .padding(.horizontal, AppSpacing.xl)
-                .padding(.bottom, AppSpacing.lg)
-            }
-            .background(AppColors.backgroundSecondary)
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: AppSpacing.cornerRadiusCard,
-                    topTrailingRadius: AppSpacing.cornerRadiusCard
-                )
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.25),
+                    Color.black.opacity(0.55),
+                    Color.black.opacity(0.85)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -4)
+            .ignoresSafeArea()
+
+            activeTrackDecoration
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                HStack {
+                    Text(speedValueDisplay)
+                        .font(.system(size: 62, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 8)
+                    Text("KM/H")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.7))
+                        .tracking(1)
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, 24)
+
+                Spacer()
+
+                VStack(spacing: 14) {
+                    Circle()
+                        .stroke(Color.orange.opacity(0.8), lineWidth: 2)
+                        .frame(width: 255, height: 255)
+                        .overlay(
+                            Circle()
+                                .fill(Color.black.opacity(0.45))
+                                .overlay(
+                                    VStack(spacing: 10) {
+                                        Text(paceValueDisplay)
+                                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
+                                            .monospacedDigit()
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.7)
+
+                                        Text("PACE")
+                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(Color.white.opacity(0.55))
+                                            .tracking(2)
+
+                                        Text(viewModel.formattedDuration)
+                                            .font(.system(size: 31, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
+                                            .monospacedDigit()
+                                            .padding(.top, 8)
+
+                                        Text("TIME")
+                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(Color.white.opacity(0.55))
+                                            .tracking(2)
+                                    }
+                                )
+                        )
+
+                    HStack(spacing: 18) {
+                        activeInfoPill(title: "DIST", value: viewModel.formattedDistance)
+                        activeInfoPill(title: "CAL", value: "\(viewModel.caloriesBurned)")
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 18) {
+                    Circle()
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "music.note")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.85))
+                        )
+
+                    Button {
+                        viewModel.requestStop()
+                    } label: {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 82, height: 82)
+                            .overlay(
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 28, weight: .bold))
+                                    .foregroundStyle(.white)
+                            )
+                    }
+
+                    Circle()
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.85))
+                        )
+                }
+                .padding(.bottom, 24)
+            }
         }
-        .ignoresSafeArea(edges: .top)
     }
 
     // MARK: - Route Map
@@ -568,6 +618,65 @@ struct JoggingView: View {
         .padding(.vertical, AppSpacing.sm)
         .background(AppColors.backgroundPrimary.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+    }
+
+    private var speedValueDisplay: String {
+        String(format: "%.2f", viewModel.currentSpeed * 3.6)
+    }
+
+    private var paceValueDisplay: String {
+        guard let pace = viewModel.currentPaceSecondsPerKm, pace > 0 else { return "--.--" }
+        let paceMinutes = Double(pace) / 60.0
+        return String(format: "%.2f", paceMinutes)
+    }
+
+    private var activeTrackDecoration: some View {
+        GeometryReader { proxy in
+            Path { path in
+                let w = proxy.size.width
+                let h = proxy.size.height
+                path.move(to: CGPoint(x: w * 0.04, y: h * 0.52))
+                path.addCurve(
+                    to: CGPoint(x: w * 0.92, y: h * 0.61),
+                    control1: CGPoint(x: w * 0.22, y: h * 0.42),
+                    control2: CGPoint(x: w * 0.68, y: h * 0.77)
+                )
+                path.addCurve(
+                    to: CGPoint(x: w * 0.60, y: h * 0.96),
+                    control1: CGPoint(x: w * 1.05, y: h * 0.44),
+                    control2: CGPoint(x: w * 0.78, y: h * 0.90)
+                )
+            }
+            .stroke(
+                Color.orange,
+                style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round)
+            )
+
+            Circle()
+                .fill(Color.green)
+                .frame(width: 20, height: 20)
+                .position(x: proxy.size.width * 0.61, y: proxy.size.height * 0.96)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func activeInfoPill(title: String, value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(title)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.55))
+                .tracking(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.3), in: Capsule())
     }
 
     private func summaryRow(icon: String, label: String, value: String) -> some View {
