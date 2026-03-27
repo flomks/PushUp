@@ -53,86 +53,90 @@ struct JoggingView: View {
     // MARK: - Idle View
 
     private var idleView: some View {
-        VStack(spacing: AppSpacing.xl) {
-            // Back button
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    HStack(spacing: AppSpacing.xs) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Back")
-                            .font(AppTypography.bodySemibold)
-                    }
-                    .foregroundStyle(AppColors.textSecondary)
-                    .padding(.horizontal, AppSpacing.md)
-                    .padding(.vertical, AppSpacing.sm)
-                    .background(.ultraThinMaterial, in: Capsule())
-                }
-                Spacer()
-            }
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.top, AppSpacing.md)
-
-            Spacer()
-
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [AppColors.info, AppColors.info.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-
-                Image(icon: .figureRun)
-                    .font(.system(size: 56, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .symbolRenderingMode(.hierarchical)
-            }
-
-            VStack(spacing: AppSpacing.sm) {
-                Text("Ready to Run?")
-                    .font(AppTypography.title1)
-                    .foregroundStyle(AppColors.textPrimary)
-
-                Text("Track your route, distance, and pace.\nEarn 1 min screen time per km.")
-                    .font(AppTypography.subheadline)
-                    .foregroundStyle(AppColors.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            Spacer()
-
-            if !viewModel.hasLocationPermission {
-                // Permission request
-                VStack(spacing: AppSpacing.md) {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "location.fill")
-                            .foregroundStyle(AppColors.warning)
-                        Text("Location access required")
-                            .font(AppTypography.subheadlineSemibold)
-                            .foregroundStyle(AppColors.textPrimary)
-                    }
-
+        ScrollView {
+            VStack(spacing: AppSpacing.md) {
+                // Back button
+                HStack {
                     Button {
-                        viewModel.requestLocationPermission()
+                        dismiss()
                     } label: {
-                        Text("Grant Location Access")
-                            .font(AppTypography.bodySemibold)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, AppSpacing.md)
-                            .background(AppColors.info, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                        HStack(spacing: AppSpacing.xs) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Back")
+                                .font(AppTypography.bodySemibold)
+                        }
+                        .foregroundStyle(AppColors.textSecondary)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                        .background(.ultraThinMaterial, in: Capsule())
                     }
+                    Spacer()
                 }
-                .padding(.horizontal, AppSpacing.xl)
-            } else {
-                // Start button
+                .padding(.top, AppSpacing.md)
+
+                // Hero
+                Card {
+                    VStack(spacing: AppSpacing.sm) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [AppColors.info, AppColors.info.opacity(0.7)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 90, height: 90)
+
+                            Image(icon: .figureRun)
+                                .font(.system(size: 44, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .symbolRenderingMode(.hierarchical)
+                        }
+
+                        Text("Running Dashboard")
+                            .font(AppTypography.title3)
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        Text("Track your route, progress, and pace. Earn 1 min per km.")
+                            .font(AppTypography.subheadline)
+                            .foregroundStyle(AppColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                runningHighlightsCard
+                runningPersonalBestCard
+                recentRunsCard
+
+                if !viewModel.hasLocationPermission {
+                    VStack(spacing: AppSpacing.md) {
+                        HStack(spacing: AppSpacing.sm) {
+                            Image(systemName: "location.fill")
+                                .foregroundStyle(AppColors.warning)
+                            Text("Location access required")
+                                .font(AppTypography.subheadlineSemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                        }
+
+                        Button {
+                            viewModel.requestLocationPermission()
+                        } label: {
+                            Text("Grant Location Access")
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, AppSpacing.md)
+                                .background(AppColors.info, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+                        }
+                    }
+                    .padding(AppSpacing.md)
+                    .background(AppColors.backgroundSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                }
+
                 Button {
                     viewModel.startWorkout()
                 } label: {
@@ -155,11 +159,108 @@ struct JoggingView: View {
                     )
                     .shadow(color: AppColors.info.opacity(0.4), radius: 12, x: 0, y: 6)
                 }
-                .padding(.horizontal, AppSpacing.xl)
+                .disabled(!viewModel.hasLocationPermission)
+                .opacity(viewModel.hasLocationPermission ? 1 : 0.6)
+                .padding(.top, AppSpacing.xs)
             }
+            .padding(.horizontal, AppSpacing.screenHorizontal)
+            .padding(.bottom, AppSpacing.screenVerticalBottom)
+        }
+    }
 
-            Spacer()
-                .frame(height: AppSpacing.xl)
+    private var runningHighlightsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("This Week", icon: .chartBar)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                HStack(spacing: AppSpacing.sm) {
+                    statItem(
+                        value: formatDistance(viewModel.dashboard.weekDistanceMeters),
+                        label: "Distance",
+                        icon: "figure.run"
+                    )
+                    statItem(
+                        value: "\(viewModel.dashboard.weekRuns)",
+                        label: "Runs",
+                        icon: "timer"
+                    )
+                    statItem(
+                        value: "+\(viewModel.dashboard.weekEarnedMinutes)m",
+                        label: "Earned",
+                        icon: "bolt.fill"
+                    )
+                }
+            }
+        }
+    }
+
+    private var runningPersonalBestCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Personal Best", icon: .starFill)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                summaryRow(
+                    icon: "flag.fill",
+                    label: "Best Distance",
+                    value: formatDistance(viewModel.dashboard.bestDistanceMeters)
+                )
+                summaryRow(
+                    icon: "clock.fill",
+                    label: "Longest Run",
+                    value: formatDurationSeconds(viewModel.dashboard.longestRunDurationSeconds)
+                )
+                summaryRow(
+                    icon: "speedometer",
+                    label: "Weekly Avg Pace",
+                    value: formatPace(viewModel.dashboard.averagePaceSecondsPerKm)
+                )
+            }
+        }
+    }
+
+    private var recentRunsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Recent Runs", icon: .clockArrowCirclepath)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                if viewModel.dashboard.recentRuns.isEmpty {
+                    Text("No runs yet. Start your first run to build your progress.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                } else {
+                    ForEach(viewModel.dashboard.recentRuns) { run in
+                        HStack(spacing: AppSpacing.sm) {
+                            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                                Text(Self.shortDateFormatter.string(from: run.date))
+                                    .font(AppTypography.captionSemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(formatDurationSeconds(run.durationSeconds))
+                                    .font(AppTypography.caption2)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Text(formatDistance(run.distanceMeters))
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+
+                            Text(formatPace(run.avgPaceSecondsPerKm))
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                        if run.id != viewModel.dashboard.recentRuns.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -488,6 +589,39 @@ struct JoggingView: View {
                 .monospacedDigit()
         }
     }
+
+    private func formatDistance(_ meters: Double) -> String {
+        guard meters > 0 else { return "0 m" }
+        if meters >= 1000 {
+            return String(format: "%.2f km", meters / 1000.0)
+        }
+        return "\(Int(meters)) m"
+    }
+
+    private func formatDurationSeconds(_ seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let h = clamped / 3600
+        let m = (clamped % 3600) / 60
+        let s = clamped % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    private func formatPace(_ secondsPerKm: Int?) -> String {
+        guard let secondsPerKm, secondsPerKm > 0 else { return "--:-- /km" }
+        let m = secondsPerKm / 60
+        let s = secondsPerKm % 60
+        return String(format: "%d:%02d /km", m, s)
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
 }
 
 // MARK: - Previews

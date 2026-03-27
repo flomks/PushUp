@@ -1,6 +1,7 @@
 import Combine
 import CoreLocation
 import Foundation
+import Shared
 import UIKit
 
 // MARK: - JoggingPhase
@@ -36,11 +37,13 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var routeLocations: [CLLocation] = []
     @Published private(set) var lastError: JoggingTrackingError?
     @Published private(set) var earnedMinutes: Int = 0
+    @Published private(set) var dashboard: RunningDashboardData = .empty
 
     // MARK: - Private
 
     let trackingManager: JoggingTrackingManager
     private var cancellables = Set<AnyCancellable>()
+    private var joggingObservationJob: Kotlinx_coroutines_coreJob?
 
     // MARK: - Init
 
@@ -49,6 +52,7 @@ final class JoggingViewModel: ObservableObject {
     init(trackingManager: JoggingTrackingManager) {
         self.trackingManager = trackingManager
         observeTrackingManager()
+        Task { await startDashboardObserving() }
     }
 
     /// Convenience initialiser that creates a default tracking manager.
@@ -141,6 +145,20 @@ final class JoggingViewModel: ObservableObject {
 
     // MARK: - Private
 
+    private func startDashboardObserving() async {
+        guard joggingObservationJob == nil else { return }
+        guard let user = await AuthService.shared.getCurrentUser() else {
+            dashboard = .empty
+            return
+        }
+
+        joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: user.id) { [weak self] sessions in
+            guard let self else { return }
+            let completed = sessions.filter { $0.endedAt != nil }
+            self.dashboard = RunningDashboardData.build(from: completed)
+        }
+    }
+
     private func observeTrackingManager() {
         trackingManager.$distanceMeters
             .receive(on: DispatchQueue.main)
@@ -169,5 +187,91 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.$lastError
             .receive(on: DispatchQueue.main)
             .assign(to: &$lastError)
+    }
+
+    deinit {
+        joggingObservationJob?.cancel(cause: nil)
+    }
+}
+
+// MARK: - RunningDashboardData
+
+struct RunningDashboardData {
+    let weekDistanceMeters: Double
+    let weekRuns: Int
+    let weekEarnedMinutes: Int
+    let averagePaceSecondsPerKm: Int?
+    let bestDistanceMeters: Double
+    let longestRunDurationSeconds: Int
+    let recentRuns: [RecentRun]
+
+    static let empty = RunningDashboardData(
+        weekDistanceMeters: 0,
+        weekRuns: 0,
+        weekEarnedMinutes: 0,
+        averagePaceSecondsPerKm: nil,
+        bestDistanceMeters: 0,
+        longestRunDurationSeconds: 0,
+        recentRuns: []
+    )
+
+    struct RecentRun: Identifiable {
+        let id: String
+        let date: Date
+        let distanceMeters: Double
+        let durationSeconds: Int
+        let earnedMinutes: Int
+        let avgPaceSecondsPerKm: Int?
+    }
+
+    static func build(from sessions: [Shared.JoggingSession]) -> RunningDashboardData {
+        guard !sessions.isEmpty else { return .empty }
+
+        let calendar = Calendar.current
+        let today = Date()
+        let weekday = calendar.component(.weekday, from: today)
+        let mondayOffset = (weekday + 5) % 7
+        let weekStart = calendar.date(
+            byAdding: .day,
+            value: -mondayOffset,
+            to: calendar.startOfDay(for: today)
+        ) ?? today
+
+        let weekSessions = sessions.filter { session in
+            let date = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            return date >= weekStart
+        }
+
+        let weekDistance = weekSessions.reduce(0.0) { $0 + $1.distanceMeters }
+        let weekEarned = weekSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds / 60) }
+        let paceValues = weekSessions.compactMap { $0.avgPaceSecondsPerKm?.intValue }.filter { $0 > 0 }
+        let avgPace = paceValues.isEmpty ? nil : (paceValues.reduce(0, +) / paceValues.count)
+        let bestDistance = sessions.map(\.distanceMeters).max() ?? 0
+        let longestDuration = sessions.map { Int($0.durationSeconds) }.max() ?? 0
+
+        let recent = sessions
+            .sorted(by: { $0.startedAt.epochSeconds > $1.startedAt.epochSeconds })
+            .prefix(5)
+            .map { session in
+                let runDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return RecentRun(
+                    id: session.id,
+                    date: runDate,
+                    distanceMeters: session.distanceMeters,
+                    durationSeconds: Int(session.durationSeconds),
+                    earnedMinutes: Int(session.earnedTimeCreditSeconds / 60),
+                    avgPaceSecondsPerKm: session.avgPaceSecondsPerKm?.intValue
+                )
+            }
+
+        return RunningDashboardData(
+            weekDistanceMeters: weekDistance,
+            weekRuns: weekSessions.count,
+            weekEarnedMinutes: weekEarned,
+            averagePaceSecondsPerKm: avgPace,
+            bestDistanceMeters: bestDistance,
+            longestRunDurationSeconds: longestDuration,
+            recentRuns: Array(recent)
+        )
     }
 }
