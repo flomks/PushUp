@@ -309,85 +309,57 @@ struct JoggingView: View {
                     .offset(x: isMapFocusMode ? proxy.size.width : 0)
                     .animation(.spring(duration: 0.45), value: isMapFocusMode)
 
-                mapFocusToggleButton
+                VStack {
+                    Spacer()
+                    HStack {
+                        if isMapFocusMode {
+                            mapFocusToggleButton
+                                .padding(.leading, 8)
+                                .offset(x: -16)
+                            Spacer()
+                        } else {
+                            Spacer()
+                            mapFocusToggleButton
+                                .padding(.trailing, 8)
+                                .offset(x: 16)
+                        }
+                    }
+                    .padding(.bottom, 32)
+                }
             }
         }
     }
 
     private var mapFocusToggleButton: some View {
-        Group {
-            if isMapFocusMode {
-                Button {
-                    withAnimation(.spring(duration: 0.35)) {
-                        isMapFocusMode.toggle()
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 50, height: 44)
-                        .background(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 22,
-                                bottomLeadingRadius: 22,
-                                bottomTrailingRadius: 14,
-                                topTrailingRadius: 14
-                            )
-                            .fill(Color.black.opacity(0.45))
-                        )
-                        .overlay(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 22,
-                                bottomLeadingRadius: 22,
-                                bottomTrailingRadius: 14,
-                                topTrailingRadius: 14
-                            )
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                // Same Y-axis as the bottom-right X button (44pt button + 24pt bottom inset).
-                .padding(.bottom, 24)
-                // Protrude from the left screen edge.
-                .offset(x: -16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            } else {
-                Button {
-                    withAnimation(.spring(duration: 0.35)) {
-                        isMapFocusMode.toggle()
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 50, height: 44)
-                        .background(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 14,
-                                bottomLeadingRadius: 14,
-                                bottomTrailingRadius: 22,
-                                topTrailingRadius: 22
-                            )
-                            .fill(Color.black.opacity(0.45))
-                        )
-                        .overlay(
-                            UnevenRoundedRectangle(
-                                topLeadingRadius: 14,
-                                bottomLeadingRadius: 14,
-                                bottomTrailingRadius: 22,
-                                topTrailingRadius: 22
-                            )
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
-                // Same Y-axis as the bottom-right X button (44pt button + 24pt bottom inset).
-                .padding(.bottom, 24)
-                // Protrude from the right screen edge.
-                .offset(x: 16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        Button {
+            withAnimation(.spring(duration: 0.35)) {
+                isMapFocusMode.toggle()
             }
+        } label: {
+            Image(systemName: isMapFocusMode ? "chevron.right" : "chevron.left")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 50, height: 44)
+                .background(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: isMapFocusMode ? 22 : 14,
+                        bottomLeadingRadius: isMapFocusMode ? 22 : 14,
+                        bottomTrailingRadius: isMapFocusMode ? 14 : 22,
+                        topTrailingRadius: isMapFocusMode ? 14 : 22
+                    )
+                    .fill(Color.black.opacity(0.45))
+                )
+                .overlay(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: isMapFocusMode ? 22 : 14,
+                        bottomLeadingRadius: isMapFocusMode ? 22 : 14,
+                        bottomTrailingRadius: isMapFocusMode ? 14 : 22,
+                        topTrailingRadius: isMapFocusMode ? 14 : 22
+                    )
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
         }
+        .buttonStyle(.plain)
     }
 
     private var statsOverlay: some View {
