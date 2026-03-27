@@ -22,6 +22,7 @@ struct JoggingView: View {
     @State private var shareImage: UIImage?
     @State private var isRenderingShareImage = false
     @State private var mapPosition: MapCameraPosition = .automatic
+    @State private var isFollowingRunner = false
 
     var body: some View {
         ZStack {
@@ -322,8 +323,9 @@ struct JoggingView: View {
 
     private var mapFocusToggleButton: some View {
         Button {
-            withAnimation(.spring(duration: 0.35)) {
-                isMapFocusMode.toggle()
+            isMapFocusMode.toggle()
+            if !isMapFocusMode {
+                isFollowingRunner = false
             }
         } label: {
             Image(systemName: isMapFocusMode ? "chevron.right" : "chevron.left")
@@ -526,6 +528,13 @@ struct JoggingView: View {
         .mapControlVisibility(isMapFocusMode ? .visible : .hidden)
         .mapControls {}
         .onChange(of: viewModel.routeLocations.last) { _, last in
+            guard let last else { return }
+
+            if isFollowingRunner {
+                centerOnRunner(last.coordinate, animated: true)
+                return
+            }
+
             guard !isMapFocusMode else { return }
             guard let last else { return }
             let region = MKCoordinateRegion(
@@ -537,6 +546,18 @@ struct JoggingView: View {
         .overlay(alignment: .bottomTrailing) {
             if isMapFocusMode {
                 VStack(spacing: 10) {
+                    Button {
+                        showEntireRoute()
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background(Color.black.opacity(0.55), in: Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+
                     Button {
                         recenterOnCurrentLocation()
                     } label: {
@@ -558,13 +579,64 @@ struct JoggingView: View {
 
     private func recenterOnCurrentLocation() {
         guard let last = viewModel.routeLocations.last else { return }
+        isFollowingRunner = true
+        centerOnRunner(last.coordinate, animated: true)
+    }
+
+    private func centerOnRunner(_ coordinate: CLLocationCoordinate2D, animated: Bool) {
+        // Tight zoom for active "runner-fixed" mode.
         let region = MKCoordinateRegion(
-            center: last.coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.0038, longitudeDelta: 0.0038)
         )
-        withAnimation(.easeInOut(duration: 0.25)) {
+        if animated {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                mapPosition = .region(region)
+            }
+        } else {
             mapPosition = .region(region)
         }
+    }
+
+    private func showEntireRoute() {
+        isFollowingRunner = false
+        let coordinates = viewModel.routeLocations.map(\.coordinate)
+        guard !coordinates.isEmpty else { return }
+        let region = mapRegionForCoordinates(coordinates)
+        withAnimation(.easeInOut(duration: 0.3)) {
+            mapPosition = .region(region)
+        }
+    }
+
+    private func mapRegionForCoordinates(_ coords: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        guard let first = coords.first else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+        }
+
+        var minLat = first.latitude
+        var maxLat = first.latitude
+        var minLon = first.longitude
+        var maxLon = first.longitude
+
+        for coord in coords {
+            minLat = min(minLat, coord.latitude)
+            maxLat = max(maxLat, coord.latitude)
+            minLon = min(minLon, coord.longitude)
+            maxLon = max(maxLon, coord.longitude)
+        }
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        let span = MKCoordinateSpan(
+            latitudeDelta: max((maxLat - minLat) * 1.35, 0.004),
+            longitudeDelta: max((maxLon - minLon) * 1.35, 0.004)
+        )
+        return MKCoordinateRegion(center: center, span: span)
     }
 
     // MARK: - Finished View
