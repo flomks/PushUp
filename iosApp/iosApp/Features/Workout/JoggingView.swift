@@ -318,60 +318,49 @@ struct JoggingView: View {
     }
 
     private var mapFocusToggleButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                if isMapFocusMode {
-                    Button {
-                        withAnimation(.spring(duration: 0.35)) {
-                            isMapFocusMode.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.leading, 12)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 12)
-                            .background(Color.black.opacity(0.45), in: Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+        Group {
+            if isMapFocusMode {
+                Button {
+                    withAnimation(.spring(duration: 0.35)) {
+                        isMapFocusMode.toggle()
                     }
-                    .buttonStyle(.plain)
-                    .allowsHitTesting(true)
-                    // Make it look like it comes from the left edge (but stay visible)
-                    .padding(.leading, -18)
-                    .offset(y: -24)
-                    .padding(.bottom, 24)
-
-                    Spacer()
-                } else {
-                    Spacer()
-
-                    Button {
-                        withAnimation(.spring(duration: 0.35)) {
-                            isMapFocusMode.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.leading, 16)
-                            .padding(.trailing, 12)
-                            .padding(.vertical, 12)
-                            .background(Color.black.opacity(0.45), in: Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .allowsHitTesting(true)
-                    // Make it look like it comes from the right edge (but stay visible)
-                    .padding(.trailing, -18)
-                    .offset(y: -24)
-                    .padding(.bottom, 24)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.leading, 12)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.45), in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
                 }
+                .buttonStyle(.plain)
+                // Move further inside screen for clear visibility.
+                .padding(.leading, 8)
+                .padding(.bottom, 92)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            } else {
+                Button {
+                    withAnimation(.spring(duration: 0.35)) {
+                        isMapFocusMode.toggle()
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.leading, 16)
+                        .padding(.trailing, 12)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.45), in: Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.10), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                // Move further inside screen for clear visibility.
+                .padding(.trailing, 8)
+                .padding(.bottom, 92)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
-        // Let map gestures pass through everywhere except actual buttons.
-        .allowsHitTesting(false)
     }
 
     private var statsOverlay: some View {
