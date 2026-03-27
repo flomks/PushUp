@@ -291,15 +291,22 @@ struct JoggingView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
-                    Text(speedValueDisplay)
-                        .font(.system(size: 62, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
+                ZStack(alignment: .topTrailing) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(speedValueDisplay)
+                            .font(.system(size: 62, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
-                    Spacer(minLength: 12)
+                        Spacer(minLength: 8)
+
+                        Text("KM/H")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.7))
+                            .tracking(1)
+                    }
 
                     Button {
                         showParticipantsSheet = true
@@ -316,21 +323,19 @@ struct JoggingView: View {
                         .padding(.vertical, 8)
                         .background(Color.black.opacity(0.35), in: Capsule())
                     }
-
-                    Text("KM/H")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.7))
-                        .tracking(1)
+                    .padding(.top, 4)
                 }
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.top, 24)
 
-                if viewModel.isPaused {
-                    Text("PAUSED")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.orange)
-                        .tracking(2)
-                        .padding(.top, 10)
+                .overlay(alignment: .top) {
+                    if viewModel.isPaused {
+                        Text("PAUSED")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.orange)
+                            .tracking(2)
+                            .padding(.top, 78)
+                    }
                 }
 
                 Spacer()
@@ -759,9 +764,9 @@ struct JoggingView: View {
                     Spacer()
                 } else {
                     List {
-                        Section("Wer laeuft mit") {
+                        Section("Who’s running") {
                             if viewModel.runParticipants.isEmpty {
-                                Text("Noch keine Teilnehmer im Lauf.")
+                                Text("No one has joined this run yet.")
                                     .foregroundStyle(AppColors.textSecondary)
                             } else {
                                 ForEach(viewModel.runParticipants) { participant in
@@ -770,9 +775,9 @@ struct JoggingView: View {
                             }
                         }
 
-                        Section("Zum Lauf einladen") {
+                        Section("Invite friends") {
                             if viewModel.inviteableFriends.isEmpty {
-                                Text("Keine weiteren Freunde verfuegbar.")
+                                Text("No friends available to invite.")
                                     .foregroundStyle(AppColors.textSecondary)
                             } else {
                                 ForEach(viewModel.inviteableFriends) { friend in
@@ -794,7 +799,7 @@ struct JoggingView: View {
                                         Button {
                                             viewModel.inviteFriendToRun(friend.id)
                                         } label: {
-                                            Text("Einladen")
+                                            Text("Invite")
                                                 .font(AppTypography.captionSemibold)
                                                 .foregroundStyle(.white)
                                                 .padding(.horizontal, 12)
@@ -811,7 +816,7 @@ struct JoggingView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("Laufgruppe")
+            .navigationTitle("Run group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -201,7 +201,7 @@ final class JoggingViewModel: ObservableObject {
 
     /// Duration formatted as "MM:SS" or "H:MM:SS".
     var formattedDuration: String {
-        let totalSeconds = Int(activeDuration)
+        let totalSeconds = max(0, Int(activeDuration))
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60

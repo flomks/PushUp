@@ -111,6 +111,7 @@ final class JoggingTrackingManager: ObservableObject {
     private var currentSegmentStartDate: Date?
     private var currentSegmentDistanceStart: Double = 0
     private var pauseStartedAt: Date?
+    private var accumulatedPauseDuration: TimeInterval = 0
 
     // MARK: - Init
 
@@ -231,7 +232,7 @@ final class JoggingTrackingManager: ObservableObject {
         locationCancellable = nil
 
         let endTime = Date()
-        finalizeCurrentSegment(at: endTime)
+        endCurrentSegment(at: endTime)
 
         isTracking = false
         isPaused = false
@@ -251,10 +252,13 @@ final class JoggingTrackingManager: ObservableObject {
             lastError = .alreadyPaused
             return
         }
+        let now = Date()
+        // Close the current RUN segment before switching state.
+        finalizeSegment(at: now, isPauseSegment: false)
+
         isPaused = true
-        pauseStartedAt = Date()
-        finalizeCurrentSegment(at: pauseStartedAt ?? Date())
-        currentSegmentStartDate = pauseStartedAt
+        pauseStartedAt = now
+        currentSegmentStartDate = now
         currentSegmentDistanceStart = distanceMeters
     }
 
@@ -265,7 +269,13 @@ final class JoggingTrackingManager: ObservableObject {
             return
         }
         let resumeTime = Date()
-        finalizeCurrentSegment(at: resumeTime)
+        // Close the PAUSE segment.
+        finalizeSegment(at: resumeTime, isPauseSegment: true)
+
+        if let pauseStartedAt {
+            accumulatedPauseDuration += max(0, resumeTime.timeIntervalSince(pauseStartedAt))
+        }
+
         isPaused = false
         pauseStartedAt = nil
         currentSegmentStartDate = resumeTime
@@ -288,6 +298,7 @@ final class JoggingTrackingManager: ObservableObject {
         activeSessionId = nil
         isPaused = false
         pauseStartedAt = nil
+        accumulatedPauseDuration = 0
         lastProcessedLocation = nil
         segmentEvents = []
         currentSegmentStartDate = nil
@@ -444,11 +455,23 @@ final class JoggingTrackingManager: ObservableObject {
     }
 
     private func currentPauseDuration(at now: Date) -> TimeInterval {
-        guard let pauseStartedAt else { return pauseDuration }
-        return pauseDuration + now.timeIntervalSince(pauseStartedAt)
+        let runningPause = pauseStartedAt.map { max(0, now.timeIntervalSince($0)) } ?? 0
+        return accumulatedPauseDuration + runningPause
     }
 
-    private func finalizeCurrentSegment(at end: Date) {
+    private func endCurrentSegment(at end: Date) {
+        if isPaused {
+            finalizeSegment(at: end, isPauseSegment: true)
+            if let pauseStartedAt {
+                accumulatedPauseDuration += max(0, end.timeIntervalSince(pauseStartedAt))
+            }
+            pauseStartedAt = nil
+        } else {
+            finalizeSegment(at: end, isPauseSegment: false)
+        }
+    }
+
+    private func finalizeSegment(at end: Date, isPauseSegment: Bool) {
         guard let start = currentSegmentStartDate else { return }
         let duration = max(0, Int64(end.timeIntervalSince(start)))
         let distance = max(0, distanceMeters - currentSegmentDistanceStart)
@@ -458,13 +481,9 @@ final class JoggingTrackingManager: ObservableObject {
             endedAt: end,
             distanceMeters: distance,
             durationSeconds: duration,
-            isPause: isPaused
+            isPause: isPauseSegment
         )
         segmentEvents.append(segment)
-
-        if isPaused, let pauseStartedAt {
-            pauseDuration += max(0, end.timeIntervalSince(pauseStartedAt))
-        }
     }
 
     private func persistSegmentsIfPossible(sessionId: String?) async {
