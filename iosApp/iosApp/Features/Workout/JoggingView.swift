@@ -24,6 +24,10 @@ struct JoggingView: View {
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var isFollowingRunner = false
     @State private var isCurrentMarkerPulsing = false
+#if DEBUG
+    /// Temporary: simulates 0→1000 m for ring + DIST only; remove when no longer needed.
+    @State private var simulatedDistanceMeters: Double?
+#endif
 
     var body: some View {
         ZStack {
@@ -407,44 +411,47 @@ struct JoggingView: View {
             Spacer()
 
             VStack(spacing: 14) {
-                Circle()
-                    .stroke(Color.orange.opacity(0.8), lineWidth: 2)
-                    .frame(width: 255, height: 255)
-                    .overlay(
-                        Circle()
-                            .fill(Color.black.opacity(0.45))
-                            .overlay(
-                                VStack(spacing: 10) {
-                                    Text(paceValueDisplay)
-                                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.white)
-                                        .monospacedDigit()
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
+                ZStack {
+                    Circle()
+                        .fill(Color.black.opacity(0.45))
 
-                                    Text("PACE")
-                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.55))
-                                        .tracking(2)
+                    KilometerProgressRing(distanceMeters: effectiveDistanceMeters)
 
-                                    Text(viewModel.formattedDuration)
-                                        .font(.system(size: 31, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.white)
-                                        .monospacedDigit()
-                                        .padding(.top, 8)
+                    VStack(spacing: 10) {
+                        Text(paceValueDisplay)
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
-                                    Text("TIME")
-                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.55))
-                                        .tracking(2)
-                                }
-                            )
-                    )
+                        Text("PACE")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                            .tracking(2)
+
+                        Text(viewModel.formattedDuration)
+                            .font(.system(size: 31, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .padding(.top, 8)
+
+                        Text("TIME")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.55))
+                            .tracking(2)
+                    }
+                }
+                .frame(width: KilometerProgressRing.ringDiameter, height: KilometerProgressRing.ringDiameter)
 
                 HStack(spacing: 18) {
-                    activeInfoPill(title: "DIST", value: viewModel.formattedDistance)
+                    activeInfoPill(title: "DIST", value: formatDistanceMeters(effectiveDistanceMeters))
                     activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
                 }
+
+#if DEBUG
+                testDistanceSimulationButton
+#endif
             }
 
             Spacer()
@@ -941,6 +948,49 @@ struct JoggingView: View {
         let paceMinutes = Double(pace) / 60.0
         return String(format: "%.2f", paceMinutes)
     }
+
+    private var effectiveDistanceMeters: Double {
+#if DEBUG
+        simulatedDistanceMeters ?? viewModel.distanceMeters
+#else
+        viewModel.distanceMeters
+#endif
+    }
+
+    private func formatDistanceMeters(_ m: Double) -> String {
+        if m >= 1000 {
+            return String(format: "%.2f km", m / 1000.0)
+        }
+        return String(format: "%.0f m", m)
+    }
+
+#if DEBUG
+    private var testDistanceSimulationButton: some View {
+        Button {
+            startSimulatedKilometerTest()
+        } label: {
+            Text("Test 1 km (10s)")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.18), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func startSimulatedKilometerTest() {
+        simulatedDistanceMeters = 0
+        // Target slightly under 1000 m so remainder stays in (0, 1000) and the ring reads “full”.
+        withAnimation(.linear(duration: 10)) {
+            simulatedDistanceMeters = 999.99
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            simulatedDistanceMeters = nil
+        }
+    }
+#endif
 
     private func activeInfoPill(title: String, value: String) -> some View {
         VStack(spacing: 3) {
