@@ -8,6 +8,7 @@ import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import kotlin.time.Duration.Companion.hours
 import kotlinx.datetime.Clock
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -163,7 +164,7 @@ class ApplyDailyResetUseCase(
         val nextDate = currentBoundary
             .toLocalDateTime(timeZone)
             .date
-            .plus(1, DateTimeUnit.DAY)
+            .plus(DatePeriod(days = 1))
         return nextDate.atStartOfDayIn(timeZone)
             .plus(TimeCredit.DAILY_RESET_HOUR.hours)
     }
