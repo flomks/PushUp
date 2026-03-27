@@ -166,6 +166,11 @@ struct TimeCreditDetailView: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 160)
                 } else {
+                    let maxMinuteValue = max(
+                        1.0,
+                        ceil(historyEntries.map { max($0.earnedMinutes, $0.spentMinutes) }.max() ?? 0.0)
+                    )
+
                     Chart {
                         ForEach(historyEntries) { entry in
                             BarMark(
@@ -184,6 +189,7 @@ struct TimeCreditDetailView: View {
                             .cornerRadius(4)
                         }
                     }
+                    .chartYScale(domain: 0...maxMinuteValue)
                     .chartXAxis {
                         AxisMarks(values: .automatic) { value in
                             AxisValueLabel {
@@ -201,7 +207,7 @@ struct TimeCreditDetailView: View {
                                 .foregroundStyle(AppColors.fill)
                             AxisValueLabel {
                                 if let minuteVal = value.as(Double.self) {
-                                    Text(formatAxisMinutes(minuteVal))
+                                    Text("\(Int(minuteVal.rounded()))m")
                                         .font(AppTypography.caption2)
                                         .foregroundStyle(AppColors.textSecondary)
                                 }
@@ -460,7 +466,7 @@ struct TimeCreditDetailView: View {
                         .font(AppTypography.callout)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    Text("Credits reset at 3:00 AM. Up to 20% of unused time carries over to the next day. Credits earned between 2-3 AM carry over at 100%.")
+                    Text("Credits reset at 3:00 AM. Up to 20% of unused time carries over to the next day, but carry-over below 1 minute is discarded. Credits earned between 2-3 AM carry over at 100%.")
                         .font(AppTypography.caption1)
                         .foregroundStyle(AppColors.textSecondary)
                 }
@@ -532,21 +538,6 @@ struct TimeCreditDetailView: View {
         return "\(minutes) min"
     }
 
-    private func formatAxisMinutes(_ minutes: Double) -> String {
-        let clamped = max(0.0, minutes)
-        if clamped < 1.0 {
-            let seconds = Int((clamped * 60.0).rounded())
-            return "\(seconds)s"
-        }
-        if clamped < 10.0 {
-            let rounded = (clamped * 10.0).rounded() / 10.0
-            if rounded.rounded(.towardZero) == rounded {
-                return "\(Int(rounded))m"
-            }
-            return "\(rounded)m"
-        }
-        return "\(Int(clamped.rounded()))m"
-    }
 }
 
 // MARK: - Preview
