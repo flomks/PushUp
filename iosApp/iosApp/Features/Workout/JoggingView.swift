@@ -18,6 +18,7 @@ struct JoggingView: View {
     @State private var showStopConfirmation = false
     @State private var showShareSheet = false
     @State private var showParticipantsSheet = false
+    @State private var isMapFocusMode = false
     @State private var shareImage: UIImage?
     @State private var isRenderingShareImage = false
 
@@ -287,148 +288,193 @@ struct JoggingView: View {
             )
             .ignoresSafeArea()
 
-            activeTrackDecoration
-                .ignoresSafeArea()
+            if !isMapFocusMode {
+                activeTrackDecoration
+                    .ignoresSafeArea()
+            }
 
             VStack(spacing: 0) {
-                ZStack(alignment: .topTrailing) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(speedValueDisplay)
-                            .font(.system(size: 62, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-
-                        Spacer(minLength: 8)
-
-                        Text("KM/H")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.7))
-                            .tracking(1)
-                    }
-
-                    Button {
-                        showParticipantsSheet = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("\(viewModel.runParticipants.count)")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                if !isMapFocusMode {
+                    ZStack(alignment: .topTrailing) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(speedValueDisplay)
+                                .font(.system(size: 62, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
                                 .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+
+                            Spacer(minLength: 8)
+
+                            Text("KM/H")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.white.opacity(0.7))
+                                .tracking(1)
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.black.opacity(0.35), in: Capsule())
+
+                        Button {
+                            showParticipantsSheet = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("\(viewModel.runParticipants.count)")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .monospacedDigit()
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.35), in: Capsule())
+                        }
+                        .padding(.top, 4)
                     }
-                    .padding(.top, 4)
-                }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
-                .padding(.top, 24)
-
-                .overlay(alignment: .top) {
-                    if viewModel.isPaused {
-                        Text("PAUSED")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.orange)
-                            .tracking(2)
-                            .padding(.top, 78)
-                    }
-                }
-
-                Spacer()
-
-                VStack(spacing: 14) {
-                    Circle()
-                        .stroke(Color.orange.opacity(0.8), lineWidth: 2)
-                        .frame(width: 255, height: 255)
-                        .overlay(
-                            Circle()
-                                .fill(Color.black.opacity(0.45))
-                                .overlay(
-                                    VStack(spacing: 10) {
-                                        Text(paceValueDisplay)
-                                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                            .monospacedDigit()
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.7)
-
-                                        Text("PACE")
-                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(Color.white.opacity(0.55))
-                                            .tracking(2)
-
-                                        Text(viewModel.formattedDuration)
-                                            .font(.system(size: 31, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                            .monospacedDigit()
-                                            .padding(.top, 8)
-
-                                        Text("TIME")
-                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(Color.white.opacity(0.55))
-                                            .tracking(2)
-                                    }
-                                )
-                        )
-
-                    HStack(spacing: 18) {
-                        activeInfoPill(title: "DIST", value: viewModel.formattedDistance)
-                        activeInfoPill(title: "ACTIVE", value: formatDurationSeconds(Int(viewModel.activeDuration)))
-                        activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: 18) {
-                    Button {
-                        openMusicApp()
-                    } label: {
-                        Circle()
-                            .fill(Color.black.opacity(0.35))
-                            .frame(width: 44, height: 44)
-                            .overlay(
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.85))
-                            )
-                    }
-
-                    Button {
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.top, 24)
+                    .overlay(alignment: .top) {
                         if viewModel.isPaused {
-                            viewModel.resumeWorkout()
-                        } else {
-                            viewModel.pauseWorkout()
+                            Text("PAUSED")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.orange)
+                                .tracking(2)
+                                .padding(.top, 78)
                         }
-                    } label: {
-                        Circle()
-                            .fill(Color.orange)
-                            .frame(width: 82, height: 82)
-                            .overlay(
-                                Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                                    .font(.system(size: 28, weight: .bold))
-                                    .foregroundStyle(.white)
-                            )
                     }
+                } else {
+                    Spacer().frame(height: 24)
+                }
 
-                    Button {
-                        viewModel.requestStop()
-                    } label: {
+                Spacer()
+
+                if !isMapFocusMode {
+                    VStack(spacing: 14) {
                         Circle()
-                            .fill(Color.black.opacity(0.35))
-                            .frame(width: 44, height: 44)
+                            .stroke(Color.orange.opacity(0.8), lineWidth: 2)
+                            .frame(width: 255, height: 255)
                             .overlay(
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(Color.white.opacity(0.85))
+                                Circle()
+                                    .fill(Color.black.opacity(0.45))
+                                    .overlay(
+                                        VStack(spacing: 10) {
+                                            Text(paceValueDisplay)
+                                                .font(.system(size: 48, weight: .bold, design: .rounded))
+                                                .foregroundStyle(.white)
+                                                .monospacedDigit()
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.7)
+
+                                            Text("PACE")
+                                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(Color.white.opacity(0.55))
+                                                .tracking(2)
+
+                                            Text(viewModel.formattedDuration)
+                                                .font(.system(size: 31, weight: .bold, design: .rounded))
+                                                .foregroundStyle(.white)
+                                                .monospacedDigit()
+                                                .padding(.top, 8)
+
+                                            Text("TIME")
+                                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(Color.white.opacity(0.55))
+                                                .tracking(2)
+                                        }
+                                    )
                             )
+
+                        HStack(spacing: 18) {
+                            activeInfoPill(title: "DIST", value: viewModel.formattedDistance)
+                            activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
+                        }
                     }
                 }
-                .padding(.bottom, 24)
+
+                Spacer()
+
+                if !isMapFocusMode {
+                    HStack(spacing: 18) {
+                        Button {
+                            openMusicApp()
+                        } label: {
+                            Circle()
+                                .fill(Color.black.opacity(0.35))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(Color.white.opacity(0.85))
+                                )
+                        }
+
+                        Button {
+                            if viewModel.isPaused {
+                                viewModel.resumeWorkout()
+                            } else {
+                                viewModel.pauseWorkout()
+                            }
+                        } label: {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 82, height: 82)
+                                .overlay(
+                                    Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
+                                        .font(.system(size: 28, weight: .bold))
+                                        .foregroundStyle(.white)
+                                )
+                        }
+
+                        Button {
+                            viewModel.requestStop()
+                        } label: {
+                            Circle()
+                                .fill(Color.black.opacity(0.35))
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(Color.white.opacity(0.85))
+                                )
+                        }
+                    }
+                    .padding(.bottom, 24)
+                } else {
+                    Spacer().frame(height: 34)
+                }
+            }
+
+            mapFocusToggleButton
+        }
+    }
+
+    private var mapFocusToggleButton: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation(.spring(duration: 0.35)) {
+                        isMapFocusMode.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .bold))
+                        Text(isMapFocusMode ? "Stats" : "Map")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.leading, 14)
+                    .padding(.trailing, 12)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.45), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                // Make it look like it comes from the edge
+                .offset(x: 24, y: -22)
             }
         }
     }
