@@ -16,7 +16,7 @@
 --                   credit tracking (charts).
 --   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for GPS-tracked jogging workouts.
 --   v8 (7.sqm)   — Added Jogging pause/run segment support and split active/pause metrics.
---   v9 (8.sqm)   — Added composite jogging indexes and safe UPSERT (no REPLACE delete semantics).
+--   v9 (8.sqm)   — Added composite jogging indexes for running queries.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -551,6 +551,8 @@ SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPace
 WHERE id = ?;
 
 upsertJoggingSession:
+-- NOTE: Kept SQLite 3.18-compatible syntax for SQLDelight generator compatibility.
+-- Safe write behavior is enforced in repository code via UPDATE-first + INSERT-fallback.
 INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
