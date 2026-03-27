@@ -309,23 +309,11 @@ struct JoggingView: View {
                     .offset(x: isMapFocusMode ? proxy.size.width : 0)
                     .animation(.spring(duration: 0.45), value: isMapFocusMode)
 
-                VStack {
-                    Spacer()
-                    HStack {
-                        if isMapFocusMode {
-                            mapFocusToggleButton
-                                .padding(.leading, 8)
-                                .offset(x: -16)
-                            Spacer()
-                        } else {
-                            Spacer()
-                            mapFocusToggleButton
-                                .padding(.trailing, 8)
-                                .offset(x: 16)
-                        }
-                    }
-                    .padding(.bottom, 32)
-                }
+                mapFocusToggleButton
+                    .position(
+                        x: isMapFocusMode ? 6 : (proxy.size.width - 6),
+                        y: proxy.size.height - 46
+                    )
             }
         }
     }
