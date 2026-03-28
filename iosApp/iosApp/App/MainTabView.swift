@@ -89,9 +89,6 @@ enum Tab: Int, CaseIterable, Identifiable {
 /// `FriendsView` so that the tab-bar badge and the list share the same data.
 struct MainTabView: View {
 
-    /// Keeps one logical `TabView` identity when switching side-menu chrome (open vs closed).
-    private static let tabShellIdentity = "mainTabShell"
-
     /// The currently selected tab. Defaults to `.dashboard` and is never
     /// written to persistent storage, satisfying the "Tab-Auswahl nicht
     /// persistent" acceptance criterion.
@@ -191,31 +188,33 @@ struct MainTabView: View {
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
-            // When closed: match pre–side-menu root (commit 9a6dedf) — plain TabView + tint only, full safe areas.
-            // When open: flatten for clipShape, full-screen card with rounded corners only (no extra insets).
-            Group {
-                if isSideMenuOpen {
-                    tabShell
-                        .id(MainTabView.tabShellIdentity)
-                        .background(AppColors.backgroundPrimary)
-                        .compositingGroup()
-                        .offset(x: SideMenuMetrics.cardOffsetX)
-                        .scaleEffect(SideMenuMetrics.cardScale, anchor: .center)
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
-                        )
-                        .shadow(color: Color.black.opacity(0.55), radius: 30, x: -14, y: 0)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
-                        }
-                } else {
-                    tabShell
-                        .id(MainTabView.tabShellIdentity)
+            // One continuous modifier tree — `if isOpen { … } else { … }` swaps views and kills spring interpolation.
+            // No `compositingGroup` while closed (keeps native tab bar / large title behaviour like 9a6dedf).
+            tabShell
+                .background(isSideMenuOpen ? AppColors.backgroundPrimary : Color.clear)
+                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                        style: .continuous
+                    )
+                )
+                .shadow(
+                    color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
+                    radius: isSideMenuOpen ? 30 : 0,
+                    x: -14,
+                    y: 0
+                )
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                        style: .continuous
+                    )
+                    .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
                 }
-            }
-            .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
-            .zIndex(1)
+                .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
+                .zIndex(1)
 
             SideMenuInteractiveLayer(
                 isOpen: $isSideMenuOpen,
