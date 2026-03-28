@@ -76,6 +76,28 @@ enum Tab: Int, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Side menu TabView chrome
+
+private extension View {
+    /// Offset / scale / clip only while the drawer is open so the tab bar renders like the system default when closed.
+    @ViewBuilder
+    func sideMenuOpenChrome(isOpen: Bool) -> some View {
+        if isOpen {
+            self
+                .offset(x: SideMenuMetrics.cardOffsetX)
+                .scaleEffect(SideMenuMetrics.cardScale, anchor: .center)
+                .clipShape(RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous))
+                .shadow(color: Color.black.opacity(0.55), radius: 30, x: -14, y: 0)
+                .overlay {
+                    RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+                }
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - MainTabView
 
 /// Root navigation container for the PushUp app.
@@ -114,7 +136,8 @@ struct MainTabView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack(alignment: .top) {
+        // `topLeading` so the menu button stays at the upper-left (`.top` centers horizontally).
+        ZStack(alignment: .topLeading) {
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
@@ -182,26 +205,9 @@ struct MainTabView: View {
                 .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
             }
             .tint(AppColors.primary)
-            .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
-            .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
-                    style: .continuous
-                )
-            )
-            .shadow(
-                color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
-                radius: isSideMenuOpen ? 30 : 0,
-                x: -14,
-                y: 0
-            )
-            .overlay {
-                if isSideMenuOpen {
-                    RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
-                }
-            }
+            // Only transform + clip while the menu is open; clipping the whole TabView when closed
+            // breaks the system tab bar / home-indicator blending (black strip at the bottom).
+            .sideMenuOpenChrome(isOpen: isSideMenuOpen)
             .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
             .zIndex(1)
 
@@ -210,6 +216,7 @@ struct MainTabView: View {
                 selectedTab: $selectedTab,
                 reduceMotion: reduceMotion
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .zIndex(2)
             .allowsHitTesting(isSideMenuOpen)
 
@@ -225,6 +232,7 @@ struct MainTabView: View {
             // Offline banner overlay (Task 3.14) -- slides in from the top
             // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
+                .frame(maxWidth: .infinity, alignment: .top)
                 .zIndex(4)
         }
         .onAppear {
