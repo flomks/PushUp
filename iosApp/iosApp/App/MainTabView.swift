@@ -130,6 +130,7 @@ struct MainTabView: View {
                 .zIndex(4)
         }
         .onAppear {
+            configureNavigationBarAppearance()
             friendsViewModel.loadIncomingRequests()
             handleShieldWorkoutFlag()
             friendCodeViewModel.onFriendAdded = { [weak friendsViewModel] in
@@ -200,6 +201,24 @@ struct MainTabView: View {
             }
             .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
         }
+    }
+
+    // MARK: - Navigation bar appearance
+
+    /// Opaque navigation bar so scrolled content never shows through the header.
+    private func configureNavigationBarAppearance() {
+        let opaque = UINavigationBarAppearance()
+        opaque.configureWithOpaqueBackground()
+        opaque.backgroundColor = UIColor(AppColors.backgroundPrimary)
+        opaque.shadowColor = UIColor.white.withAlphaComponent(0.08)
+
+        let transparent = UINavigationBarAppearance()
+        transparent.configureWithTransparentBackground()
+
+        UINavigationBar.appearance().standardAppearance = opaque
+        UINavigationBar.appearance().scrollEdgeAppearance = transparent
+        UINavigationBar.appearance().compactAppearance = opaque
+        UINavigationBar.appearance().tintColor = UIColor(AppColors.primary)
     }
 
     // MARK: - Deep links
@@ -275,9 +294,8 @@ private struct CustomTabBar: View {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
                     Image(icon: tab.icon)
-                        .font(.system(size: 22))
-                        .symbolVariant(selectedTab == tab ? .fill : .none)
-                        .foregroundStyle(selectedTab == tab ? AppColors.primary : .gray)
+                        .font(.system(size: 22, weight: selectedTab == tab ? .semibold : .regular))
+                        .foregroundStyle(selectedTab == tab ? AppColors.primary : Color(white: 0.45))
 
                     if tab == .friends && pendingRequestCount > 0 {
                         Text("\(pendingRequestCount)")
@@ -292,7 +310,7 @@ private struct CustomTabBar: View {
 
                 Text(tab.label)
                     .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tab ? AppColors.primary : .gray)
+                    .foregroundStyle(selectedTab == tab ? AppColors.primary : Color(white: 0.45))
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
