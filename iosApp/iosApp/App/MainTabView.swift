@@ -188,13 +188,11 @@ struct MainTabView: View {
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
-            // Single continuous modifier chain — keeps spring interpolation intact.
-            // `.mask` instead of `.clipShape` — mask only affects pixel drawing, NOT layout or safe-area
-            // propagation, so header (large title) and footer (tab bar) keep their edge-to-edge behaviour
-            // when the menu is closed (cornerRadius 0 → full rectangle → no visible masking).
+            // Modifier order mirrors the Figma export structure:
+            //   inner: round corners + border + shadow  →  outer: offset + scale
+            // `.mask` instead of `.clipShape` preserves safe-area propagation
+            // so header/footer stay edge-to-edge when closed (radius 0 = no-op).
             tabShell
-                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
-                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
                 .mask {
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
@@ -202,12 +200,6 @@ struct MainTabView: View {
                     )
                     .ignoresSafeArea()
                 }
-                .shadow(
-                    color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
-                    radius: isSideMenuOpen ? 30 : 0,
-                    x: -14,
-                    y: 0
-                )
                 .overlay {
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
@@ -216,6 +208,14 @@ struct MainTabView: View {
                     .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
                     .ignoresSafeArea()
                 }
+                .shadow(
+                    color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
+                    radius: isSideMenuOpen ? 30 : 0,
+                    x: -14,
+                    y: 0
+                )
+                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
                 .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
                 .zIndex(1)
 
