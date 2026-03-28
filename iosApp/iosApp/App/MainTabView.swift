@@ -600,10 +600,18 @@ private struct SideMenuItem: Identifiable {
 }
 
 private struct SideMenuHamburgerButton: View {
-    /// Explicit `EdgeInsets` avoids “Generic parameter 'T' could not be inferred” on some toolchains.
-    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
 
     let action: () -> Void
+
+    /// Avoids `@Environment(\.safeAreaInsets)` — some toolchains resolve `EdgeInsets` incorrectly for that key.
+    private var keyWindowSafeAreaTop: CGFloat {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene?.windows.first { $0.isKeyWindow } ?? scene?.windows.first
+        return window?.safeAreaInsets.top ?? 0
+    }
 
     var body: some View {
         Button(action: action) {
@@ -624,7 +632,7 @@ private struct SideMenuHamburgerButton: View {
         }
         .buttonStyle(.plain)
         .padding(.leading, SideMenuMetrics.menuButtonLeading)
-        .padding(.top, safeAreaInsets.top + SideMenuMetrics.menuButtonTopBelowSafeArea)
+        .padding(.top, keyWindowSafeAreaTop + SideMenuMetrics.menuButtonTopBelowSafeArea)
         .accessibilityLabel("Open menu")
     }
 }
