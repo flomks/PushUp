@@ -122,13 +122,6 @@ struct MainTabView: View {
             .zIndex(2)
             .allowsHitTesting(isSideMenuOpen)
 
-            if !isSideMenuOpen {
-                SideMenuHamburgerButton {
-                    isSideMenuOpen = true
-                }
-                .zIndex(3)
-            }
-
             OfflineBanner()
                 .frame(maxWidth: .infinity, alignment: .top)
                 .zIndex(4)
@@ -179,31 +172,48 @@ struct MainTabView: View {
         case .dashboard:
             NavigationStack {
                 DashboardView(selectedTab: $selectedTab)
+                    .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
         case .workout:
             NavigationStack {
                 WorkoutSelectionView()
+                    .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
         case .stats:
             NavigationStack {
                 StatsView()
+                    .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
         case .friends:
-            FriendsView(viewModel: friendsViewModel)
+            FriendsView(viewModel: friendsViewModel, onOpenMenu: { isSideMenuOpen = true })
                 .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
         case .profile:
             NavigationStack {
                 ProfileView()
+                    .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
         case .settings:
             NavigationStack {
                 SettingsView()
+                    .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sideMenuToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { isSideMenuOpen = true } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(AppColors.textPrimary)
+            }
+            .accessibilityLabel("Open menu")
         }
     }
 
@@ -400,9 +410,6 @@ private enum SideMenuMetrics {
     static let cardScale: CGFloat = 0.88
     static let cardCornerRadius: CGFloat = 30
     static let menuContentWidth: CGFloat = 280
-    static let menuButtonLeading: CGFloat = 20
-    static let menuButtonTopBelowSafeArea: CGFloat = 26
-    static let menuButtonSize: CGFloat = 36
     static let menuHorizontalPadding: CGFloat = 24
     static let menuTopPadding: CGFloat = 59
     static let menuBottomPadding: CGFloat = 34
@@ -645,42 +652,6 @@ private struct SideMenuItem: Identifiable {
     let showNewBadge: Bool
 }
 
-private struct SideMenuHamburgerButton: View {
-
-    let action: () -> Void
-
-    private var keyWindowSafeAreaTop: CGFloat {
-        let scene = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let window = scene?.windows.first { $0.isKeyWindow } ?? scene?.windows.first
-        return window?.safeAreaInsets.top ?? 0
-    }
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-                    .opacity(0.85)
-
-                Circle()
-                    .fill(Color.white.opacity(0.1))
-
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: SideMenuMetrics.menuButtonSize, height: SideMenuMetrics.menuButtonSize)
-        }
-        .buttonStyle(.plain)
-        .padding(.leading, SideMenuMetrics.menuButtonLeading)
-        .padding(.top, keyWindowSafeAreaTop + SideMenuMetrics.menuButtonTopBelowSafeArea)
-        .accessibilityLabel("Open menu")
-    }
-}
 
 // MARK: - TabPlaceholderView
 

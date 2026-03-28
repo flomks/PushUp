@@ -17,6 +17,8 @@ struct FriendsView: View {
     /// the same ViewModel instance and are always in sync.
     @ObservedObject var viewModel: FriendsViewModel
 
+    var onOpenMenu: (() -> Void)? = nil
+
     /// Controls the Add Friend bottom sheet.
     @State private var showAddFriend = false
 
@@ -32,7 +34,19 @@ struct FriendsView: View {
             )
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar { toolbarItems }
+            .toolbar {
+                if let onOpenMenu {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: onOpenMenu) {
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(AppColors.textPrimary)
+                        }
+                        .accessibilityLabel("Open menu")
+                    }
+                }
+                toolbarItems
+            }
         }
         .sheet(isPresented: $showAddFriend) {
             AddFriendSheet(viewModel: viewModel)
