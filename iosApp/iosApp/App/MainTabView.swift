@@ -188,18 +188,20 @@ struct MainTabView: View {
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
-            // One continuous modifier tree — `if isOpen { … } else { … }` swaps views and kills spring interpolation.
-            // No `compositingGroup` while closed (keeps native tab bar / large title behaviour like 9a6dedf).
+            // Single continuous modifier chain — keeps spring interpolation intact.
+            // `.mask` instead of `.clipShape` — mask only affects pixel drawing, NOT layout or safe-area
+            // propagation, so header (large title) and footer (tab bar) keep their edge-to-edge behaviour
+            // when the menu is closed (cornerRadius 0 → full rectangle → no visible masking).
             tabShell
-                .background(isSideMenuOpen ? AppColors.backgroundPrimary : Color.clear)
                 .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
                 .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
-                .clipShape(
+                .mask {
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
                         style: .continuous
                     )
-                )
+                    .ignoresSafeArea()
+                }
                 .shadow(
                     color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
                     radius: isSideMenuOpen ? 30 : 0,
@@ -212,6 +214,7 @@ struct MainTabView: View {
                         style: .continuous
                     )
                     .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
+                    .ignoresSafeArea()
                 }
                 .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
                 .zIndex(1)
