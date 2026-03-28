@@ -120,6 +120,13 @@ final class DashboardLayoutStore: ObservableObject {
             return
         }
 
+        // Flow can briefly emit nil/blank after a local write; don’t replace an intentional empty dashboard
+        // with the default widget set again.
+        let jsonMissingOrBlank = json == nil || json?.isEmpty == true
+        if jsonMissingOrBlank && orderedWidgets.isEmpty {
+            return
+        }
+
         if !didAttemptLegacyMigration {
             didAttemptLegacyMigration = true
             let legacyKey = SettingsKeys.dashboardWidgetOrder

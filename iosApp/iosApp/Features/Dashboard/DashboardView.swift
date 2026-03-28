@@ -96,28 +96,58 @@ struct DashboardView: View {
     // MARK: - Scroll Content
 
     private var scrollContent: some View {
-        List {
+        Group {
             if layoutStore.orderedWidgets.isEmpty {
-                emptyDashboardRow
+                emptyDashboardScroll
             } else {
-                ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
-                    widgetView(for: kind)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
-                        .padding(.top, layoutStore.orderedWidgets.first == kind ? AppSpacing.sm : 0)
-                        .padding(.bottom, AppSpacing.md)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-                .onMove { source, destination in
-                    layoutStore.move(fromOffsets: source, toOffset: destination)
-                    DashboardHaptics.lightImpact()
-                }
-                .onDelete { offsets in
-                    layoutStore.remove(atOffsets: offsets)
-                    DashboardHaptics.mediumImpact()
-                }
+                widgetList
+            }
+        }
+    }
+
+    /// Empty dashboard is **not** inside a `List`: a single-row `List` often collapses to a blank (black) screen.
+    private var emptyDashboardScroll: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                emptyDashboardCard
+                    .padding(.top, AppSpacing.md)
+                Spacer(minLength: AppSpacing.screenVerticalBottom + 48)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollContentBackground(.hidden)
+        .background(AppColors.backgroundPrimary)
+        .refreshable {
+            await viewModel.refresh()
+        }
+    }
+
+    private var widgetList: some View {
+        List {
+            Color.clear
+                .frame(height: AppSpacing.sm)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+
+            ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
+                widgetView(for: kind)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.bottom, AppSpacing.md)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            // No haptics here: `onMove` can fire repeatedly while the row hovers between two slots,
+            // which stacks vibrations and fights layout (jitter). System reorder already gives affordance.
+            .onMove { source, destination in
+                layoutStore.move(fromOffsets: source, toOffset: destination)
+            }
+            .onDelete { offsets in
+                layoutStore.remove(atOffsets: offsets)
+                DashboardHaptics.mediumImpact()
             }
 
             Color.clear
@@ -137,7 +167,7 @@ struct DashboardView: View {
 
     // MARK: - Empty Dashboard
 
-    private var emptyDashboardRow: some View {
+    private var emptyDashboardCard: some View {
         Card {
             VStack(spacing: AppSpacing.md) {
                 Image(systemName: "plus.circle.fill")
@@ -146,11 +176,11 @@ struct DashboardView: View {
                     .foregroundStyle(AppColors.primary)
 
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Label("No widgets yet", icon: .rectangleStackFill)
+                    Label("No widgets on your dashboard", icon: .rectangleStackFill)
                         .font(AppTypography.headline)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    Text("Tap below or the + button above to add cards to your dashboard.")
+                    Text("Add cards with the button below or the + button in the top bar.")
                         .font(AppTypography.subheadline)
                         .foregroundStyle(AppColors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -165,11 +195,6 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, AppSpacing.screenHorizontal)
-        .padding(.top, AppSpacing.sm)
-        .padding(.bottom, AppSpacing.md)
-        .listRowInsets(EdgeInsets())
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
     // MARK: - Widgets
