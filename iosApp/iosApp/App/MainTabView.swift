@@ -600,7 +600,8 @@ private struct SideMenuItem: Identifiable {
 }
 
 private struct SideMenuHamburgerButton: View {
-    @Environment(\.safeAreaInsets) private var safeAreaInsets
+    /// Explicit `EdgeInsets` avoids “Generic parameter 'T' could not be inferred” on some toolchains.
+    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
 
     let action: () -> Void
 
