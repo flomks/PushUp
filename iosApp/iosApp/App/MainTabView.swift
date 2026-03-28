@@ -89,6 +89,9 @@ enum Tab: Int, CaseIterable, Identifiable {
 /// `FriendsView` so that the tab-bar badge and the list share the same data.
 struct MainTabView: View {
 
+    /// Keeps one logical `TabView` identity when switching side-menu chrome (open vs closed).
+    private static let tabShellIdentity = "mainTabShell"
+
     /// The currently selected tab. Defaults to `.dashboard` and is never
     /// written to persistent storage, satisfying the "Tab-Auswahl nicht
     /// persistent" acceptance criterion.
@@ -113,107 +116,103 @@ struct MainTabView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Unstyled tab container — same shape as root `MainTabView` before the side drawer (e.g. 9a6dedf).
+    @ViewBuilder
+    private var tabShell: some View {
+        TabView(selection: $selectedTab) {
+            // Dashboard tab -- real implementation (Task 3.5)
+            NavigationStack {
+                DashboardView(selectedTab: $selectedTab)
+            }
+            .tabItem {
+                Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
+            }
+            .tag(Tab.dashboard)
+            .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
+
+            // Workout tab -- exercise selection hub with navigation
+            NavigationStack {
+                WorkoutSelectionView()
+            }
+            .tabItem {
+                Label(Tab.workout.label, icon: Tab.workout.icon)
+            }
+            .tag(Tab.workout)
+            .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
+
+            // Stats tab -- real implementation (Task 3.8)
+            // History is accessible via the "History" segment inside StatsView.
+            NavigationStack {
+                StatsView()
+            }
+            .tabItem {
+                Label(Tab.stats.label, icon: Tab.stats.icon)
+            }
+            .tag(Tab.stats)
+            .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
+
+            // Friends tab -- dedicated tab so the social / competition
+            // features are always one tap away. Passes the shared ViewModel
+            // so the badge and the list are always in sync.
+            FriendsView(viewModel: friendsViewModel)
+                .tabItem {
+                    Label(Tab.friends.label, icon: Tab.friends.icon)
+                }
+                .tag(Tab.friends)
+                .badge(friendsViewModel.pendingRequestCount)
+                .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
+
+            // Profile tab -- real implementation (Task 3.10)
+            NavigationStack {
+                ProfileView()
+            }
+            .tabItem {
+                Label(Tab.profile.label, icon: Tab.profile.icon)
+            }
+            .tag(Tab.profile)
+            .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
+
+            // Settings tab -- real implementation (Task 3.11)
+            NavigationStack {
+                SettingsView()
+            }
+            .tabItem {
+                Label(Tab.settings.label, icon: Tab.settings.icon)
+            }
+            .tag(Tab.settings)
+            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
+        }
+        .tint(AppColors.primary)
+    }
+
     var body: some View {
         // `topLeading` so the menu button stays at the upper-left (`.top` centers horizontally).
         ZStack(alignment: .topLeading) {
-            AppColors.backgroundPrimary
-                .ignoresSafeArea()
-                .zIndex(-1)
-
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
-            TabView(selection: $selectedTab) {
-                // Dashboard tab -- real implementation (Task 3.5)
-                NavigationStack {
-                    DashboardView(selectedTab: $selectedTab)
+            // When closed: match pre–side-menu root (commit 9a6dedf) — plain TabView + tint only, full safe areas.
+            // When open: flatten for clipShape, full-screen card with rounded corners only (no extra insets).
+            Group {
+                if isSideMenuOpen {
+                    tabShell
+                        .id(MainTabView.tabShellIdentity)
+                        .background(AppColors.backgroundPrimary)
+                        .compositingGroup()
+                        .offset(x: SideMenuMetrics.cardOffsetX)
+                        .scaleEffect(SideMenuMetrics.cardScale, anchor: .center)
+                        .clipShape(
+                            RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
+                        )
+                        .shadow(color: Color.black.opacity(0.55), radius: 30, x: -14, y: 0)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+                        }
+                } else {
+                    tabShell
+                        .id(MainTabView.tabShellIdentity)
                 }
-                .tabItem {
-                    Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
-                }
-                .tag(Tab.dashboard)
-                .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
-
-                // Workout tab -- exercise selection hub with navigation
-                NavigationStack {
-                    WorkoutSelectionView()
-                }
-                .tabItem {
-                    Label(Tab.workout.label, icon: Tab.workout.icon)
-                }
-                .tag(Tab.workout)
-                .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
-
-                // Stats tab -- real implementation (Task 3.8)
-                // History is accessible via the "History" segment inside StatsView.
-                NavigationStack {
-                    StatsView()
-                }
-                .tabItem {
-                    Label(Tab.stats.label, icon: Tab.stats.icon)
-                }
-                .tag(Tab.stats)
-                .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
-
-                // Friends tab -- dedicated tab so the social / competition
-                // features are always one tap away. Passes the shared ViewModel
-                // so the badge and the list are always in sync.
-                FriendsView(viewModel: friendsViewModel)
-                    .tabItem {
-                        Label(Tab.friends.label, icon: Tab.friends.icon)
-                    }
-                    .tag(Tab.friends)
-                    .badge(friendsViewModel.pendingRequestCount)
-                    .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
-
-                // Profile tab -- real implementation (Task 3.10)
-                NavigationStack {
-                    ProfileView()
-                }
-                .tabItem {
-                    Label(Tab.profile.label, icon: Tab.profile.icon)
-                }
-                .tag(Tab.profile)
-                .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
-
-                // Settings tab -- real implementation (Task 3.11)
-                NavigationStack {
-                    SettingsView()
-                }
-                .tabItem {
-                    Label(Tab.settings.label, icon: Tab.settings.icon)
-                }
-                .tag(Tab.settings)
-                .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
-            }
-            .tint(AppColors.primary)
-            // Opaque backing + compositingGroup: UITabBar-backed TabView often ignores clipShape without this,
-            // which leaves sharp corners. Margins when open match the floating “card” in the design reference.
-            .background(AppColors.backgroundPrimary)
-            .compositingGroup()
-            .padding(.top, isSideMenuOpen ? SideMenuMetrics.cardVerticalMarginWhenOpen : 0)
-            .padding(.bottom, isSideMenuOpen ? SideMenuMetrics.cardVerticalMarginWhenOpen : 0)
-            .padding(.trailing, isSideMenuOpen ? SideMenuMetrics.cardTrailingMarginWhenOpen : 0)
-            .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
-            .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
-                    style: .continuous
-                )
-            )
-            .shadow(
-                color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
-                radius: isSideMenuOpen ? 30 : 0,
-                x: -14,
-                y: 0
-            )
-            .overlay {
-                RoundedRectangle(
-                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
-                    style: .continuous
-                )
-                .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
             }
             .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
             .zIndex(1)
@@ -327,9 +326,6 @@ private enum SideMenuMetrics {
     static let cardOffsetX: CGFloat = 260
     static let cardScale: CGFloat = 0.88
     static let cardCornerRadius: CGFloat = 30
-    /// Inset when the drawer is open so menu color shows above/below the “phone card” (Figma-style gaps).
-    static let cardVerticalMarginWhenOpen: CGFloat = 14
-    static let cardTrailingMarginWhenOpen: CGFloat = 12
     static let menuContentWidth: CGFloat = 280
     static let menuButtonLeading: CGFloat = 20
     static let menuButtonTopBelowSafeArea: CGFloat = 26
