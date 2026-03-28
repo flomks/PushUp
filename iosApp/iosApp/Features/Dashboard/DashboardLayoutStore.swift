@@ -65,6 +65,9 @@ final class DashboardLayoutStore: ObservableObject {
     private var observeJob: Kotlinx_coroutines_coreJob?
     private var syncUserId: String?
     private var didAttemptLegacyMigration = false
+    /// Avoids a feedback loop: each `move` was persisting immediately, the DB Flow echoed the same JSON,
+    /// and re-applying it re-published `orderedWidgets` while the system drag was still resolving — jitter + extra haptics.
+    private var persistDebounceTask: Task<Void, Never>?
 
     init() {
         orderedWidgets = DashboardWidgetKind.defaultOrder
@@ -83,6 +86,7 @@ final class DashboardLayoutStore: ObservableObject {
     }
 
     func stopObserving() {
+        finishDebouncedPersistIfScheduled()
         observeJob?.cancel(cause: nil)
         observeJob = nil
     }
@@ -90,33 +94,46 @@ final class DashboardLayoutStore: ObservableObject {
     func move(fromOffsets source: IndexSet, toOffset destination: Int) {
         var next = orderedWidgets
         next.move(fromOffsets: source, toOffset: destination)
+        guard next != orderedWidgets else { return }
         orderedWidgets = next
-        persist()
+        schedulePersistDebounced()
     }
 
     func remove(atOffsets offsets: IndexSet) {
+        cancelPersistDebounce()
         var next = orderedWidgets
         next.remove(atOffsets: offsets)
         orderedWidgets = next
-        persist()
+        persistNow()
     }
 
     func add(_ kind: DashboardWidgetKind) {
         guard !orderedWidgets.contains(kind) else { return }
+        cancelPersistDebounce()
         orderedWidgets.append(kind)
-        persist()
+        persistNow()
     }
 
     func resetToDefault() {
+        cancelPersistDebounce()
         orderedWidgets = DashboardWidgetKind.defaultOrder
-        persist()
+        persistNow()
+    }
+
+    /// If a reorder debounce is still pending, cancel it and persist now (e.g. when leaving edit mode).
+    func finishDebouncedPersistIfScheduled() {
+        guard persistDebounceTask != nil else { return }
+        cancelPersistDebounce()
+        persistNow()
     }
 
     // MARK: - Remote / legacy
 
     private func applyDatabaseOrMigrate(json: String?, userId: String) {
         if let json, !json.isEmpty {
-            orderedWidgets = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
+            let parsed = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
+            if parsed == orderedWidgets { return }
+            orderedWidgets = parsed
             return
         }
 
@@ -133,7 +150,7 @@ final class DashboardLayoutStore: ObservableObject {
             if let data = UserDefaults.standard.data(forKey: legacyKey) {
                 orderedWidgets = DashboardWidgetLayoutCoding.widgets(fromLegacyDefaultsData: data)
                 UserDefaults.standard.removeObject(forKey: legacyKey)
-                persist()
+                persistNow()
                 return
             }
         }
@@ -141,7 +158,22 @@ final class DashboardLayoutStore: ObservableObject {
         orderedWidgets = DashboardWidgetKind.defaultOrder
     }
 
-    private func persist() {
+    private func cancelPersistDebounce() {
+        persistDebounceTask?.cancel()
+        persistDebounceTask = nil
+    }
+
+    private func schedulePersistDebounced() {
+        persistDebounceTask?.cancel()
+        persistDebounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(420))
+            guard let self, !Task.isCancelled else { return }
+            self.persistDebounceTask = nil
+            self.persistNow()
+        }
+    }
+
+    private func persistNow() {
         guard let json = DashboardWidgetLayoutCoding.jsonString(from: orderedWidgets) else { return }
 
         guard let userId = syncUserId, !userId.isEmpty else {

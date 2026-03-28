@@ -67,6 +67,7 @@ struct DashboardView: View {
             if newValue.isEditing {
                 DashboardHaptics.mediumImpact()
             } else {
+                layoutStore.finishDebouncedPersistIfScheduled()
                 DashboardHaptics.lightImpact()
             }
         }
@@ -96,34 +97,12 @@ struct DashboardView: View {
     // MARK: - Scroll Content
 
     private var scrollContent: some View {
-        Group {
-            if layoutStore.orderedWidgets.isEmpty {
-                emptyDashboardScroll
-            } else {
-                widgetList
-            }
-        }
+        dashboardList
     }
 
-    /// Empty dashboard is **not** inside a `List`: a single-row `List` often collapses to a blank (black) screen.
-    private var emptyDashboardScroll: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                emptyDashboardCard
-                    .padding(.top, AppSpacing.md)
-                Spacer(minLength: AppSpacing.screenVerticalBottom + 48)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .scrollContentBackground(.hidden)
-        .background(AppColors.backgroundPrimary)
-        .refreshable {
-            await viewModel.refresh()
-        }
-    }
-
-    private var widgetList: some View {
+    /// Single `List` for filled and empty dashboards. A `List` with only spacer rows and an empty
+    /// `ForEach` renders as a blank (black) screen — the empty state must be a real row.
+    private var dashboardList: some View {
         List {
             Color.clear
                 .frame(height: AppSpacing.sm)
@@ -131,23 +110,37 @@ struct DashboardView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
-            ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
-                widgetView(for: kind)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
+            if layoutStore.orderedWidgets.isEmpty {
+                emptyDashboardCard
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, AppSpacing.md)
                     .padding(.bottom, AppSpacing.md)
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-            }
-            // No haptics here: `onMove` can fire repeatedly while the row hovers between two slots,
-            // which stacks vibrations and fights layout (jitter). System reorder already gives affordance.
-            .onMove { source, destination in
-                layoutStore.move(fromOffsets: source, toOffset: destination)
-            }
-            .onDelete { offsets in
-                layoutStore.remove(atOffsets: offsets)
-                DashboardHaptics.mediumImpact()
+            } else {
+                ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
+                    widgetView(for: kind)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .padding(.bottom, AppSpacing.md)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                // No haptics here: `onMove` can fire repeatedly while the row hovers between two slots,
+                // which stacks vibrations and fights layout (jitter). System reorder already gives affordance.
+                .onMove { source, destination in
+                    var txn = Transaction()
+                    txn.disablesAnimations = true
+                    withTransaction(txn) {
+                        layoutStore.move(fromOffsets: source, toOffset: destination)
+                    }
+                }
+                .onDelete { offsets in
+                    layoutStore.remove(atOffsets: offsets)
+                    DashboardHaptics.mediumImpact()
+                }
             }
 
             Color.clear
@@ -159,6 +152,11 @@ struct DashboardView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(AppColors.backgroundPrimary)
+        .transaction { txn in
+            if editMode.isEditing {
+                txn.disablesAnimations = true
+            }
+        }
         .environment(\.editMode, $editMode)
         .refreshable {
             await viewModel.refresh()
