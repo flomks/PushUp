@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - ScreenTimeStatusCard
 
@@ -24,6 +25,13 @@ struct ScreenTimeStatusCard: View {
         usageStore.todayUsageSeconds
     }
 
+    private var showError: Binding<Bool> {
+        Binding(
+            get: { manager.errorMessage != nil },
+            set: { if !$0 { manager.clearError() } }
+        )
+    }
+
     var body: some View {
         Group {
             if manager.authorizationStatus == .authorized, hasSelection {
@@ -36,6 +44,11 @@ struct ScreenTimeStatusCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Screen Time")
+        .alert("Error", isPresented: showError) {
+            Button("OK", role: .cancel) { manager.clearError() }
+        } message: {
+            Text(manager.errorMessage ?? "")
+        }
     }
 
     private var hasSelection: Bool {
@@ -47,25 +60,75 @@ struct ScreenTimeStatusCard: View {
 
     private var notAuthorizedPlaceholder: some View {
         Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Label("Screen Time", icon: .hourglassFill)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
-                Text("Allow Screen Time access in Settings to see blocking status and today’s usage here.")
-                    .font(AppTypography.subheadline)
-                    .foregroundStyle(AppColors.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Image(icon: .hourglassFill)
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(AppColors.primary)
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, AppSpacing.xs)
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("Screen Time access")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text(notAuthorizedExplanation)
+                        .font(AppTypography.subheadline)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                notAuthorizedActionButton
+
                 NavigationLink {
                     ScreenTimeSettingsView()
                 } label: {
-                    Text("Set Up Screen Time")
-                        .font(AppTypography.buttonSecondary)
+                    Text("All Screen Time options")
+                        .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
+                .padding(.top, AppSpacing.xxs)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var notAuthorizedExplanation: String {
+        switch manager.authorizationStatus {
+        case .denied:
+            return "Screen Time permission was denied. Open Settings to enable access for this app, then you can track usage and block apps when your time credit runs out."
+        case .unavailable:
+            return "Screen Time controls are not available on this device or iOS version."
+        case .notDetermined, .authorized:
+            return "Grant access so PushUp can show today’s usage here and pause selected apps when you’ve used your screen-time credit."
+        }
+    }
+
+    @ViewBuilder
+    private var notAuthorizedActionButton: some View {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            PrimaryButton(
+                "Allow Screen Time access",
+                icon: .checkmarkShield,
+                isLoading: manager.isRequestingAuthorization
+            ) {
+                Task { await manager.requestAuthorization() }
+            }
+        case .denied:
+            PrimaryButton("Open Settings", icon: .gearshapeFill) {
+                openAppSettings()
+            }
+        case .unavailable, .authorized:
+            EmptyView()
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     private var authorizedNoSelectionPlaceholder: some View {
