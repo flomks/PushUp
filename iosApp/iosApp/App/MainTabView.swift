@@ -62,8 +62,12 @@ enum Tab: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// Tabs shown in the bottom bar (subset of all cases).
-    static let bottomBarTabs: [Tab] = [.dashboard, .workout, .stats, .friends, .profile, .settings]
+    /// Tabs shown as dedicated icons in the bottom bar (first 4).
+    /// Profile and Settings live behind the "More" button — matching the system TabView behaviour with 6 tabs.
+    static let primaryBarTabs: [Tab] = [.dashboard, .workout, .stats, .friends]
+
+    /// Tabs accessible via the "More" menu.
+    static let moreTabs: [Tab] = [.profile, .settings]
 }
 
 // MARK: - MainTabView
@@ -264,26 +268,36 @@ private struct CustomTabBar: View {
     @Binding var selectedTab: Tab
     let pendingRequestCount: Int
 
+    @State private var showMoreSheet = false
+
+    private let inactiveColor = Color(white: 0.45)
+
+    private var isMoreActive: Bool {
+        Tab.moreTabs.contains(selectedTab)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Thin separator matching the system tab bar
             Rectangle()
                 .fill(Color.white.opacity(0.15))
                 .frame(height: 0.33)
 
             HStack(spacing: 0) {
-                ForEach(Tab.bottomBarTabs) { tab in
+                ForEach(Tab.primaryBarTabs) { tab in
                     tabButton(for: tab)
                 }
+
+                moreButton
             }
             .padding(.top, 6)
             .padding(.bottom, 2)
         }
         .background {
-            // Solid dark background that extends into the Home Indicator safe area.
-            // Matches the system tab bar appearance in dark mode without expensive blur layers.
             AppColors.backgroundPrimary
                 .ignoresSafeArea(edges: .bottom)
+        }
+        .sheet(isPresented: $showMoreSheet) {
+            moreSheet
         }
     }
 
@@ -295,7 +309,7 @@ private struct CustomTabBar: View {
                 ZStack(alignment: .topTrailing) {
                     Image(icon: tab.icon)
                         .font(.system(size: 22, weight: selectedTab == tab ? .semibold : .regular))
-                        .foregroundStyle(selectedTab == tab ? AppColors.primary : Color(white: 0.45))
+                        .foregroundStyle(selectedTab == tab ? AppColors.primary : inactiveColor)
 
                     if tab == .friends && pendingRequestCount > 0 {
                         Text("\(pendingRequestCount)")
@@ -310,13 +324,63 @@ private struct CustomTabBar: View {
 
                 Text(tab.label)
                     .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tab ? AppColors.primary : Color(white: 0.45))
+                    .foregroundStyle(selectedTab == tab ? AppColors.primary : inactiveColor)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(tab.accessibilityIdentifier)
+    }
+
+    private var moreButton: some View {
+        Button {
+            showMoreSheet = true
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 22, weight: isMoreActive ? .semibold : .regular))
+                    .foregroundStyle(isMoreActive ? AppColors.primary : inactiveColor)
+                    .frame(height: 24)
+
+                Text("More")
+                    .font(.system(size: 10, weight: isMoreActive ? .semibold : .regular))
+                    .foregroundStyle(isMoreActive ? AppColors.primary : inactiveColor)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("tab_more")
+    }
+
+    private var moreSheet: some View {
+        NavigationStack {
+            List {
+                ForEach(Tab.moreTabs) { tab in
+                    Button {
+                        showMoreSheet = false
+                        selectedTab = tab
+                    } label: {
+                        Label {
+                            Text(tab.label)
+                                .foregroundStyle(AppColors.textPrimary)
+                        } icon: {
+                            Image(icon: tab.icon)
+                                .foregroundStyle(AppColors.primary)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("More")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showMoreSheet = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
