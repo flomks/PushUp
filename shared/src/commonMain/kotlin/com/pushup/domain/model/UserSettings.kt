@@ -11,7 +11,9 @@ import kotlinx.serialization.Serializable
  * @property dailyCreditCapSeconds   Optional daily cap on earnable credits (`null` = unlimited).
  * @property searchableByEmail       When `true`, other users can find this account by email.
  *                                   Defaults to `false` (email is private).
- * @property dashboardWidgetOrderJson JSON array of dashboard widget ids (`null` = app default layout).
+ * @property dashboardWidgetOrderJson JSON array of dashboard widget ids. `null` = not set on this device
+ *   (seed from cloud on first sync; iOS may show default widgets until the user edits). Explicit empty
+ *   dashboard is the string `[]`, not `null`.
  */
 @Serializable
 data class UserSettings(

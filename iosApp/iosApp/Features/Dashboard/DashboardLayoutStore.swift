@@ -65,6 +65,8 @@ final class DashboardLayoutStore: ObservableObject {
     private var observeJob: Kotlinx_coroutines_coreJob?
     private var syncUserId: String?
     private var didAttemptLegacyMigration = false
+    /// Ensures we only write default layout once when DB/Flow still has no JSON (`nil`) — matches on-screen default widgets.
+    private var didSeedDefaultWhenDashboardJsonUnset = false
     /// Avoids a feedback loop: each `move` was persisting immediately, the DB Flow echoed the same JSON,
     /// and re-applying it re-published `orderedWidgets` while the system drag was still resolving — jitter + extra haptics.
     private var persistDebounceTask: Task<Void, Never>?
@@ -77,6 +79,7 @@ final class DashboardLayoutStore: ObservableObject {
     func startObserving(userId: String) {
         guard !userId.isEmpty else { return }
         syncUserId = userId
+        didSeedDefaultWhenDashboardJsonUnset = false
         observeJob?.cancel(cause: nil)
         observeJob = DataBridge.shared.observeDashboardWidgetOrderJson(userId: userId) { [weak self] json in
             Task { @MainActor in
@@ -155,7 +158,17 @@ final class DashboardLayoutStore: ObservableObject {
             }
         }
 
+        // Flow can briefly emit nil after a write; never replace a user-edited order with the full default.
+        if orderedWidgets != DashboardWidgetKind.defaultOrder {
+            return
+        }
+
         orderedWidgets = DashboardWidgetKind.defaultOrder
+        // Fresh install / row exists but `dashboardWidgetOrderJson` is still NULL: UI shows default widgets while DB had
+        // nothing — persist once so remove/reorder matches storage (local + Supabase after push).
+        guard !didSeedDefaultWhenDashboardJsonUnset else { return }
+        didSeedDefaultWhenDashboardJsonUnset = true
+        persistNow()
     }
 
     private func cancelPersistDebounce() {
