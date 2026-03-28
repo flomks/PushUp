@@ -70,6 +70,9 @@ final class DashboardLayoutStore: ObservableObject {
     /// Avoids a feedback loop: each `move` was persisting immediately, the DB Flow echoed the same JSON,
     /// and re-applying it re-published `orderedWidgets` while the system drag was still resolving — jitter + extra haptics.
     private var persistDebounceTask: Task<Void, Never>?
+    /// SQLDelight/Flow can emit the **previous** JSON once after a local write; applying it would undo deletes (e.g. bring `screenTime` back).
+    private var lastPersistedWidgetOrder: [DashboardWidgetKind]?
+    private var suppressStaleFlowEmissionsUntil: Date?
 
     init() {
         orderedWidgets = DashboardWidgetKind.defaultOrder
@@ -80,6 +83,8 @@ final class DashboardLayoutStore: ObservableObject {
         guard !userId.isEmpty else { return }
         syncUserId = userId
         didSeedDefaultWhenDashboardJsonUnset = false
+        lastPersistedWidgetOrder = nil
+        suppressStaleFlowEmissionsUntil = nil
         observeJob?.cancel(cause: nil)
         observeJob = DataBridge.shared.observeDashboardWidgetOrderJson(userId: userId) { [weak self] json in
             Task { @MainActor in
@@ -135,6 +140,11 @@ final class DashboardLayoutStore: ObservableObject {
     private func applyDatabaseOrMigrate(json: String?, userId: String) {
         if let json, !json.isEmpty {
             let parsed = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
+            if let expected = lastPersistedWidgetOrder, parsed == expected {
+                suppressStaleFlowEmissionsUntil = nil
+            } else if let until = suppressStaleFlowEmissionsUntil, Date() < until {
+                return
+            }
             if parsed == orderedWidgets { return }
             orderedWidgets = parsed
             return
@@ -188,6 +198,8 @@ final class DashboardLayoutStore: ObservableObject {
 
     private func persistNow() {
         guard let json = DashboardWidgetLayoutCoding.jsonString(from: orderedWidgets) else { return }
+        lastPersistedWidgetOrder = orderedWidgets
+        suppressStaleFlowEmissionsUntil = Date().addingTimeInterval(1.0)
 
         guard let userId = syncUserId, !userId.isEmpty else {
             if let data = json.data(using: .utf8) {

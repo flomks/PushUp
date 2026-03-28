@@ -11,7 +11,8 @@ import SwiftUI
 /// - Quick link to per-app usage detail (ScreenTimeAppDetailView)
 /// - Quick link to Screen Time settings
 ///
-/// Hidden entirely when Screen Time is not set up (not authorized).
+/// When Screen Time is not set up, shows a compact placeholder so the dashboard row stays visible
+/// (the slot still exists in layout JSON — an empty `body` looked like “no widget” and broke edit/remove UX).
 struct ScreenTimeStatusCard: View {
 
     @ObservedObject private var manager = ScreenTimeManager.shared
@@ -24,14 +25,70 @@ struct ScreenTimeStatusCard: View {
     }
 
     var body: some View {
-        if manager.authorizationStatus == .authorized, hasSelection {
-            cardContent
+        Group {
+            if manager.authorizationStatus == .authorized, hasSelection {
+                cardContent
+            } else if manager.authorizationStatus == .authorized {
+                authorizedNoSelectionPlaceholder
+            } else {
+                notAuthorizedPlaceholder
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Screen Time")
     }
 
     private var hasSelection: Bool {
         guard let selection = manager.activitySelection else { return false }
         return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
+    }
+
+    // MARK: - Placeholders (dashboard slot always visible)
+
+    private var notAuthorizedPlaceholder: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Screen Time", icon: .hourglassFill)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+                Text("Allow Screen Time access in Settings to see blocking status and today’s usage here.")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                NavigationLink {
+                    ScreenTimeSettingsView()
+                } label: {
+                    Text("Set Up Screen Time")
+                        .font(AppTypography.buttonSecondary)
+                        .foregroundStyle(AppColors.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var authorizedNoSelectionPlaceholder: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("Screen Time", icon: .hourglassFill)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+                Text("Choose which apps or categories to monitor for usage and blocking.")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                NavigationLink {
+                    ScreenTimeSettingsView()
+                } label: {
+                    Text("Choose Apps")
+                        .font(AppTypography.buttonSecondary)
+                        .foregroundStyle(AppColors.primary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: - Card Content
@@ -145,7 +202,6 @@ struct ScreenTimeStatusCard: View {
                 }
             }
         }
-        .accessibilityElement(children: .contain)
         .accessibilityLabel("Screen Time status card")
     }
 
