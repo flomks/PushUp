@@ -76,28 +76,6 @@ enum Tab: Int, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Side menu TabView chrome
-
-private extension View {
-    /// Offset / scale / clip only while the drawer is open so the tab bar renders like the system default when closed.
-    @ViewBuilder
-    func sideMenuOpenChrome(isOpen: Bool) -> some View {
-        if isOpen {
-            self
-                .offset(x: SideMenuMetrics.cardOffsetX)
-                .scaleEffect(SideMenuMetrics.cardScale, anchor: .center)
-                .clipShape(RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous))
-                .shadow(color: Color.black.opacity(0.55), radius: 30, x: -14, y: 0)
-                .overlay {
-                    RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
-                }
-        } else {
-            self
-        }
-    }
-}
-
 // MARK: - MainTabView
 
 /// Root navigation container for the PushUp app.
@@ -138,6 +116,10 @@ struct MainTabView: View {
     var body: some View {
         // `topLeading` so the menu button stays at the upper-left (`.top` centers horizontally).
         ZStack(alignment: .topLeading) {
+            AppColors.backgroundPrimary
+                .ignoresSafeArea()
+                .zIndex(-1)
+
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
@@ -205,9 +187,25 @@ struct MainTabView: View {
                 .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
             }
             .tint(AppColors.primary)
-            // Only transform + clip while the menu is open; clipping the whole TabView when closed
-            // breaks the system tab bar / home-indicator blending (black strip at the bottom).
-            .sideMenuOpenChrome(isOpen: isSideMenuOpen)
+            // One stable modifier chain so SwiftUI can animate smoothly (branching `if isOpen` breaks transitions).
+            .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+            .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                    style: .continuous
+                )
+            )
+            .shadow(
+                color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
+                radius: isSideMenuOpen ? 30 : 0,
+                x: -14,
+                y: 0
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
+            }
             .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
             .zIndex(1)
 
@@ -222,9 +220,7 @@ struct MainTabView: View {
 
             if !isSideMenuOpen {
                 SideMenuHamburgerButton {
-                    withAnimation(SideMenuAnimations.card(reduceMotion: reduceMotion)) {
-                        isSideMenuOpen = true
-                    }
+                    isSideMenuOpen = true
                 }
                 .zIndex(3)
             }
@@ -352,10 +348,7 @@ private struct SideMenuGradientLayer: View {
         )
         .ignoresSafeArea()
         .opacity(isOpen ? 1 : 0)
-        .animation(
-            reduceMotion ? .easeInOut(duration: 0.2) : .easeInOut(duration: 0.3),
-            value: isOpen
-        )
+        .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isOpen)
         .allowsHitTesting(false)
     }
 }
@@ -581,9 +574,7 @@ private struct SideMenuInteractiveLayer: View {
     }
 
     private func closeMenu() {
-        withAnimation(SideMenuAnimations.card(reduceMotion: reduceMotion)) {
-            isOpen = false
-        }
+        isOpen = false
     }
 
     @MainActor
