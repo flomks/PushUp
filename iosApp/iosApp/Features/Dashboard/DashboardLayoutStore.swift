@@ -13,6 +13,10 @@ enum DashboardWidgetLayoutCoding {
         else {
             return DashboardWidgetKind.defaultOrder
         }
+        // Explicit `[]` means “user cleared the dashboard” — keep empty (do not substitute defaultOrder).
+        if rawStrings.isEmpty {
+            return []
+        }
         var seen = Set<DashboardWidgetKind>()
         var result: [DashboardWidgetKind] = []
         for s in rawStrings {
@@ -20,6 +24,7 @@ enum DashboardWidgetLayoutCoding {
             seen.insert(kind)
             result.append(kind)
         }
+        // Non-empty JSON but no valid widget ids → treat as corrupt, fall back to default.
         return result.isEmpty ? DashboardWidgetKind.defaultOrder : result
     }
 
@@ -33,6 +38,9 @@ enum DashboardWidgetLayoutCoding {
     static func widgets(fromLegacyDefaultsData data: Data) -> [DashboardWidgetKind] {
         guard let rawStrings = try? JSONDecoder().decode([String].self, from: data) else {
             return DashboardWidgetKind.defaultOrder
+        }
+        if rawStrings.isEmpty {
+            return []
         }
         var seen = Set<DashboardWidgetKind>()
         var result: [DashboardWidgetKind] = []

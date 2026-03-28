@@ -129,6 +129,7 @@ struct DashboardView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(AppColors.backgroundPrimary)
+        .environment(\.editMode, $editMode)
         .refreshable {
             await viewModel.refresh()
         }
@@ -138,14 +139,23 @@ struct DashboardView: View {
 
     private var emptyDashboardRow: some View {
         Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                Label("No widgets yet", icon: .rectangleStackFill)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+            VStack(spacing: AppSpacing.md) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 44))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(AppColors.primary)
 
-                Text("Add widgets to customize your dashboard.")
-                    .font(AppTypography.subheadline)
-                    .foregroundStyle(AppColors.textSecondary)
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    Label("No widgets yet", icon: .rectangleStackFill)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Text("Tap below or the + button above to add cards to your dashboard.")
+                        .font(AppTypography.subheadline)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 PrimaryButton("Add widgets", icon: .plus) {
                     DashboardHaptics.mediumImpact()
@@ -348,12 +358,21 @@ struct DashboardView: View {
     private var dashboardToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             if !isInitialLoading {
-                EditButton()
+                Button {
+                    DashboardHaptics.lightImpact()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        editMode = editMode.isEditing ? .inactive : .active
+                    }
+                } label: {
+                    Text(editMode.isEditing ? "Done" : "Edit")
+                        .fontWeight(.semibold)
+                }
+                .accessibilityLabel(editMode.isEditing ? "Done editing dashboard" : "Edit dashboard layout")
             }
         }
 
         ToolbarItemGroup(placement: .navigationBarTrailing) {
-            if editMode.isEditing {
+            if !isInitialLoading {
                 Button {
                     DashboardHaptics.lightImpact()
                     showAddWidgetSheet = true

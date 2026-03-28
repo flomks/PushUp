@@ -30,6 +30,14 @@ struct DashboardWidgetLayoutCodingTests {
         #expect(back == original)
     }
 
+    @Test("empty JSON array stays empty (shows empty dashboard UI)")
+    func parseEmptyArray() {
+        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: "[]")
+        #expect(w.isEmpty)
+        let encoded = DashboardWidgetLayoutCoding.jsonString(from: [])
+        #expect(encoded == "[]")
+    }
+
     @Test("legacy UserDefaults Data decodes like JSON Data")
     func legacyData() {
         let data = try! JSONEncoder().encode(["screenTime", "workoutQuickAction"])
