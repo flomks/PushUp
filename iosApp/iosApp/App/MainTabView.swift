@@ -88,19 +88,11 @@ struct MainTabView: View {
                 .zIndex(0)
 
             appShell
-                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
-                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
                         style: .continuous
                     )
-                )
-                .shadow(
-                    color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
-                    radius: isSideMenuOpen ? 30 : 0,
-                    x: -14,
-                    y: 0
                 )
                 .overlay {
                     RoundedRectangle(
@@ -109,6 +101,14 @@ struct MainTabView: View {
                     )
                     .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
                 }
+                .shadow(
+                    color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
+                    radius: isSideMenuOpen ? 30 : 0,
+                    x: -14,
+                    y: 0
+                )
+                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
                 .allowsHitTesting(!isSideMenuOpen)
                 .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
                 .zIndex(1)
