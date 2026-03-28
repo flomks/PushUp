@@ -8,9 +8,6 @@ import UIKit
 /// The raw value defines the visual order of tabs. All display metadata
 /// (icon, label, description) is centralised here so that no other file
 /// needs to duplicate these strings.
-///
-/// History has been moved inside the Stats tab (as a segment) so that the
-/// Friends tab can occupy a dedicated, prominent position in the tab bar.
 enum Tab: Int, CaseIterable, Identifiable {
     case dashboard = 0
     case workout
@@ -19,13 +16,8 @@ enum Tab: Int, CaseIterable, Identifiable {
     case profile
     case settings
 
-    // MARK: Identifiable
-
     var id: Int { rawValue }
 
-    // MARK: Display metadata
-
-    /// The type-safe SF Symbol shown in the tab bar item.
     var icon: AppIcon {
         switch self {
         case .dashboard: return .houseFill
@@ -37,8 +29,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// The localised label shown below the tab bar icon and in the
-    /// navigation bar title.
     var label: String {
         switch self {
         case .dashboard: return "Dashboard"
@@ -50,8 +40,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// A short placeholder description shown on the placeholder screen
-    /// until the real feature view replaces it.
     var placeholderDescription: String {
         switch self {
         case .dashboard: return "Your time credit and daily statistics will appear here."
@@ -63,7 +51,6 @@ enum Tab: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// A stable string identifier used for UI tests and accessibility.
     var accessibilityIdentifier: String {
         switch self {
         case .dashboard: return "tab_dashboard"
@@ -74,148 +61,51 @@ enum Tab: Int, CaseIterable, Identifiable {
         case .settings:  return "tab_settings"
         }
     }
+
+    /// Tabs shown in the bottom bar (subset of all cases).
+    static let bottomBarTabs: [Tab] = [.dashboard, .workout, .stats, .friends, .profile, .settings]
 }
 
 // MARK: - MainTabView
 
-/// Root navigation container for the PushUp app.
-///
-/// Renders a `TabView` with seven tabs. Each tab owns its own `NavigationStack`
-/// so that navigation state is independent per tab. The selected tab is
-/// intentionally **not** persisted -- the app always opens on the Dashboard
-/// tab after a cold launch, as required by Task 3.3.
-///
-/// A single `FriendsViewModel` instance is owned here and passed into
-/// `FriendsView` so that the tab-bar badge and the list share the same data.
 struct MainTabView: View {
 
-    /// The currently selected tab. Defaults to `.dashboard` and is never
-    /// written to persistent storage, satisfying the "Tab-Auswahl nicht
-    /// persistent" acceptance criterion.
     @State private var selectedTab: Tab = .dashboard
-
-    /// Single source of truth for friends data -- shared between the tab-bar
-    /// badge and the FriendsView so they always reflect the same state.
     @StateObject private var friendsViewModel = FriendsViewModel()
-
-    /// When a friend-code deep-link is opened, this holds the code so the
-    /// Friends tab can present the Enter Code sheet automatically.
     @State private var pendingFriendCode: String? = nil
-
-    /// Controls the Enter Code sheet triggered by a deep-link.
     @State private var showFriendCodeSheet = false
-
-    /// Shared ViewModel for friend code operations (used by deep-link sheet).
     @StateObject private var friendCodeViewModel = FriendCodeViewModel()
-
-    /// Figma-style slide-out menu: pushes the whole tab shell aside (implementations below).
     @State private var isSideMenuOpen = false
-
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Unstyled tab container — same shape as root `MainTabView` before the side drawer (e.g. 9a6dedf).
-    @ViewBuilder
-    private var tabShell: some View {
-        TabView(selection: $selectedTab) {
-            // Dashboard tab -- real implementation (Task 3.5)
-            NavigationStack {
-                DashboardView(selectedTab: $selectedTab)
-            }
-            .tabItem {
-                Label(Tab.dashboard.label, icon: Tab.dashboard.icon)
-            }
-            .tag(Tab.dashboard)
-            .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
-
-            // Workout tab -- exercise selection hub with navigation
-            NavigationStack {
-                WorkoutSelectionView()
-            }
-            .tabItem {
-                Label(Tab.workout.label, icon: Tab.workout.icon)
-            }
-            .tag(Tab.workout)
-            .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
-
-            // Stats tab -- real implementation (Task 3.8)
-            // History is accessible via the "History" segment inside StatsView.
-            NavigationStack {
-                StatsView()
-            }
-            .tabItem {
-                Label(Tab.stats.label, icon: Tab.stats.icon)
-            }
-            .tag(Tab.stats)
-            .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
-
-            // Friends tab -- dedicated tab so the social / competition
-            // features are always one tap away. Passes the shared ViewModel
-            // so the badge and the list are always in sync.
-            FriendsView(viewModel: friendsViewModel)
-                .tabItem {
-                    Label(Tab.friends.label, icon: Tab.friends.icon)
-                }
-                .tag(Tab.friends)
-                .badge(friendsViewModel.pendingRequestCount)
-                .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
-
-            // Profile tab -- real implementation (Task 3.10)
-            NavigationStack {
-                ProfileView()
-            }
-            .tabItem {
-                Label(Tab.profile.label, icon: Tab.profile.icon)
-            }
-            .tag(Tab.profile)
-            .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
-
-            // Settings tab -- real implementation (Task 3.11)
-            NavigationStack {
-                SettingsView()
-            }
-            .tabItem {
-                Label(Tab.settings.label, icon: Tab.settings.icon)
-            }
-            .tag(Tab.settings)
-            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
-        }
-        .tint(AppColors.primary)
-    }
-
     var body: some View {
-        // `topLeading` so the menu button stays at the upper-left (`.top` centers horizontally).
         ZStack(alignment: .topLeading) {
             SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
                 .zIndex(0)
 
-            // Modifier order mirrors the Figma export structure:
-            //   inner: round corners + border + shadow  →  outer: offset + scale
-            // `.mask` instead of `.clipShape` preserves safe-area propagation
-            // so header/footer stay edge-to-edge when closed (radius 0 = no-op).
-            tabShell
-                .mask {
+            appShell
+                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+                .clipShape(
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
                         style: .continuous
                     )
-                    .ignoresSafeArea()
-                }
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
-                        style: .continuous
-                    )
-                    .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
-                    .ignoresSafeArea()
-                }
+                )
                 .shadow(
                     color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
                     radius: isSideMenuOpen ? 30 : 0,
                     x: -14,
                     y: 0
                 )
-                .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
-                .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                        style: .continuous
+                    )
+                    .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
+                }
+                .allowsHitTesting(!isSideMenuOpen)
                 .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
                 .zIndex(1)
 
@@ -235,8 +125,6 @@ struct MainTabView: View {
                 .zIndex(3)
             }
 
-            // Offline banner overlay (Task 3.14) -- slides in from the top
-            // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
                 .frame(maxWidth: .infinity, alignment: .top)
                 .zIndex(4)
@@ -244,7 +132,6 @@ struct MainTabView: View {
         .onAppear {
             friendsViewModel.loadIncomingRequests()
             handleShieldWorkoutFlag()
-            // Wire deep-link scanner: auto-refresh friends after a successful add.
             friendCodeViewModel.onFriendAdded = { [weak friendsViewModel] in
                 friendsViewModel?.loadFriends()
                 friendsViewModel?.loadLeaderboard()
@@ -253,7 +140,6 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             handleShieldWorkoutFlag()
         }
-        // Handle pushup://friend-code/<CODE> deep-links
         .onOpenURL { url in
             handleDeepLink(url)
         }
@@ -262,11 +148,84 @@ struct MainTabView: View {
         }
     }
 
-    // MARK: - Shield Deep Link
+    // MARK: - App shell (content + custom tab bar, NO system TabView)
 
-    /// Checks whether the ShieldActionExtension requested a direct jump to the
-    /// Workout tab (user tapped "Do Push-Ups Now" on the shield). If so,
-    /// switches to the Workout tab and clears the flag.
+    private var appShell: some View {
+        ZStack {
+            AppColors.backgroundPrimary
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                ZStack {
+                    tabContent(for: .dashboard)
+                        .opacity(selectedTab == .dashboard ? 1 : 0)
+                        .zIndex(selectedTab == .dashboard ? 1 : 0)
+
+                    tabContent(for: .workout)
+                        .opacity(selectedTab == .workout ? 1 : 0)
+                        .zIndex(selectedTab == .workout ? 1 : 0)
+
+                    tabContent(for: .stats)
+                        .opacity(selectedTab == .stats ? 1 : 0)
+                        .zIndex(selectedTab == .stats ? 1 : 0)
+
+                    tabContent(for: .friends)
+                        .opacity(selectedTab == .friends ? 1 : 0)
+                        .zIndex(selectedTab == .friends ? 1 : 0)
+
+                    tabContent(for: .profile)
+                        .opacity(selectedTab == .profile ? 1 : 0)
+                        .zIndex(selectedTab == .profile ? 1 : 0)
+
+                    tabContent(for: .settings)
+                        .opacity(selectedTab == .settings ? 1 : 0)
+                        .zIndex(selectedTab == .settings ? 1 : 0)
+                }
+
+                CustomTabBar(
+                    selectedTab: $selectedTab,
+                    pendingRequestCount: friendsViewModel.pendingRequestCount
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(for tab: Tab) -> some View {
+        switch tab {
+        case .dashboard:
+            NavigationStack {
+                DashboardView(selectedTab: $selectedTab)
+            }
+            .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
+        case .workout:
+            NavigationStack {
+                WorkoutSelectionView()
+            }
+            .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
+        case .stats:
+            NavigationStack {
+                StatsView()
+            }
+            .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
+        case .friends:
+            FriendsView(viewModel: friendsViewModel)
+                .accessibilityIdentifier(Tab.friends.accessibilityIdentifier)
+        case .profile:
+            NavigationStack {
+                ProfileView()
+            }
+            .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
+        case .settings:
+            NavigationStack {
+                SettingsView()
+            }
+            .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
+        }
+    }
+
+    // MARK: - Deep links
+
     private func handleShieldWorkoutFlag() {
         let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
         guard defaults?.bool(forKey: "shield.shouldOpenWorkout") == true else { return }
@@ -275,14 +234,6 @@ struct MainTabView: View {
         selectedTab = .workout
     }
 
-    // MARK: - Friend Code Deep Link
-
-    /// Handles friend-code deep-links in two formats:
-    ///   - Universal Link:  `https://pushup.weareo.fun/friend/<CODE>`
-    ///   - Custom scheme:   `pushup://friend-code/<CODE>`
-    ///
-    /// Switches to the Friends tab and opens the Enter Code sheet with
-    /// the code pre-filled so the user only needs to tap "Add Friend".
     private func handleDeepLink(_ url: URL) {
         let extracted: String?
 
@@ -290,10 +241,8 @@ struct MainTabView: View {
            url.host == "pushup.weareo.fun",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "friend" {
-            // Universal Link: https://pushup.weareo.fun/friend/AB3X7K2M
             extracted = url.pathComponents[2].uppercased()
         } else if url.scheme == "pushup", url.host == "friend-code" {
-            // Custom scheme: pushup://friend-code/AB3X7K2M
             extracted = url.pathComponents
                 .filter { $0 != "/" }
                 .first?
@@ -312,10 +261,67 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Side menu (Figma export — kept in this file so the target always compiles)
+// MARK: - Custom Tab Bar
+
+private struct CustomTabBar: View {
+    @Binding var selectedTab: Tab
+    let pendingRequestCount: Int
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.bottomBarTabs) { tab in
+                tabButton(for: tab)
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+                .ignoresSafeArea(edges: .bottom)
+        }
+        .overlay(alignment: .top) {
+            Divider().opacity(0.3)
+        }
+    }
+
+    private func tabButton(for tab: Tab) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            VStack(spacing: 4) {
+                ZStack(alignment: .topTrailing) {
+                    Image(icon: tab.icon)
+                        .font(.system(size: 22, weight: selectedTab == tab ? .bold : .regular))
+                        .foregroundStyle(selectedTab == tab ? AppColors.primary : .white.opacity(0.4))
+
+                    if tab == .friends && pendingRequestCount > 0 {
+                        Text("\(pendingRequestCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Color.red, in: Circle())
+                            .offset(x: 8, y: -4)
+                    }
+                }
+                .frame(height: 24)
+
+                Text(tab.label)
+                    .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
+                    .foregroundStyle(selectedTab == tab ? AppColors.primary : .white.opacity(0.4))
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(tab.accessibilityIdentifier)
+    }
+}
+
+// MARK: - Side menu internals
 
 private enum SideMenuAnimations {
-    /// Spring tuned to mirror the Figma export (`stiffness: 300`, `damping: 30`).
     static func card(reduceMotion: Bool) -> Animation {
         if reduceMotion {
             return .easeInOut(duration: 0.25)
@@ -337,33 +343,22 @@ private enum SideMenuMetrics {
     static let menuBottomPadding: CGFloat = 34
 }
 
-/// Full-screen emerald → teal gradient; fades in/out with the menu.
 private struct SideMenuGradientLayer: View {
     let isOpen: Bool
     let reduceMotion: Bool
 
-    private var emerald: Color {
-        Color(red: 5 / 255, green: 150 / 255, blue: 105 / 255)
-    }
-
-    private var teal: Color {
-        Color(red: 15 / 255, green: 118 / 255, blue: 110 / 255)
-    }
+    private var emerald: Color { Color(red: 5 / 255, green: 150 / 255, blue: 105 / 255) }
+    private var teal: Color { Color(red: 15 / 255, green: 118 / 255, blue: 110 / 255) }
 
     var body: some View {
-        LinearGradient(
-            colors: [emerald, teal],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-        .opacity(isOpen ? 1 : 0)
-        .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isOpen)
-        .allowsHitTesting(false)
+        LinearGradient(colors: [emerald, teal], startPoint: .topLeading, endPoint: .bottomTrailing)
+            .ignoresSafeArea()
+            .opacity(isOpen ? 1 : 0)
+            .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isOpen)
+            .allowsHitTesting(false)
     }
 }
 
-/// Menu rows on the leading strip and tap-to-dismiss on the rest (matches export `left: 280` overlay behaviour).
 private struct SideMenuInteractiveLayer: View {
     @Binding var isOpen: Bool
     @Binding var selectedTab: Tab
@@ -387,18 +382,14 @@ private struct SideMenuInteractiveLayer: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onTapGesture {
-                            closeMenu()
-                        }
+                        .onTapGesture { closeMenu() }
                         .accessibilityLabel("Dismiss menu")
                         .accessibilityAddTraits(.isButton)
                 }
             }
         }
         .task(id: isOpen) {
-            if isOpen {
-                await refreshUser()
-            }
+            if isOpen { await refreshUser() }
         }
         .alert("Log out?", isPresented: $confirmLogout) {
             Button("Cancel", role: .cancel) {}
@@ -449,9 +440,7 @@ private struct SideMenuInteractiveLayer: View {
 
             Spacer()
 
-            Button {
-                closeMenu()
-            } label: {
+            Button { closeMenu() } label: {
                 Circle()
                     .fill(Color.white.opacity(0.1))
                     .frame(width: 32, height: 32)
@@ -492,9 +481,7 @@ private struct SideMenuInteractiveLayer: View {
     }
 
     private func menuRow(item: SideMenuItem, index: Int) -> some View {
-        Button {
-            handleMenuItem(item)
-        } label: {
+        Button { handleMenuItem(item) } label: {
             HStack(spacing: 12) {
                 Image(systemName: item.symbol)
                     .font(rowIconFont)
@@ -527,16 +514,11 @@ private struct SideMenuInteractiveLayer: View {
         .buttonStyle(.plain)
         .opacity(isOpen ? 1 : 0)
         .offset(x: isOpen ? 0 : -20)
-        .animation(
-            rowAnimation(delayIndex: index),
-            value: isOpen
-        )
+        .animation(rowAnimation(delayIndex: index), value: isOpen)
     }
 
     private var logoutRow: some View {
-        Button {
-            confirmLogout = true
-        } label: {
+        Button { confirmLogout = true } label: {
             HStack(spacing: 12) {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(rowIconFont)
@@ -551,19 +533,13 @@ private struct SideMenuInteractiveLayer: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.clear)
-            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
     private func rowAnimation(delayIndex: Int) -> Animation {
-        if reduceMotion {
-            return .easeOut(duration: 0.2)
-        }
+        if reduceMotion { return .easeOut(duration: 0.2) }
         let delay = isOpen ? Double(delayIndex) * 0.05 : 0
         return .easeOut(duration: 0.25).delay(delay)
     }
@@ -576,16 +552,12 @@ private struct SideMenuInteractiveLayer: View {
             openURL(AppInfo.supportURL)
             closeMenu()
         default:
-            if let tab = item.tab {
-                selectedTab = tab
-            }
+            if let tab = item.tab { selectedTab = tab }
             closeMenu()
         }
     }
 
-    private func closeMenu() {
-        isOpen = false
-    }
+    private func closeMenu() { isOpen = false }
 
     @MainActor
     private func refreshUser() async {
@@ -612,7 +584,6 @@ private struct SideMenuHamburgerButton: View {
 
     let action: () -> Void
 
-    /// Avoids `@Environment(\.safeAreaInsets)` — some toolchains resolve `EdgeInsets` incorrectly for that key.
     private var keyWindowSafeAreaTop: CGFloat {
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -648,11 +619,6 @@ private struct SideMenuHamburgerButton: View {
 
 // MARK: - TabPlaceholderView
 
-/// Placeholder screen displayed inside each tab until the real feature
-/// view is implemented.
-///
-/// All display data (icon, title, description) is derived from the `Tab`
-/// enum so there is a single source of truth for tab metadata.
 struct TabPlaceholderView: View {
 
     let tab: Tab
@@ -696,35 +662,5 @@ struct TabPlaceholderView: View {
 #Preview("Placeholder - Dashboard") {
     NavigationStack {
         TabPlaceholderView(tab: .dashboard)
-    }
-}
-
-#Preview("Placeholder - Workout") {
-    NavigationStack {
-        TabPlaceholderView(tab: .workout)
-    }
-}
-
-#Preview("Placeholder - Stats") {
-    NavigationStack {
-        TabPlaceholderView(tab: .stats)
-    }
-}
-
-#Preview("Placeholder - Friends") {
-    NavigationStack {
-        TabPlaceholderView(tab: .friends)
-    }
-}
-
-#Preview("Placeholder - Profile") {
-    NavigationStack {
-        TabPlaceholderView(tab: .profile)
-    }
-}
-
-#Preview("Placeholder - Settings") {
-    NavigationStack {
-        TabPlaceholderView(tab: .settings)
     }
 }
