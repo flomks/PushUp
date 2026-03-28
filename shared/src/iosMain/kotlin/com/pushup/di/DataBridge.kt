@@ -11,6 +11,7 @@ import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.TimeCreditRepository
+import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
@@ -18,12 +19,17 @@ import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
+import com.pushup.domain.usecase.GetUserSettingsUseCase
+import com.pushup.domain.usecase.UpdateUserSettingsUseCase
 import com.pushup.domain.usecase.ApplyDailyResetUseCase
+import com.pushup.domain.usecase.sync.UserSettingsDashboardSyncUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDate
@@ -400,6 +406,48 @@ object DataBridge : KoinComponent {
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(TotalStatsResult(0, 0, 0L, 0L, 0.0, 0.0, 0, 0, 0)) }
             }
+        }
+    }
+
+    // =========================================================================
+    // Dashboard widget order (mirrors Supabase user_settings.dashboard_widget_order_json)
+    // =========================================================================
+
+    /**
+     * Emits whenever [com.pushup.domain.model.UserSettings.dashboardWidgetOrderJson] changes locally.
+     */
+    fun observeDashboardWidgetOrderJson(
+        userId: String,
+        onUpdate: (String?) -> Unit,
+    ): Job = scope.launch {
+        get<UserSettingsRepository>()
+            .observeSettings(userId)
+            .map { settings -> settings?.dashboardWidgetOrderJson }
+            .distinctUntilChanged()
+            .catch { /* best-effort live updates */ }
+            .collect { json ->
+                withContext(Dispatchers.Main) { onUpdate(json) }
+            }
+    }
+
+    /**
+     * Persists [json] into local UserSettings and PATCHes Supabase (when online).
+     */
+    fun saveDashboardWidgetOrderJson(
+        userId: String,
+        json: String,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                val getSettings = get<GetUserSettingsUseCase>()
+                val updateSettings = get<UpdateUserSettingsUseCase>()
+                val dashboardSync = get<UserSettingsDashboardSyncUseCase>()
+                val current = getSettings(userId)
+                updateSettings(current.copy(dashboardWidgetOrderJson = json))
+                dashboardSync.pushToRemote(userId)
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
         }
     }
 }

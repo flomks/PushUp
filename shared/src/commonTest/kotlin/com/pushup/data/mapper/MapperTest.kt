@@ -424,6 +424,7 @@ class MapperTest {
             qualityMultiplierEnabled = 1L,
             dailyCreditCapSeconds = 3600L,
             searchableByEmail = 1L,
+            dashboardWidgetOrderJson = """["timeCredit","dailyStats"]""",
         )
 
         val domain = dbSettings.toDomain()
@@ -433,6 +434,7 @@ class MapperTest {
         assertTrue(domain.qualityMultiplierEnabled)
         assertEquals(3600L, domain.dailyCreditCapSeconds)
         assertTrue(domain.searchableByEmail)
+        assertEquals("""["timeCredit","dailyStats"]""", domain.dashboardWidgetOrderJson)
     }
 
     @Test
@@ -444,6 +446,7 @@ class MapperTest {
             qualityMultiplierEnabled = 0L,
             dailyCreditCapSeconds = null,
             searchableByEmail = 0L,
+            dashboardWidgetOrderJson = null,
         )
 
         val domain = dbSettings.toDomain()
@@ -461,6 +464,7 @@ class MapperTest {
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 7200L,
             searchableByEmail = true,
+            dashboardWidgetOrderJson = """["weeklyChart"]""",
         )
 
         val db = settings.toDbEntity(id = "settings-3")
@@ -471,6 +475,7 @@ class MapperTest {
         assertEquals(1L, db.qualityMultiplierEnabled)
         assertEquals(7200L, db.dailyCreditCapSeconds)
         assertEquals(1L, db.searchableByEmail)
+        assertEquals("""["weeklyChart"]""", db.dashboardWidgetOrderJson)
     }
 
     @Test
@@ -488,6 +493,7 @@ class MapperTest {
         assertEquals(0L, db.qualityMultiplierEnabled)
         assertNull(db.dailyCreditCapSeconds)
         assertEquals(0L, db.searchableByEmail)
+        assertNull(db.dashboardWidgetOrderJson)
     }
 
     @Test
@@ -498,6 +504,7 @@ class MapperTest {
             qualityMultiplierEnabled = true,
             dailyCreditCapSeconds = 1800L,
             searchableByEmail = true,
+            dashboardWidgetOrderJson = """["timeCredit"]""",
         )
 
         val roundTripped = original.toDbEntity(id = "settings-rt").toDomain()
@@ -507,6 +514,7 @@ class MapperTest {
         assertEquals(original.qualityMultiplierEnabled, roundTripped.qualityMultiplierEnabled)
         assertEquals(original.dailyCreditCapSeconds, roundTripped.dailyCreditCapSeconds)
         assertEquals(original.searchableByEmail, roundTripped.searchableByEmail)
+        assertEquals(original.dashboardWidgetOrderJson, roundTripped.dashboardWidgetOrderJson)
     }
 
     // =========================================================================
@@ -633,6 +641,7 @@ class MapperTest {
             qualityMultiplierEnabled = 42L,
             dailyCreditCapSeconds = null,
             searchableByEmail = 0L,
+            dashboardWidgetOrderJson = null,
         )
 
         val domain = dbSettings.toDomain()
@@ -649,6 +658,7 @@ class MapperTest {
             qualityMultiplierEnabled = -1L,
             dailyCreditCapSeconds = null,
             searchableByEmail = 0L,
+            dashboardWidgetOrderJson = null,
         )
 
         val domain = dbSettings.toDomain()

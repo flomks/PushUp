@@ -1,5 +1,5 @@
 -- =============================================================================
--- PushUp App Local Database Schema (v9)
+-- PushUp App Local Database Schema (v10)
 -- Local-first SQLite storage for workout tracking and time credit management.
 -- All timestamps are stored as Unix epoch milliseconds (INTEGER).
 -- Dates are stored as TEXT in ISO-8601 format (YYYY-MM-DD).
@@ -17,6 +17,7 @@
 --   v7 (6.sqm)   — Added JoggingSession and RoutePoint tables for GPS-tracked jogging workouts.
 --   v8 (7.sqm)   — Added Jogging pause/run segment support and split active/pause metrics.
 --   v9 (8.sqm)   — Added composite jogging indexes for running queries.
+--   v10 (9.sqm)  — Added dashboardWidgetOrderJson on UserSettings (cloud-synced layout).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -101,7 +102,8 @@ CREATE TABLE UserSettings (
     pushUpsPerMinuteCredit   INTEGER NOT NULL DEFAULT 10,
     qualityMultiplierEnabled INTEGER NOT NULL DEFAULT 0,
     dailyCreditCapSeconds    INTEGER,
-    searchableByEmail        INTEGER NOT NULL DEFAULT 0
+    searchableByEmail        INTEGER NOT NULL DEFAULT 0,
+    dashboardWidgetOrderJson TEXT
 );
 
 CREATE INDEX idx_user_settings_user_id ON UserSettings(userId);
@@ -335,8 +337,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- =============================================================================
 
 insertUserSettings:
-INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail, dashboardWidgetOrderJson)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 selectUserSettingsById:
 SELECT *
@@ -349,7 +351,7 @@ FROM UserSettings;
 
 updateUserSettings:
 UPDATE UserSettings
-SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?, searchableByEmail = ?
+SET pushUpsPerMinuteCredit = ?, qualityMultiplierEnabled = ?, dailyCreditCapSeconds = ?, searchableByEmail = ?, dashboardWidgetOrderJson = ?
 WHERE id = ?;
 
 updateUserSettingsSearchableByEmail:
@@ -371,8 +373,8 @@ FROM UserSettings
 WHERE userId = ?;
 
 upsertUserSettings:
-INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO UserSettings (id, userId, pushUpsPerMinuteCredit, qualityMultiplierEnabled, dailyCreditCapSeconds, searchableByEmail, dashboardWidgetOrderJson)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- =============================================================================
 -- UserLevel

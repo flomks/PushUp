@@ -72,6 +72,7 @@ import com.pushup.domain.repository.FriendCodeRepository
 import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
+import com.pushup.domain.usecase.sync.UserSettingsDashboardSyncUseCase
 import com.pushup.domain.usecase.sync.SyncJoggingUseCase
 import com.pushup.domain.usecase.sync.SyncLevelUseCase
 import com.pushup.domain.usecase.sync.SyncManager
@@ -377,6 +378,14 @@ val useCaseModule: Module = module {
         )
     }
     factory {
+        UserSettingsDashboardSyncUseCase(
+            getUserSettingsUseCase = get(),
+            updateUserSettingsUseCase = get(),
+            cloudSyncApi = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
         SyncFromCloudUseCase(
             sessionRepository = get(),
             timeCreditRepository = get(),
@@ -386,6 +395,7 @@ val useCaseModule: Module = module {
             routePointRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
+            userSettingsDashboardSync = get(),
         )
     }
     single {

@@ -8,19 +8,22 @@ import SwiftUI
 /// Supports pull-to-refresh and renders appropriate empty / loading states.
 /// Navigation to the Workout tab is handled via the `selectedTab` binding
 /// passed in from `MainTabView`.
+///
+/// Widgets can be reordered, removed, and added. Layout is stored in
+/// `UserSettings` (local SQLite + Supabase `user_settings`), like other account settings.
 struct DashboardView: View {
 
     @StateObject private var viewModel = DashboardViewModel()
+    @StateObject private var layoutStore = DashboardLayoutStore()
 
     /// Binding to the parent `TabView` selection so the "Workout starten"
     /// button can switch tabs without pushing a new navigation destination.
     @Binding var selectedTab: Tab
 
-    /// Controls whether the time credit detail sheet is presented.
+    @State private var editMode: EditMode = .inactive
     @State private var showTimeCreditDetail = false
+    @State private var showAddWidgetSheet = false
 
-    /// Controls whether the error alert is presented. Derived from
-    /// `viewModel.errorMessage` and properly clears it on dismiss.
     private var showError: Binding<Bool> {
         Binding(
             get: { viewModel.errorMessage != nil },
@@ -28,12 +31,16 @@ struct DashboardView: View {
         )
     }
 
+    private var isInitialLoading: Bool {
+        viewModel.isLoading && !viewModel.hasEverWorkedOut
+    }
+
     var body: some View {
         ZStack {
             AppColors.backgroundPrimary
                 .ignoresSafeArea()
 
-            if viewModel.isLoading && !viewModel.hasEverWorkedOut {
+            if isInitialLoading {
                 initialLoadingView
             } else {
                 scrollContent
@@ -41,8 +48,28 @@ struct DashboardView: View {
         }
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar { refreshToolbarItem }
+        .environment(\.editMode, $editMode)
+        .toolbar { dashboardToolbar }
         .task { await viewModel.startObserving() }
+        .onAppear {
+            if !viewModel.currentUserId.isEmpty {
+                layoutStore.startObserving(userId: viewModel.currentUserId)
+            }
+        }
+        .onChange(of: viewModel.currentUserId) { _, newId in
+            if newId.isEmpty {
+                layoutStore.stopObserving()
+            } else {
+                layoutStore.startObserving(userId: newId)
+            }
+        }
+        .onChange(of: editMode) { _, newValue in
+            if newValue.isEditing {
+                DashboardHaptics.mediumImpact()
+            } else {
+                DashboardHaptics.lightImpact()
+            }
+        }
         .sheet(isPresented: $showTimeCreditDetail) {
             TimeCreditDetailView(
                 availableSeconds: viewModel.availableSeconds,
@@ -56,6 +83,9 @@ struct DashboardView: View {
                 userId: viewModel.currentUserId
             )
         }
+        .sheet(isPresented: $showAddWidgetSheet) {
+            DashboardAddWidgetsSheet(layoutStore: layoutStore)
+        }
         .alert("Error", isPresented: showError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -67,55 +97,104 @@ struct DashboardView: View {
 
     private var scrollContent: some View {
         List {
-            VStack(spacing: AppSpacing.md) {
-
-                // 1. Time credit hero card (tappable for detail breakdown)
-                DashboardTimeCreditCard(
-                    availableSeconds: viewModel.availableSeconds,
-                    dailyEarnedSeconds: viewModel.dailyEarnedSeconds,
-                    totalEarnedSeconds: viewModel.totalEarnedSeconds,
-                    isLoading: viewModel.isLoading,
-                    onTap: { showTimeCreditDetail = true }
-                )
-
-                // 1b. Screen Time status (only shown when authorized + selection exists)
-                ScreenTimeStatusCard()
-
-                // 2. Daily stats
-                DailyStatsCard(
-                    stats: viewModel.dailyStats,
-                    isLoading: viewModel.isLoading
-                )
-
-                // 3. Weekly chart
-                WeeklyChart(
-                    days: viewModel.weekDays,
-                    isLoading: viewModel.isLoading
-                )
-
-                // 4. Last session or empty state
-                if viewModel.hasEverWorkedOut {
-                    lastSessionSection
-                } else {
-                    emptyStateSection
+            if layoutStore.orderedWidgets.isEmpty {
+                emptyDashboardRow
+            } else {
+                ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
+                    widgetView(for: kind)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                        .padding(.top, layoutStore.orderedWidgets.first == kind ? AppSpacing.sm : 0)
+                        .padding(.bottom, AppSpacing.md)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                 }
-
-                // 5. "Workout starten" quick-action button
-                workoutStartButton
+                .onMove { source, destination in
+                    layoutStore.move(fromOffsets: source, toOffset: destination)
+                    DashboardHaptics.lightImpact()
+                }
+                .onDelete { offsets in
+                    layoutStore.remove(atOffsets: offsets)
+                    DashboardHaptics.mediumImpact()
+                }
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.top, AppSpacing.sm)
-            .padding(.bottom, AppSpacing.screenVerticalBottom)
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+
+            Color.clear
+                .frame(height: AppSpacing.screenVerticalBottom)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(AppColors.backgroundPrimary)
         .refreshable {
             await viewModel.refresh()
+        }
+    }
+
+    // MARK: - Empty Dashboard
+
+    private var emptyDashboardRow: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Label("No widgets yet", icon: .rectangleStackFill)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Text("Add widgets to customize your dashboard.")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(AppColors.textSecondary)
+
+                PrimaryButton("Add widgets", icon: .plus) {
+                    DashboardHaptics.mediumImpact()
+                    showAddWidgetSheet = true
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.top, AppSpacing.sm)
+        .padding(.bottom, AppSpacing.md)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    // MARK: - Widgets
+
+    @ViewBuilder
+    private func widgetView(for kind: DashboardWidgetKind) -> some View {
+        switch kind {
+        case .timeCredit:
+            DashboardTimeCreditCard(
+                availableSeconds: viewModel.availableSeconds,
+                dailyEarnedSeconds: viewModel.dailyEarnedSeconds,
+                totalEarnedSeconds: viewModel.totalEarnedSeconds,
+                isLoading: viewModel.isLoading,
+                onTap: { showTimeCreditDetail = true }
+            )
+        case .screenTime:
+            ScreenTimeStatusCard()
+        case .dailyStats:
+            DailyStatsCard(
+                stats: viewModel.dailyStats,
+                isLoading: viewModel.isLoading
+            )
+        case .weeklyChart:
+            WeeklyChart(
+                days: viewModel.weekDays,
+                isLoading: viewModel.isLoading
+            )
+        case .activitySummary:
+            if viewModel.hasEverWorkedOut {
+                lastSessionSection
+            } else {
+                emptyStateSection
+            }
+        case .workoutQuickAction:
+            workoutStartButton
         }
     }
 
@@ -141,8 +220,6 @@ struct DashboardView: View {
 
                     Divider()
 
-                    // Metrics row -- reuses the same layout pattern as
-                    // WorkoutSummaryCard but inline to avoid double-card nesting.
                     lastSessionMetrics(session)
                 }
             }
@@ -152,7 +229,6 @@ struct DashboardView: View {
     @ViewBuilder
     private func lastSessionMetrics(_ session: DashboardLastSession) -> some View {
         VStack(spacing: AppSpacing.sm) {
-            // Primary metric (push-ups or running distance)
             VStack(spacing: AppSpacing.xxs) {
                 Image(systemName: session.primaryMetricIcon.rawValue)
                     .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
@@ -167,7 +243,6 @@ struct DashboardView: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
 
-            // Metrics row
             HStack {
                 metricItem(
                     icon: .clock,
@@ -270,18 +345,108 @@ struct DashboardView: View {
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
-    private var refreshToolbarItem: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
+    private var dashboardToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            if !isInitialLoading {
+                EditButton()
+            }
+        }
+
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            if editMode.isEditing {
+                Button {
+                    DashboardHaptics.lightImpact()
+                    showAddWidgetSheet = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(AppColors.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add widget")
+            }
+
             if viewModel.isRefreshing {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .tint(AppColors.primary)
             }
-        }
 
-        // Sync status indicator (Task 3.14) -- shows sync state and
-        // unsynced workout count badge in the navigation bar.
-        SyncIndicatorToolbarItem()
+            SyncIndicator()
+        }
+    }
+}
+
+// MARK: - Add Widgets Sheet
+
+private struct DashboardAddWidgetsSheet: View {
+
+    @ObservedObject var layoutStore: DashboardLayoutStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var availableKinds: [DashboardWidgetKind] {
+        DashboardWidgetKind.allCases.filter { !layoutStore.orderedWidgets.contains($0) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if availableKinds.isEmpty {
+                    ContentUnavailableView(
+                        "All widgets on dashboard",
+                        systemImage: "square.grid.2x2",
+                        description: Text("Remove a widget from the dashboard to add it back here.")
+                    )
+                } else {
+                    List(availableKinds, id: \.self) { kind in
+                        Button {
+                            layoutStore.add(kind)
+                            DashboardHaptics.success()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: AppSpacing.md) {
+                                Image(systemName: kind.systemImage)
+                                    .font(.title2)
+                                    .foregroundStyle(AppColors.primary)
+                                    .frame(width: 36, alignment: .center)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(kind.title)
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text("Tap to add")
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title3)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(AppColors.primary)
+                            }
+                            .padding(.vertical, AppSpacing.xs)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Add widget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") {
+                        DashboardHaptics.lightImpact()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+        .presentationBackground(.regularMaterial)
     }
 }
 

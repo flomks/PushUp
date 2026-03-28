@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
  * @property dailyCreditCapSeconds   Optional daily cap on earnable credits (`null` = unlimited).
  * @property searchableByEmail       When `true`, other users can find this account by email.
  *                                   Defaults to `false` (email is private).
+ * @property dashboardWidgetOrderJson JSON array of dashboard widget ids (`null` = app default layout).
  */
 @Serializable
 data class UserSettings(
@@ -19,6 +20,7 @@ data class UserSettings(
     val qualityMultiplierEnabled: Boolean,
     val dailyCreditCapSeconds: Long?,
     val searchableByEmail: Boolean = false,
+    val dashboardWidgetOrderJson: String? = null,
 ) {
     init {
         require(userId.isNotBlank()) { "UserSettings.userId must not be blank" }

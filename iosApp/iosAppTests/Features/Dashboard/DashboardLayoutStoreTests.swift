@@ -1,0 +1,68 @@
+import Foundation
+import Testing
+
+@testable import iosApp
+
+// MARK: - DashboardWidgetLayoutCodingTests
+
+@Suite("DashboardWidgetLayoutCoding")
+struct DashboardWidgetLayoutCodingTests {
+
+    @Test("parse JSON array preserves order and deduplicates")
+    func parseDedupes() {
+        let json = #"["timeCredit","nope","timeCredit","dailyStats"]"#
+        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
+        #expect(w == [.timeCredit, .dailyStats])
+    }
+
+    @Test("parse invalid JSON falls back to default order")
+    func parseInvalidFallback() {
+        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: "not-json")
+        #expect(w == DashboardWidgetKind.defaultOrder)
+    }
+
+    @Test("encode then decode round-trip")
+    func encodeRoundTrip() {
+        let original = [DashboardWidgetKind.weeklyChart, DashboardWidgetKind.timeCredit]
+        let str = DashboardWidgetLayoutCoding.jsonString(from: original)
+        #expect(str != nil)
+        let back = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: str!)
+        #expect(back == original)
+    }
+
+    @Test("legacy UserDefaults Data decodes like JSON Data")
+    func legacyData() {
+        let data = try! JSONEncoder().encode(["screenTime", "workoutQuickAction"])
+        let w = DashboardWidgetLayoutCoding.widgets(fromLegacyDefaultsData: data)
+        #expect(w == [.screenTime, .workoutQuickAction])
+    }
+}
+
+// MARK: - DashboardLayoutStore static load (guest / tests)
+
+@Suite("DashboardLayoutStore.load legacy")
+struct DashboardLayoutStoreLoadTests {
+
+    private func isolatedDefaults() -> (UserDefaults, String, String) {
+        let suite = "test.DashboardLayoutLegacy.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else {
+            preconditionFailure("UserDefaults(suiteName:) returned nil")
+        }
+        defaults.removePersistentDomain(forName: suite)
+        let key = "legacy.widgets"
+        return (defaults, key, suite)
+    }
+
+    @Test("load reads encoded widget order from UserDefaults data")
+    @MainActor
+    func loadFromDefaultsData() {
+        let (defaults, key, suite) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let data = try! JSONEncoder().encode(["dailyStats", "weeklyChart"])
+        defaults.set(data, forKey: key)
+
+        let loaded = DashboardLayoutStore.load(from: defaults, key: key)
+        #expect(loaded == [.dailyStats, .weeklyChart])
+    }
+}

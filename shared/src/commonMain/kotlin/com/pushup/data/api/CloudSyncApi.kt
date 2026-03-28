@@ -192,6 +192,20 @@ interface CloudSyncApi {
     }
 
     // =========================================================================
+    // User settings (dashboard widget order — same row as credit / privacy settings)
+    // =========================================================================
+
+    /**
+     * Returns `dashboard_widget_order_json` from `user_settings` for [userId], or `null`.
+     */
+    suspend fun getUserSettingsDashboardWidgetOrderJson(userId: String): String? = null
+
+    /**
+     * PATCHes only `dashboard_widget_order_json` on the `user_settings` row for [userId].
+     */
+    suspend fun patchUserSettingsDashboardWidgetOrderJson(userId: String, json: String?) {}
+
+    // =========================================================================
     // Live Jogging Status (Presence)
     // =========================================================================
 

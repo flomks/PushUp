@@ -1,0 +1,2 @@
+-- v10: optional JSON string for dashboard widget order (mirrors Supabase user_settings.dashboard_widget_order_json).
+ALTER TABLE UserSettings ADD COLUMN dashboardWidgetOrderJson TEXT;

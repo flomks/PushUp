@@ -208,6 +208,7 @@ object UserSettings : Table("user_settings") {
     val qualityMultiplierEnabled = bool("quality_multiplier_enabled")
     val dailyCreditCapSeconds    = long("daily_credit_cap_seconds").nullable()
     val searchableByEmail        = bool("searchable_by_email")
+    val dashboardWidgetOrderJson = text("dashboard_widget_order_json").nullable()
     val createdAt                = timestampWithTimeZone("created_at")
     val updatedAt                = timestampWithTimeZone("updated_at")
 

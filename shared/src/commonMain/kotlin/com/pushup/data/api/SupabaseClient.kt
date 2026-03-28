@@ -20,6 +20,7 @@ import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UserLevelDTO
 import com.pushup.data.api.dto.UserProfileDTO
+import com.pushup.data.api.dto.UserSettingsCloudRowDTO
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
@@ -349,6 +350,34 @@ class SupabaseClient(
                 resourceType = "User",
                 resourceId = userId,
             )
+    }
+
+    // =========================================================================
+    // User settings — dashboard widget order (public.user_settings)
+    // =========================================================================
+
+    override suspend fun getUserSettingsDashboardWidgetOrderJson(userId: String): String? = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/user_settings") {
+            supabaseHeaders(token)
+            url.parameters.append("user_id", "eq.$userId")
+            url.parameters.append("select", "dashboard_widget_order_json")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<UserSettingsCloudRowDTO>>()
+            .firstOrNull()
+            ?.dashboardWidgetOrderJson
+    }
+
+    override suspend fun patchUserSettingsDashboardWidgetOrderJson(userId: String, json: String?) = withRetry {
+        val token = tokenProvider()
+        httpClient.patch("$restBase/user_settings") {
+            supabaseHeaders(token)
+            header("Prefer", "return=minimal")
+            url.parameters.append("user_id", "eq.$userId")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("dashboard_widget_order_json" to json))
+        }.also { it.expectSuccess() }
     }
 
     // =========================================================================

@@ -59,6 +59,8 @@ enum SettingsKeys {
     static let hapticFeedback        = "settings.hapticFeedback"
     static let soundEffects          = "settings.soundEffects"
     static let appearanceMode        = "settings.appearanceMode"
+    /// Legacy local-only cache key (pre–cloud sync). Still used as fallback when not signed in.
+    static let dashboardWidgetOrder  = "settings.dashboardWidgetOrder"
 }
 
 // MARK: - Validation Constants

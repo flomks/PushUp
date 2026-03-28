@@ -52,6 +52,7 @@ class UserSettingsRepositoryImpl(
                 qualityMultiplierEnabled = if (settings.qualityMultiplierEnabled) 1L else 0L,
                 dailyCreditCapSeconds = settings.dailyCreditCapSeconds,
                 searchableByEmail = if (settings.searchableByEmail) 1L else 0L,
+                dashboardWidgetOrderJson = settings.dashboardWidgetOrderJson,
             )
         }
     }

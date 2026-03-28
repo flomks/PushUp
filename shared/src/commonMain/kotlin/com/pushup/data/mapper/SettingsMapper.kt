@@ -22,6 +22,7 @@ fun DbUserSettings.toDomain(): UserSettings = UserSettings(
     qualityMultiplierEnabled = qualityMultiplierEnabled != 0L,
     dailyCreditCapSeconds = dailyCreditCapSeconds,
     searchableByEmail = searchableByEmail != 0L,
+    dashboardWidgetOrderJson = dashboardWidgetOrderJson,
 )
 
 /**
@@ -37,4 +38,5 @@ fun UserSettings.toDbEntity(id: String): DbUserSettings = DbUserSettings(
     qualityMultiplierEnabled = if (qualityMultiplierEnabled) 1L else 0L,
     dailyCreditCapSeconds = dailyCreditCapSeconds,
     searchableByEmail = if (searchableByEmail) 1L else 0L,
+    dashboardWidgetOrderJson = dashboardWidgetOrderJson,
 )

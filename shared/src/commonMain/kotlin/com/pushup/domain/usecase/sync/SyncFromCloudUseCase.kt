@@ -53,6 +53,7 @@ import kotlinx.coroutines.delay
  * @property networkMonitor       Checks whether the device has internet connectivity.
  * @property maxRetries           Maximum retry attempts (default 3).
  * @property baseDelayMs          Base delay in milliseconds for exponential back-off (default 500).
+ * @property userSettingsDashboardSync Optional merge of `dashboard_widget_order_json` from cloud.
  */
 class SyncFromCloudUseCase(
     private val sessionRepository: WorkoutSessionRepository,
@@ -65,6 +66,7 @@ class SyncFromCloudUseCase(
     private val networkMonitor: NetworkMonitor,
     private val maxRetries: Int = 3,
     private val baseDelayMs: Long = 500L,
+    private val userSettingsDashboardSync: UserSettingsDashboardSyncUseCase? = null,
 ) {
 
     /**
@@ -88,6 +90,7 @@ class SyncFromCloudUseCase(
         // Pull the user's display name from Supabase and update locally if it changed.
         // Errors are swallowed so a profile fetch failure does not block the rest of the sync.
         runCatching { fetchAndMergeUserProfile(userId) }
+        runCatching { userSettingsDashboardSync?.mergeFromRemote(userId) }
 
         return SyncFromCloudResult(
             sessionsDownloaded = sessionsResult.downloaded,
