@@ -156,31 +156,9 @@ struct MainTabView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                ZStack {
-                    tabContent(for: .dashboard)
-                        .opacity(selectedTab == .dashboard ? 1 : 0)
-                        .zIndex(selectedTab == .dashboard ? 1 : 0)
-
-                    tabContent(for: .workout)
-                        .opacity(selectedTab == .workout ? 1 : 0)
-                        .zIndex(selectedTab == .workout ? 1 : 0)
-
-                    tabContent(for: .stats)
-                        .opacity(selectedTab == .stats ? 1 : 0)
-                        .zIndex(selectedTab == .stats ? 1 : 0)
-
-                    tabContent(for: .friends)
-                        .opacity(selectedTab == .friends ? 1 : 0)
-                        .zIndex(selectedTab == .friends ? 1 : 0)
-
-                    tabContent(for: .profile)
-                        .opacity(selectedTab == .profile ? 1 : 0)
-                        .zIndex(selectedTab == .profile ? 1 : 0)
-
-                    tabContent(for: .settings)
-                        .opacity(selectedTab == .settings ? 1 : 0)
-                        .zIndex(selectedTab == .settings ? 1 : 0)
-                }
+                // Only render the active tab — avoids 6 simultaneous scroll views destroying performance.
+                tabContent(for: selectedTab)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 CustomTabBar(
                     selectedTab: $selectedTab,
@@ -268,21 +246,25 @@ private struct CustomTabBar: View {
     let pendingRequestCount: Int
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Tab.bottomBarTabs) { tab in
-                tabButton(for: tab)
-            }
-        }
-        .padding(.top, 8)
-        .padding(.bottom, 2)
-        .background {
+        VStack(spacing: 0) {
+            // Thin separator matching the system tab bar
             Rectangle()
-                .fill(.ultraThinMaterial)
-                .environment(\.colorScheme, .dark)
-                .ignoresSafeArea(edges: .bottom)
+                .fill(Color.white.opacity(0.15))
+                .frame(height: 0.33)
+
+            HStack(spacing: 0) {
+                ForEach(Tab.bottomBarTabs) { tab in
+                    tabButton(for: tab)
+                }
+            }
+            .padding(.top, 6)
+            .padding(.bottom, 2)
         }
-        .overlay(alignment: .top) {
-            Divider().opacity(0.3)
+        .background {
+            // Solid dark background that extends into the Home Indicator safe area.
+            // Matches the system tab bar appearance in dark mode without expensive blur layers.
+            AppColors.backgroundPrimary
+                .ignoresSafeArea(edges: .bottom)
         }
     }
 
@@ -290,11 +272,12 @@ private struct CustomTabBar: View {
         Button {
             selectedTab = tab
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
                     Image(icon: tab.icon)
-                        .font(.system(size: 22, weight: selectedTab == tab ? .bold : .regular))
-                        .foregroundStyle(selectedTab == tab ? AppColors.primary : .white.opacity(0.4))
+                        .font(.system(size: 22))
+                        .symbolVariant(selectedTab == tab ? .fill : .none)
+                        .foregroundStyle(selectedTab == tab ? AppColors.primary : .gray)
 
                     if tab == .friends && pendingRequestCount > 0 {
                         Text("\(pendingRequestCount)")
@@ -309,7 +292,7 @@ private struct CustomTabBar: View {
 
                 Text(tab.label)
                     .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
-                    .foregroundStyle(selectedTab == tab ? AppColors.primary : .white.opacity(0.4))
+                    .foregroundStyle(selectedTab == tab ? AppColors.primary : .gray)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
