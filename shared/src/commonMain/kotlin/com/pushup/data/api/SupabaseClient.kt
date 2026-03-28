@@ -378,6 +378,7 @@ class SupabaseClient(
             contentType(ContentType.Application.Json)
             setBody(mapOf("dashboard_widget_order_json" to json))
         }.also { it.expectSuccess() }
+        Unit
     }
 
     // =========================================================================
