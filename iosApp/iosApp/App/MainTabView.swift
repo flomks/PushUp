@@ -187,7 +187,13 @@ struct MainTabView: View {
                 .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
             }
             .tint(AppColors.primary)
-            // One stable modifier chain so SwiftUI can animate smoothly (branching `if isOpen` breaks transitions).
+            // Opaque backing + compositingGroup: UITabBar-backed TabView often ignores clipShape without this,
+            // which leaves sharp corners. Margins when open match the floating “card” in the design reference.
+            .background(AppColors.backgroundPrimary)
+            .compositingGroup()
+            .padding(.top, isSideMenuOpen ? SideMenuMetrics.cardVerticalMarginWhenOpen : 0)
+            .padding(.bottom, isSideMenuOpen ? SideMenuMetrics.cardVerticalMarginWhenOpen : 0)
+            .padding(.trailing, isSideMenuOpen ? SideMenuMetrics.cardTrailingMarginWhenOpen : 0)
             .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
             .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
             .clipShape(
@@ -203,8 +209,11 @@ struct MainTabView: View {
                 y: 0
             )
             .overlay {
-                RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
+                RoundedRectangle(
+                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                    style: .continuous
+                )
+                .strokeBorder(Color.white.opacity(0.05), lineWidth: isSideMenuOpen ? 1 : 0)
             }
             .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
             .zIndex(1)
@@ -318,6 +327,9 @@ private enum SideMenuMetrics {
     static let cardOffsetX: CGFloat = 260
     static let cardScale: CGFloat = 0.88
     static let cardCornerRadius: CGFloat = 30
+    /// Inset when the drawer is open so menu color shows above/below the “phone card” (Figma-style gaps).
+    static let cardVerticalMarginWhenOpen: CGFloat = 14
+    static let cardTrailingMarginWhenOpen: CGFloat = 12
     static let menuContentWidth: CGFloat = 280
     static let menuButtonLeading: CGFloat = 20
     static let menuButtonTopBelowSafeArea: CGFloat = 26
