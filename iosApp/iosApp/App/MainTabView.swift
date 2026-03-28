@@ -108,8 +108,16 @@ struct MainTabView: View {
     /// Shared ViewModel for friend code operations (used by deep-link sheet).
     @StateObject private var friendCodeViewModel = FriendCodeViewModel()
 
+    /// Figma-style slide-out menu: pushes the whole tab shell aside (see `SideMenuPanel.swift`).
+    @State private var isSideMenuOpen = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ZStack(alignment: .top) {
+            SideMenuGradientLayer(isOpen: isSideMenuOpen, reduceMotion: reduceMotion)
+                .zIndex(0)
+
             TabView(selection: $selectedTab) {
                 // Dashboard tab -- real implementation (Task 3.5)
                 NavigationStack {
@@ -174,10 +182,50 @@ struct MainTabView: View {
                 .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)
             }
             .tint(AppColors.primary)
+            .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+            .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
+                    style: .continuous
+                )
+            )
+            .shadow(
+                color: isSideMenuOpen ? Color.black.opacity(0.55) : .clear,
+                radius: isSideMenuOpen ? 30 : 0,
+                x: -14,
+                y: 0
+            )
+            .overlay {
+                if isSideMenuOpen {
+                    RoundedRectangle(cornerRadius: SideMenuMetrics.cardCornerRadius, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+                }
+            }
+            .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
+            .zIndex(1)
+
+            SideMenuInteractiveLayer(
+                isOpen: $isSideMenuOpen,
+                selectedTab: $selectedTab,
+                reduceMotion: reduceMotion
+            )
+            .zIndex(2)
+            .allowsHitTesting(isSideMenuOpen)
+
+            if !isSideMenuOpen {
+                SideMenuHamburgerButton {
+                    withAnimation(SideMenuAnimations.card(reduceMotion: reduceMotion)) {
+                        isSideMenuOpen = true
+                    }
+                }
+                .zIndex(3)
+            }
 
             // Offline banner overlay (Task 3.14) -- slides in from the top
             // when the device loses connectivity and slides out on reconnect.
             OfflineBanner()
+                .zIndex(4)
         }
         .onAppear {
             friendsViewModel.loadIncomingRequests()
