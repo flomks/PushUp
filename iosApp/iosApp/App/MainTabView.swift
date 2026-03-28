@@ -80,7 +80,26 @@ struct MainTabView: View {
     @State private var showFriendCodeSheet = false
     @StateObject private var friendCodeViewModel = FriendCodeViewModel()
     @State private var isSideMenuOpen = false
+    @GestureState private var swipeDragOffset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var allowsSwipeToOpen: Bool {
+        [.dashboard, .workout, .stats, .friends].contains(selectedTab)
+    }
+
+    private var edgeSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .global)
+            .updating($swipeDragOffset) { value, state, _ in
+                if value.startLocation.x < 40 && value.translation.width > 0 {
+                    state = value.translation.width
+                }
+            }
+            .onEnded { value in
+                if value.startLocation.x < 40 && value.translation.width > 80 {
+                    isSideMenuOpen = true
+                }
+            }
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -109,6 +128,7 @@ struct MainTabView: View {
                 )
                 .scaleEffect(isSideMenuOpen ? SideMenuMetrics.cardScale : 1, anchor: .center)
                 .offset(x: isSideMenuOpen ? SideMenuMetrics.cardOffsetX : 0)
+                .gesture(allowsSwipeToOpen && !isSideMenuOpen ? edgeSwipeGesture : nil)
                 .allowsHitTesting(!isSideMenuOpen)
                 .animation(SideMenuAnimations.card(reduceMotion: reduceMotion), value: isSideMenuOpen)
                 .zIndex(1)
