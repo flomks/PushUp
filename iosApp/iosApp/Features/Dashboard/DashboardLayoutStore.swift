@@ -60,7 +60,7 @@ enum DashboardWidgetLayoutCoding {
 @MainActor
 final class DashboardLayoutStore: ObservableObject {
 
-    @Published private(set) var orderedWidgets: [DashboardWidgetKind]
+    @Published var orderedWidgets: [DashboardWidgetKind]
 
     private var observeJob: Kotlinx_coroutines_coreJob?
     private var syncUserId: String?
@@ -74,11 +74,6 @@ final class DashboardLayoutStore: ObservableObject {
     private var lastPersistedWidgetOrder: [DashboardWidgetKind]?
     private var suppressStaleFlowEmissionsUntil: Date?
 
-    /// Anti-jitter: tracks the previous widget order and timestamp of the last reorder so we can
-    /// reject moves that would immediately reverse the prior one (small-over-large oscillation).
-    private var lastMoveTimestamp: Date?
-    private var orderBeforeLastMove: [DashboardWidgetKind]?
-
     init() {
         orderedWidgets = DashboardWidgetKind.defaultOrder
     }
@@ -90,8 +85,6 @@ final class DashboardLayoutStore: ObservableObject {
         didSeedDefaultWhenDashboardJsonUnset = false
         lastPersistedWidgetOrder = nil
         suppressStaleFlowEmissionsUntil = nil
-        lastMoveTimestamp = nil
-        orderBeforeLastMove = nil
         observeJob?.cancel(cause: nil)
         observeJob = DataBridge.shared.observeDashboardWidgetOrderJson(userId: userId) { [weak self] json in
             Task { @MainActor in
@@ -110,18 +103,12 @@ final class DashboardLayoutStore: ObservableObject {
         var next = orderedWidgets
         next.move(fromOffsets: source, toOffset: destination)
         guard next != orderedWidgets else { return }
-
-        let now = Date()
-        if let prevTimestamp = lastMoveTimestamp,
-           let prevOrder = orderBeforeLastMove,
-           now.timeIntervalSince(prevTimestamp) < 0.35,
-           next == prevOrder {
-            return
-        }
-
-        orderBeforeLastMove = orderedWidgets
-        lastMoveTimestamp = now
         orderedWidgets = next
+        schedulePersistDebounced()
+    }
+
+    /// Called by `ReorderableWidgetList` when a drag ends to persist the final order.
+    func schedulePersistAfterReorder() {
         schedulePersistDebounced()
     }
 
@@ -148,8 +135,6 @@ final class DashboardLayoutStore: ObservableObject {
 
     /// If a reorder debounce is still pending, cancel it and persist now (e.g. when leaving edit mode).
     func finishDebouncedPersistIfScheduled() {
-        lastMoveTimestamp = nil
-        orderBeforeLastMove = nil
         guard persistDebounceTask != nil else { return }
         cancelPersistDebounce()
         persistNow()

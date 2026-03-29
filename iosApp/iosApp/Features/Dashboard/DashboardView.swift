@@ -100,63 +100,34 @@ struct DashboardView: View {
         dashboardList
     }
 
-    /// Single `List` for filled and empty dashboards. A `List` with only spacer rows and an empty
-    /// `ForEach` renders as a blank (black) screen — the empty state must be a real row.
     private var dashboardList: some View {
-        List {
-            Color.clear
-                .frame(height: AppSpacing.sm)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+        ScrollView {
+            VStack(spacing: 0) {
+                Color.clear.frame(height: AppSpacing.sm)
 
-            if layoutStore.orderedWidgets.isEmpty {
-                emptyDashboardCard
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, AppSpacing.md)
-                    .padding(.bottom, AppSpacing.md)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-            } else {
-                ForEach(layoutStore.orderedWidgets, id: \.self) { kind in
-                    widgetView(for: kind)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, AppSpacing.screenHorizontal)
+                if layoutStore.orderedWidgets.isEmpty {
+                    emptyDashboardCard
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, AppSpacing.md)
                         .padding(.bottom, AppSpacing.md)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                }
-                // No haptics here: `onMove` can fire repeatedly while the row hovers between two slots,
-                // which stacks vibrations and fights layout (jitter). System reorder already gives affordance.
-                .onMove { source, destination in
-                    var txn = Transaction()
-                    txn.disablesAnimations = true
-                    withTransaction(txn) {
-                        layoutStore.move(fromOffsets: source, toOffset: destination)
+                } else {
+                    ReorderableWidgetList(
+                        widgets: $layoutStore.orderedWidgets,
+                        isEditing: editMode.isEditing,
+                        onPersist: { layoutStore.schedulePersistAfterReorder() },
+                        onDelete: { index in
+                            layoutStore.remove(atOffsets: IndexSet(integer: index))
+                            DashboardHaptics.mediumImpact()
+                        }
+                    ) { kind in
+                        widgetView(for: kind)
                     }
                 }
-                .onDelete { offsets in
-                    layoutStore.remove(atOffsets: offsets)
-                    DashboardHaptics.mediumImpact()
-                }
-            }
 
-            Color.clear
-                .frame(height: AppSpacing.screenVerticalBottom)
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(AppColors.backgroundPrimary)
-        .transaction { txn in
-            if editMode.isEditing {
-                txn.disablesAnimations = true
+                Color.clear.frame(height: AppSpacing.screenVerticalBottom)
             }
         }
+        .background(AppColors.backgroundPrimary)
         .environment(\.editMode, $editMode)
         .refreshable {
             await viewModel.refresh()
