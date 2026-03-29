@@ -76,6 +76,9 @@ struct MainTabView: View {
 
     @State private var selectedTab: Tab = .dashboard
     @StateObject private var friendsViewModel = FriendsViewModel()
+    @StateObject private var dashboardViewModel = DashboardViewModel()
+    @StateObject private var dashboardLayoutStore = DashboardLayoutStore()
+    @StateObject private var statsViewModel = StatsViewModel()
     @State private var pendingFriendCode: String? = nil
     @State private var showFriendCodeSheet = false
     @StateObject private var friendCodeViewModel = FriendCodeViewModel()
@@ -193,7 +196,7 @@ struct MainTabView: View {
         switch tab {
         case .dashboard:
             NavigationStack {
-                DashboardView(selectedTab: $selectedTab)
+                DashboardView(viewModel: dashboardViewModel, layoutStore: dashboardLayoutStore, selectedTab: $selectedTab)
                     .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
@@ -207,7 +210,7 @@ struct MainTabView: View {
             .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
         case .stats:
             NavigationStack {
-                StatsView()
+                StatsView(viewModel: statsViewModel)
                     .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }

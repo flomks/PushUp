@@ -13,8 +13,8 @@ import SwiftUI
 /// `UserSettings` (local SQLite + Supabase `user_settings`), like other account settings.
 struct DashboardView: View {
 
-    @StateObject private var viewModel = DashboardViewModel()
-    @StateObject private var layoutStore = DashboardLayoutStore()
+    @ObservedObject var viewModel: DashboardViewModel
+    @ObservedObject var layoutStore: DashboardLayoutStore
 
     /// Binding to the parent `TabView` selection so the "Workout starten"
     /// button can switch tabs without pushing a new navigation destination.
@@ -444,13 +444,13 @@ private struct DashboardAddWidgetsSheet: View {
 #if DEBUG
 #Preview("Dashboard - Loaded") {
     NavigationStack {
-        DashboardView(selectedTab: .constant(.dashboard))
+        DashboardView(viewModel: DashboardViewModel(), layoutStore: DashboardLayoutStore(), selectedTab: .constant(.dashboard))
     }
 }
 
 #Preview("Dashboard - Dark") {
     NavigationStack {
-        DashboardView(selectedTab: .constant(.dashboard))
+        DashboardView(viewModel: DashboardViewModel(), layoutStore: DashboardLayoutStore(), selectedTab: .constant(.dashboard))
     }
     .preferredColorScheme(.dark)
 }

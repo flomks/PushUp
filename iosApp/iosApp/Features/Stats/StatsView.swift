@@ -33,7 +33,7 @@ import SwiftUI
 /// - Streak indicator in navigation bar
 struct StatsView: View {
 
-    @StateObject private var viewModel = StatsViewModel()
+    @ObservedObject var viewModel: StatsViewModel
 
     /// Controls whether the export action sheet is presented.
     @State private var showExportSheet = false
@@ -50,11 +50,7 @@ struct StatsView: View {
             AppColors.backgroundPrimary
                 .ignoresSafeArea()
 
-            if viewModel.isLoading && viewModel.calendarDays.isEmpty {
-                initialLoadingView
-            } else {
-                mainContent
-            }
+            mainContent
         }
         .navigationTitle("Stats")
         .navigationBarTitleDisplayMode(.large)
@@ -247,21 +243,6 @@ struct StatsView: View {
         ScreenTimeStatsInlineView()
     }
 
-    // MARK: - Initial Loading View
-
-    private var initialLoadingView: some View {
-        VStack(spacing: AppSpacing.lg) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .tint(AppColors.primary)
-                .scaleEffect(1.4)
-
-            Text("Loading Stats...")
-                .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
-        }
-    }
-
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -378,13 +359,13 @@ struct StatsView: View {
 #if DEBUG
 #Preview("StatsView - Loaded") {
     NavigationStack {
-        StatsView()
+        StatsView(viewModel: StatsViewModel())
     }
 }
 
 #Preview("StatsView - Dark") {
     NavigationStack {
-        StatsView()
+        StatsView(viewModel: StatsViewModel())
     }
     .preferredColorScheme(.dark)
 }
