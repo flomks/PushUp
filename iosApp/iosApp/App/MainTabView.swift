@@ -107,7 +107,7 @@ struct MainTabView: View {
                 .zIndex(0)
 
             appShell
-                .padding(.vertical, isSideMenuOpen ? SideMenuMetrics.cardVerticalInset : 0)
+                .padding(.vertical, isSideMenuOpen ? UIScreen.main.bounds.height * SideMenuMetrics.cardVerticalInsetRatio : 0)
                 .background(AppColors.backgroundPrimary)
                 .clipShape(
                     RoundedRectangle(
@@ -435,7 +435,7 @@ private enum SideMenuAnimations {
 private enum SideMenuMetrics {
     static let cardOffsetX: CGFloat = 260
     static let cardScale: CGFloat = 0.88
-    static let cardVerticalInset: CGFloat = 50
+    static let cardVerticalInsetRatio: CGFloat = 0.035
     static let cardCornerRadius: CGFloat = 30
     static let menuContentWidth: CGFloat = 280
     static let menuHorizontalPadding: CGFloat = 24
