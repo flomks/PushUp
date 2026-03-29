@@ -32,6 +32,7 @@ struct FriendsView: View {
                 showAddFriend: $showAddFriend,
                 showRequests: $showRequests
             )
+            .safeAreaPadding(.top, 6)
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {

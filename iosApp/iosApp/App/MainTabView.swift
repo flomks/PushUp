@@ -192,18 +192,21 @@ struct MainTabView: View {
         case .dashboard:
             NavigationStack {
                 DashboardView(selectedTab: $selectedTab)
+                    .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
         case .workout:
             NavigationStack {
                 WorkoutSelectionView()
+                    .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.workout.accessibilityIdentifier)
         case .stats:
             NavigationStack {
                 StatsView()
+                    .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.stats.accessibilityIdentifier)
@@ -213,12 +216,14 @@ struct MainTabView: View {
         case .profile:
             NavigationStack {
                 ProfileView()
+                    .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.profile.accessibilityIdentifier)
         case .settings:
             NavigationStack {
                 SettingsView()
+                    .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }
             .accessibilityIdentifier(Tab.settings.accessibilityIdentifier)

@@ -3,16 +3,23 @@ package com.pushup.data.repository
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.LiveJoggingStatusDTO
 import com.pushup.data.api.dto.SetUsernameRequest
+import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.LevelCalculator
+import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.UserLevel
@@ -225,6 +232,20 @@ class CloudSyncRepositoryTests {
             UsernameCheckResponse(username = username, available = true)
 
         override suspend fun setUsername(request: SetUsernameRequest): String = request.username
+
+        // Jogging session stubs (not exercised by cloud-sync-repo tests)
+        override suspend fun getJoggingSessions(): List<JoggingSession> = emptyList()
+        override suspend fun getJoggingSession(id: String): JoggingSession =
+            throw ApiException.NotFound("Not found", "JoggingSession", id)
+        override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession =
+            throw UnsupportedOperationException()
+        override suspend fun updateJoggingSession(id: String, request: UpdateJoggingSessionRequest): JoggingSession =
+            throw UnsupportedOperationException()
+        override suspend fun getRoutePoints(sessionId: String): List<RoutePoint> = emptyList()
+        override suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint> = emptyList()
+        override suspend fun upsertLiveJoggingStatus(request: UpsertLiveJoggingStatusRequest) {}
+        override suspend fun deleteLiveJoggingStatus(userId: String) {}
+        override suspend fun getLiveJoggingStatuses(userIds: List<String>): List<LiveJoggingStatusDTO> = emptyList()
     }
 
     // =========================================================================
