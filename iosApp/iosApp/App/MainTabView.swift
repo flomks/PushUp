@@ -319,8 +319,8 @@ private struct CustomTabBar: View {
 
                 moreButton
             }
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
         }
         .background {
             AppColors.backgroundPrimary
