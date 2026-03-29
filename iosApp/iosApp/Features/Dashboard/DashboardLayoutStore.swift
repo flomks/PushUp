@@ -74,8 +74,23 @@ final class DashboardLayoutStore: ObservableObject {
     private var lastPersistedWidgetOrder: [DashboardWidgetKind]?
     private var suppressStaleFlowEmissionsUntil: Date?
 
+    private static let localCacheKey = "dashboard.widgetOrderCache"
+
     init() {
-        orderedWidgets = DashboardWidgetKind.defaultOrder
+        orderedWidgets = Self.loadFromLocalCache()
+    }
+
+    private static func loadFromLocalCache() -> [DashboardWidgetKind] {
+        guard let json = UserDefaults.standard.string(forKey: localCacheKey),
+              !json.isEmpty else {
+            return DashboardWidgetKind.defaultOrder
+        }
+        return DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
+    }
+
+    private func saveToLocalCache() {
+        guard let json = DashboardWidgetLayoutCoding.jsonString(from: orderedWidgets) else { return }
+        UserDefaults.standard.set(json, forKey: Self.localCacheKey)
     }
 
     /// Starts observing `UserSettings.dashboardWidgetOrderJson` for [userId]. Call when the user id is known.
@@ -152,6 +167,7 @@ final class DashboardLayoutStore: ObservableObject {
             }
             if parsed == orderedWidgets { return }
             orderedWidgets = parsed
+            saveToLocalCache()
             return
         }
 
@@ -205,6 +221,7 @@ final class DashboardLayoutStore: ObservableObject {
         guard let json = DashboardWidgetLayoutCoding.jsonString(from: orderedWidgets) else { return }
         lastPersistedWidgetOrder = orderedWidgets
         suppressStaleFlowEmissionsUntil = Date().addingTimeInterval(1.0)
+        saveToLocalCache()
 
         guard let userId = syncUserId, !userId.isEmpty else {
             if let data = json.data(using: .utf8) {
