@@ -432,7 +432,7 @@ private enum SideMenuAnimations {
 
 private enum SideMenuMetrics {
     static let cardOffsetX: CGFloat = 260
-    static let cardScale: CGFloat = 0.88
+    static let cardScale: CGFloat = 0.84
     static let cardCornerRadius: CGFloat = 30
     static let menuContentWidth: CGFloat = 280
     static let menuHorizontalPadding: CGFloat = 24
