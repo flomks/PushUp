@@ -458,6 +458,27 @@ object RoutePoints : Table("route_points") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * Mirrors the public.exercise_levels table in Supabase.
+ * One row per (user, exercise_type) pair -- tracks accumulated XP per exercise.
+ * The current level is derived from [totalXp] on the client via LevelCalculator.
+ */
+object ExerciseLevels : Table("exercise_levels") {
+    val id           = uuid("id")
+    val userId       = uuid("user_id").references(Users.id)
+    val exerciseType = text("exercise_type")
+    val totalXp      = long("total_xp")
+    val updatedAt    = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+
+    val idxUserId = Index(
+        columns    = listOf(userId),
+        unique     = false,
+        customName = "idx_exercise_levels_user_id",
+    )
+}
+
 object JoggingSegments : Table("jogging_segments") {
     val id               = uuid("id")
     val sessionId        = uuid("session_id").references(JoggingSessions.id)
@@ -539,13 +560,14 @@ fun Application.configureDatabase(): Boolean {
         SchemaUtils.createMissingTablesAndColumns(
             DeviceTokens,
             UserLevels,
+            ExerciseLevels,
             Notifications,
             JoggingSessions,
             RoutePoints,
             JoggingSegments,
         )
     }
-    log.info("Schema check complete (device_tokens, user_levels, notifications, jogging_sessions, route_points, jogging_segments tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, exercise_levels, notifications, jogging_sessions, route_points, jogging_segments tables ensured)")
 
     return true
 }

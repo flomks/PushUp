@@ -11,6 +11,7 @@ import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
+import com.pushup.data.api.dto.UpsertExerciseLevelRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
@@ -18,6 +19,7 @@ import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
+import com.pushup.domain.model.ExerciseLevel
 import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.WorkoutSession
 
@@ -114,6 +116,25 @@ interface CloudSyncApi {
         userId: String,
         request: UpsertUserLevelRequest,
     ): UserLevel
+
+    // =========================================================================
+    // ExerciseLevel CRUD
+    // =========================================================================
+
+    /**
+     * Returns all exercise_levels records for [userId], or an empty list if none exist.
+     */
+    suspend fun getExerciseLevels(userId: String): List<ExerciseLevel> = emptyList()
+
+    /**
+     * Upserts an exercise_levels record for [userId] and exercise type.
+     * Creates the row if it does not exist, or updates total_xp if the
+     * remote value is lower.
+     */
+    suspend fun upsertExerciseLevel(
+        userId: String,
+        request: UpsertExerciseLevelRequest,
+    ): ExerciseLevel? = null
 
     /**
      * Checks whether [username] is available (not taken by another user).

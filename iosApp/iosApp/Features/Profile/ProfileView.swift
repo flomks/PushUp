@@ -123,6 +123,7 @@ struct ProfileView: View {
             LazyVStack(spacing: AppSpacing.md) {
                 headerCard
                 levelCard
+                exerciseLevelsSection
                 statsSection
                 achievementsSection
                 accountActionsSection
@@ -514,6 +515,29 @@ struct ProfileView: View {
         .accessibilityLabel("Level \(info.level). \(info.xpIntoLevel) of \(info.xpRequiredForNextLevel) XP to next level. Total XP: \(info.totalXp).")
     }
 
+    // MARK: - Exercise Levels Section
+
+    @ViewBuilder
+    private var exerciseLevelsSection: some View {
+        if let levels = viewModel.exerciseLevels, !levels.isEmpty {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                sectionHeader("Exercise Levels", icon: .boltFill)
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: AppSpacing.sm),
+                        GridItem(.flexible(), spacing: AppSpacing.sm),
+                    ],
+                    spacing: AppSpacing.sm
+                ) {
+                    ForEach(levels) { info in
+                        ExerciseLevelCell(info: info)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Stats Section
 
     private var statsSection: some View {
@@ -781,6 +805,90 @@ struct ProfileStatCell: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(label): \(value)")
         }
+    }
+}
+
+// MARK: - ExerciseLevelCell
+
+/// Compact card displaying the level and XP progress for a single exercise type.
+struct ExerciseLevelCell: View {
+
+    let info: ExerciseLevelInfo
+
+    private var workoutType: WorkoutType? { info.workoutType }
+    private var displayName: String { workoutType?.displayName ?? info.exerciseTypeId }
+    private var icon: AppIcon { workoutType?.icon ?? .figureStrengthTraining }
+    private var accentColor: Color { workoutType?.accentColor ?? AppColors.primary }
+
+    var body: some View {
+        Card(padding: AppSpacing.sm) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(accentColor.opacity(0.15))
+                            .frame(width: 32, height: 32)
+
+                        Image(systemName: icon.rawValue)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(accentColor)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayName)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textPrimary)
+                            .lineLimit(1)
+
+                        Text("Lv. \(info.level)")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundStyle(accentColor)
+                    }
+
+                    Spacer()
+                }
+
+                ExerciseLevelProgressBar(progress: info.levelProgress, tint: accentColor)
+
+                HStack {
+                    Text("\(info.xpIntoLevel) / \(info.xpRequiredForNextLevel) XP")
+                        .font(AppTypography.caption2)
+                        .foregroundStyle(AppColors.textSecondary)
+
+                    Spacer()
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(displayName), Level \(info.level). \(info.xpIntoLevel) of \(info.xpRequiredForNextLevel) XP.")
+    }
+}
+
+// MARK: - ExerciseLevelProgressBar
+
+/// Thin rounded progress bar with a configurable tint color for exercise level cells.
+struct ExerciseLevelProgressBar: View {
+
+    let progress: Double
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(tint.opacity(0.15))
+                    .frame(height: 6)
+
+                Capsule()
+                    .fill(tint)
+                    .frame(
+                        width: max(0, geo.size.width * CGFloat(min(progress, 1.0))),
+                        height: 6
+                    )
+                    .animation(.easeInOut(duration: 0.4), value: progress)
+            }
+        }
+        .frame(height: 6)
     }
 }
 

@@ -256,6 +256,34 @@ data class UpsertUserLevelRequest(
 )
 
 // =============================================================================
+// ExerciseLevel DTOs
+// =============================================================================
+
+/**
+ * DTO for the exercise_levels row as returned by the Supabase REST API.
+ *
+ * One row per (user_id, exercise_type) pair.
+ */
+@Serializable
+data class ExerciseLevelDTO(
+    @SerialName("id")            val id: String,
+    @SerialName("user_id")       val userId: String,
+    @SerialName("exercise_type") val exerciseType: String,
+    @SerialName("total_xp")      val totalXp: Long,
+    @SerialName("updated_at")    val updatedAt: String? = null,
+)
+
+/**
+ * Request body for upserting an exercise_levels row.
+ */
+@Serializable
+data class UpsertExerciseLevelRequest(
+    @SerialName("user_id")       val userId: String,
+    @SerialName("exercise_type") val exerciseType: String,
+    @SerialName("total_xp")      val totalXp: Long,
+)
+
+// =============================================================================
 // Domain model mappers
 // =============================================================================
 

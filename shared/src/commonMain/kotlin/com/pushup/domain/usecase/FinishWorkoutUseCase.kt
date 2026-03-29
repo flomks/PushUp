@@ -1,10 +1,12 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.model.WorkoutSummary
+import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.TimeCreditRepository
@@ -39,8 +41,10 @@ import kotlinx.datetime.toLocalDateTime
  * @property recordRepository Repository for reading push-up records.
  * @property timeCreditRepository Repository for updating the user's credit balance.
  * @property settingsRepository Repository for reading user settings.
- * @property levelRepository Optional repository for updating the user's XP / level.
+ * @property levelRepository Optional repository for updating the user's account-wide XP / level.
  *   When `null`, the level system is skipped and [WorkoutSummary.earnedXp] will be 0.
+ * @property exerciseLevelRepository Optional repository for updating per-exercise XP / level.
+ *   When `null`, exercise-level tracking is skipped silently.
  * @property clock Clock used to set the session end timestamp.
  * @property timeZone Timezone used to determine the current calendar day for the daily cap.
  *   Defaults to the system default timezone.
@@ -51,6 +55,7 @@ class FinishWorkoutUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val settingsRepository: UserSettingsRepository,
     private val levelRepository: LevelRepository? = null,
+    private val exerciseLevelRepository: ExerciseLevelRepository? = null,
     private val clock: Clock = Clock.System,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ) {
@@ -123,6 +128,11 @@ class FinishWorkoutUseCase(
             levelRepository?.addXp(session.userId, earnedXp)
         } else {
             levelRepository?.getOrCreate(session.userId)
+        }
+
+        // Award per-exercise XP (Push-Ups).
+        if (earnedXp > 0) {
+            exerciseLevelRepository?.addXp(session.userId, ExerciseType.PUSH_UPS, earnedXp)
         }
 
         val records = recordRepository.getBySessionId(sessionId)

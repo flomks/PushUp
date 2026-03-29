@@ -10,6 +10,7 @@ import com.pushup.data.api.createHttpClient
 import com.pushup.data.repository.AuthRepositoryImpl
 import com.pushup.data.repository.JoggingSessionRepositoryImpl
 import com.pushup.data.repository.JoggingSegmentRepositoryImpl
+import com.pushup.data.repository.ExerciseLevelRepositoryImpl
 import com.pushup.data.repository.LevelRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.RoutePointRepositoryImpl
@@ -23,6 +24,7 @@ import com.pushup.db.PushUpDatabase
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
+import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.RoutePointRepository
@@ -37,6 +39,7 @@ import com.pushup.domain.usecase.AwardWorkoutXpUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
+import com.pushup.domain.usecase.GetExerciseLevelsUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetMonthlyStatsUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
@@ -74,6 +77,7 @@ import com.pushup.domain.usecase.sync.NetworkMonitor
 import com.pushup.domain.usecase.sync.SyncFromCloudUseCase
 import com.pushup.domain.usecase.sync.UserSettingsDashboardSyncUseCase
 import com.pushup.domain.usecase.sync.SyncJoggingUseCase
+import com.pushup.domain.usecase.sync.SyncExerciseLevelsUseCase
 import com.pushup.domain.usecase.sync.SyncLevelUseCase
 import com.pushup.domain.usecase.sync.SyncManager
 import com.pushup.domain.usecase.sync.SyncTimeCreditUseCase
@@ -218,6 +222,14 @@ val repositoryModule: Module = module {
         )
     }
 
+    single<ExerciseLevelRepository> {
+        ExerciseLevelRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+        )
+    }
+
     single<DailyCreditSnapshotRepository> {
         DailyCreditSnapshotRepositoryImpl(
             database = get(),
@@ -277,6 +289,7 @@ val useCaseModule: Module = module {
             timeCreditRepository = get(),
             settingsRepository = get(),
             levelRepository = get(),
+            exerciseLevelRepository = get(),
             clock = get(),
         )
     }
@@ -312,6 +325,7 @@ val useCaseModule: Module = module {
     factory { GetTotalStatsUseCase(statsRepository = get()) }
     factory { GetUserLevelUseCase(levelRepository = get()) }
     factory { AwardWorkoutXpUseCase(levelRepository = get()) }
+    factory { GetExerciseLevelsUseCase(exerciseLevelRepository = get()) }
 
     // Jogging use-cases
     factory { StartJoggingUseCase(sessionRepository = get(), clock = get(), idGenerator = get()) }
@@ -331,6 +345,7 @@ val useCaseModule: Module = module {
             timeCreditRepository = get(),
             settingsRepository = get(),
             levelRepository = get(),
+            exerciseLevelRepository = get(),
             clock = get(),
         )
     }
@@ -364,6 +379,13 @@ val useCaseModule: Module = module {
     factory {
         SyncLevelUseCase(
             levelRepository = get(),
+            supabaseClient = get<CloudSyncApi>(),
+            networkMonitor = get(named(NETWORK_MONITOR)),
+        )
+    }
+    factory {
+        SyncExerciseLevelsUseCase(
+            exerciseLevelRepository = get(),
             supabaseClient = get<CloudSyncApi>(),
             networkMonitor = get(named(NETWORK_MONITOR)),
         )
@@ -410,6 +432,7 @@ val useCaseModule: Module = module {
             syncWorkoutsUseCase = get(),
             syncTimeCreditUseCase = get(),
             syncLevelUseCase = get(),
+            syncExerciseLevelsUseCase = get(),
             syncJoggingUseCase = get(),
             syncFromCloudUseCase = get(),
             authRepository = get(),

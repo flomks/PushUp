@@ -1,8 +1,10 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.JoggingSummary
 import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.LevelCalculator
+import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.LevelRepository
@@ -29,6 +31,7 @@ class FinishJoggingUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val settingsRepository: UserSettingsRepository,
     private val levelRepository: LevelRepository? = null,
+    private val exerciseLevelRepository: ExerciseLevelRepository? = null,
     private val clock: Clock = Clock.System,
 ) {
 
@@ -122,6 +125,11 @@ class FinishJoggingUseCase(
             levelRepository?.addXp(session.userId, earnedXp)
         } else {
             levelRepository?.getOrCreate(session.userId)
+        }
+
+        // Award per-exercise XP (Jogging).
+        if (earnedXp > 0) {
+            exerciseLevelRepository?.addXp(session.userId, ExerciseType.JOGGING, earnedXp)
         }
 
         val routePoints = routePointRepository.getBySessionId(sessionId)

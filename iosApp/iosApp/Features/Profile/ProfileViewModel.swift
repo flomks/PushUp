@@ -73,7 +73,7 @@ struct ProfileStats: Equatable {
 
 // MARK: - LevelInfo
 
-/// XP / level state shown in the level card on the profile screen.
+/// Account-wide XP / level state shown in the level card on the profile screen.
 struct LevelInfo: Equatable {
     /// Current level (1-based).
     let level: Int
@@ -85,6 +85,26 @@ struct LevelInfo: Equatable {
     let xpRequiredForNextLevel: Int64
     /// Progress fraction within the current level, in [0.0, 1.0).
     let levelProgress: Double
+}
+
+// MARK: - ExerciseLevelInfo
+
+/// Per-exercise XP / level state for one exercise type.
+struct ExerciseLevelInfo: Equatable, Identifiable {
+    /// Stable identifier matching `WorkoutType.rawValue` (e.g. "pushUps").
+    let exerciseTypeId: String
+    let level: Int
+    let totalXp: Int64
+    let xpIntoLevel: Int64
+    let xpRequiredForNextLevel: Int64
+    let levelProgress: Double
+
+    var id: String { exerciseTypeId }
+
+    /// Resolves the matching `WorkoutType` for display metadata (icon, color, name).
+    var workoutType: WorkoutType? {
+        WorkoutType(rawValue: exerciseTypeId)
+    }
 }
 
 // MARK: - Validation Constants
@@ -164,8 +184,11 @@ final class ProfileViewModel: ObservableObject {
     /// Lifetime account statistics.
     @Published private(set) var stats: ProfileStats? = nil
 
-    /// Current XP / level state. `nil` while loading or when not authenticated.
+    /// Current account-wide XP / level state. `nil` while loading or when not authenticated.
     @Published private(set) var levelInfo: LevelInfo? = nil
+
+    /// Per-exercise level data. `nil` while loading; empty array if no data available.
+    @Published private(set) var exerciseLevels: [ExerciseLevelInfo]? = nil
 
     /// Whether the initial data load is in progress.
     @Published private(set) var isLoading: Bool = false
@@ -328,6 +351,7 @@ final class ProfileViewModel: ObservableObject {
             applyUserData(user)
             startObservingStats(userId: user.id)
             await loadLevel(userId: user.id)
+            await loadExerciseLevels(userId: user.id)
         } else {
             displayName = ""
             savedDisplayName = ""
@@ -335,15 +359,17 @@ final class ProfileViewModel: ObservableObject {
             memberSinceText = ""
             stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
             levelInfo = nil
+            exerciseLevels = nil
         }
 
         isLoading = false
     }
 
-    /// Refreshes the level card. Can be called after a workout to show updated XP.
+    /// Refreshes the level cards. Can be called after a workout to show updated XP.
     func refreshLevel() async {
         guard let user = await AuthService.shared.getCurrentUser() else { return }
         await loadLevel(userId: user.id)
+        await loadExerciseLevels(userId: user.id)
     }
 
     /// Saves the edited display name to the local database via the KMP layer.
@@ -710,6 +736,32 @@ final class ProfileViewModel: ObservableObject {
                 onError: { [weak self] _ in
                     // Non-critical: hide the level card silently on error.
                     self?.levelInfo = nil
+                    continuation.resume()
+                }
+            )
+        }
+    }
+
+    /// Fetches per-exercise XP / level data from the KMP LevelBridge.
+    private func loadExerciseLevels(userId: String) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            LevelBridge.shared.getExerciseLevels(
+                userId: userId,
+                onResult: { [weak self] results in
+                    self?.exerciseLevels = results.map { r in
+                        ExerciseLevelInfo(
+                            exerciseTypeId: r.exerciseTypeId,
+                            level: Int(r.level),
+                            totalXp: r.totalXp,
+                            xpIntoLevel: r.xpIntoLevel,
+                            xpRequiredForNextLevel: r.xpRequiredForNextLevel,
+                            levelProgress: r.levelProgress
+                        )
+                    }
+                    continuation.resume()
+                },
+                onError: { [weak self] _ in
+                    self?.exerciseLevels = nil
                     continuation.resume()
                 }
             )

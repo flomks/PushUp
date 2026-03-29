@@ -1,5 +1,6 @@
 package com.pushup.di
 
+import com.pushup.domain.usecase.GetExerciseLevelsUseCase
 import com.pushup.domain.usecase.GetUserLevelUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +22,7 @@ object LevelBridge : KoinComponent {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * Fetches the current XP / level state for [userId].
+     * Fetches the current account-wide XP / level state for [userId].
      *
      * Creates an initial level-1 record if the user has never earned XP yet,
      * so [onResult] is always called with a valid [LevelResult] (never null).
@@ -52,14 +53,50 @@ object LevelBridge : KoinComponent {
             }
         }
     }
+
+    /**
+     * Fetches per-exercise XP / level data for [userId].
+     *
+     * Returns one [ExerciseLevelResult] per exercise type (always 6 entries),
+     * including types the user has never used (level 1, 0 XP).
+     *
+     * @param userId   The authenticated user's ID.
+     * @param onResult Called on the main thread with the list of exercise levels.
+     * @param onError  Called on the main thread with a user-facing error message.
+     */
+    fun getExerciseLevels(
+        userId: String,
+        onResult: (List<ExerciseLevelResult>) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val levels = get<GetExerciseLevelsUseCase>().invoke(userId)
+                val results = levels.map { el ->
+                    ExerciseLevelResult(
+                        exerciseTypeId = el.exerciseType.id,
+                        level = el.level,
+                        totalXp = el.totalXp,
+                        xpIntoLevel = el.xpIntoLevel,
+                        xpRequiredForNextLevel = el.xpRequiredForNextLevel,
+                        levelProgress = el.levelProgress.toDouble(),
+                    )
+                }
+                withContext(Dispatchers.Main) { onResult(results) }
+            } catch (e: Exception) {
+                val msg = "Could not load exercise levels: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
+            }
+        }
+    }
 }
 
 // =============================================================================
-// Plain data transfer object — no Kotlin generics, safe for Swift export
+// Plain data transfer objects — no Kotlin generics, safe for Swift export
 // =============================================================================
 
 /**
- * XP / level state returned by [LevelBridge.getUserLevel].
+ * Account-wide XP / level state returned by [LevelBridge.getUserLevel].
  *
  * All numeric types are chosen to be directly usable in Swift without casting:
  * - [level] as Int (Swift Int)
@@ -76,5 +113,20 @@ data class LevelResult(
     /** XP needed to advance to the next level. */
     val xpRequiredForNextLevel: Long,
     /** Progress fraction within the current level, in [0.0, 1.0). */
+    val levelProgress: Double,
+)
+
+/**
+ * Per-exercise XP / level state returned by [LevelBridge.getExerciseLevels].
+ *
+ * @property exerciseTypeId Stable identifier matching [com.pushup.domain.model.ExerciseType.id]
+ *   and Swift `WorkoutType.rawValue` (e.g. "pushUps", "jogging").
+ */
+data class ExerciseLevelResult(
+    val exerciseTypeId: String,
+    val level: Int,
+    val totalXp: Long,
+    val xpIntoLevel: Long,
+    val xpRequiredForNextLevel: Long,
     val levelProgress: Double,
 )

@@ -130,15 +130,7 @@ object LevelCalculator {
     fun fromTotalXp(userId: String, totalXp: Long): UserLevel {
         require(totalXp >= 0) { "totalXp must be >= 0, was $totalXp" }
 
-        var level = 1
-        var remaining = totalXp
-
-        while (true) {
-            val needed = xpRequiredForLevel(level)
-            if (remaining < needed) break
-            remaining -= needed
-            level++
-        }
+        val (level, remaining) = deriveLevelAndRemainder(totalXp)
 
         return UserLevel(
             userId = userId,
@@ -147,5 +139,43 @@ object LevelCalculator {
             xpIntoLevel = remaining,
             xpRequiredForNextLevel = xpRequiredForLevel(level),
         )
+    }
+
+    /**
+     * Constructs an [ExerciseLevel] from a raw [totalXp] value for a specific
+     * [exerciseType]. Uses the same level curve as [fromTotalXp].
+     */
+    fun exerciseLevelFromTotalXp(
+        userId: String,
+        exerciseType: ExerciseType,
+        totalXp: Long,
+    ): ExerciseLevel {
+        require(totalXp >= 0) { "totalXp must be >= 0, was $totalXp" }
+
+        val (level, remaining) = deriveLevelAndRemainder(totalXp)
+
+        return ExerciseLevel(
+            userId = userId,
+            exerciseType = exerciseType,
+            totalXp = totalXp,
+            level = level,
+            xpIntoLevel = remaining,
+            xpRequiredForNextLevel = xpRequiredForLevel(level),
+        )
+    }
+
+    /**
+     * Walks the level curve and returns the (level, xpRemainder) pair for [totalXp].
+     */
+    private fun deriveLevelAndRemainder(totalXp: Long): Pair<Int, Long> {
+        var level = 1
+        var remaining = totalXp
+        while (true) {
+            val needed = xpRequiredForLevel(level)
+            if (remaining < needed) break
+            remaining -= needed
+            level++
+        }
+        return level to remaining
     }
 }

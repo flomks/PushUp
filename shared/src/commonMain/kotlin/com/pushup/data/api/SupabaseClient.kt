@@ -17,6 +17,8 @@ import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
+import com.pushup.data.api.dto.ExerciseLevelDTO
+import com.pushup.data.api.dto.UpsertExerciseLevelRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UserLevelDTO
 import com.pushup.data.api.dto.UserProfileDTO
@@ -24,6 +26,8 @@ import com.pushup.data.api.dto.UserSettingsCloudRowDTO
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.WorkoutSessionDTO
 import com.pushup.data.api.dto.toDomain
+import com.pushup.domain.model.ExerciseLevel
+import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.LevelCalculator
@@ -430,6 +434,36 @@ class SupabaseClient(
     }
 
     // =========================================================================
+    // ExerciseLevel CRUD
+    // =========================================================================
+
+    override suspend fun getExerciseLevels(userId: String): List<ExerciseLevel> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/exercise_levels") {
+            supabaseHeaders(token)
+            url.parameters.append("user_id", "eq.$userId")
+        }.also { it.expectSuccess() }
+            .body<List<ExerciseLevelDTO>>()
+            .mapNotNull { it.toExerciseLevelDomain() }
+    }
+
+    override suspend fun upsertExerciseLevel(
+        userId: String,
+        request: UpsertExerciseLevelRequest,
+    ): ExerciseLevel? = withRetry {
+        val token = tokenProvider()
+        httpClient.post("$restBase/exercise_levels") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation,resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<ExerciseLevelDTO>>()
+            .firstOrNull()
+            ?.toExerciseLevelDomain()
+    }
+
+    // =========================================================================
     // Username (via Supabase PostgREST -- always available, no backend needed)
     // =========================================================================
 
@@ -724,3 +758,17 @@ private fun TimeCreditDTO.toTimeCreditDomain(clock: Clock): TimeCredit {
  */
 private fun UserLevelDTO.toUserLevelDomain(): UserLevel =
     LevelCalculator.fromTotalXp(userId = userId, totalXp = totalXp)
+
+/**
+ * Maps an [ExerciseLevelDTO] to an [ExerciseLevel] domain model.
+ *
+ * Returns `null` if the [exerciseType] is not a known [ExerciseType].
+ */
+private fun ExerciseLevelDTO.toExerciseLevelDomain(): ExerciseLevel? {
+    val type = runCatching { ExerciseType.fromId(exerciseType) }.getOrNull() ?: return null
+    return LevelCalculator.exerciseLevelFromTotalXp(
+        userId = userId,
+        exerciseType = type,
+        totalXp = totalXp,
+    )
+}

@@ -1,0 +1,12 @@
+-- v11: Add ExerciseLevel table for per-exercise XP tracking.
+
+CREATE TABLE ExerciseLevel (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    userId        TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    exerciseType  TEXT    NOT NULL,
+    totalXp       INTEGER NOT NULL DEFAULT 0,
+    lastUpdatedAt INTEGER NOT NULL,
+    UNIQUE(userId, exerciseType)
+);
+
+CREATE INDEX idx_exercise_level_user_id ON ExerciseLevel(userId);
