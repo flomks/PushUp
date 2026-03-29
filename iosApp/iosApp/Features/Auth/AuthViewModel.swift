@@ -870,16 +870,16 @@ extension AuthViewModel: ASAuthorizationControllerDelegate {
 extension AuthViewModel: ASAuthorizationControllerPresentationContextProviding {
 
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        // UIApplication must be accessed on the main thread.
-        // Since ASAuthorizationController always calls this on the main thread,
-        // we use MainActor.assumeIsolated which is safe here.
-        MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first { $0.activationState == .foregroundActive }?
-                .windows.first(where: { $0.isKeyWindow })
-                ?? UIWindow()
-        }
+        // ASAuthorizationController always invokes this callback on the main
+        // thread, so direct UIKit access is safe. We avoid MainActor.assumeIsolated
+        // because the nonisolated context triggers an unsafeForcedSync warning.
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScene = scenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+        return windowScene?.windows.first(where: { $0.isKeyWindow })
+            ?? windowScene?.windows.first
+            ?? UIWindow()
     }
 }
 

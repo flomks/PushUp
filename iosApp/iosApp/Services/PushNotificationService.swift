@@ -123,9 +123,7 @@ final class PushNotificationService {
     ///
     /// Reads directly from the KMP Keychain-backed TokenStorage via DIHelper
     /// to avoid an extra network round-trip.
-    private func currentJWT() async -> String? {
-        return await Task.detached(priority: .userInitiated) {
-            DIHelper.shared.getAccessToken()
-        }.value
+    private func currentJWT() -> String? {
+        DIHelper.shared.getAccessToken()
     }
 }
