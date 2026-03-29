@@ -23,6 +23,7 @@ struct DashboardView: View {
     @State private var editMode: EditMode = .inactive
     @State private var showTimeCreditDetail = false
     @State private var showAddWidgetSheet = false
+    @State private var isDraggingWidget = false
 
     private var showError: Binding<Bool> {
         Binding(
@@ -113,6 +114,7 @@ struct DashboardView: View {
                 } else {
                     ReorderableWidgetList(
                         widgets: $layoutStore.orderedWidgets,
+                        isDragging: $isDraggingWidget,
                         isEditing: editMode.isEditing,
                         onPersist: { layoutStore.schedulePersistAfterReorder() },
                         onDelete: { index in
@@ -127,6 +129,7 @@ struct DashboardView: View {
                 Color.clear.frame(height: AppSpacing.screenVerticalBottom)
             }
         }
+        .scrollDisabled(isDraggingWidget)
         .background(AppColors.backgroundPrimary)
         .environment(\.editMode, $editMode)
         .refreshable {

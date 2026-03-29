@@ -8,6 +8,7 @@ import SwiftUI
 struct ReorderableWidgetList<Content: View>: View {
 
     @Binding var widgets: [DashboardWidgetKind]
+    @Binding var isDragging: Bool
     let isEditing: Bool
     let onPersist: () -> Void
     let onDelete: (Int) -> Void
@@ -67,7 +68,7 @@ struct ReorderableWidgetList<Content: View>: View {
                         )
                 }
             )
-            .gesture(isEditing ? longPressDrag(kind: kind) : nil)
+            .simultaneousGesture(longPressDrag(kind: kind))
             .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
                 frames.merge(newFrames) { _, new in new }
             }
@@ -96,6 +97,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 case .second(true, let drag):
                     if draggedKind == nil {
                         draggedKind = kind
+                        isDragging = true
                         dragOffset = .zero
                         DashboardHaptics.mediumImpact()
                     }
@@ -109,6 +111,7 @@ struct ReorderableWidgetList<Content: View>: View {
             }
             .onEnded { _ in
                 draggedKind = nil
+                isDragging = false
                 dragOffset = .zero
                 onPersist()
             }
@@ -135,6 +138,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 updated.remove(at: draggedIndex)
                 updated.insert(draggedKind, at: min(targetIndex, updated.count))
                 widgets = updated
+                DashboardHaptics.lightImpact()
                 return
             }
 
@@ -143,6 +147,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 updated.remove(at: draggedIndex)
                 updated.insert(draggedKind, at: targetIndex)
                 widgets = updated
+                DashboardHaptics.lightImpact()
                 return
             }
         }
