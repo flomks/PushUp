@@ -33,11 +33,9 @@ struct UsernameCheckResult {
 /// and returns SafeAuthResult. This prevents Kotlin exceptions from crashing
 /// the iOS app when they cross the Kotlin/Swift boundary.
 ///
-/// KMP suspend functions manage their own threading via Kotlin dispatchers.
-/// The async methods here use `withCheckedThrowingContinuation` to bridge the
-/// completion-handler API to Swift concurrency without `Task.detached`, which
-/// would create a Swift Concurrent context that conflicts with Kotlin/Native's
-/// internal thread synchronisation.
+/// All methods are NOT @MainActor — they run on a background thread so that
+/// network I/O does not block the main thread and freeze the UI.
+/// Callers that need to update UI state must hop back to @MainActor themselves.
 final class AuthService: Sendable {
 
     static let shared = AuthService()
@@ -147,34 +145,36 @@ final class AuthService: Sendable {
     ///
     /// Returns a UsernameCheckResult with available = true if the username is free.
     func checkUsernameAvailability(_ username: String) async -> UsernameCheckResult {
-        do {
-            let result: SafeUsernameCheckResult = try await withCheckedThrowingContinuation { continuation in
-                let lock = NSLock()
-                var hasResumed = false
-                SafeAuthBridge.shared.safeCheckUsernameAvailability(
-                    username: username
-                ) { result, error in
-                    lock.lock()
-                    guard !hasResumed else { lock.unlock(); return }
-                    hasResumed = true
-                    lock.unlock()
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else if let result = result {
-                        continuation.resume(returning: result)
-                    } else {
-                        continuation.resume(throwing: NSError(
-                            domain: "AuthService",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
-                        ))
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let result: SafeUsernameCheckResult = try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    SafeAuthBridge.shared.safeCheckUsernameAvailability(
+                        username: username
+                    ) { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else if let result = result {
+                            continuation.resume(returning: result)
+                        } else {
+                            continuation.resume(throwing: NSError(
+                                domain: "AuthService",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
+                            ))
+                        }
                     }
                 }
+                return UsernameCheckResult(available: result.available, errorMessage: result.errorMessage)
+            } catch {
+                return UsernameCheckResult(available: false, errorMessage: error.localizedDescription)
             }
-            return UsernameCheckResult(available: result.available, errorMessage: result.errorMessage)
-        } catch {
-            return UsernameCheckResult(available: false, errorMessage: error.localizedDescription)
-        }
+        }.value
     }
 
     /// Sets the username for the currently authenticated user.
@@ -234,25 +234,27 @@ final class AuthService: Sendable {
 
     /// Returns whether the current user has opted in to email-based search.
     func getSearchableByEmail() async -> Bool {
-        do {
-            return try await withCheckedThrowingContinuation { continuation in
-                let lock = NSLock()
-                var hasResumed = false
-                SafeAuthBridge.shared.safeGetSearchableByEmail { result, error in
-                    lock.lock()
-                    guard !hasResumed else { lock.unlock(); return }
-                    hasResumed = true
-                    lock.unlock()
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: result?.boolValue ?? false)
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                return try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    SafeAuthBridge.shared.safeGetSearchableByEmail { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: result?.boolValue ?? false)
+                        }
                     }
                 }
+            } catch {
+                return false
             }
-        } catch {
-            return false
-        }
+        }.value
     }
 
     /// Updates the searchable-by-email privacy setting.
@@ -269,11 +271,14 @@ final class AuthService: Sendable {
 
     /// Bridges a SafeAuthBridge completionHandler call to async/await.
     ///
-    /// KMP suspend functions manage their own threading internally (Kotlin
-    /// dispatchers). Wrapping them in Task.detached creates a Swift Concurrent
-    /// context that conflicts with Kotlin/Native's thread synchronisation,
-    /// triggering "unsafeForcedSync called from Swift Concurrent context" and
-    /// momentarily blocking the main thread.
+    /// Runs on a detached task so the KMP call is made from a background thread.
+    /// This is required because Kotlin/Native completion handlers for exported
+    /// suspend functions need a non-main-actor context to dispatch their
+    /// coroutines correctly. Without Task.detached, calls made from @MainActor
+    /// callers can hang because the KMP coroutine never completes.
+    ///
+    /// The `unsafeForcedSync` console warning this produces is a harmless
+    /// Kotlin/Native diagnostic that only appears in debug builds.
     ///
     /// SafeAuthBridge methods NEVER throw — they always return SafeAuthResult.
     /// The completionHandler signature is: (SafeAuthResult?, Error?) -> Void
@@ -281,37 +286,39 @@ final class AuthService: Sendable {
     private func callSafeBridge(
         _ call: @escaping (@escaping (SafeAuthResult?, Error?) -> Void) -> Void
     ) async -> AuthServiceResult {
-        do {
-            let kmpResult: SafeAuthResult = try await withCheckedThrowingContinuation { continuation in
-                let lock = NSLock()
-                var hasResumed = false
-                call { result, error in
-                    lock.lock()
-                    guard !hasResumed else { lock.unlock(); return }
-                    hasResumed = true
-                    lock.unlock()
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else if let result = result {
-                        continuation.resume(returning: result)
-                    } else {
-                        continuation.resume(throwing: NSError(
-                            domain: "AuthService",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
-                        ))
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let kmpResult: SafeAuthResult = try await withCheckedThrowingContinuation { continuation in
+                    let lock = NSLock()
+                    var hasResumed = false
+                    call { result, error in
+                        lock.lock()
+                        guard !hasResumed else { lock.unlock(); return }
+                        hasResumed = true
+                        lock.unlock()
+                        if let error = error {
+                            continuation.resume(throwing: error)
+                        } else if let result = result {
+                            continuation.resume(returning: result)
+                        } else {
+                            continuation.resume(throwing: NSError(
+                                domain: "AuthService",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "KMP returned nil"]
+                            ))
+                        }
                     }
                 }
+                if let user = kmpResult.user {
+                    return .success(user)
+                } else if let errorMsg = kmpResult.errorMessage {
+                    return .failure(errorMsg)
+                } else {
+                    return AuthServiceResult(user: nil, errorMessage: nil)
+                }
+            } catch {
+                return .failure("An unexpected error occurred: \(error.localizedDescription)")
             }
-            if let user = kmpResult.user {
-                return .success(user)
-            } else if let errorMsg = kmpResult.errorMessage {
-                return .failure(errorMsg)
-            } else {
-                return AuthServiceResult(user: nil, errorMessage: nil)
-            }
-        } catch {
-            return .failure("An unexpected error occurred: \(error.localizedDescription)")
-        }
+        }.value
     }
 }
