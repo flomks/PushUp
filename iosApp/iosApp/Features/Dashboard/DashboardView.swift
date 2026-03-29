@@ -32,20 +32,12 @@ struct DashboardView: View {
         )
     }
 
-    private var isInitialLoading: Bool {
-        viewModel.isLoading && !viewModel.hasEverWorkedOut
-    }
-
     var body: some View {
         ZStack {
             AppColors.backgroundPrimary
                 .ignoresSafeArea()
 
-            if isInitialLoading {
-                initialLoadingView
-            } else {
-                scrollContent
-            }
+            scrollContent
         }
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.large)
@@ -334,54 +326,35 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Initial Loading View
-
-    private var initialLoadingView: some View {
-        VStack(spacing: AppSpacing.lg) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .tint(AppColors.primary)
-                .scaleEffect(1.4)
-
-            Text("Loading Dashboard...")
-                .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
-        }
-    }
-
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
     private var dashboardToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
-            if !isInitialLoading {
-                Button {
-                    DashboardHaptics.lightImpact()
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        editMode = editMode.isEditing ? .inactive : .active
-                    }
-                } label: {
-                    Text(editMode.isEditing ? "Done" : "Edit")
-                        .fontWeight(.semibold)
+            Button {
+                DashboardHaptics.lightImpact()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    editMode = editMode.isEditing ? .inactive : .active
                 }
-                .accessibilityLabel(editMode.isEditing ? "Done editing dashboard" : "Edit dashboard layout")
+            } label: {
+                Text(editMode.isEditing ? "Done" : "Edit")
+                    .fontWeight(.semibold)
             }
+            .accessibilityLabel(editMode.isEditing ? "Done editing dashboard" : "Edit dashboard layout")
         }
 
         ToolbarItemGroup(placement: .navigationBarTrailing) {
-            if !isInitialLoading {
-                Button {
-                    DashboardHaptics.lightImpact()
-                    showAddWidgetSheet = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title3)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(AppColors.primary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add widget")
+            Button {
+                DashboardHaptics.lightImpact()
+                showAddWidgetSheet = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(AppColors.primary)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add widget")
 
             if viewModel.isRefreshing {
                 ProgressView()
