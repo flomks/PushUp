@@ -108,6 +108,7 @@ struct MainTabView: View {
 
             appShell
                 .padding(.vertical, isSideMenuOpen ? SideMenuMetrics.cardVerticalInset : 0)
+                .background(AppColors.backgroundPrimary)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: isSideMenuOpen ? SideMenuMetrics.cardCornerRadius : 0,
