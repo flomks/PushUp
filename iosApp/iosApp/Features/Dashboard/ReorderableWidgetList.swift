@@ -16,6 +16,7 @@ struct ReorderableWidgetList<Content: View>: View {
 
     @State private var draggedKind: DashboardWidgetKind?
     @State private var dragOffset: CGSize = .zero
+    @State private var dragStartY: CGFloat = 0
     @State private var frames: [DashboardWidgetKind: CGRect] = [:]
 
     private let coordinateSpace = "reorderArea"
@@ -29,15 +30,15 @@ struct ReorderableWidgetList<Content: View>: View {
             }
             .coordinateSpace(name: coordinateSpace)
 
-            if let dragged = draggedKind, let frame = frames[dragged] {
-                content(dragged)
+            if draggedKind != nil {
+                content(draggedKind!)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .padding(.bottom, AppSpacing.md)
                     .opacity(0.9)
                     .scaleEffect(1.03)
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
-                    .offset(y: frame.minY + dragOffset.height)
+                    .offset(y: dragStartY + dragOffset.height)
                     .allowsHitTesting(false)
                     .transition(.identity)
             }
@@ -55,7 +56,7 @@ struct ReorderableWidgetList<Content: View>: View {
             .padding(.bottom, AppSpacing.md)
             .opacity(isDragged ? 0.0 : 1.0)
             .overlay(alignment: .topTrailing) {
-                if isEditing {
+                if isEditing && draggedKind == nil {
                     deleteButton(index: index)
                 }
             }
@@ -98,6 +99,7 @@ struct ReorderableWidgetList<Content: View>: View {
                     if draggedKind == nil {
                         draggedKind = kind
                         isDragging = true
+                        dragStartY = frames[kind]?.minY ?? 0
                         dragOffset = .zero
                         DashboardHaptics.mediumImpact()
                     }
