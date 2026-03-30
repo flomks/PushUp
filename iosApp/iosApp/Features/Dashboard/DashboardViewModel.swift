@@ -163,6 +163,11 @@ final class DashboardViewModel: ObservableObject {
                     screenTime.stopMonitoring()
                     screenTime.startMonitoring(availableSeconds: 1)
                     self.lastMonitoredCredit = effectiveCredit
+                    // startMonitoring writes the sentinel value 1 to App Group, which
+                    // would cause reapplyBlockingState() on the next login to wrongly
+                    // think credit is available and unblock apps. Restore to 0 so the
+                    // persisted credit correctly reflects the exhausted state.
+                    sharedDefaults?.set(0, forKey: ScreenTimeConstants.Keys.availableSeconds)
                 }
             } else {
                 if screenTime.isBlocking {

@@ -173,6 +173,9 @@ final class ScreenTimeManager: ObservableObject {
             // Start monitoring with threshold=1 so the extension records usage.
             stopMonitoring()
             startMonitoring(availableSeconds: 1)
+            // startMonitoring writes the sentinel value 1 to App Group. Restore to 0
+            // so reapplyBlockingState() on the next login correctly detects no credit.
+            sharedDefaults?.set(0, forKey: ScreenTimeConstants.Keys.availableSeconds)
         } else {
             // Credit available -- just (re)start monitoring with the new selection.
             stopMonitoring()
@@ -396,6 +399,10 @@ final class ScreenTimeManager: ObservableObject {
                 sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
             }
             startMonitoring(availableSeconds: 1)
+            // startMonitoring writes the sentinel value 1 to App Group. Restore to 0
+            // so the next reapplyBlockingState() call (e.g. after logout + login)
+            // correctly reads 0 and applies the shield instead of unblocking.
+            sharedDefaults?.set(0, forKey: ScreenTimeConstants.Keys.availableSeconds)
         } else {
             // Credit available -- ensure unblocked and start monitoring.
             if isBlocking {
