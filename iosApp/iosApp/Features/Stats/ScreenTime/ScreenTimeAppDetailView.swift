@@ -63,11 +63,15 @@ struct ScreenTimeAppDetailView: View {
         return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
     }
 
+    private static let dateLabelFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
     private var todayDateLabel: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter.string(from: Date())
+        Self.dateLabelFormatter.string(from: Date())
     }
 
     // MARK: - Main Content
@@ -257,18 +261,6 @@ struct ScreenTimeAppDetailView: View {
 
                 Divider()
 
-                // The DeviceActivityReport view is rendered by our extension
-                // process via XPC. It reports its own intrinsic content height
-                // back to SwiftUI once the extension has rendered.
-                //
-                // Sizing rules:
-                // - minHeight must be large enough to show all app rows.
-                //   Each row is ~62pt; 20 rows = ~1240pt covers most selections.
-                // - maxHeight: .infinity lets the frame grow beyond minHeight
-                //   if the extension reports a larger size.
-                // - Do NOT use .fixedSize(vertical: true) -- that forces the
-                //   view to its ideal size (zero before the extension renders),
-                //   which collapses the report to nothing.
                 DeviceActivityReport(
                     .init("com.flomks.pushup.usageReport"),
                     filter: DeviceActivityFilter(
@@ -288,7 +280,7 @@ struct ScreenTimeAppDetailView: View {
                         max(3, (manager.activitySelection?.applicationTokens.count ?? 0)
                             + (manager.activitySelection?.categoryTokens.count ?? 0))
                     ) * 62,
-                    maxHeight: .infinity
+                    maxHeight: 1500
                 )
 
                 // Footer note

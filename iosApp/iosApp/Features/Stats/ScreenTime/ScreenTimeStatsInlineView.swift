@@ -287,6 +287,21 @@ struct ScreenTimeStatsInlineView: View {
         }
     }
 
+    // MARK: - Formatters
+
+    private static let isoParser: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        return f
+    }()
+
     // MARK: - Helpers
 
     private var usageColor: Color {
@@ -306,13 +321,8 @@ struct ScreenTimeStatsInlineView: View {
     }
 
     private func shortDate(_ isoDate: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = formatter.date(from: isoDate) else { return isoDate }
-        let display = DateFormatter()
-        display.dateFormat = "EEE, MMM d"
-        return display.string(from: date)
+        guard let date = Self.isoParser.date(from: isoDate) else { return isoDate }
+        return Self.shortDateFormatter.string(from: date)
     }
 }
 

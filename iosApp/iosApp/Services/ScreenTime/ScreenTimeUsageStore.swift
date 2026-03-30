@@ -58,11 +58,38 @@ struct PerAppUsageRecord: Codable, Identifiable {
 ///
 /// All operations are synchronous and lightweight -- the data set is small
 /// (one record per day, max ~365 records per year).
+///
+/// Uses a short-lived cache to avoid redundant JSON decoding when multiple
+/// computed properties are accessed in the same run-loop cycle.
 final class ScreenTimeUsageStore {
 
     // MARK: - Singleton
 
     static let shared = ScreenTimeUsageStore()
+
+    // MARK: - Cached DateFormatter
+
+    private static let isoFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    // MARK: - Records Cache
+
+    /// Short-lived cache for `allRecords()`. Invalidated after 1 second so
+    /// repeated reads within the same run-loop cycle (e.g. `todayRecord()`
+    /// → `allRecords()`, `todayUsageSeconds` → `todayRecord()` → `allRecords()`)
+    /// don't each decode the full JSON blob from UserDefaults.
+    private var cachedRecords: [AppUsageRecord]?
+    private var cacheTimestamp: Date = .distantPast
+    private static let cacheTTL: TimeInterval = 1.0
+
+    private func invalidateCache() {
+        cachedRecords = nil
+        cacheTimestamp = .distantPast
+    }
 
     // MARK: - Private
 
@@ -76,15 +103,27 @@ final class ScreenTimeUsageStore {
 
     /// Returns all stored usage records, sorted by date descending (newest first).
     func allRecords() -> [AppUsageRecord] {
+        let now = Date()
+        if let cached = cachedRecords, now.timeIntervalSince(cacheTimestamp) < Self.cacheTTL {
+            return cached
+        }
+
         guard let data = defaults?.data(forKey: ScreenTimeConstants.Keys.usageData),
               let records = try? JSONDecoder().decode([AppUsageRecord].self, from: data)
-        else { return [] }
-        return records.sorted { $0.date > $1.date }
+        else {
+            cachedRecords = []
+            cacheTimestamp = now
+            return []
+        }
+        let sorted = records.sorted { $0.date > $1.date }
+        cachedRecords = sorted
+        cacheTimestamp = now
+        return sorted
     }
 
     /// Returns the usage record for today, or nil if none exists yet.
     func todayRecord() -> AppUsageRecord? {
-        let today = isoDateString(from: Date())
+        let today = Self.isoFormatter.string(from: Date())
         return allRecords().first { $0.date == today }
     }
 
@@ -92,13 +131,12 @@ final class ScreenTimeUsageStore {
     func records(forLastDays days: Int) -> [AppUsageRecord] {
         let calendar = Calendar.current
         let cutoff = calendar.date(byAdding: .day, value: -(days - 1), to: Date()) ?? Date()
-        let cutoffString = isoDateString(from: cutoff)
+        let cutoffString = Self.isoFormatter.string(from: cutoff)
         return allRecords().filter { $0.date >= cutoffString }
     }
 
     /// Total seconds used across all tracked apps today.
     var todayUsageSeconds: Int {
-        // Prefer the authoritative system usage value if available.
         let systemUsage = todaySystemUsageSeconds
         if systemUsage > 0 { return systemUsage }
         return todayRecord()?.totalSeconds ?? 0
@@ -119,7 +157,7 @@ final class ScreenTimeUsageStore {
     ///
     /// Returns 0 if no value has been recorded yet today.
     var todaySystemUsageSeconds: Int {
-        let today = isoDateString(from: Date())
+        let today = Self.isoFormatter.string(from: Date())
         let storedDate = defaults?.string(forKey: ScreenTimeConstants.Keys.todaySystemUsageDate) ?? ""
         guard storedDate == today else { return 0 }
         return defaults?.integer(forKey: ScreenTimeConstants.Keys.todaySystemUsageSeconds) ?? 0
@@ -135,7 +173,6 @@ final class ScreenTimeUsageStore {
         guard let data = defaults?.data(forKey: ScreenTimeConstants.Keys.perAppUsageData),
               let records = try? JSONDecoder().decode([PerAppUsageRecord].self, from: data)
         else {
-            // Try parsing the raw JSON format written by the extension.
             return parseLegacyPerAppData()
         }
         return records.sorted { $0.seconds > $1.seconds }
@@ -164,21 +201,20 @@ final class ScreenTimeUsageStore {
     func saveRecord(_ record: AppUsageRecord) {
         var records = allRecords()
 
-        // Replace existing record for the same date, or append.
         if let index = records.firstIndex(where: { $0.date == record.date }) {
             records[index] = record
         } else {
             records.append(record)
         }
 
-        // Keep only the last 90 days to avoid unbounded growth.
-        let cutoff = isoDateString(from: Calendar.current.date(
+        let cutoff = Self.isoFormatter.string(from: Calendar.current.date(
             byAdding: .day, value: -90, to: Date()) ?? Date()
         )
         records = records.filter { $0.date >= cutoff }
 
         guard let data = try? JSONEncoder().encode(records) else { return }
         defaults?.set(data, forKey: ScreenTimeConstants.Keys.usageData)
+        invalidateCache()
     }
 
     /// Clears all stored usage records.
@@ -187,14 +223,6 @@ final class ScreenTimeUsageStore {
         defaults?.removeObject(forKey: ScreenTimeConstants.Keys.perAppUsageData)
         defaults?.removeObject(forKey: ScreenTimeConstants.Keys.todaySystemUsageSeconds)
         defaults?.removeObject(forKey: ScreenTimeConstants.Keys.todaySystemUsageDate)
-    }
-
-    // MARK: - Helpers
-
-    private func isoDateString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter.string(from: date)
+        invalidateCache()
     }
 }

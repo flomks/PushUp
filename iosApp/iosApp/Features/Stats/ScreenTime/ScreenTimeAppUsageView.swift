@@ -87,34 +87,28 @@ struct ScreenTimeAppUsageView: View {
     @available(iOS 16.4, *)
     private var systemReportContent: some View {
         VStack(spacing: 0) {
-            // Embed the DeviceActivityReport -- rendered by our extension
-            // with real app names, icons, and durations from the OS.
-            // Passing applicationTokens + categoryTokens ensures ALL selected
-            // apps appear, not only those that triggered a threshold event.
-            // Wrapped in a ScrollView so the full app list is accessible
-            // without navigating away.
-            ScrollView(.vertical, showsIndicators: true) {
-                DeviceActivityReport(
-                    .init("com.flomks.pushup.usageReport"),
-                    filter: DeviceActivityFilter(
-                        segment: .daily(
-                            during: Calendar.current.dateInterval(of: .day, for: Date())
-                                ?? DateInterval(start: Date(), duration: 86400)
-                        ),
-                        users: .all,
-                        devices: .init([.iPhone, .iPad]),
-                        applications: manager.activitySelection?.applicationTokens ?? [],
-                        categories: manager.activitySelection?.categoryTokens ?? [],
-                        webDomains: manager.activitySelection?.webDomainTokens ?? []
-                    )
+            DeviceActivityReport(
+                .init("com.flomks.pushup.usageReport"),
+                filter: DeviceActivityFilter(
+                    segment: .daily(
+                        during: Calendar.current.dateInterval(of: .day, for: Date())
+                            ?? DateInterval(start: Date(), duration: 86400)
+                    ),
+                    users: .all,
+                    devices: .init([.iPhone, .iPad]),
+                    applications: manager.activitySelection?.applicationTokens ?? [],
+                    categories: manager.activitySelection?.categoryTokens ?? [],
+                    webDomains: manager.activitySelection?.webDomainTokens ?? []
                 )
-                // Allow the report to grow to its natural height inside the scroll view
-                .frame(minHeight: 200)
-            }
-            // Taller inline frame so more apps are visible at a glance
-            .frame(minHeight: 260, maxHeight: 520)
+            )
+            .frame(
+                minHeight: CGFloat(
+                    max(3, (manager.activitySelection?.applicationTokens.count ?? 0)
+                        + (manager.activitySelection?.categoryTokens.count ?? 0))
+                ) * 52,
+                maxHeight: 520
+            )
 
-            // Footer: live indicator + "See All" hint
             Divider()
             HStack {
                 Image(systemName: "checkmark.shield.fill")

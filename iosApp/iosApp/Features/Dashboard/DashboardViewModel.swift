@@ -88,6 +88,11 @@ final class DashboardViewModel: ObservableObject {
     private var pushUpSessions: [Shared.WorkoutSession] = []
     private var joggingSessions: [Shared.JoggingSession] = []
 
+    /// Tracks the last credit value used to configure DeviceActivity monitoring.
+    /// Prevents redundant stopMonitoring/startMonitoring system calls when the
+    /// credit observer emits the same value multiple times.
+    private var lastMonitoredCredit: Int?
+
     // MARK: - Init
 
     init() {
@@ -135,39 +140,39 @@ final class DashboardViewModel: ObservableObject {
                 self.carryOverLateNightSeconds  = Int(breakdown.carryOverLateNightSeconds)
             }
 
+            // Always persist the latest credit to the App Group container so
+            // ScreenTimeManager.saveSelection() reads a fresh value when the
+            // user adds apps to tracking. Without this, the stored value can
+            // be stale (positive from a previous session) even though the
+            // actual credit is zero, causing apps to NOT be blocked.
+            let sharedDefaults = UserDefaults(suiteName: ScreenTimeConstants.appGroupID)
+            sharedDefaults?.set(available, forKey: ScreenTimeConstants.Keys.availableSeconds)
+
             let screenTime = ScreenTimeManager.shared
             guard screenTime.authorizationStatus == .authorized,
                   screenTime.activitySelection != nil else { return }
 
+            let effectiveCredit = available <= 0 ? 0 : available
+            let needsMonitoringRestart = self.lastMonitoredCredit != effectiveCredit
+
             if available <= 0 {
-                // Credit exhausted — activate the shield immediately.
                 if !screenTime.isBlocking {
                     screenTime.blockApps()
                 }
-                // Keep DeviceActivity monitoring running even at 0 credit.
-                // This is critical for two reasons:
-                //   1. The extension tracks real usage so todaySystemUsageSeconds
-                //      stays accurate for the usage display.
-                //   2. When the user earns new credit via a workout, monitoring
-                //      is restarted with the new threshold. If we stopped it here
-                //      the extension would never write usage data.
-                // Use threshold = 1 second so the event fires immediately and
-                // the extension records the current usage snapshot.
-                screenTime.stopMonitoring()
-                screenTime.startMonitoring(availableSeconds: 1)
+                if needsMonitoringRestart {
+                    screenTime.stopMonitoring()
+                    screenTime.startMonitoring(availableSeconds: 1)
+                    self.lastMonitoredCredit = effectiveCredit
+                }
             } else {
-                // Credit is positive — ensure apps are unblocked and the
-                // DeviceActivity threshold is set to the current balance so
-                // the system blocks automatically when the user exhausts it.
                 if screenTime.isBlocking {
                     screenTime.unblockApps()
                 }
-                // Always restart monitoring with the fresh threshold.
-                // stopMonitoring() first so startMonitoring() can register
-                // the updated threshold (DeviceActivityCenter throws if the
-                // same activity name is already being monitored).
-                screenTime.stopMonitoring()
-                screenTime.startMonitoring(availableSeconds: available)
+                if needsMonitoringRestart {
+                    screenTime.stopMonitoring()
+                    screenTime.startMonitoring(availableSeconds: available)
+                    self.lastMonitoredCredit = effectiveCredit
+                }
             }
         }
 

@@ -388,6 +388,28 @@ struct ScreenTimeStatsView: View {
         .padding(AppSpacing.xl)
     }
 
+    // MARK: - Formatters
+
+    private static let isoParser: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let displayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
+
     // MARK: - Helpers
 
     private var usageColor: Color {
@@ -406,24 +428,13 @@ struct ScreenTimeStatsView: View {
     }
 
     private func formatDate(_ isoDate: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = formatter.date(from: isoDate) else { return isoDate }
-        let display = DateFormatter()
-        display.dateStyle = .medium
-        display.timeStyle = .none
-        return display.string(from: date)
+        guard let date = Self.isoParser.date(from: isoDate) else { return isoDate }
+        return Self.displayFormatter.string(from: date)
     }
 
     private func relativeDate(_ isoDate: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = formatter.date(from: isoDate) else { return "" }
-        let relative = RelativeDateTimeFormatter()
-        relative.unitsStyle = .abbreviated
-        return relative.localizedString(for: date, relativeTo: Date())
+        guard let date = Self.isoParser.date(from: isoDate) else { return "" }
+        return Self.relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
@@ -512,29 +523,32 @@ final class ScreenTimeStatsViewModel: ObservableObject {
 
     // MARK: - Load
 
+    private static let isoParser: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private static let shortFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d/M"
+        return f
+    }()
+
     func loadData() {
         let raw = selectedPeriod == .today
             ? (store.todayRecord().map { [$0] } ?? [])
             : store.records(forLastDays: selectedPeriod.days)
 
         records = raw
-
-        // Load the OS-tracked system usage for today.
         todaySystemUsageSeconds = store.todaySystemUsageSeconds
 
-        // Build chart data
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-
-        let shortFormatter = DateFormatter()
-        shortFormatter.dateFormat = "d/M"
-
         chartData = raw.reversed().map { record in
-            let date = dateFormatter.date(from: record.date) ?? Date()
+            let date = Self.isoParser.date(from: record.date) ?? Date()
             return ScreenTimeChartItem(
                 id: record.date,
-                shortLabel: shortFormatter.string(from: date),
+                shortLabel: Self.shortFormatter.string(from: date),
                 minutes: record.totalSeconds / 60,
                 creditExhausted: record.creditExhausted
             )

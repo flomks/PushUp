@@ -19,11 +19,7 @@ struct ScreenTimeStatusCard: View {
     @ObservedObject private var manager = ScreenTimeManager.shared
     private let usageStore = ScreenTimeUsageStore.shared
 
-    /// Today's total usage in seconds.
-    /// Prefers the OS-tracked system usage value (reinstall-proof).
-    private var todayUsageSeconds: Int {
-        usageStore.todayUsageSeconds
-    }
+    @State private var todayUsageSeconds: Int = 0
 
     private var showError: Binding<Bool> {
         Binding(
@@ -44,6 +40,10 @@ struct ScreenTimeStatusCard: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Screen Time")
+        .task { todayUsageSeconds = usageStore.todayUsageSeconds }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            todayUsageSeconds = usageStore.todayUsageSeconds
+        }
         .alert("Error", isPresented: showError) {
             Button("OK", role: .cancel) { manager.clearError() }
         } message: {
@@ -259,8 +259,7 @@ struct ScreenTimeStatusCard: View {
                     blockingBanner
                 }
 
-                // System tracking indicator
-                if usageStore.todaySystemUsageSeconds > 0 {
+                if todayUsageSeconds > 0 {
                     systemTrackingBadge
                 }
             }
