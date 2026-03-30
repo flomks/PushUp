@@ -18,6 +18,10 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
     @State private var frames: [DashboardWidgetKind: CGRect] = [:]
+    /// Snapshot when reorder lift begins; used to detect if the list order actually changed.
+    @State private var widgetOrderAtDragStart: [DashboardWidgetKind]?
+    /// After a successful reorder, block widget chrome for one run loop so touch-up does not trigger buttons / links.
+    @State private var blockWidgetChromeAfterOrderChange = false
 
     private let coordinateSpace = "reorderArea"
 
@@ -49,6 +53,7 @@ struct ReorderableWidgetList<Content: View>: View {
     @ViewBuilder
     private func widgetRow(kind: DashboardWidgetKind, index: Int) -> some View {
         let isDragged = draggedKind == kind
+        let chromeHitTesting = !isDragged && !blockWidgetChromeAfterOrderChange
 
         content(kind)
             .frame(maxWidth: .infinity)
@@ -56,7 +61,8 @@ struct ReorderableWidgetList<Content: View>: View {
             .padding(.bottom, AppSpacing.md)
             .opacity(isDragged ? 0.0 : 1.0)
             // Invisible list slot must not receive touch-up (otherwise NavigationLink / taps fire on drop).
-            .allowsHitTesting(!isDragged)
+            // After a real reorder, briefly drop hits so the same touch-up is not a tap on the widget.
+            .allowsHitTesting(chromeHitTesting)
             .overlay(alignment: .topTrailing) {
                 if isEditing && draggedKind == nil {
                     deleteButton(index: index)
@@ -99,6 +105,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 switch value {
                 case .second(true, let drag):
                     if draggedKind == nil {
+                        widgetOrderAtDragStart = widgets
                         draggedKind = kind
                         isDragging = true
                         dragStartY = frames[kind]?.minY ?? 0
@@ -114,9 +121,21 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             }
             .onEnded { _ in
+                let startOrder = widgetOrderAtDragStart
+                widgetOrderAtDragStart = nil
+                let orderChanged = startOrder.map { $0 != widgets } ?? false
+
                 draggedKind = nil
                 isDragging = false
                 dragOffset = .zero
+
+                if orderChanged {
+                    blockWidgetChromeAfterOrderChange = true
+                    DispatchQueue.main.async {
+                        blockWidgetChromeAfterOrderChange = false
+                    }
+                }
+
                 onPersist()
             }
     }
