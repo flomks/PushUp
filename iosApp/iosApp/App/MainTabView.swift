@@ -163,6 +163,9 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             handleShieldWorkoutFlag()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            handleShieldWorkoutFlag()
+        }
         .onOpenURL { url in
             handleDeepLink(url)
         }
@@ -276,6 +279,12 @@ struct MainTabView: View {
     }
 
     private func handleDeepLink(_ url: URL) {
+        // pushup://workout — navigate to the Workout tab
+        if url.scheme == "pushup", url.host == "workout" {
+            selectedTab = .workout
+            return
+        }
+
         let extracted: String?
 
         if url.scheme == "https",

@@ -1,19 +1,19 @@
 import ManagedSettings
 import Foundation
+import UserNotifications
 
 // MARK: - ShieldActionExtension
 
 /// Handles button taps on the system app shield (lock screen).
 ///
-/// Primary button ("Do Push-Ups Now") -- sets a flag in the shared App Group
-/// UserDefaults so the main app navigates directly to the Workout tab when
-/// it next becomes active, then closes the shield.
+/// Primary button ("Train Now"):
+///   1. Sets a flag in the App Group so the main app navigates to Workout on launch.
+///   2. Fires an immediate local notification so the user can tap it to open the app.
+///   3. Closes the shield (returns to Home Screen).
 ///
-/// Note: ShieldActionDelegate runs in a sandboxed extension process.
-/// UIApplication.shared is not available, so we cannot open a URL directly.
-/// Instead we write a flag to the shared App Group container. The main app
-/// reads this flag in onReceive(.willEnterForeground) and switches to the
-/// Workout tab automatically.
+/// ShieldActionDelegate runs in a sandboxed extension process -- UIApplication is
+/// not available, so we cannot open a URL directly. The notification banner is the
+/// fastest path for the user to reach the app.
 ///
 /// Secondary button ("Not Now") -- defers, shield stays visible.
 ///
@@ -54,10 +54,9 @@ class ShieldActionExtension: ShieldActionDelegate {
     ) {
         switch action {
         case .primaryButtonPressed:
-            // Signal the main app to navigate to the Workout tab.
-            // The main app reads this flag when it enters the foreground.
             sharedDefaults?.set(true, forKey: "shield.shouldOpenWorkout")
             sharedDefaults?.synchronize()
+            sendWorkoutNotification()
             completionHandler(.close)
 
         case .secondaryButtonPressed:
@@ -66,5 +65,22 @@ class ShieldActionExtension: ShieldActionDelegate {
         @unknown default:
             completionHandler(.close)
         }
+    }
+
+    // MARK: - Notification
+
+    private func sendWorkoutNotification() {
+        let content = UNMutableNotificationContent()
+        content.title = "Ready to train?"
+        content.body = "Tap to open PushUp and start your workout."
+        content.sound = .default
+        content.userInfo = ["action": "openWorkout"]
+
+        let request = UNNotificationRequest(
+            identifier: "shield.openWorkout",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { _ in }
     }
 }

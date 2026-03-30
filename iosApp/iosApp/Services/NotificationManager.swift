@@ -124,6 +124,23 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+
+        // Shield "Train now" notification or "Start Workout" action from limit-reached notification.
+        if let action = userInfo["action"] as? String, action == "openWorkout" {
+            let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+            defaults?.set(true, forKey: "shield.shouldOpenWorkout")
+            defaults?.synchronize()
+            completionHandler()
+            return
+        }
+        if response.actionIdentifier == "START_WORKOUT" {
+            let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+            defaults?.set(true, forKey: "shield.shouldOpenWorkout")
+            defaults?.synchronize()
+            completionHandler()
+            return
+        }
+
         Task { @MainActor in
             self.handleRemotePush(userInfo: userInfo)
         }

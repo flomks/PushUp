@@ -46,15 +46,15 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
                 color: UIColor.label
             ),
             subtitle: ShieldConfiguration.Label(
-                text: "Do push-ups to earn more screen time.",
+                text: "Do a workout to earn more screen time!",
                 color: UIColor.secondaryLabel
             ),
             primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Do Push-Ups Now",
+                text: "Train Now",
                 color: .white
             ),
             primaryButtonBackgroundColor: UIColor(
-                red: 0.0, green: 0.478, blue: 1.0, alpha: 1.0  // #007AFF
+                red: 0.0, green: 0.478, blue: 1.0, alpha: 1.0
             ),
             secondaryButtonLabel: ShieldConfiguration.Label(
                 text: "Not Now",
