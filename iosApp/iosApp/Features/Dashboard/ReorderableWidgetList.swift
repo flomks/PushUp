@@ -18,7 +18,6 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
     @State private var frames: [DashboardWidgetKind: CGRect] = [:]
-
     private let coordinateSpace = "reorderArea"
 
     var body: some View {
@@ -55,6 +54,8 @@ struct ReorderableWidgetList<Content: View>: View {
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.bottom, AppSpacing.md)
             .opacity(isDragged ? 0.0 : 1.0)
+            // Invisible placeholder must not receive the lift — that triggers NavigationLink / button taps.
+            .allowsHitTesting(!isDragged)
             .overlay(alignment: .topTrailing) {
                 if isEditing && draggedKind == nil {
                     deleteButton(index: index)
