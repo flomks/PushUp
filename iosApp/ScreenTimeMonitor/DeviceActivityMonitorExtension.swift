@@ -95,6 +95,12 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // MARK: - Warning (80% consumed)
 
     private func handleWarning() {
+        // If we're already blocking (credit exhausted / shield active), do not
+        // show "5 minutes left" — that event can still fire when schedules
+        // restart or thresholds are re-registered after the user hit the limit.
+        let alreadyBlocking = sharedDefaults?.bool(forKey: "screentime.isBlocking") ?? false
+        if alreadyBlocking { return }
+
         // Update the system usage snapshot before sending the notification.
         // At the warning threshold, the user has consumed ~80% of their credit.
         // We record the cumulative usage at this point so the main app can

@@ -170,9 +170,10 @@ final class DashboardViewModel: ObservableObject {
             let needsMonitoringRestart = self.lastMonitoredCredit != effectiveCredit
 
             if available <= 0 {
-                if !screenTime.isBlocking {
-                    screenTime.blockApps()
-                }
+                // Always call blockApps — it re-applies the shield. Relying on
+                // `isBlocking` alone misses the case where memory says blocked but
+                // ManagedSettings no longer has an active shield.
+                screenTime.blockApps()
                 if needsMonitoringRestart {
                     screenTime.stopMonitoring()
                     screenTime.startMonitoring(availableSeconds: 1)

@@ -216,6 +216,14 @@ final class ScreenTimeManager: ObservableObject {
         sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.isBlocking)
     }
 
+    /// Call when the user signs out. Stops monitoring and clears shields so
+    /// blocked apps work again without force-quitting PushUp.
+    func releaseRestrictionsForLogout() {
+        stopMonitoring()
+        unblockApps()
+        sharedDefaults?.synchronize()
+    }
+
     // MARK: - DeviceActivity Monitoring
 
     /// Starts monitoring app usage for the current selection.
@@ -395,16 +403,13 @@ final class ScreenTimeManager: ObservableObject {
         stopMonitoring()
 
         if wasBlocking || storedCredit <= 0 {
-            // The persisted blocking flag is authoritative: the DeviceActivity
-            // extension or a previous session set it because credit was exhausted.
-            // Block regardless of storedCredit — the App Group credit value can be
-            // stale (e.g. set from a DB value that didn't have spent credit recorded,
-            // or the sentinel 1 written by a previous startMonitoring call).
-            if !isBlocking {
-                applyShield(selection: selection)
-                isBlocking = true
-                sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
-            }
+            // Always re-apply the shield here. `isBlocking` can be true in memory
+            // while ManagedSettings lost the shield (process restart, iOS quirks);
+            // skipping applyShield in that case left apps unlocked until something
+            // else (e.g. opening Screen Time settings) triggered a fresh apply.
+            applyShield(selection: selection)
+            isBlocking = true
+            sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
             startMonitoring(availableSeconds: 1)
             // Keep stored credit at 0 so the next reapplyBlockingState() call
             // correctly identifies the exhausted state (startMonitoring writes 1).
