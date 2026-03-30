@@ -101,7 +101,7 @@ final class ScreenTimeManager: ObservableObject {
             // After authorization, immediately apply the correct state based on
             // the stored credit balance. This ensures blocking/monitoring starts
             // right away without requiring the user to reopen the app.
-            applyStateAfterAuthorization()
+            reapplyBlockingState()
         } catch {
             authorizationStatus = .denied
             errorMessage = "Screen Time permission was denied. You can enable it in iOS Settings > Screen Time."
@@ -355,24 +355,30 @@ final class ScreenTimeManager: ObservableObject {
             isBlocking = false
         }
 
-        // Note: applyStateAfterAuthorization() is NOT called here because
+        // Note: reapplyBlockingState() is NOT called here because
         // loadPersistedState() runs in init() before the KMP database is ready.
-        // DashboardViewModel.startObserving() will call startMonitoring() with
-        // the correct credit value once the DB emits. AppDelegate.rearmScreenTimeMonitoring()
-        // handles the launch case using the stored credit from App Group UserDefaults.
+        // The shield is re-applied above from the persisted isBlocking flag.
+        // Full re-arming (including DeviceActivity monitoring) happens via:
+        //   - AppDelegate.rearmScreenTimeMonitoring() on cold launch
+        //   - MainTabView.onAppear → reapplyBlockingState() after login
+        //   - DashboardViewModel credit observer once the DB emits
     }
 
-    /// Applies the correct blocking/monitoring state immediately after
-    /// authorization is granted or the app launches with authorization already set.
+    /// Applies the correct blocking/monitoring state based on the stored
+    /// credit balance in the App Group container.
     ///
-    /// Called from `requestAuthorization()` and `loadPersistedState()`.
-    /// Reads the stored credit balance and either:
+    /// Reads `screentime.availableSeconds` and either:
     ///   - Blocks apps + starts monitoring (credit = 0)
-    ///   - Starts monitoring with the correct threshold (credit > 0)
+    ///   - Unblocks apps + starts monitoring with threshold (credit > 0)
     ///
-    /// This ensures the correct state is applied without waiting for
-    /// `DashboardViewModel` to emit a credit update.
-    private func applyStateAfterAuthorization() {
+    /// Called from:
+    /// - `requestAuthorization()` after the user grants permission
+    /// - `MainTabView.onAppear` to immediately re-arm after login (before
+    ///   the DashboardViewModel credit observer has a chance to fire)
+    /// - `AppDelegate.rearmScreenTimeMonitoring()` on cold launch
+    ///
+    /// Safe to call multiple times — no-ops when unauthorized or no selection.
+    func reapplyBlockingState() {
         guard let selection = activitySelection,
               !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
         else { return }

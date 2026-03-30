@@ -69,26 +69,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// even after a reinstall or after the app was killed.
     @MainActor
     private func rearmScreenTimeMonitoring() async {
-        let screenTime = ScreenTimeManager.shared
-        let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
-
-        let storedCredit = sharedDefaults?.integer(forKey: "screentime.availableSeconds") ?? 0
-
-        guard screenTime.authorizationStatus == .authorized,
-              screenTime.activitySelection != nil else { return }
-
-        if storedCredit > 0 {
-            // Credit available -- set threshold and start monitoring.
-            screenTime.stopMonitoring()
-            screenTime.startMonitoring(availableSeconds: storedCredit)
-        } else {
-            // Credit is zero (or not yet stored) -- block apps immediately
-            // and start monitoring with threshold=1 so the extension records
-            // usage data even while blocked.
-            screenTime.blockApps()
-            screenTime.stopMonitoring()
-            screenTime.startMonitoring(availableSeconds: 1)
-        }
+        ScreenTimeManager.shared.reapplyBlockingState()
     }
 
     // MARK: - Remote Notification Registration

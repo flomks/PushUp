@@ -155,6 +155,7 @@ struct MainTabView: View {
             configureNavigationBarAppearance()
             friendsViewModel.loadIncomingRequests()
             handleShieldWorkoutFlag()
+            ScreenTimeManager.shared.reapplyBlockingState()
             friendCodeViewModel.onFriendAdded = { [weak friendsViewModel] in
                 friendsViewModel?.loadFriends()
                 friendsViewModel?.loadLeaderboard()
