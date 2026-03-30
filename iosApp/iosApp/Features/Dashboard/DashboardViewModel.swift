@@ -93,6 +93,15 @@ final class DashboardViewModel: ObservableObject {
     /// credit observer emits the same value multiple times.
     private var lastMonitoredCredit: Int?
 
+    /// The credit value from the previous observer emission. Used to detect
+    /// genuine credit increases (new workout) vs stale DB values after login.
+    private var lastObservedCredit: Int? = nil
+
+    /// Set to true after the first mismatch reconciliation (isBlocking + positive
+    /// credit) in this session. Prevents re-reconciling on subsequent emissions
+    /// so that real credit earned from workouts can unblock the apps.
+    private var hasReconciledBlockingMismatch: Bool = false
+
     // MARK: - Init
 
     init() {
@@ -126,6 +135,11 @@ final class DashboardViewModel: ObservableObject {
         creditObservationJob = DataBridge.shared.observeTimeCredit(userId: userId) { [weak self] credit in
             guard let self else { return }
             let available = Int(credit?.availableSeconds ?? 0)
+
+            // Track the previous credit value to detect genuine increases (workouts).
+            let previousCredit = self.lastObservedCredit
+            self.lastObservedCredit = available
+
             self.availableSeconds    = available
             self.totalEarnedSeconds  = Int(credit?.totalEarnedSeconds ?? 0)
             self.totalSpentSeconds   = Int(credit?.totalSpentSeconds ?? 0)
@@ -170,8 +184,46 @@ final class DashboardViewModel: ObservableObject {
                     sharedDefaults?.set(0, forKey: ScreenTimeConstants.Keys.availableSeconds)
                 }
             } else {
+                // available > 0 in DB
                 if screenTime.isBlocking {
-                    screenTime.unblockApps()
+                    // DB shows positive credit but apps are blocked.
+                    //
+                    // Root cause: SpendTimeCreditUseCase is not called in real-time
+                    // as the OS tracks screen time. The DeviceActivity extension
+                    // blocks apps when cumulative usage hits the threshold, but the
+                    // DB dailySpentSeconds was never incremented. After a logout +
+                    // login + cloud sync, the cloud restores the full earned credit,
+                    // making the DB show positive credit even though all time was used.
+                    //
+                    // Fix: if we haven't reconciled yet this session AND this is either
+                    // the first emission (previousCredit == nil) or credit didn't
+                    // genuinely increase, spend all the remaining DB credit so the
+                    // DB reflects reality (0 available). This triggers a new emission
+                    // with available = 0, which calls blockApps() and keeps the shield.
+                    //
+                    // If credit genuinely INCREASED (new workout earned after reconciling),
+                    // unblock the apps — the user earned real new time.
+                    let creditGenuinelyIncreased = previousCredit != nil && available > previousCredit!
+                    if creditGenuinelyIncreased {
+                        // New credit from a workout — unblock.
+                        screenTime.unblockApps()
+                        self.hasReconciledBlockingMismatch = false
+                    } else if !self.hasReconciledBlockingMismatch {
+                        // Mismatch detected: blocking is active but DB shows credit.
+                        // Spend the surplus to reconcile DB with actual usage.
+                        self.hasReconciledBlockingMismatch = true
+                        DataBridge.shared.spendTimeCredit(
+                            userId: userId,
+                            seconds: Int64(available)
+                        ) { _ in }
+                        // Don't unblock or restart monitoring yet — wait for the
+                        // next emission (available = 0) triggered by the spend.
+                        return
+                    }
+                    // else: already reconciled this session, keep blocking.
+                } else {
+                    // Not blocking and has genuine credit — ensure unblocked.
+                    // (No-op if already unblocked.)
                 }
                 if needsMonitoringRestart {
                     screenTime.stopMonitoring()

@@ -386,25 +386,31 @@ final class ScreenTimeManager: ObservableObject {
               !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
         else { return }
 
+        // Read the persisted blocking flag directly from App Group — this captures
+        // state set by the DeviceActivity extension (separate process) which cannot
+        // update the in-memory isBlocking directly.
+        let wasBlocking = sharedDefaults?.bool(forKey: ScreenTimeConstants.Keys.isBlocking) ?? false
         let storedCredit = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.availableSeconds) ?? 0
 
         stopMonitoring()
 
-        if storedCredit <= 0 {
-            // No credit -- block immediately and monitor with threshold=1
-            // so the extension records usage data.
+        if wasBlocking || storedCredit <= 0 {
+            // The persisted blocking flag is authoritative: the DeviceActivity
+            // extension or a previous session set it because credit was exhausted.
+            // Block regardless of storedCredit — the App Group credit value can be
+            // stale (e.g. set from a DB value that didn't have spent credit recorded,
+            // or the sentinel 1 written by a previous startMonitoring call).
             if !isBlocking {
                 applyShield(selection: selection)
                 isBlocking = true
                 sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
             }
             startMonitoring(availableSeconds: 1)
-            // startMonitoring writes the sentinel value 1 to App Group. Restore to 0
-            // so the next reapplyBlockingState() call (e.g. after logout + login)
-            // correctly reads 0 and applies the shield instead of unblocking.
+            // Keep stored credit at 0 so the next reapplyBlockingState() call
+            // correctly identifies the exhausted state (startMonitoring writes 1).
             sharedDefaults?.set(0, forKey: ScreenTimeConstants.Keys.availableSeconds)
         } else {
-            // Credit available -- ensure unblocked and start monitoring.
+            // wasBlocking is false and credit is stored — genuinely has credit.
             if isBlocking {
                 store.shield.applications = nil
                 store.shield.applicationCategories = nil

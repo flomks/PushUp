@@ -22,6 +22,8 @@ import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
 import com.pushup.domain.usecase.ApplyDailyResetUseCase
+import com.pushup.domain.usecase.SpendTimeCreditUseCase
+import com.pushup.domain.usecase.SpendResult
 import com.pushup.domain.usecase.sync.UserSettingsDashboardSyncUseCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -229,6 +231,38 @@ object DataBridge : KoinComponent {
                 withContext(Dispatchers.Main) { onResult(credit) }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    /**
+     * Spends (deducts) [seconds] from the user's credit balance.
+     *
+     * Called when the DeviceActivity extension has blocked apps but the local
+     * DB still shows a positive balance — because [SpendTimeCreditUseCase] is
+     * not called in real-time as screen time is consumed. This reconciles the
+     * DB so it accurately reflects 0 remaining credit, ensuring that after a
+     * logout + login + cloud sync the correct (zero) balance is restored.
+     *
+     * Calls [onResult] with `true` on success, `false` if the balance is
+     * already 0, there are insufficient credits, or an error occurs.
+     */
+    fun spendTimeCredit(
+        userId: String,
+        seconds: Long,
+        onResult: (Boolean) -> Unit,
+    ) {
+        if (seconds <= 0L) {
+            scope.launch { withContext(Dispatchers.Main) { onResult(false) } }
+            return
+        }
+        scope.launch {
+            try {
+                val result = get<SpendTimeCreditUseCase>().invoke(userId, seconds)
+                val success = result is SpendResult.Success
+                withContext(Dispatchers.Main) { onResult(success) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(false) }
             }
         }
     }
