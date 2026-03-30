@@ -18,7 +18,13 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
     @State private var frames: [DashboardWidgetKind: CGRect] = [:]
+    /// Long-press entered reorder (widget lifted); release must not activate NavigationLinks / buttons.
+    @State private var reorderLiftActiveThisGesture = false
+    /// Short cooldown so the touch-up after a reorder cannot trigger widget actions.
+    @State private var suppressWidgetContentInteractions = false
+
     private let coordinateSpace = "reorderArea"
+    private let postDragInteractionSuppressionSeconds: TimeInterval = 0.45
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -48,32 +54,36 @@ struct ReorderableWidgetList<Content: View>: View {
     @ViewBuilder
     private func widgetRow(kind: DashboardWidgetKind, index: Int) -> some View {
         let isDragged = draggedKind == kind
+        let blockWidgetChromeHits = isDragged || isDragging || suppressWidgetContentInteractions
 
-        content(kind)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.bottom, AppSpacing.md)
-            .opacity(isDragged ? 0.0 : 1.0)
-            // Invisible placeholder must not receive the lift — that triggers NavigationLink / button taps.
-            .allowsHitTesting(!isDragged)
-            .overlay(alignment: .topTrailing) {
-                if isEditing && draggedKind == nil {
-                    deleteButton(index: index)
-                }
+        ZStack(alignment: .topTrailing) {
+            content(kind)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.bottom, AppSpacing.md)
+                .opacity(isDragged ? 0.0 : 1.0)
+                // No hit testing on widget chrome while dragging, right after drop, or on the invisible slot.
+                // (Avoid `.disabled` here — it dims the whole card during reorder.)
+                .allowsHitTesting(!blockWidgetChromeHits)
+
+            if isEditing && draggedKind == nil {
+                deleteButton(index: index)
             }
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(
-                            key: WidgetFramePreferenceKey.self,
-                            value: [kind: geo.frame(in: .named(coordinateSpace))]
-                        )
-                }
-            )
-            .simultaneousGesture(longPressDrag(kind: kind))
-            .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
-                frames.merge(newFrames) { _, new in new }
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .preference(
+                        key: WidgetFramePreferenceKey.self,
+                        value: [kind: geo.frame(in: .named(coordinateSpace))]
+                    )
             }
+        )
+        // High priority so the reorder gesture wins over links/buttons; simultaneousGesture lets taps fire on release.
+        .highPriorityGesture(longPressDrag(kind: kind))
+        .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
+            frames.merge(newFrames) { _, new in new }
+        }
     }
 
     private func deleteButton(index: Int) -> some View {
@@ -100,6 +110,7 @@ struct ReorderableWidgetList<Content: View>: View {
                     if draggedKind == nil {
                         draggedKind = kind
                         isDragging = true
+                        reorderLiftActiveThisGesture = true
                         dragStartY = frames[kind]?.minY ?? 0
                         dragOffset = .zero
                         DashboardHaptics.mediumImpact()
@@ -113,9 +124,18 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             }
             .onEnded { _ in
+                let shouldBlockLiftAsTap = reorderLiftActiveThisGesture
                 draggedKind = nil
                 isDragging = false
                 dragOffset = .zero
+                reorderLiftActiveThisGesture = false
+                if shouldBlockLiftAsTap {
+                    suppressWidgetContentInteractions = true
+                    let delay = postDragInteractionSuppressionSeconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        suppressWidgetContentInteractions = false
+                    }
+                }
                 onPersist()
             }
     }
