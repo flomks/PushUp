@@ -67,6 +67,14 @@ final class ScreenTimeManager: ObservableObject {
 
     // MARK: - Private
 
+    /// `false` while logged out: no shields/monitoring (and credit callbacks cannot re-block).
+    private var isAppUserSignedInForBlocking: Bool {
+        if let v = sharedDefaults?.object(forKey: ScreenTimeConstants.Keys.appUserSignedIn) as? Bool {
+            return v
+        }
+        return true
+    }
+
     private let store = ManagedSettingsStore()
     private let activityCenter = DeviceActivityCenter()
 
@@ -146,6 +154,8 @@ final class ScreenTimeManager: ObservableObject {
     /// The selection is encoded as JSON and stored in the shared UserDefaults
     /// so the DeviceActivity Extension can read it without IPC.
     func saveSelection(_ selection: FamilyActivitySelection) {
+        guard isAppUserSignedInForBlocking else { return }
+
         activitySelection = selection
 
         guard let data = try? JSONEncoder().encode(selection) else {
@@ -197,7 +207,8 @@ final class ScreenTimeManager: ObservableObject {
     /// Call this when the user's time credit reaches zero.
     /// Does nothing if no selection has been saved or authorization is missing.
     func blockApps() {
-        guard authorizationStatus == .authorized,
+        guard isAppUserSignedInForBlocking,
+              authorizationStatus == .authorized,
               let selection = activitySelection else { return }
 
         applyShield(selection: selection)
@@ -209,19 +220,32 @@ final class ScreenTimeManager: ObservableObject {
     ///
     /// Call this after a successful workout that earns new time credit.
     func unblockApps() {
+        try? store.clearAllSettings()
         store.shield.applications = nil
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
+        store.shield.webDomainCategories = nil
         isBlocking = false
         sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.isBlocking)
     }
 
-    /// Call when the user signs out. Stops monitoring and clears shields so
-    /// blocked apps work again without force-quitting PushUp.
+    /// Logout: apps sofort wieder freigeben (Shield entfernen, Monitoring stoppen).
+    /// Zuerst `appUserSignedIn = false`, damit kein nachträglicher Credit-Callback
+    /// die Apps erneut sperrt.
     func releaseRestrictionsForLogout() {
+        sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.appUserSignedIn)
+        sharedDefaults?.synchronize()
+
         stopMonitoring()
         unblockApps()
         sharedDefaults?.synchronize()
+    }
+
+    /// Nach Login: Sperrlogik wieder erlauben und an Credit anpassen.
+    func markUserSignedInAndReapplyBlocking() {
+        sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.appUserSignedIn)
+        sharedDefaults?.synchronize()
+        reapplyBlockingState()
     }
 
     // MARK: - DeviceActivity Monitoring
@@ -246,7 +270,8 @@ final class ScreenTimeManager: ObservableObject {
     /// - Parameter availableSeconds: The current time credit in seconds.
     ///   Used to set the blocking threshold.
     func startMonitoring(availableSeconds: Int) {
-        guard authorizationStatus == .authorized,
+        guard isAppUserSignedInForBlocking,
+              authorizationStatus == .authorized,
               let selection = activitySelection,
               !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
         else { return }
@@ -390,7 +415,8 @@ final class ScreenTimeManager: ObservableObject {
     ///
     /// Safe to call multiple times — no-ops when unauthorized or no selection.
     func reapplyBlockingState() {
-        guard let selection = activitySelection,
+        guard isAppUserSignedInForBlocking,
+              let selection = activitySelection,
               !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
         else { return }
 
@@ -487,5 +513,8 @@ enum ScreenTimeConstants {
 
         /// Per-app usage data for today. JSON array of PerAppUsageRecord.
         static let perAppUsageData         = "screentime.perAppUsageData"
+
+        /// False while logged out — keine Sperre durch App oder Extension.
+        static let appUserSignedIn         = "screentime.appUserSignedIn"
     }
 }

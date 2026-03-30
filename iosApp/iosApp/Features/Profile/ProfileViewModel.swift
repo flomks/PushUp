@@ -567,6 +567,11 @@ final class ProfileViewModel: ObservableObject {
     /// login screen only after the session is fully cleared.
     func signOut() {
         Task {
+            // Release Screen Time shields BEFORE clearing the DB so a credit Flow
+            // emission (available == 0) cannot re-apply blocking after unblock.
+            await MainActor.run {
+                ScreenTimeManager.shared.releaseRestrictionsForLogout()
+            }
             await AuthService.shared.logout()
             NotificationCenter.default.post(name: .userDidSignOut, object: nil)
         }
@@ -582,6 +587,9 @@ final class ProfileViewModel: ObservableObject {
             //   try await supabaseClient.rpc("delete_user_account").execute()
             //   try await supabaseClient.auth.signOut()
             try await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run {
+                ScreenTimeManager.shared.releaseRestrictionsForLogout()
+            }
             NotificationCenter.default.post(name: .userDidSignOut, object: nil)
         } catch is CancellationError {
             // Silently ignore cancellation.

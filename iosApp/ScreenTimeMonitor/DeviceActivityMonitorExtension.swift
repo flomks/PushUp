@@ -30,6 +30,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     private let store = ManagedSettingsStore()
     private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
 
+    private func isBlockingAllowedForSignedInUser() -> Bool {
+        if let v = sharedDefaults?.object(forKey: "screentime.appUserSignedIn") as? Bool {
+            return v
+        }
+        return true
+    }
+
     // MARK: - Interval Lifecycle
 
     override func intervalDidStart(for activity: DeviceActivityName) {
@@ -75,6 +82,13 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     ) {
         super.eventDidReachThreshold(event, activity: activity)
 
+        // Ausgeloggt: Extension-Shield entfernen (falls noch gesetzt).
+        guard isBlockingAllowedForSignedInUser() else {
+            unblockApps()
+            sharedDefaults?.set(false, forKey: "screentime.isBlocking")
+            return
+        }
+
         switch event.rawValue {
         case "com.flomks.pushup.warning":
             handleWarning()
@@ -95,6 +109,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // MARK: - Warning (80% consumed)
 
     private func handleWarning() {
+        guard isBlockingAllowedForSignedInUser() else { return }
+
         // If we're already blocking (credit exhausted / shield active), do not
         // show "5 minutes left" — that event can still fire when schedules
         // restart or thresholds are re-registered after the user hit the limit.
@@ -123,6 +139,8 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // MARK: - Limit Reached (100% consumed -- block apps)
 
     private func handleLimitReached() {
+        guard isBlockingAllowedForSignedInUser() else { return }
+
         // Update the system usage snapshot BEFORE blocking.
         // This records the exact cumulative usage at the moment the limit
         // was reached. The main app uses this value to compute the correct
@@ -179,8 +197,10 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     private func unblockApps() {
+        try? store.clearAllSettings()
         store.shield.applications = nil
         store.shield.applicationCategories = nil
+        store.shield.webDomains = nil
         store.shield.webDomainCategories = nil
     }
 
