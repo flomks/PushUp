@@ -127,12 +127,16 @@ struct DashboardView: View {
 
                 Color.clear.frame(height: AppSpacing.screenVerticalBottom)
             }
+            // Must be inside the ScrollView content so FinderView sits inside the UIScrollView
+            // hierarchy – walking up via superview then finds the UIScrollView.
+            // Placing it as .background on the ScrollView itself makes FinderView a sibling of
+            // the UIScrollView, so the superview walk never reaches it and dashboardScrollView stays nil.
+            .background(
+                UIScrollViewAccessor { sv in dashboardScrollView = sv }
+                    .frame(width: 0, height: 0)
+            )
         }
         .scrollDisabled(isDraggingWidget)
-        .background(
-            UIScrollViewAccessor { sv in dashboardScrollView = sv }
-                .frame(width: 0, height: 0)
-        )
         .background(AppColors.backgroundPrimary)
         .environment(\.editMode, $editMode)
         .refreshable {
