@@ -28,8 +28,10 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var widgetOrderAtDragStart: [DashboardWidgetKind]?
     /// After a successful reorder, block widget chrome for one run loop so touch-up does not trigger buttons / links.
     @State private var blockWidgetChromeAfterOrderChange = false
-    /// Global screen Y of the list's top edge – updated continuously via GeometryReader.
-    @State private var listGlobalOriginY: CGFloat = 0
+    /// Global screen Y of the list's top edge.
+    /// Stored as a class so mutations don't change the @State identity → no SwiftUI re-render on every
+    /// scroll frame, while gesture callbacks always read the up-to-date value.
+    @State private var listOriginHolder = ListOriginHolder()
     /// Reference-type helper that owns the auto-scroll Timer.
     @State private var edgeScroller = EdgeScrollHelper()
 
@@ -69,7 +71,7 @@ struct ReorderableWidgetList<Content: View>: View {
             }
         )
         .onPreferenceChange(ListGlobalOriginYPreferenceKey.self) { y in
-            listGlobalOriginY = y
+            listOriginHolder.y = y  // mutates the class instance → no @State identity change → no re-render
         }
         .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.82), value: widgets)
     }
@@ -145,7 +147,7 @@ struct ReorderableWidgetList<Content: View>: View {
                         checkForSwap(draggedKind: kind, dragLocation: drag.location)
 
                         // Convert local Y → screen Y and update auto-scroll velocity.
-                        let screenY = listGlobalOriginY + drag.location.y
+                        let screenY = listOriginHolder.y + drag.location.y
                         let delta = edgeScrollDelta(for: screenY)
                         edgeScroller.onScroll = onEdgeScroll
                         edgeScroller.update(velocity: delta)
@@ -233,6 +235,15 @@ struct ReorderableWidgetList<Content: View>: View {
             }
         }
     }
+}
+
+// MARK: - ListOriginHolder
+
+/// Stores the list's global screen-Y origin without triggering SwiftUI re-renders on mutation.
+/// Because this is a class (reference type), mutating `.y` does not change the @State identity,
+/// so SwiftUI does not schedule a new render pass on every scroll frame.
+private final class ListOriginHolder {
+    var y: CGFloat = 0
 }
 
 // MARK: - EdgeScrollHelper
