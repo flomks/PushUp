@@ -450,6 +450,46 @@ private struct DashboardAddWidgetsSheet: View {
     }
 }
 
+// MARK: - UIScrollViewAccessor
+
+/// A zero-size `UIViewRepresentable` that walks up the UIKit hierarchy to find the nearest
+/// `UIScrollView` and delivers it via a callback.
+/// Place it as `.background` on a SwiftUI `ScrollView` to obtain a reference for
+/// programmatic `setContentOffset` calls (used for drag-to-scroll auto-scrolling).
+private struct UIScrollViewAccessor: UIViewRepresentable {
+    let onFound: (UIScrollView) -> Void
+
+    func makeUIView(context: Context) -> FinderView { FinderView(onFound: onFound) }
+    func updateUIView(_ uiView: FinderView, context: Context) {}
+
+    final class FinderView: UIView {
+        private let onFound: (UIScrollView) -> Void
+
+        init(onFound: @escaping (UIScrollView) -> Void) {
+            self.onFound = onFound
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                var view: UIView? = superview
+                while let v = view {
+                    if let sv = v as? UIScrollView {
+                        onFound(sv)
+                        return
+                    }
+                    view = v.superview
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Previews
 
 #if DEBUG
