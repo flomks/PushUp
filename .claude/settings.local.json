@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(find C:/Users/flori/Desktop/app/PushUp -name *.sq -o -name *.sqm)",
+      "Bash(find C:/Users/flori/Desktop/app/PushUp/iosApp -name Package.resolved -o -name *.resolved)"
+    ]
+  }
+}

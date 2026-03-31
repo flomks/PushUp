@@ -165,21 +165,42 @@ class SyncJoggingUseCase(
                         pauseCount = local.pauseCount,
                     ),
                 )
-                // Also re-upload route points in case they changed
                 uploadRoutePoints(local.id)
                 uploadSegments(local.id)
                 sessionRepository.markAsSynced(local.id)
                 return UploadOutcome.SYNCED
             }
 
-            // Only mark as synced when the effective payload already matches.
-            // This avoids silently treating divergent rows as synchronized.
+            // Session header already exists on server. Always upload route points
+            // and segments -- the session may have been created by a background
+            // upload that only sent the header without GPS data.
+            uploadRoutePoints(local.id)
+            uploadSegments(local.id)
+
             if (sessionsEffectivelyEqual(local, remote)) {
                 sessionRepository.markAsSynced(local.id)
-                UploadOutcome.SKIPPED
+                UploadOutcome.SYNCED
             } else {
-                markFailed(local.id)
-                UploadOutcome.FAILED
+                // Session header on server has stale metrics (e.g. uploaded before
+                // updateSegmentMetrics ran). Patch it with the correct local values.
+                supabaseClient.updateJoggingSession(
+                    id = local.id,
+                    request = UpdateJoggingSessionRequest(
+                        endedAt = local.endedAt?.toString(),
+                        distanceMeters = local.distanceMeters.toFloat(),
+                        durationSeconds = local.durationSeconds.toInt(),
+                        avgPaceSecondsPerKm = local.avgPaceSecondsPerKm,
+                        caloriesBurned = local.caloriesBurned,
+                        earnedTimeCredits = local.earnedTimeCreditSeconds.toInt(),
+                        activeDurationSeconds = local.activeDurationSeconds.toInt(),
+                        pauseDurationSeconds = local.pauseDurationSeconds.toInt(),
+                        activeDistanceMeters = local.activeDistanceMeters.toFloat(),
+                        pauseDistanceMeters = local.pauseDistanceMeters.toFloat(),
+                        pauseCount = local.pauseCount,
+                    ),
+                )
+                sessionRepository.markAsSynced(local.id)
+                UploadOutcome.SYNCED
             }
         } catch (e: ApiException) {
             if (e.isTransient) throw e

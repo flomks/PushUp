@@ -24,6 +24,7 @@ struct DashboardView: View {
     @State private var showTimeCreditDetail = false
     @State private var showAddWidgetSheet = false
     @State private var isDraggingWidget = false
+    @State private var dashboardScrollView: UIScrollView? = nil
 
     private var showError: Binding<Bool> {
         Binding(
@@ -112,6 +113,12 @@ struct DashboardView: View {
                         onDelete: { index in
                             layoutStore.remove(atOffsets: IndexSet(integer: index))
                             DashboardHaptics.mediumImpact()
+                        },
+                        onEdgeScroll: { delta in
+                            guard let sv = dashboardScrollView else { return }
+                            let maxY = max(0, sv.contentSize.height - sv.bounds.height)
+                            let newY = max(0, min(sv.contentOffset.y + delta, maxY))
+                            sv.setContentOffset(CGPoint(x: 0, y: newY), animated: false)
                         }
                     ) { kind in
                         widgetView(for: kind)
@@ -122,6 +129,10 @@ struct DashboardView: View {
             }
         }
         .scrollDisabled(isDraggingWidget)
+        .background(
+            UIScrollViewAccessor { sv in dashboardScrollView = sv }
+                .frame(width: 0, height: 0)
+        )
         .background(AppColors.backgroundPrimary)
         .environment(\.editMode, $editMode)
         .refreshable {

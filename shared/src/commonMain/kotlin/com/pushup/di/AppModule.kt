@@ -242,8 +242,6 @@ val repositoryModule: Module = module {
             database = get(),
             dispatcher = get(named(DB_DISPATCHER)),
             clock = get(),
-            cloudSyncApi = getOrNull<CloudSyncApi>(),
-            networkMonitor = getOrNull(named(NETWORK_MONITOR)),
         )
     }
 

@@ -2,41 +2,31 @@ package com.pushup.data.repository
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
-import com.pushup.data.api.CloudSyncApi
-import com.pushup.data.api.dto.UpdateJoggingSessionRequest
-import com.pushup.data.api.dto.toCreateRequest
 import com.pushup.data.mapper.syncStatusToString
 import com.pushup.data.mapper.toDomain
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.repository.JoggingSessionRepository
-import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
 /**
- * SQLDelight-backed implementation of [JoggingSessionRepository] with optional
- * cloud-sync support.
+ * SQLDelight-backed implementation of [JoggingSessionRepository].
  *
- * Follows the same offline-first pattern as [WorkoutSessionRepositoryImpl]:
- * the local SQLite database is the source of truth. When [cloudSyncApi] and
- * [networkMonitor] are provided, finished sessions are uploaded in the background.
+ * The local SQLite database is the source of truth. Cloud sync is handled
+ * exclusively by [com.pushup.domain.usecase.sync.SyncJoggingUseCase], which
+ * uploads the complete session together with its route points and segments in
+ * one atomic operation.
  */
 class JoggingSessionRepositoryImpl(
     private val database: PushUpDatabase,
     private val dispatcher: CoroutineDispatcher,
     private val clock: Clock = Clock.System,
-    private val cloudSyncApi: CloudSyncApi? = null,
-    private val networkMonitor: NetworkMonitor? = null,
-    private val syncScope: CoroutineScope = CoroutineScope(SupervisorJob()),
 ) : JoggingSessionRepository {
 
     private val queries get() = database.databaseQueries
@@ -180,11 +170,12 @@ class JoggingSessionRepositoryImpl(
             updatedAt = clock.now().toEpochMilliseconds(),
             id = id,
         )
-        // Trigger background sync for the finished session.
-        val session = queries.selectJoggingSessionById(id).executeAsOneOrNull()?.toDomain()
-        if (session != null) {
-            triggerBackgroundSync(session)
-        }
+        // NOTE: Background sync is intentionally NOT triggered here.
+        // SyncJoggingUseCase is responsible for the complete upload (session +
+        // route points + segments). Uploading the session header here would mark
+        // it SYNCED before updateSegmentMetrics() runs, causing the server to
+        // receive wrong pause/active metrics and preventing route points from
+        // ever being uploaded.
     }
 
     override suspend fun markAsSynced(id: String): Unit = safeDbCall(
@@ -240,62 +231,4 @@ class JoggingSessionRepositoryImpl(
                 )
             }
 
-    // =========================================================================
-    // Private cloud-sync helpers
-    // =========================================================================
-
-    /**
-     * Launches a fire-and-forget coroutine that uploads [session] to Supabase.
-     *
-     * Only completed sessions (endedAt != null) are uploaded. Failures are
-     * silently swallowed -- the session remains PENDING and will be retried
-     * by [SyncJoggingUseCase] on the next sync cycle.
-     */
-    private fun triggerBackgroundSync(session: JoggingSession) {
-        val api = cloudSyncApi ?: return
-        val monitor = networkMonitor ?: return
-
-        if (session.endedAt == null) return
-
-        syncScope.launch {
-            try {
-                if (!monitor.isConnected()) return@launch
-                try {
-                    api.createJoggingSession(session.toCreateRequest())
-                } catch (_: Exception) {
-                    // Session already exists -- attempt update.
-                    try {
-                        api.updateJoggingSession(
-                            id = session.id,
-                            request = UpdateJoggingSessionRequest(
-                                endedAt = session.endedAt.toString(),
-                                distanceMeters = session.distanceMeters.toFloat(),
-                                durationSeconds = session.durationSeconds.toInt(),
-                                avgPaceSecondsPerKm = session.avgPaceSecondsPerKm,
-                                caloriesBurned = session.caloriesBurned,
-                                earnedTimeCredits = session.earnedTimeCreditSeconds.toInt(),
-                                activeDurationSeconds = session.activeDurationSeconds.toInt(),
-                                pauseDurationSeconds = session.pauseDurationSeconds.toInt(),
-                                activeDistanceMeters = session.activeDistanceMeters.toFloat(),
-                                pauseDistanceMeters = session.pauseDistanceMeters.toFloat(),
-                                pauseCount = session.pauseCount,
-                            ),
-                        )
-                    } catch (_: Exception) {
-                        return@launch
-                    }
-                }
-                // Mark as synced in the local DB.
-                safeDbCall(dispatcher, "Failed to mark session '${session.id}' as synced after background sync") {
-                    queries.updateJoggingSessionSyncStatus(
-                        syncStatus = syncStatusToString(SyncStatus.SYNCED),
-                        updatedAt = clock.now().toEpochMilliseconds(),
-                        id = session.id,
-                    )
-                }
-            } catch (_: Exception) {
-                // Best-effort: failures are retried by SyncJoggingUseCase.
-            }
-        }
-    }
 }
