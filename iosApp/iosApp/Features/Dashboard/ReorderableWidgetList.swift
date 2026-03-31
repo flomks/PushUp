@@ -63,7 +63,7 @@ struct ReorderableWidgetList<Content: View>: View {
                     .opacity(0.9)
                     .scaleEffect(1.03)
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
-                    .offset(y: dragStartY + dragOffset.height)
+                    .offset(y: dragStartY + dragOffset.height + edgeScrollCompensation)
                     .allowsHitTesting(false)
                     .transition(.identity)
             }
@@ -155,7 +155,15 @@ struct ReorderableWidgetList<Content: View>: View {
                         // Convert local Y → screen Y and update auto-scroll velocity.
                         let screenY = listOriginHolder.y + drag.location.y
                         let delta = edgeScrollDelta(for: screenY)
-                        edgeScroller.onScroll = onEdgeScroll
+                        // Wrap onEdgeScroll so the ghost offset compensates for each scroll tick:
+                        // the ghost lives inside the scroll content, so setContentOffset shifts it
+                        // on screen. Adding the same delta to edgeScrollCompensation keeps it
+                        // under the finger. @State's backing storage is a reference type, so this
+                        // mutation from inside the timer closure reaches the real state.
+                        edgeScroller.onScroll = { [onEdgeScroll] tick in
+                            onEdgeScroll?(tick)
+                            edgeScrollCompensation += tick
+                        }
                         edgeScroller.update(velocity: delta)
                     } else if draggedKind == nil {
                         // Long press fired but no movement yet – haptic only, no state change.
@@ -180,6 +188,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 draggedKind = nil
                 isDragging = false
                 dragOffset = .zero
+                edgeScrollCompensation = 0
                 edgeScroller.stop()
 
                 if orderChanged {
