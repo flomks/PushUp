@@ -87,6 +87,10 @@ struct ReorderableWidgetList<Content: View>: View {
             // Invisible list slot must not receive touch-up (otherwise NavigationLink / taps fire on drop).
             // After a real reorder, briefly drop hits so the same touch-up is not a tap on the widget.
             .allowsHitTesting(chromeHitTesting)
+            // .disabled() prevents button *actions* from firing even when a button's gesture already
+            // started tracking the touch before the drag began. allowsHitTesting(false) alone is not
+            // enough because it only blocks new touches, not ones already in flight.
+            .disabled(!chromeHitTesting)
             .overlay(alignment: .topTrailing) {
                 if isEditing && draggedKind == nil {
                     deleteButton(index: index)
@@ -101,7 +105,7 @@ struct ReorderableWidgetList<Content: View>: View {
                         )
                 }
             )
-            .highPriorityGesture(longPressDrag(kind: kind))
+            .simultaneousGesture(longPressDrag(kind: kind))
             .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
                 frames.merge(newFrames) { _, new in new }
             }
