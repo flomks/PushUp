@@ -140,18 +140,27 @@ final class DashboardViewModel: ObservableObject {
             let previousCredit = self.lastObservedCredit
             self.lastObservedCredit = available
 
-            self.availableSeconds    = available
-            self.totalEarnedSeconds  = Int(credit?.totalEarnedSeconds ?? 0)
-            self.totalSpentSeconds   = Int(credit?.totalSpentSeconds ?? 0)
-            self.dailyEarnedSeconds  = Int(credit?.dailyEarnedSeconds ?? 0)
-            self.dailySpentSeconds   = Int(credit?.dailySpentSeconds ?? 0)
+            // Guard each @Published setter so unchanged values don't fire objectWillChange.
+            // Each unguarded assignment sends objectWillChange → full DashboardView body re-eval.
+            let newTotalEarned = Int(credit?.totalEarnedSeconds ?? 0)
+            let newTotalSpent  = Int(credit?.totalSpentSeconds ?? 0)
+            let newDailyEarned = Int(credit?.dailyEarnedSeconds ?? 0)
+            let newDailySpent  = Int(credit?.dailySpentSeconds ?? 0)
+            if self.availableSeconds   != available   { self.availableSeconds   = available }
+            if self.totalEarnedSeconds != newTotalEarned { self.totalEarnedSeconds = newTotalEarned }
+            if self.totalSpentSeconds  != newTotalSpent  { self.totalSpentSeconds  = newTotalSpent }
+            if self.dailyEarnedSeconds != newDailyEarned { self.dailyEarnedSeconds = newDailyEarned }
+            if self.dailySpentSeconds  != newDailySpent  { self.dailySpentSeconds  = newDailySpent }
 
             // Fetch the detailed breakdown (carry-over split, today's workout earned).
             DataBridge.shared.fetchCreditBreakdown(userId: userId) { [weak self] breakdown in
                 guard let self else { return }
-                self.todayWorkoutEarned        = Int(breakdown.todayWorkoutEarned)
-                self.carryOverPercentSeconds    = Int(breakdown.carryOverPercentSeconds)
-                self.carryOverLateNightSeconds  = Int(breakdown.carryOverLateNightSeconds)
+                let newWorkout   = Int(breakdown.todayWorkoutEarned)
+                let newPercent   = Int(breakdown.carryOverPercentSeconds)
+                let newLateNight = Int(breakdown.carryOverLateNightSeconds)
+                if self.todayWorkoutEarned       != newWorkout   { self.todayWorkoutEarned       = newWorkout }
+                if self.carryOverPercentSeconds   != newPercent   { self.carryOverPercentSeconds   = newPercent }
+                if self.carryOverLateNightSeconds != newLateNight { self.carryOverLateNightSeconds = newLateNight }
             }
 
             // Always persist the latest credit to the App Group container so

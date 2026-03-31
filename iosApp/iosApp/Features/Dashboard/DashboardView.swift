@@ -119,6 +119,14 @@ struct DashboardView: View {
                             let maxY = max(0, sv.contentSize.height - sv.bounds.height)
                             let newY = max(0, min(sv.contentOffset.y + delta, maxY))
                             sv.setContentOffset(CGPoint(x: 0, y: newY), animated: false)
+                        },
+                        listGlobalOriginY: {
+                            // Convert the scroll view's frame to screen coordinates.
+                            // The list content sits at the scroll view's origin minus
+                            // its current content offset.
+                            guard let sv = dashboardScrollView else { return 0 }
+                            let svOriginY = sv.convert(CGPoint.zero, to: nil).y
+                            return svOriginY - sv.contentOffset.y
                         }
                     ) { kind in
                         widgetView(for: kind)

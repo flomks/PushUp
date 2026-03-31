@@ -178,7 +178,7 @@ final class ScreenTimeManager: ObservableObject {
         let storedCredit = sharedDefaults?.integer(forKey: ScreenTimeConstants.Keys.availableSeconds) ?? 0
         if storedCredit <= 0 {
             applyShield(selection: selection)
-            isBlocking = true
+            if !isBlocking { isBlocking = true }
             sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
             // Start monitoring with threshold=1 so the extension records usage.
             stopMonitoring()
@@ -212,7 +212,7 @@ final class ScreenTimeManager: ObservableObject {
               let selection = activitySelection else { return }
 
         applyShield(selection: selection)
-        isBlocking = true
+        if !isBlocking { isBlocking = true }
         sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
     }
 
@@ -225,7 +225,7 @@ final class ScreenTimeManager: ObservableObject {
         store.shield.applicationCategories = nil
         store.shield.webDomains = nil
         store.shield.webDomainCategories = nil
-        isBlocking = false
+        if isBlocking { isBlocking = false }
         sharedDefaults?.set(false, forKey: ScreenTimeConstants.Keys.isBlocking)
     }
 
@@ -386,9 +386,9 @@ final class ScreenTimeManager: ObservableObject {
         let wasBlocking = sharedDefaults?.bool(forKey: ScreenTimeConstants.Keys.isBlocking) ?? false
         if wasBlocking, let selection = activitySelection {
             applyShield(selection: selection)
-            isBlocking = true
+            if !isBlocking { isBlocking = true }
         } else {
-            isBlocking = false
+            if isBlocking { isBlocking = false }
         }
 
         // Note: reapplyBlockingState() is NOT called here because
@@ -434,7 +434,7 @@ final class ScreenTimeManager: ObservableObject {
             // skipping applyShield in that case left apps unlocked until something
             // else (e.g. opening Screen Time settings) triggered a fresh apply.
             applyShield(selection: selection)
-            isBlocking = true
+            if !isBlocking { isBlocking = true }
             sharedDefaults?.set(true, forKey: ScreenTimeConstants.Keys.isBlocking)
             startMonitoring(availableSeconds: 1)
             // Keep stored credit at 0 so the next reapplyBlockingState() call
