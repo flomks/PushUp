@@ -16,8 +16,15 @@ enum RouteDistanceCalculator {
     /// (Previous value of 25 m/s only caught GPS teleports, not slow/city driving.)
     static let maximumPlausibleSpeedMetersPerSecond: Double = 10.0
 
+    /// Minimum implied speed to count a segment as real movement.
+    /// 0.3 m/s ≈ 1.1 km/h — filters GPS drift while the user stands still.
+    /// Legitimate walking starts around 0.5 m/s; this threshold is intentionally low
+    /// to not penalise very slow walking, but still suppress stationary GPS noise.
+    static let minimumMovingSpeedMetersPerSecond: Double = 0.3
+
     /// Reject if horizontal accuracy is worse than this (meters). `-1` = invalid.
-    static let maximumHorizontalAccuracyMeters: Double = 75.0
+    /// Tightened from 75m → 40m: fixes worse than 40m are too noisy to count reliably.
+    static let maximumHorizontalAccuracyMeters: Double = 40.0
 
     /// Ignore fixes older than this (stale cached locations).
     static let maximumLocationAgeSeconds: TimeInterval = 45.0
@@ -47,6 +54,7 @@ enum RouteDistanceCalculator {
         guard dt > 0 else { return nil }
 
         let impliedSpeed = delta / dt
+        guard impliedSpeed >= minimumMovingSpeedMetersPerSecond else { return nil }
         guard impliedSpeed <= maximumPlausibleSpeedMetersPerSecond else { return nil }
 
         return delta

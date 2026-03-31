@@ -53,11 +53,16 @@ final class LocationTrackingManager: NSObject, ObservableObject {
     private let locationManager: CLLocationManager
 
     /// Map polyline: accept slightly worse fixes than distance stats (see `RouteDistanceCalculator`).
-    private let mapRecordingMaxHorizontalAccuracyMeters: Double = 100.0
+    private let mapRecordingMaxHorizontalAccuracyMeters: Double = 65.0
     private let mapRecordingMaxAgeSeconds: TimeInterval = 60.0
 
     /// Minimum distance between updates in meters.
-    private let distanceFilter: Double = 5.0
+    private let distanceFilter: Double = 3.0
+
+    // MARK: - Private: Kalman Filter
+
+    /// Smooths GPS fixes to reduce drift noise and the "points beside the road" effect.
+    private let kalmanFilter = GPSKalmanFilter()
 
     // MARK: - Init
 
@@ -102,6 +107,7 @@ final class LocationTrackingManager: NSObject, ObservableObject {
         currentSpeed = 0.0
         currentLocation = nil
         lastError = nil
+        kalmanFilter.reset()
         // Enable background updates
         locationManager.allowsBackgroundLocationUpdates = true
         locationManager.showsBackgroundLocationIndicator = true
@@ -193,14 +199,34 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
             return
         }
 
-        currentLocation = location
-        if location.speed >= 0 {
-            currentSpeed = location.speed
-        } else if recordedLocations.count >= 1,
-                  let last = recordedLocations.last {
-            let dt = location.timestamp.timeIntervalSince(last.timestamp)
+        // Apply Kalman filter to smooth GPS noise (reduces drift while stationary
+        // and the "points beside the road" effect during running).
+        let smoothedCoordinate = kalmanFilter.filter(
+            coordinate: location.coordinate,
+            accuracy: location.horizontalAccuracy,
+            timestamp: location.timestamp
+        )
+
+        // Rebuild a CLLocation with the filtered coordinates but original metadata
+        // (altitude, speed, accuracy, timestamp stay intact for downstream consumers).
+        let filtered = CLLocation(
+            coordinate: smoothedCoordinate,
+            altitude: location.altitude,
+            horizontalAccuracy: location.horizontalAccuracy,
+            verticalAccuracy: location.verticalAccuracy,
+            course: location.course,
+            speed: location.speed,
+            timestamp: location.timestamp
+        )
+
+        currentLocation = filtered
+
+        if filtered.speed >= 0 {
+            currentSpeed = filtered.speed
+        } else if let last = recordedLocations.last {
+            let dt = filtered.timestamp.timeIntervalSince(last.timestamp)
             if dt > 0.2 {
-                currentSpeed = location.distance(from: last) / dt
+                currentSpeed = filtered.distance(from: last) / dt
             } else {
                 currentSpeed = 0
             }
@@ -208,12 +234,12 @@ extension LocationTrackingManager: CLLocationManagerDelegate {
             currentSpeed = 0
         }
 
-        recordedLocations.append(location)
+        recordedLocations.append(filtered)
 
         // Debug-only cumulative distance (UI uses `JoggingTrackingManager` distances).
         if recordedLocations.count >= 2 {
             let previousLocation = recordedLocations[recordedLocations.count - 2]
-            if let segment = RouteDistanceCalculator.acceptableSegmentMeters(from: previousLocation, to: location) {
+            if let segment = RouteDistanceCalculator.acceptableSegmentMeters(from: previousLocation, to: filtered) {
                 totalDistanceMeters += segment
             }
         }
