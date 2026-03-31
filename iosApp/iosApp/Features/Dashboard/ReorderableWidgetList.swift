@@ -26,10 +26,6 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var draggedKind: DashboardWidgetKind?
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
-    /// Cumulative content-scroll applied via edge-scroll while dragging.
-    /// The ghost widget lives inside the scroll content, so each programmatic setContentOffset
-    /// shifts it on screen. This value offsets the ghost back to stay under the finger.
-    @State private var edgeScrollCompensation: CGFloat = 0
     /// Widget frames in the named coordinate space. Stored as a class so the
     /// continuous preference updates from GeometryReaders don't trigger re-renders.
     /// Only read from gesture callbacks (drag start / swap detection).
@@ -38,11 +34,9 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var widgetOrderAtDragStart: [DashboardWidgetKind]?
     /// After a successful reorder, block widget chrome for one run loop so touch-up does not trigger buttons / links.
     @State private var blockWidgetChromeAfterOrderChange = false
-    /// Screen-space Y of the list's top edge, captured once when drag begins.
-    /// Scroll is disabled during drag so this stays accurate.
-    @State private var listGlobalOriginYAtDragStart: CGFloat = 0
-    /// Reference-type helper that owns the auto-scroll Timer.
-    @State private var edgeScroller = EdgeScrollHelper()
+    /// Reference-type helper that owns the auto-scroll Timer and tracks cumulative scroll compensation.
+    /// Using a class (reference type) so Timer callbacks can mutate it and trigger view updates.
+    @StateObject private var edgeScroller = EdgeScrollHelper()
 
     private let coordinateSpace = "reorderArea"
 
@@ -68,7 +62,7 @@ struct ReorderableWidgetList<Content: View>: View {
                     .opacity(0.9)
                     .scaleEffect(1.03)
                     .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
-                    .offset(y: dragStartY + dragOffset.height + edgeScrollCompensation)
+                    .offset(y: dragStartY + dragOffset.height + edgeScroller.compensation)
                     .allowsHitTesting(false)
                     .transition(.identity)
             }
@@ -127,7 +121,7 @@ struct ReorderableWidgetList<Content: View>: View {
 
     private func longPressDrag(kind: DashboardWidgetKind) -> some Gesture {
         LongPressGesture(minimumDuration: 0.25)
-            .sequenced(before: DragGesture(coordinateSpace: .named(coordinateSpace)))
+            .sequenced(before: DragGesture(coordinateSpace: .global))
             .onChanged { value in
                 switch value {
                 case .second(true, let drag):
@@ -139,32 +133,32 @@ struct ReorderableWidgetList<Content: View>: View {
                             isDragging = true
                             dragStartY = framesHolder.frames[kind]?.minY ?? 0
                             dragOffset = .zero
-                            // Snapshot list's screen position — scroll is disabled during
-                            // drag so this stays accurate for the entire gesture.
-                            listGlobalOriginYAtDragStart = listGlobalOriginY?() ?? 0
+                            edgeScroller.reset()
+                            // Record the finger's initial screen Y and the list's content
+                            // origin so we can convert between screen and local coordinates.
+                            edgeScroller.fingerStartScreenY = drag.location.y
+                            edgeScroller.contentOriginAtDragStart = listGlobalOriginY?() ?? 0
+                            DashboardHaptics.mediumImpact()
                         }
-                        dragOffset = drag.translation
-                        checkForSwap(draggedKind: kind, dragLocation: drag.location)
 
-                        // Convert local Y → screen Y and update auto-scroll velocity.
-                        // edgeScrollCompensation accounts for programmatic scroll applied
-                        // since drag started (scroll shifts the coordinate space origin).
-                        let screenY = listGlobalOriginYAtDragStart + drag.location.y - edgeScrollCompensation
-                        let delta = edgeScrollDelta(for: screenY)
-                        // Wrap onEdgeScroll so the ghost offset compensates for each scroll tick:
-                        // the ghost lives inside the scroll content, so setContentOffset shifts it
-                        // on screen. Adding the same delta to edgeScrollCompensation keeps it
-                        // under the finger. @State's backing storage is a reference type, so this
-                        // mutation from inside the timer closure reaches the real state.
+                        // drag.translation is in global coordinates now — use it directly.
+                        dragOffset = drag.translation
+
+                        // The finger's actual screen position — drag.location.y is global.
+                        let fingerScreenY = drag.location.y
+                        let delta = edgeScrollDelta(for: fingerScreenY)
+
+                        // Convert finger screen Y → local coordinate space for swap detection.
+                        // local Y = fingerScreenY - contentOriginAtDragStart + totalScrollApplied
+                        let localY = fingerScreenY - edgeScroller.contentOriginAtDragStart + edgeScroller.compensation
+                        checkForSwap(draggedKind: kind, fingerLocalY: localY)
+
+                        // Set up scroll callback: each tick scrolls the content and compensates the ghost.
                         edgeScroller.onScroll = { [onEdgeScroll] tick in
                             onEdgeScroll?(tick)
-                            edgeScrollCompensation += tick
                         }
                         edgeScroller.update(velocity: delta)
                     } else if draggedKind == nil {
-                        // Long press fired but no movement yet – haptic only, no state change.
-                        // This avoids leaving draggedKind/isDragging set if the user releases
-                        // without ever moving (onEnded is not guaranteed to fire in that case).
                         DashboardHaptics.mediumImpact()
                     }
                 default:
@@ -172,10 +166,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             }
             .onEnded { _ in
-                guard draggedKind != nil else {
-                    // Long press without any drag movement – nothing to clean up.
-                    return
-                }
+                guard draggedKind != nil else { return }
 
                 let startOrder = widgetOrderAtDragStart
                 widgetOrderAtDragStart = nil
@@ -184,8 +175,7 @@ struct ReorderableWidgetList<Content: View>: View {
                 draggedKind = nil
                 isDragging = false
                 dragOffset = .zero
-                edgeScrollCompensation = 0
-                edgeScroller.stop()
+                edgeScroller.reset()
 
                 if orderChanged {
                     blockWidgetChromeAfterOrderChange = true
@@ -203,17 +193,31 @@ struct ReorderableWidgetList<Content: View>: View {
     /// Returns the scroll delta (pts/tick at ~60 Hz) for the given screen Y position.
     /// Negative = scroll up, positive = scroll down, zero = no scroll.
     private func edgeScrollDelta(for screenY: CGFloat) -> CGFloat {
+        let safeTop = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.top ?? 60
+        let safeBottom = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets.bottom ?? 34
         let screenHeight = UIScreen.main.bounds.height
-        let zone: CGFloat = 120   // activation zone in points from each edge
-        let maxSpeed: CGFloat = 10 // max points per 60 Hz tick
 
-        if screenY < zone {
-            let t = max(0, min(1, 1 - screenY / zone))
-            return -maxSpeed * t
+        // Only activate within 80pt of the safe-area edges — not the absolute screen edge.
+        // This prevents the zone from reaching the middle of the screen.
+        let zone: CGFloat = 80
+        let maxSpeed: CGFloat = 12
+
+        let topThreshold = safeTop + zone
+        let bottomThreshold = screenHeight - safeBottom - zone
+
+        if screenY < topThreshold {
+            // How far into the zone (0 = edge of zone, 1 = at safe area edge)
+            let t = max(0, min(1, (topThreshold - screenY) / zone))
+            // Ease-in curve so it starts gently
+            return -maxSpeed * t * t
         }
-        if screenY > screenHeight - zone {
-            let t = max(0, min(1, (screenY - (screenHeight - zone)) / zone))
-            return maxSpeed * t
+        if screenY > bottomThreshold {
+            let t = max(0, min(1, (screenY - bottomThreshold) / zone))
+            return maxSpeed * t * t
         }
         return 0
     }
@@ -221,10 +225,10 @@ struct ReorderableWidgetList<Content: View>: View {
     // MARK: - Swap Logic
 
     /// Swap decision uses the **hovered widget's** vertical center, not the dragged widget's.
-    private func checkForSwap(draggedKind: DashboardWidgetKind, dragLocation: CGPoint) {
+    private func checkForSwap(draggedKind: DashboardWidgetKind, fingerLocalY: CGFloat) {
         guard let draggedIndex = widgets.firstIndex(of: draggedKind) else { return }
 
-        let fingerY = dragLocation.y
+        let fingerY = fingerLocalY
 
         for (targetKind, targetFrame) in framesHolder.frames {
             guard targetKind != draggedKind,
@@ -267,12 +271,22 @@ private final class WidgetFramesHolder {
 
 // MARK: - EdgeScrollHelper
 
-/// Reference-type wrapper owning a repeating Timer for auto-scroll.
-/// Stored in `@State` so it survives SwiftUI re-renders without being recreated.
-private final class EdgeScrollHelper {
+/// ObservableObject wrapper owning a repeating Timer for auto-scroll.
+/// Stored in `@StateObject` so SwiftUI re-renders when `compensation` changes,
+/// keeping the ghost widget under the finger during programmatic scrolling.
+private final class EdgeScrollHelper: ObservableObject {
     private var timer: Timer?
     var velocity: CGFloat = 0
     var onScroll: ((CGFloat) -> Void)?
+    /// The finger's screen Y when the drag started.
+    var fingerStartScreenY: CGFloat = 0
+    /// The list content's global Y origin when the drag started.
+    var contentOriginAtDragStart: CGFloat = 0
+
+    /// Cumulative content-scroll applied via edge-scroll while dragging.
+    /// The ghost widget lives inside the scroll content, so each programmatic setContentOffset
+    /// shifts it on screen. This published value offsets the ghost back to stay under the finger.
+    @Published var compensation: CGFloat = 0
 
     func update(velocity: CGFloat) {
         self.velocity = velocity
@@ -287,8 +301,10 @@ private final class EdgeScrollHelper {
         let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             guard let self, self.velocity != 0 else { return }
             self.onScroll?(self.velocity)
+            // Update compensation on the main thread — @Published triggers SwiftUI re-render
+            // so the ghost widget offset stays in sync with the scroll position.
+            self.compensation += self.velocity
         }
-        // Use .common so the timer fires even while the user is actively touching the screen.
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
@@ -297,6 +313,14 @@ private final class EdgeScrollHelper {
         timer?.invalidate()
         timer = nil
         velocity = 0
+    }
+
+    func reset() {
+        stop()
+        compensation = 0
+        fingerStartScreenY = 0
+        contentOriginAtDragStart = 0
+        onScroll = nil
     }
 }
 

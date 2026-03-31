@@ -121,12 +121,11 @@ struct DashboardView: View {
                             sv.setContentOffset(CGPoint(x: 0, y: newY), animated: false)
                         },
                         listGlobalOriginY: {
-                            // Convert the scroll view's frame to screen coordinates.
-                            // The list content sits at the scroll view's origin minus
-                            // its current content offset.
+                            // The content's global Y origin: the scroll view's screen
+                            // position minus how far the user has already scrolled.
                             guard let sv = dashboardScrollView else { return 0 }
-                            let svOriginY = sv.convert(CGPoint.zero, to: nil).y
-                            return svOriginY - sv.contentOffset.y
+                            let svScreenY = sv.convert(CGPoint.zero, to: nil).y
+                            return svScreenY - sv.contentOffset.y
                         }
                     ) { kind in
                         widgetView(for: kind)
