@@ -23,6 +23,10 @@ struct ReorderableWidgetList<Content: View>: View {
     @State private var draggedKind: DashboardWidgetKind?
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
+    /// Cumulative content-scroll applied via edge-scroll while dragging.
+    /// The ghost widget lives inside the scroll content, so each programmatic setContentOffset
+    /// shifts it on screen. This value offsets the ghost back to stay under the finger.
+    @State private var edgeScrollCompensation: CGFloat = 0
     @State private var frames: [DashboardWidgetKind: CGRect] = [:]
     /// Snapshot when reorder lift begins; used to detect if the list order actually changed.
     @State private var widgetOrderAtDragStart: [DashboardWidgetKind]?
@@ -45,6 +49,11 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             }
             .coordinateSpace(name: coordinateSpace)
+            // Single preference observer at the VStack level – receives all widget frames merged
+            // in one pass instead of N separate onPreferenceChange callbacks (one per row).
+            .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
+                frames = newFrames
+            }
 
             if draggedKind != nil {
                 content(draggedKind!)
@@ -108,9 +117,6 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             )
             .simultaneousGesture(longPressDrag(kind: kind))
-            .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
-                frames.merge(newFrames) { _, new in new }
-            }
     }
 
     private func deleteButton(index: Int) -> some View {
@@ -134,15 +140,15 @@ struct ReorderableWidgetList<Content: View>: View {
             .onChanged { value in
                 switch value {
                 case .second(true, let drag):
-                    if draggedKind == nil {
-                        widgetOrderAtDragStart = widgets
-                        draggedKind = kind
-                        isDragging = true
-                        dragStartY = frames[kind]?.minY ?? 0
-                        dragOffset = .zero
-                        DashboardHaptics.mediumImpact()
-                    }
                     if let drag {
+                        // First movement after long press – lift the widget.
+                        if draggedKind == nil {
+                            widgetOrderAtDragStart = widgets
+                            draggedKind = kind
+                            isDragging = true
+                            dragStartY = frames[kind]?.minY ?? 0
+                            dragOffset = .zero
+                        }
                         dragOffset = drag.translation
                         checkForSwap(draggedKind: kind, dragLocation: drag.location)
 
@@ -151,23 +157,32 @@ struct ReorderableWidgetList<Content: View>: View {
                         let delta = edgeScrollDelta(for: screenY)
                         edgeScroller.onScroll = onEdgeScroll
                         edgeScroller.update(velocity: delta)
+                    } else if draggedKind == nil {
+                        // Long press fired but no movement yet – haptic only, no state change.
+                        // This avoids leaving draggedKind/isDragging set if the user releases
+                        // without ever moving (onEnded is not guaranteed to fire in that case).
+                        DashboardHaptics.mediumImpact()
                     }
                 default:
                     break
                 }
             }
             .onEnded { _ in
+                guard draggedKind != nil else {
+                    // Long press without any drag movement – nothing to clean up.
+                    return
+                }
+
                 let startOrder = widgetOrderAtDragStart
                 widgetOrderAtDragStart = nil
                 let orderChanged = startOrder.map { $0 != widgets } ?? false
-                let didDrag = draggedKind != nil
 
                 draggedKind = nil
                 isDragging = false
                 dragOffset = .zero
                 edgeScroller.stop()
 
-                if orderChanged || didDrag {
+                if orderChanged {
                     blockWidgetChromeAfterOrderChange = true
                     DispatchQueue.main.async {
                         blockWidgetChromeAfterOrderChange = false
