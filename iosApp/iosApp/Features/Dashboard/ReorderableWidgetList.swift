@@ -17,7 +17,8 @@ struct ReorderableWidgetList<Content: View>: View {
     let onDelete: (Int) -> Void
     /// Called on every ~60 Hz tick while the finger is in an edge-scroll zone.
     /// The parent is responsible for adjusting the scroll view's content offset by `delta` points.
-    var onEdgeScroll: ((CGFloat) -> Void)? = nil
+    /// Must return the **actual** delta applied (may be less than requested if at scroll bounds).
+    var onEdgeScroll: ((CGFloat) -> CGFloat)? = nil
     /// Returns the list's current global-screen-Y origin. Called once when drag starts
     /// to compute edge-scroll zones without a continuously-running GeometryReader.
     var listGlobalOriginY: (() -> CGFloat)? = nil
@@ -146,6 +147,7 @@ struct ReorderableWidgetList<Content: View>: View {
 
                         // The finger's actual screen position — drag.location.y is global.
                         let fingerScreenY = drag.location.y
+                        edgeScroller.lastFingerScreenY = fingerScreenY
                         let delta = edgeScrollDelta(for: fingerScreenY)
 
                         // Convert finger screen Y → local coordinate space for swap detection.
@@ -153,9 +155,15 @@ struct ReorderableWidgetList<Content: View>: View {
                         let localY = fingerScreenY - edgeScroller.contentOriginAtDragStart + edgeScroller.compensation
                         checkForSwap(draggedKind: kind, fingerLocalY: localY)
 
-                        // Set up scroll callback: each tick scrolls the content and compensates the ghost.
+                        // Scroll callback returns actual delta (clamped at scroll bounds).
                         edgeScroller.onScroll = { [onEdgeScroll] tick in
-                            onEdgeScroll?(tick)
+                            onEdgeScroll?(tick) ?? 0
+                        }
+                        // Swap check from timer: finger is stationary but content moves.
+                        let scrollerRef = edgeScroller
+                        edgeScroller.onSwapCheck = {
+                            let localYFromTimer = scrollerRef.lastFingerScreenY - scrollerRef.contentOriginAtDragStart + scrollerRef.compensation
+                            checkForSwap(draggedKind: kind, fingerLocalY: localYFromTimer)
                         }
                         edgeScroller.update(velocity: delta)
                     } else if draggedKind == nil {
@@ -277,11 +285,17 @@ private final class WidgetFramesHolder {
 private final class EdgeScrollHelper: ObservableObject {
     private var timer: Timer?
     var velocity: CGFloat = 0
-    var onScroll: ((CGFloat) -> Void)?
+    /// Returns actual delta applied (may be clamped at scroll bounds).
+    var onScroll: ((CGFloat) -> CGFloat)?
+    /// Called each timer tick so swap detection works while the finger is stationary
+    /// but content scrolls underneath it.
+    var onSwapCheck: (() -> Void)?
     /// The finger's screen Y when the drag started.
     var fingerStartScreenY: CGFloat = 0
     /// The list content's global Y origin when the drag started.
     var contentOriginAtDragStart: CGFloat = 0
+    /// The last known finger screen Y — updated from onChanged, read by timer for swap checks.
+    var lastFingerScreenY: CGFloat = 0
 
     /// Cumulative content-scroll applied via edge-scroll while dragging.
     /// The ghost widget lives inside the scroll content, so each programmatic setContentOffset
@@ -300,10 +314,14 @@ private final class EdgeScrollHelper: ObservableObject {
     private func start() {
         let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             guard let self, self.velocity != 0 else { return }
-            self.onScroll?(self.velocity)
-            // Update compensation on the main thread — @Published triggers SwiftUI re-render
-            // so the ghost widget offset stays in sync with the scroll position.
-            self.compensation += self.velocity
+            // Only compensate for the actual scroll applied — if the scroll view is at
+            // bounds the actual delta is 0, so the ghost stays in place instead of flying off.
+            let actualDelta = self.onScroll?(self.velocity) ?? 0
+            if actualDelta != 0 {
+                self.compensation += actualDelta
+            }
+            // Re-check swaps: the finger hasn't moved but content shifted underneath it.
+            self.onSwapCheck?()
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -320,7 +338,9 @@ private final class EdgeScrollHelper: ObservableObject {
         compensation = 0
         fingerStartScreenY = 0
         contentOriginAtDragStart = 0
+        lastFingerScreenY = 0
         onScroll = nil
+        onSwapCheck = nil
     }
 }
 
