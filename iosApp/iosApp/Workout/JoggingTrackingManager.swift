@@ -100,11 +100,20 @@ final class JoggingTrackingManager: ObservableObject {
     private let saveJoggingSegments: SaveJoggingSegmentsUseCase
     private let liveSessionManager: LiveJoggingSessionManager
 
+    // MARK: - Published: Anti-Cheat
+
+    /// True when a vehicle (car, bus, train) is detected during the session.
+    /// Distance is not counted while this is true.
+    @Published private(set) var isVehicleDetected: Bool = false
+
+    // MARK: - Private: Session State
+
     private var activeSessionId: String?
     private var activeUserId: String?
     private var sessionStartDate: Date?
     private var sessionTimer: Timer?
     private var locationCancellable: AnyCancellable?
+    private var vehicleDetectorCancellable: AnyCancellable?
     private var startSessionTask: Task<Void, Never>?
     private var lastProcessedLocation: CLLocation?
     private var routeDistanceMeters: Double = 0.0
@@ -113,6 +122,13 @@ final class JoggingTrackingManager: ObservableObject {
     private var currentSegmentDistanceStart: Double = 0
     private var pauseStartedAt: Date?
     private var accumulatedPauseDuration: TimeInterval = 0
+
+    // MARK: - Private: Vehicle / Anti-Cheat
+
+    private let vehicleDetector = VehicleMotionDetector()
+
+    /// Rolling window of (timestamp, speed m/s) observations for sustained-speed detection.
+    private var recentSpeedObservations: [(timestamp: Date, speed: Double)] = []
 
     // MARK: - Init
 
@@ -205,6 +221,21 @@ final class JoggingTrackingManager: ObservableObject {
         currentSegmentDistanceStart = 0
         startSessionTimer()
 
+        // Start vehicle / anti-cheat detection
+        vehicleDetector.startMonitoring()
+        vehicleDetectorCancellable = vehicleDetector.$isInVehicle
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] inVehicle in
+                guard let self else { return }
+                // CoreMotion signals automotive → update immediately even without new GPS.
+                // Clearing waits for the next GPS cycle so sustained-speed is re-evaluated.
+                if inVehicle {
+                    self.isVehicleDetected = true
+                } else {
+                    self.isVehicleDetected = self.isSustainedVehicleSpeed()
+                }
+            }
+
         startSessionTask = Task {
             await startKMPSession()
         }
@@ -226,6 +257,11 @@ final class JoggingTrackingManager: ObservableObject {
 
         // Stop live session streaming (flushes remaining points, removes presence)
         liveSessionManager.stop()
+
+        // Stop vehicle detection
+        vehicleDetector.stopMonitoring()
+        vehicleDetectorCancellable?.cancel()
+        vehicleDetectorCancellable = nil
 
         // Stop GPS
         locationManager.stopTracking()
@@ -305,6 +341,8 @@ final class JoggingTrackingManager: ObservableObject {
         segmentEvents = []
         currentSegmentStartDate = nil
         currentSegmentDistanceStart = 0
+        isVehicleDetected = false
+        recentSpeedObservations = []
     }
 
     // MARK: - Private: Session Timer
@@ -483,6 +521,20 @@ final class JoggingTrackingManager: ObservableObject {
             return
         }
 
+        // Compute instantaneous speed between fixes and update rolling window.
+        let dt = latest.timestamp.timeIntervalSince(previous.timestamp)
+        if dt > 0 {
+            let d = latest.distance(from: previous)
+            updateSpeedWindow(timestamp: latest.timestamp, speed: d / dt)
+        }
+
+        // Skip distance accumulation while a vehicle is detected.
+        // The GPS anchor still advances so the route polyline stays correct.
+        guard !isVehicleDetected else {
+            lastProcessedLocation = latest
+            return
+        }
+
         guard let delta = RouteDistanceCalculator.acceptableSegmentMeters(from: previous, to: latest) else {
             distanceMeters = activeDistanceMeters
             lastProcessedLocation = latest
@@ -497,6 +549,48 @@ final class JoggingTrackingManager: ObservableObject {
         }
         distanceMeters = activeDistanceMeters
         lastProcessedLocation = latest
+    }
+
+    // MARK: - Private: Sustained-Speed Vehicle Detection
+
+    private func updateSpeedWindow(timestamp: Date, speed: Double) {
+        recentSpeedObservations.append((timestamp: timestamp, speed: speed))
+
+        // Trim observations outside the rolling window.
+        let cutoff = timestamp.addingTimeInterval(-RouteDistanceCalculator.sustainedVehicleDetectionWindowSeconds)
+        recentSpeedObservations = recentSpeedObservations.filter { $0.timestamp >= cutoff }
+
+        // Re-evaluate combined vehicle state (CMMotion OR sustained speed).
+        let sustained = isSustainedVehicleSpeed()
+        let combined = vehicleDetector.isInVehicle || sustained
+
+        if isVehicleDetected != combined {
+            isVehicleDetected = combined
+            #if DEBUG
+            if combined {
+                let avg = averageRecentSpeed()
+                print("[JoggingTrackingManager] Vehicle detected — CMMotion: \(vehicleDetector.isInVehicle), avgSpeed: \(String(format: "%.1f", avg)) m/s (\(String(format: "%.1f", avg * 3.6)) km/h)")
+            } else {
+                print("[JoggingTrackingManager] Vehicle detection cleared")
+            }
+            #endif
+        }
+    }
+
+    /// Returns true when the rolling window contains enough data AND average speed
+    /// exceeds the sustained vehicle threshold — indicating non-jogging movement.
+    private func isSustainedVehicleSpeed() -> Bool {
+        guard let oldest = recentSpeedObservations.first,
+              let newest = recentSpeedObservations.last,
+              newest.timestamp.timeIntervalSince(oldest.timestamp) >= RouteDistanceCalculator.sustainedVehicleMinWindowSeconds
+        else { return false }
+
+        return averageRecentSpeed() > RouteDistanceCalculator.sustainedVehicleSpeedThresholdMetersPerSecond
+    }
+
+    private func averageRecentSpeed() -> Double {
+        guard !recentSpeedObservations.isEmpty else { return 0 }
+        return recentSpeedObservations.map(\.speed).reduce(0, +) / Double(recentSpeedObservations.count)
     }
 
     /// Prefer GPS speed; when invalid (common on iOS), derive from last two route points.

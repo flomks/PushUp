@@ -101,7 +101,7 @@ struct ReorderableWidgetList<Content: View>: View {
                         )
                 }
             )
-            .simultaneousGesture(longPressDrag(kind: kind))
+            .highPriorityGesture(longPressDrag(kind: kind))
             .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
                 frames.merge(newFrames) { _, new in new }
             }

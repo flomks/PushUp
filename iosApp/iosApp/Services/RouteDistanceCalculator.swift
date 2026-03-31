@@ -11,14 +11,30 @@ enum RouteDistanceCalculator {
     /// Minimum segment length to count (filters sub-meter jitter).
     static let minimumSegmentMeters: Double = 1.5
 
-    /// Reject segments that imply faster than this (GPS jump / teleport). ~90 km/h.
-    static let maximumPlausibleSpeedMetersPerSecond: Double = 25.0
+    /// Reject segments implying faster than this for distance counting.
+    /// 10 m/s ≈ 36 km/h — beyond elite sprinting pace; catches vehicle travel.
+    /// (Previous value of 25 m/s only caught GPS teleports, not slow/city driving.)
+    static let maximumPlausibleSpeedMetersPerSecond: Double = 10.0
 
     /// Reject if horizontal accuracy is worse than this (meters). `-1` = invalid.
     static let maximumHorizontalAccuracyMeters: Double = 75.0
 
     /// Ignore fixes older than this (stale cached locations).
     static let maximumLocationAgeSeconds: TimeInterval = 45.0
+
+    // MARK: - Sustained-Speed Vehicle Detection
+
+    /// Average speed threshold above which *sustained* movement indicates vehicle use.
+    /// 7 m/s ≈ 25 km/h — faster than any realistic jogging pace held for a full minute.
+    /// World marathon record pace is ~5.7 m/s; 7 m/s sustained is not human-jogging territory.
+    static let sustainedVehicleSpeedThresholdMetersPerSecond: Double = 7.0
+
+    /// Rolling window over which average speed is evaluated for vehicle detection.
+    static let sustainedVehicleDetectionWindowSeconds: TimeInterval = 60.0
+
+    /// Minimum window age before a sustained-speed judgment is made.
+    /// Avoids false positives on short fast-start bursts.
+    static let sustainedVehicleMinWindowSeconds: TimeInterval = 30.0
 
     /// Returns distance to add for this segment, or `nil` if the segment should be ignored.
     static func acceptableSegmentMeters(from previous: CLLocation, to latest: CLLocation) -> Double? {

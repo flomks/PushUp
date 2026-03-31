@@ -10,6 +10,10 @@
 	<key>NSCameraUsageDescription</key>
 	<string>PushUp uses the camera to detect and count your push-ups in real time using pose estimation.</string>
 
+	<!-- Motion & Fitness permission for vehicle detection during jogging (anti-cheat) -->
+	<key>NSMotionUsageDescription</key>
+	<string>PushUp uses motion activity to detect if you are in a vehicle during a run, ensuring distance is tracked fairly.</string>
+
 	<!-- Location permission descriptions for jogging GPS tracking -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>PushUp uses your location to track your jogging route, distance, and pace during workouts.</string>
