@@ -30,6 +30,25 @@ struct DashboardWidgetLayoutCodingTests {
         #expect(back == original)
     }
 
+    @Test("new dashboard widget kinds round-trip JSON")
+    func newKindsRoundTrip() {
+        let original: [DashboardWidgetKind] = [
+            .pushUpsThisWeek, .runDistanceWeek, .streakCurrent, .shortcutStats, .creditEarnedToday,
+        ]
+        let str = DashboardWidgetLayoutCoding.jsonString(from: original)
+        #expect(str != nil)
+        let back = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: str!)
+        #expect(back == original)
+    }
+
+    @Test("default order stays the original six core widgets")
+    func defaultOrderIsCoreOnly() {
+        #expect(DashboardWidgetKind.defaultOrder.count == 6)
+        #expect(DashboardWidgetKind.defaultOrder.contains(.timeCredit))
+        #expect(DashboardWidgetKind.defaultOrder.contains(.workoutQuickAction))
+        #expect(DashboardWidgetKind.allCases.count > DashboardWidgetKind.defaultOrder.count)
+    }
+
     @Test("empty JSON array stays empty (shows empty dashboard UI)")
     func parseEmptyArray() {
         let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: "[]")

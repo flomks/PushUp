@@ -225,6 +225,157 @@ struct DashboardView: View {
             }
         case .workoutQuickAction:
             workoutStartButton
+
+        case .pushUpsThisWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.pushUpsWeek)",
+                subtitle: "This calendar week",
+                footnote: "Strength workouts only"
+            )
+        case .pushUpsThisMonth:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.pushUpsMonth)",
+                subtitle: "Current calendar month",
+                footnote: "Strength workouts only"
+            )
+        case .pushUpsAllTime:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.pushUpsAllTime)",
+                subtitle: "Lifetime total reps"
+            )
+        case .pushUpSessionsWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.pushUpSessionsWeek)",
+                subtitle: "Completed strength sessions"
+            )
+        case .bestPushUpSession:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: viewModel.widgetMetrics.bestPushUpSession > 0
+                    ? "\(viewModel.widgetMetrics.bestPushUpSession)"
+                    : "—",
+                subtitle: "Single session record"
+            )
+        case .averageFormWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.percentString(viewModel.widgetMetrics.averageFormWeek),
+                subtitle: "Average form score this week"
+            )
+        case .streakCurrent:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.streakCurrentDays)",
+                subtitle: "Days in a row with activity",
+                footnote: "Push-ups or runs"
+            )
+        case .streakBest:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.streakLongestDays)",
+                subtitle: "Longest run of active days"
+            )
+
+        case .runDistanceToday:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceTodayMeters),
+                subtitle: "Jogging today"
+            )
+        case .runDistanceWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceWeekMeters),
+                subtitle: "This calendar week"
+            )
+        case .runDistanceMonth:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceMonthMeters),
+                subtitle: "This calendar month"
+            )
+        case .runDistanceAllTime:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceAllTimeMeters),
+                subtitle: "All completed runs"
+            )
+        case .runSessionsWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.runSessionsWeek)",
+                subtitle: "Completed runs this week"
+            )
+
+        case .creditEarnedToday:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.minutesFromSeconds(viewModel.dailyEarnedSeconds),
+                subtitle: "Time credit earned today"
+            )
+        case .creditSpentToday:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.minutesFromSeconds(viewModel.dailySpentSeconds),
+                subtitle: "Against your daily budget"
+            )
+        case .creditTotalEarned:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.hoursMinutesFromSeconds(viewModel.totalEarnedSeconds),
+                subtitle: "Lifetime earned"
+            )
+        case .creditLifetimeSpent:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: DashboardMetricFormatting.hoursMinutesFromSeconds(viewModel.totalSpentSeconds),
+                subtitle: "Screen time spent (tracked)"
+            )
+
+        case .activeMinutesWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.activeMinutesWeek) min",
+                subtitle: "Push-ups + runs combined"
+            )
+        case .allSessionsWeek:
+            DashboardMiniStatWidget(
+                title: kind.title,
+                systemImage: kind.systemImage,
+                value: "\(viewModel.widgetMetrics.totalSessionsWeek)",
+                subtitle: "Strength + run sessions"
+            )
+
+        case .shortcutStats:
+            DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .stats, selectedTab: $selectedTab)
+        case .shortcutProfile:
+            DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .profile, selectedTab: $selectedTab)
+        case .shortcutFriends:
+            DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .friends, selectedTab: $selectedTab)
+        case .shortcutSettings:
+            DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .settings, selectedTab: $selectedTab)
         }
     }
 
@@ -433,7 +584,9 @@ private struct DashboardAddWidgetsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var availableKinds: [DashboardWidgetKind] {
-        DashboardWidgetKind.allCases.filter { !layoutStore.orderedWidgets.contains($0) }
+        DashboardWidgetKind.allCases
+            .filter { !layoutStore.orderedWidgets.contains($0) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     var body: some View {

@@ -79,6 +79,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var weekSessionTrendPercent: Int? = nil
     @Published private(set) var lastSession: DashboardLastSession? = nil
     @Published private(set) var hasEverWorkedOut: Bool = false
+    @Published private(set) var widgetMetrics: DashboardWidgetMetrics = .empty
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published private(set) var isRefreshing: Bool = false
@@ -105,6 +106,13 @@ final class DashboardViewModel: ObservableObject {
     /// credit) in this session. Prevents re-reconciling on subsequent emissions
     /// so that real credit earned from workouts can unblock the apps.
     private var hasReconciledBlockingMismatch: Bool = false
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     // MARK: - Init
 
@@ -417,6 +425,17 @@ final class DashboardViewModel: ObservableObject {
         } else {
             lastSession = nil
         }
+
+        let metrics = computeWidgetMetrics(
+            completedPushUps: completedPushUps,
+            completedJogging: completedJogging,
+            calendar: calendar,
+            today: today,
+            monday: monday
+        )
+        if widgetMetrics != metrics {
+            widgetMetrics = metrics
+        }
     }
 
     // MARK: - Private: Empty State
@@ -426,6 +445,7 @@ final class DashboardViewModel: ObservableObject {
         lastSession  = nil
         hasEverWorkedOut = false
         weekSessionTrendPercent = nil
+        widgetMetrics = .empty
 
         let todayIndex = WeekdayHelper.todayIndex()
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
@@ -498,4 +518,150 @@ final class DashboardViewModel: ObservableObject {
             primaryMetricIcon: .figureRun
         )
     }
+
+    // MARK: - Private: Widget metrics
+
+    private func computeWidgetMetrics(
+        completedPushUps: [Shared.WorkoutSession],
+        completedJogging: [Shared.JoggingSession],
+        calendar: Calendar,
+        today: Date,
+        monday: Date
+    ) -> DashboardWidgetMetrics {
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: monday) ?? monday
+        guard let monthInterval = calendar.dateInterval(of: .month, for: today) else {
+            return .empty
+        }
+        let monthStart = monthInterval.start
+        let monthEnd = monthInterval.end
+        let todayStart = calendar.startOfDay(for: today)
+
+        func pushStart(_ s: Shared.WorkoutSession) -> Date {
+            Date(timeIntervalSince1970: Double(s.startedAt.epochSeconds))
+        }
+        func jogStart(_ s: Shared.JoggingSession) -> Date {
+            Date(timeIntervalSince1970: Double(s.startedAt.epochSeconds))
+        }
+
+        let pushWeek = completedPushUps.filter { s in
+            let d = pushStart(s)
+            return d >= monday && d < weekEnd
+        }
+        let pushMonth = completedPushUps.filter { s in
+            let d = pushStart(s)
+            return d >= monthStart && d < monthEnd
+        }
+
+        let pushUpsWeek = pushWeek.reduce(0) { $0 + Int($1.pushUpCount) }
+        let pushUpsMonth = pushMonth.reduce(0) { $0 + Int($1.pushUpCount) }
+        let pushUpsAllTime = completedPushUps.reduce(0) { $0 + Int($1.pushUpCount) }
+        let pushUpSessionsWeek = pushWeek.count
+        let bestPushUpSession = completedPushUps.map { Int($0.pushUpCount) }.max() ?? 0
+        let avgFormWeek: Double = {
+            guard !pushWeek.isEmpty else { return 0 }
+            return pushWeek.reduce(0.0) { $0 + Double($1.quality) } / Double(pushWeek.count)
+        }()
+
+        let jogWeek = completedJogging.filter { s in
+            let d = jogStart(s)
+            return d >= monday && d < weekEnd
+        }
+        let jogMonth = completedJogging.filter { s in
+            let d = jogStart(s)
+            return d >= monthStart && d < monthEnd
+        }
+        let jogToday = completedJogging.filter { s in
+            calendar.isDate(jogStart(s), inSameDayAs: todayStart)
+        }
+
+        let runDistanceTodayMeters = jogToday.reduce(0) { $0 + Int($1.distanceMeters.rounded()) }
+        let runDistanceWeekMeters = jogWeek.reduce(0) { $0 + Int($1.distanceMeters.rounded()) }
+        let runDistanceMonthMeters = jogMonth.reduce(0) { $0 + Int($1.distanceMeters.rounded()) }
+        let runDistanceAllTimeMeters = completedJogging.reduce(0) { $0 + Int($1.distanceMeters.rounded()) }
+        let runSessionsWeek = jogWeek.count
+        let runSessionsAllTime = completedJogging.count
+
+        let pushActiveSecondsWeek = pushWeek.reduce(0) { total, s in
+            guard let ended = s.endedAt else { return total }
+            return total + max(0, Int(ended.epochSeconds - s.startedAt.epochSeconds))
+        }
+        let jogActiveSecondsWeek = jogWeek.reduce(0) { $0 + max(0, Int($1.durationSeconds)) }
+        let activeMinutesWeek = (pushActiveSecondsWeek + jogActiveSecondsWeek) / 60
+        let totalSessionsWeek = pushWeek.count + jogWeek.count
+
+        var activityDays = Set<String>()
+        for s in completedPushUps {
+            activityDays.insert(Self.dayKeyFormatter.string(from: pushStart(s)))
+        }
+        for s in completedJogging {
+            activityDays.insert(Self.dayKeyFormatter.string(from: jogStart(s)))
+        }
+        let sortedKeys = activityDays.sorted()
+        let (streakCurrent, streakLongest) = Self.activityStreaks(
+            sortedDayKeys: sortedKeys,
+            calendar: calendar
+        )
+
+        return DashboardWidgetMetrics(
+            pushUpsWeek: pushUpsWeek,
+            pushUpsMonth: pushUpsMonth,
+            pushUpsAllTime: pushUpsAllTime,
+            pushUpSessionsWeek: pushUpSessionsWeek,
+            bestPushUpSession: bestPushUpSession,
+            averageFormWeek: avgFormWeek,
+            streakCurrentDays: streakCurrent,
+            streakLongestDays: streakLongest,
+            runDistanceTodayMeters: runDistanceTodayMeters,
+            runDistanceWeekMeters: runDistanceWeekMeters,
+            runDistanceMonthMeters: runDistanceMonthMeters,
+            runDistanceAllTimeMeters: runDistanceAllTimeMeters,
+            runSessionsWeek: runSessionsWeek,
+            runSessionsAllTime: runSessionsAllTime,
+            activeMinutesWeek: activeMinutesWeek,
+            totalSessionsWeek: totalSessionsWeek
+        )
+    }
+
+    /// Streak across days with **any** completed push-up or jogging session (same idea as Stats, but both modalities).
+    private static func activityStreaks(sortedDayKeys: [String], calendar: Calendar) -> (current: Int, longest: Int) {
+        guard !sortedDayKeys.isEmpty else { return (0, 0) }
+
+        var longestStreak = 0
+        var runLength = 1
+        if sortedDayKeys.count >= 2 {
+            for i in 1..<sortedDayKeys.count {
+                if let prev = dayKeyFormatter.date(from: sortedDayKeys[i - 1]),
+                   let curr = dayKeyFormatter.date(from: sortedDayKeys[i]),
+                   let expected = calendar.date(byAdding: .day, value: 1, to: prev),
+                   calendar.isDate(curr, inSameDayAs: expected) {
+                    runLength += 1
+                    longestStreak = max(longestStreak, runLength)
+                } else {
+                    runLength = 1
+                }
+            }
+        }
+        longestStreak = max(longestStreak, runLength)
+
+        let today = dayKeyFormatter.string(from: Date())
+        let yesterday = dayKeyFormatter.string(from: calendar.date(byAdding: .day, value: -1, to: Date()) ?? Date())
+
+        var currentStreak = 0
+        if sortedDayKeys.last == today || sortedDayKeys.last == yesterday {
+            currentStreak = 1
+            for i in stride(from: sortedDayKeys.count - 1, through: 1, by: -1) {
+                if let curr = dayKeyFormatter.date(from: sortedDayKeys[i]),
+                   let prev = dayKeyFormatter.date(from: sortedDayKeys[i - 1]),
+                   let expected = calendar.date(byAdding: .day, value: -1, to: curr),
+                   calendar.isDate(prev, inSameDayAs: expected) {
+                    currentStreak += 1
+                } else {
+                    break
+                }
+            }
+        }
+
+        return (currentStreak, longestStreak)
+    }
 }
+
