@@ -4,7 +4,9 @@
       "Bash(xargs grep:*)",
       "Bash(find C:/Users/flori/Desktop/app/PushUp -name *.sq -o -name *.sqm)",
       "Bash(find C:/Users/flori/Desktop/app/PushUp/iosApp -name Package.resolved -o -name *.resolved)",
-      "Bash(find /c/Users/flori/Desktop/app/PushUp -path */.venv -prune -o -type f -name *.kt -path */jogging* -o -name *.swift -path *Jogging*)"
+      "Bash(find /c/Users/flori/Desktop/app/PushUp -path */.venv -prune -o -type f -name *.kt -path */jogging* -o -name *.swift -path *Jogging*)",
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(find:*)"
     ]
   }
 }

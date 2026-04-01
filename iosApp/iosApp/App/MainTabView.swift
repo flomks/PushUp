@@ -482,6 +482,7 @@ private struct SideMenuInteractiveLayer: View {
     @State private var displayName: String = ""
     @State private var subtitle: String = "Member"
     @State private var confirmLogout = false
+    @State private var highlightsVisible = false
 
     private let rowIconFont: Font = .system(size: 20, weight: .semibold)
 
@@ -503,6 +504,15 @@ private struct SideMenuInteractiveLayer: View {
         }
         .task(id: isOpen) {
             if isOpen { await refreshUser() }
+        }
+        .onChange(of: isOpen) { _, open in
+            if open {
+                withAnimation(.easeOut(duration: 0.35).delay(0.45)) {
+                    highlightsVisible = true
+                }
+            } else {
+                highlightsVisible = false
+            }
         }
         .alert("Log out?", isPresented: $confirmLogout) {
             Button("Cancel", role: .cancel) {}
@@ -614,13 +624,15 @@ private struct SideMenuInteractiveLayer: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.yellow.opacity(0.2)))
+                        .opacity(highlightsVisible ? 1 : 0)
+                        .scaleEffect(highlightsVisible ? 1 : 0.6)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(item.highlight ? Color.white.opacity(0.2) : Color.clear)
+                    .fill(item.highlight && highlightsVisible ? Color.white.opacity(0.2) : Color.clear)
             )
             .contentShape(Rectangle())
         }
