@@ -117,10 +117,11 @@ struct DashboardView: View {
                         onEdgeScroll: { delta in
                             guard let sv = dashboardScrollView else { return 0 }
                             let oldY = sv.contentOffset.y
-                            let maxY = max(0, sv.contentSize.height - sv.bounds.height)
-                            let newY = max(0, min(oldY + delta, maxY))
+                            let minY = -sv.adjustedContentInset.top
+                            let maxY = max(minY, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
+                            let newY = max(minY, min(oldY + delta, maxY))
                             sv.setContentOffset(CGPoint(x: 0, y: newY), animated: false)
-                            return newY - oldY // actual delta applied
+                            return newY - oldY
                         },
                         listGlobalOriginY: {
                             // The content's global Y origin: the scroll view's screen
