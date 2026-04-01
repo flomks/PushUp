@@ -35,13 +35,16 @@ struct DashboardView: View {
 
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimary
+            DashboardWidgetChrome.pageBackground
                 .ignoresSafeArea()
 
             scrollContent
         }
+        .preferredColorScheme(.dark)
         .navigationTitle("Dashboard")
         .navigationBarTitleDisplayMode(.large)
+        .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .environment(\.editMode, $editMode)
         .toolbar { dashboardToolbar }
         .task { await viewModel.startObserving() }
@@ -124,11 +127,13 @@ struct DashboardView: View {
                             return newY - oldY
                         },
                         listGlobalOriginY: {
-                            // The content's global Y origin: the scroll view's screen
-                            // position minus how far the user has already scrolled.
+                            // Screen Y of the ReorderableWidgetList's VStack origin.
+                            // sv.convert(.zero, to: nil).y already gives the screen Y
+                            // of content point (0,0) — it accounts for contentOffset
+                            // internally. Adding the spacer offset (AppSpacing.sm) gives
+                            // the VStack's actual origin on screen.
                             guard let sv = dashboardScrollView else { return 0 }
-                            let svScreenY = sv.convert(CGPoint.zero, to: nil).y
-                            return svScreenY - sv.contentOffset.y
+                            return sv.convert(CGPoint(x: 0, y: AppSpacing.sm), to: nil).y
                         }
                     ) { kind in
                         widgetView(for: kind)
@@ -147,7 +152,7 @@ struct DashboardView: View {
             )
         }
         .scrollDisabled(isDraggingWidget)
-        .background(AppColors.backgroundPrimary)
+        .background(DashboardWidgetChrome.pageBackground)
         .environment(\.editMode, $editMode)
         .refreshable {
             await viewModel.refresh()
@@ -157,32 +162,32 @@ struct DashboardView: View {
     // MARK: - Empty Dashboard
 
     private var emptyDashboardCard: some View {
-        Card {
-            VStack(spacing: AppSpacing.md) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 44))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(AppColors.primary)
+        VStack(spacing: AppSpacing.md) {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 44))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Label("No widgets on your dashboard", icon: .rectangleStackFill)
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Label("No widgets on your dashboard", icon: .rectangleStackFill)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
-                    Text("Add cards with the button below or the + button in the top bar.")
-                        .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                PrimaryButton("Add widgets", icon: .plus) {
-                    DashboardHaptics.mediumImpact()
-                    showAddWidgetSheet = true
-                }
+                Text("Add cards with the button below or the + button in the top bar.")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            PrimaryButton("Add widgets", icon: .plus) {
+                DashboardHaptics.mediumImpact()
+                showAddWidgetSheet = true
+            }
         }
+        .padding(DashboardWidgetChrome.padding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardWidgetChrome()
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 
@@ -209,7 +214,8 @@ struct DashboardView: View {
         case .weeklyChart:
             WeeklyChart(
                 days: viewModel.weekDays,
-                isLoading: viewModel.isLoading
+                isLoading: viewModel.isLoading,
+                weekOverWeekPercent: viewModel.weekSessionTrendPercent
             )
         case .activitySummary:
             if viewModel.hasEverWorkedOut {
@@ -227,26 +233,28 @@ struct DashboardView: View {
     @ViewBuilder
     private var lastSessionSection: some View {
         if let session = viewModel.lastSession {
-            Card {
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
-                    HStack {
-                        Label("Last Session", icon: .clockArrowCirclepath)
-                            .font(AppTypography.headline)
-                            .foregroundStyle(AppColors.textPrimary)
+                HStack {
+                    Label("Last Session", icon: .clockArrowCirclepath)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
-                        Spacer()
+                    Spacer()
 
-                        Text(session.relativeDate)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-
-                    Divider()
-
-                    lastSessionMetrics(session)
+                    Text(session.relativeDate)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
+
+                lastSessionMetrics(session)
             }
+            .padding(DashboardWidgetChrome.padding)
+            .dashboardWidgetChrome()
         }
     }
 
@@ -256,15 +264,15 @@ struct DashboardView: View {
             VStack(spacing: AppSpacing.xxs) {
                 Image(systemName: session.primaryMetricIcon.rawValue)
                     .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                    .foregroundStyle(AppColors.primary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Text(session.primaryMetricValue)
                     .font(AppTypography.displayMedium)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Text(session.primaryMetricLabel)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             }
 
             HStack {
@@ -272,19 +280,19 @@ struct DashboardView: View {
                     icon: .clock,
                     value: formatDuration(session.durationSeconds),
                     label: "Duration",
-                    tint: AppColors.info
+                    tint: Color.white.opacity(0.65)
                 )
 
-                Divider().frame(height: 36)
+                sessionColumnDivider
 
                 metricItem(
                     icon: .boltFill,
                     value: "+\(session.earnedSeconds / 60) min",
                     label: "Earned",
-                    tint: AppColors.success
+                    tint: DashboardWidgetChrome.accentPositive
                 )
 
-                Divider().frame(height: 36)
+                sessionColumnDivider
 
                 metricItem(
                     icon: .starFill,
@@ -312,13 +320,19 @@ struct DashboardView: View {
 
             Text(value)
                 .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var sessionColumnDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.1))
+            .frame(width: 1, height: 36)
     }
 
     private func formatDuration(_ seconds: Int) -> String {
@@ -331,13 +345,32 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var emptyStateSection: some View {
-        EmptyStateCard(
-            icon: .figureRun,
-            title: "Start your first activity!",
-            message: "Track workouts or running and earn time credit for screen time.",
-            actionTitle: "Choose Workout",
-            action: { selectedTab = .workout }
-        )
+        VStack(spacing: AppSpacing.md) {
+            Image(systemName: AppIcon.figureRun.rawValue)
+                .font(.system(size: AppSpacing.iconSizeXL, weight: .light))
+                .foregroundStyle(DashboardWidgetChrome.labelMuted)
+
+            VStack(spacing: AppSpacing.xs) {
+                Text("Start your first activity!")
+                    .font(AppTypography.headline)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text("Track workouts or running and earn time credit for screen time.")
+                    .font(AppTypography.body)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            PrimaryButton("Choose Workout", icon: .figureStrengthTraining) {
+                selectedTab = .workout
+            }
+            .padding(.top, AppSpacing.xs)
+        }
+        .padding(.vertical, AppSpacing.lg)
+        .padding(.horizontal, AppSpacing.md)
+        .frame(maxWidth: .infinity)
+        .dashboardWidgetChrome()
     }
 
     // MARK: - Workout Start Button

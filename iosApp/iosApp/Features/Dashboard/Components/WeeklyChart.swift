@@ -2,42 +2,41 @@ import SwiftUI
 
 // MARK: - WeeklyChart
 
-/// Bar chart showing activity session counts for each day of the current week.
-///
-/// Each bar is proportionally scaled to the week's maximum. Today's bar
-/// is highlighted with the primary gradient. Days with no activity show
-/// a subtle empty bar. The chart is purely SwiftUI -- no Charts framework
-/// dependency required.
-///
-/// Usage:
-/// ```swift
-/// WeeklyChart(days: viewModel.weekDays, isLoading: viewModel.isLoading)
-/// ```
+/// Bar chart for the current week using the dark dashboard widget style.
 struct WeeklyChart: View {
 
     let days: [DashboardWeekDay]
     let isLoading: Bool
+    /// Week-over-week session change; `nil` hides the badge.
+    let weekOverWeekPercent: Int?
 
     private let barMaxHeight: CGFloat = 80
     private let barMinHeight: CGFloat = 4
 
+    /// Compact letters for Mon…Sun (index matches `WeekdayHelper` / `DashboardWeekDay.id`).
+    private static let compactDayLetters = ["M", "T", "W", "T", "F", "S", "S"]
+
     var body: some View {
         let total = days.map(\.sessions).reduce(0, +)
 
-        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-
-            // Section header
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("This Week", icon: .chartBar)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                HStack(spacing: 10) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                    Text("This Week")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                }
 
                 Spacer()
 
-                if !isLoading, total > 0 {
-                    Text("\(total) Sessions")
-                        .font(AppTypography.captionSemibold)
-                        .foregroundStyle(AppColors.primary)
+                if !isLoading, let pct = weekOverWeekPercent {
+                    Text(trendLabel(pct))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(trendColor(pct))
                 }
             }
 
@@ -49,10 +48,8 @@ struct WeeklyChart: View {
                 chartBars
             }
         }
-        .padding(AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .padding(DashboardWidgetChrome.padding)
+        .dashboardWidgetChrome()
     }
 
     // MARK: - Sub-views
@@ -61,51 +58,63 @@ struct WeeklyChart: View {
     private var chartBars: some View {
         let maxValue = days.map(\.sessions).max() ?? 1
 
-        HStack(alignment: .bottom, spacing: AppSpacing.xs) {
+        HStack(alignment: .bottom, spacing: 8) {
             ForEach(days) { day in
                 DayBar(
                     day: day,
                     maxSessions: maxValue,
                     barMaxHeight: barMaxHeight,
-                    barMinHeight: barMinHeight
+                    barMinHeight: barMinHeight,
+                    letter: Self.compactDayLetters[min(day.id, Self.compactDayLetters.count - 1)]
                 )
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, AppSpacing.xs)
     }
 
     @ViewBuilder
     private var loadingSkeleton: some View {
-        HStack(alignment: .bottom, spacing: AppSpacing.xs) {
+        HStack(alignment: .bottom, spacing: 8) {
             ForEach(0..<7, id: \.self) { idx in
                 SkeletonBar(
                     heightFraction: Self.skeletonHeights[idx],
-                    barMaxHeight: barMaxHeight
+                    barMaxHeight: barMaxHeight,
+                    letter: Self.compactDayLetters[idx]
                 )
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, AppSpacing.xs)
     }
 
     @ViewBuilder
     private var emptyChartView: some View {
-        HStack(alignment: .bottom, spacing: AppSpacing.xs) {
+        HStack(alignment: .bottom, spacing: 8) {
             ForEach(days.isEmpty ? Self.defaultEmptyDays : days) { day in
-                EmptyDayBar(label: day.label, isToday: day.isToday)
+                EmptyDayBar(
+                    letter: Self.compactDayLetters[min(day.id, Self.compactDayLetters.count - 1)],
+                    isToday: day.isToday
+                )
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, AppSpacing.xs)
     }
 
-    // MARK: - Constants
+    // MARK: - Helpers
+
+    private func trendLabel(_ pct: Int) -> String {
+        if pct > 0 { return "+\(pct)%" }
+        if pct < 0 { return "\(pct)%" }
+        return "0%"
+    }
+
+    private func trendColor(_ pct: Int) -> Color {
+        if pct > 0 { return DashboardWidgetChrome.accentPositive }
+        if pct < 0 { return Color(red: 1, green: 0.45, blue: 0.42) }
+        return DashboardWidgetChrome.labelSecondary
+    }
 
     private static let skeletonHeights: [CGFloat] = [0.6, 0.3, 0.8, 0.4, 0.7, 0.2, 0.5]
 
-    /// Pre-built empty days array using the shared `WeekdayHelper`.
-    /// Static to avoid recreating on every body evaluation.
     private static let defaultEmptyDays: [DashboardWeekDay] = {
         let todayIdx = WeekdayHelper.todayIndex()
         return WeekdayHelper.dayLabels.enumerated().map { idx, label in
@@ -122,6 +131,7 @@ private struct DayBar: View {
     let maxSessions: Int
     let barMaxHeight: CGFloat
     let barMinHeight: CGFloat
+    let letter: String
 
     @State private var appeared = false
 
@@ -136,50 +146,30 @@ private struct DayBar: View {
     }
 
     var body: some View {
-        VStack(spacing: AppSpacing.xxs) {
-            // Activity session count label
-            if day.isToday || day.sessions > 0 {
-                Text(day.sessions > 0 ? "\(day.sessions)" : "")
-                    .font(AppTypography.caption2)
-                    .foregroundStyle(day.isToday ? AppColors.primary : AppColors.textSecondary)
-                    .frame(height: 14)
-            } else {
-                Spacer().frame(height: 14)
+        let displayHeight = appeared ? barHeight : barMinHeight
+        let fill = day.sessions > 0 ? DashboardWidgetChrome.barFill : DashboardWidgetChrome.barTrack
+
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
+                Color.clear
+                    .frame(height: barMaxHeight)
+
+                Capsule()
+                    .fill(fill)
+                    .frame(height: displayHeight)
+                    .animation(
+                        .spring(duration: 0.6, bounce: 0.2).delay(Double(day.id) * 0.05),
+                        value: appeared
+                    )
             }
+            .frame(maxWidth: .infinity)
 
-            // Bar
-            RoundedRectangle(cornerRadius: 4)
-                .fill(barFill)
-                .frame(height: appeared ? barHeight : barMinHeight)
-                .animation(
-                    .spring(duration: 0.6, bounce: 0.2).delay(Double(day.id) * 0.05),
-                    value: appeared
-                )
-
-            // Day label
-            Text(day.label)
-                .font(AppTypography.caption2)
-                .foregroundStyle(day.isToday ? AppColors.primary : AppColors.textSecondary)
-                .fontWeight(day.isToday ? .semibold : .regular)
+            Text(letter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(day.isToday ? DashboardWidgetChrome.labelSecondary : DashboardWidgetChrome.labelMuted)
         }
         .frame(maxWidth: .infinity)
         .onAppear { appeared = true }
-    }
-
-    private var barFill: AnyShapeStyle {
-        if day.isToday && day.sessions > 0 {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [AppColors.primary, AppColors.secondary],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-            )
-        } else if day.sessions > 0 {
-            return AnyShapeStyle(AppColors.primary.opacity(0.35))
-        } else {
-            return AnyShapeStyle(AppColors.fill)
-        }
     }
 }
 
@@ -187,27 +177,27 @@ private struct DayBar: View {
 
 private struct EmptyDayBar: View {
 
-    let label: String
+    let letter: String
     let isToday: Bool
 
+    private let barMaxHeight: CGFloat = 80
+
     var body: some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Spacer().frame(height: 14)
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
+                Capsule()
+                    .fill(DashboardWidgetChrome.barTrack)
+                    .frame(height: barMaxHeight)
 
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isToday ? AppColors.primary.opacity(0.2) : AppColors.fill)
-                .frame(height: 4)
-                .overlay(
-                    isToday
-                        ? RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(AppColors.primary.opacity(0.4), lineWidth: 1)
-                        : nil
-                )
+                Capsule()
+                    .fill(isToday ? Color.white.opacity(0.2) : DashboardWidgetChrome.barTrack)
+                    .frame(height: 4)
+            }
+            .frame(maxWidth: .infinity)
 
-            Text(label)
-                .font(AppTypography.caption2)
-                .foregroundStyle(isToday ? AppColors.primary : AppColors.textSecondary)
-                .fontWeight(isToday ? .semibold : .regular)
+            Text(letter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(isToday ? DashboardWidgetChrome.labelSecondary : DashboardWidgetChrome.labelMuted)
         }
         .frame(maxWidth: .infinity)
     }
@@ -219,25 +209,30 @@ private struct SkeletonBar: View {
 
     let heightFraction: CGFloat
     let barMaxHeight: CGFloat
+    let letter: String
     @State private var isAnimating = false
 
     var body: some View {
-        VStack(spacing: AppSpacing.xxs) {
-            Spacer().frame(height: 14)
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottom) {
+                Capsule()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: barMaxHeight)
 
-            RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
-                .frame(height: barMaxHeight * heightFraction)
-                .opacity(isAnimating ? 0.5 : 1.0)
-                .animation(
-                    .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-                    value: isAnimating
-                )
+                Capsule()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(height: barMaxHeight * heightFraction)
+                    .opacity(isAnimating ? 0.5 : 1.0)
+                    .animation(
+                        .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
+            }
+            .frame(maxWidth: .infinity)
 
-            RoundedRectangle(cornerRadius: 2)
-                .fill(AppColors.fill)
-                .frame(width: 20, height: 10)
-                .opacity(isAnimating ? 0.5 : 1.0)
+            Text(letter)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(DashboardWidgetChrome.labelMuted)
         }
         .frame(maxWidth: .infinity)
         .onAppear { isAnimating = true }
@@ -249,23 +244,23 @@ private struct SkeletonBar: View {
 #if DEBUG
 #Preview("WeeklyChart") {
     let sampleDays: [DashboardWeekDay] = [
-        DashboardWeekDay(id: 0, label: "Mo", sessions: 1, isToday: false),
-        DashboardWeekDay(id: 1, label: "Di", sessions: 0,  isToday: false),
-        DashboardWeekDay(id: 2, label: "Mi", sessions: 2, isToday: false),
-        DashboardWeekDay(id: 3, label: "Do", sessions: 1, isToday: false),
-        DashboardWeekDay(id: 4, label: "Fr", sessions: 2, isToday: true),
-        DashboardWeekDay(id: 5, label: "Sa", sessions: 0,  isToday: false),
-        DashboardWeekDay(id: 6, label: "So", sessions: 0,  isToday: false),
+        DashboardWeekDay(id: 0, label: "Mon", sessions: 1, isToday: false),
+        DashboardWeekDay(id: 1, label: "Tue", sessions: 0, isToday: false),
+        DashboardWeekDay(id: 2, label: "Wed", sessions: 2, isToday: false),
+        DashboardWeekDay(id: 3, label: "Thu", sessions: 1, isToday: false),
+        DashboardWeekDay(id: 4, label: "Fri", sessions: 2, isToday: true),
+        DashboardWeekDay(id: 5, label: "Sat", sessions: 0, isToday: false),
+        DashboardWeekDay(id: 6, label: "Sun", sessions: 0, isToday: false),
     ]
 
     ScrollView {
         VStack(spacing: AppSpacing.md) {
-            WeeklyChart(days: sampleDays, isLoading: false)
-            WeeklyChart(days: [], isLoading: false)
-            WeeklyChart(days: [], isLoading: true)
+            WeeklyChart(days: sampleDays, isLoading: false, weekOverWeekPercent: 12)
+            WeeklyChart(days: [], isLoading: false, weekOverWeekPercent: nil)
+            WeeklyChart(days: [], isLoading: true, weekOverWeekPercent: -8)
         }
         .padding(AppSpacing.md)
     }
-    .background(AppColors.backgroundPrimary)
+    .background(DashboardWidgetChrome.pageBackground)
 }
 #endif

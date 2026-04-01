@@ -5,6 +5,8 @@ import Shared
 
 /// View-layer model for today's workout statistics.
 struct DashboardDailyStats {
+    /// Sum of push-ups across today's strength sessions.
+    let pushUpCount: Int
     let activeMinutes: Int
     let sessions: Int
     let earnedMinutes: Int
@@ -73,6 +75,8 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var totalSpentSeconds: Int = 0
     @Published private(set) var dailyStats: DashboardDailyStats? = nil
     @Published private(set) var weekDays: [DashboardWeekDay] = []
+    /// Week-over-week change in session count (current calendar week vs previous); `nil` when both weeks are empty.
+    @Published private(set) var weekSessionTrendPercent: Int? = nil
     @Published private(set) var lastSession: DashboardLastSession? = nil
     @Published private(set) var hasEverWorkedOut: Bool = false
     @Published private(set) var isLoading: Bool = false
@@ -310,8 +314,10 @@ final class DashboardViewModel: ObservableObject {
             + todayJoggingSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
         let todayQuality = todayPushUpSessions.isEmpty ? 0.0
             : todayPushUpSessions.reduce(0.0) { $0 + Double($1.quality) } / Double(todayPushUpSessions.count)
+        let pushUpsToday = todayPushUpSessions.reduce(0) { $0 + Int($1.pushUpCount) }
 
         dailyStats = DashboardDailyStats(
+            pushUpCount: pushUpsToday,
             activeMinutes: (pushUpDuration + joggingDuration) / 60,
             sessions: todayPushUpSessions.count + todayJoggingSessions.count,
             earnedMinutes: todayEarned / 60,
@@ -341,6 +347,31 @@ final class DashboardViewModel: ObservableObject {
                 label: label,
                 sessions: dayPushUpSessions + dayJoggingSessions,
                 isToday: idx == todayIndex
+            )
+        }
+
+        let thisWeekSessions = weekDays.reduce(0) { $0 + $1.sessions }
+        let lastWeekMonday = calendar.date(byAdding: .day, value: -7, to: monday) ?? monday
+        var lastWeekSessions = 0
+        for idx in 0..<7 {
+            let dayStart = calendar.date(byAdding: .day, value: idx, to: lastWeekMonday) ?? lastWeekMonday
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+            lastWeekSessions += completedPushUps.filter { session in
+                let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return startDate >= dayStart && startDate < dayEnd
+            }.count
+            lastWeekSessions += completedJogging.filter { session in
+                let startDate = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+                return startDate >= dayStart && startDate < dayEnd
+            }.count
+        }
+        if thisWeekSessions == 0 && lastWeekSessions == 0 {
+            weekSessionTrendPercent = nil
+        } else if lastWeekSessions == 0 {
+            weekSessionTrendPercent = thisWeekSessions > 0 ? 100 : 0
+        } else {
+            weekSessionTrendPercent = Int(
+                round(Double(thisWeekSessions - lastWeekSessions) / Double(lastWeekSessions) * 100)
             )
         }
 
@@ -394,6 +425,7 @@ final class DashboardViewModel: ObservableObject {
         dailyStats   = nil
         lastSession  = nil
         hasEverWorkedOut = false
+        weekSessionTrendPercent = nil
 
         let todayIndex = WeekdayHelper.todayIndex()
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in

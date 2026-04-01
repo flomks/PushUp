@@ -56,14 +56,21 @@ struct ScreenTimeStatusCard: View {
         return !selection.applicationTokens.isEmpty || !selection.categoryTokens.isEmpty
     }
 
+    private func dashboardChrome<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(DashboardWidgetChrome.padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardWidgetChrome()
+    }
+
     // MARK: - Placeholders (dashboard slot always visible)
 
     private var notAuthorizedPlaceholder: some View {
-        Card {
+        dashboardChrome {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Image(icon: .hourglassFill)
                     .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(AppColors.primary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .symbolRenderingMode(.hierarchical)
                     .frame(maxWidth: .infinity)
                     .padding(.top, AppSpacing.xs)
@@ -71,10 +78,10 @@ struct ScreenTimeStatusCard: View {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text("Screen Time access")
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     Text(notAuthorizedExplanation)
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -85,13 +92,12 @@ struct ScreenTimeStatusCard: View {
                 } label: {
                     Text("All Screen Time options")
                         .font(AppTypography.captionSemibold)
-                        .foregroundStyle(AppColors.primary)
+                        .foregroundStyle(Color.white.opacity(0.85))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, AppSpacing.xxs)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -132,49 +138,43 @@ struct ScreenTimeStatusCard: View {
     }
 
     private var authorizedNoSelectionPlaceholder: some View {
-        Card {
+        dashboardChrome {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Label("Screen Time", icon: .hourglassFill)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                screenTimeHeaderTitle
                 Text("Choose which apps or categories to monitor for usage and blocking.")
                     .font(AppTypography.subheadline)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 NavigationLink {
                     ScreenTimeSettingsView()
                 } label: {
                     Text("Choose Apps")
                         .font(AppTypography.buttonSecondary)
-                        .foregroundStyle(AppColors.primary)
+                        .foregroundStyle(Color.white.opacity(0.85))
                 }
                 .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     // MARK: - Card Content
 
     private var cardContent: some View {
-        Card {
+        dashboardChrome {
             VStack(spacing: AppSpacing.sm) {
-                // Header row
                 HStack {
-                    Label("Screen Time", icon: .hourglassFill)
-                        .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                    screenTimeHeaderTitle
 
                     Spacer()
 
                     statusBadge
                 }
 
-                Divider()
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
 
-                // Metrics row: Used Today | App Access | App Usage Detail
                 HStack(spacing: AppSpacing.md) {
-                    // Today's usage -- tappable, navigates to per-app detail
                     NavigationLink {
                         ScreenTimeAppDetailView()
                     } label: {
@@ -184,77 +184,77 @@ struct ScreenTimeStatusCard: View {
                                 .foregroundStyle(usageColor)
                             Text(formatSeconds(todayUsageSeconds))
                                 .font(AppTypography.bodySemibold)
-                                .foregroundStyle(AppColors.textPrimary)
+                                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                                 .monospacedDigit()
                             Text("Used Today")
                                 .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
 
-                    Divider().frame(height: 36)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 1, height: 36)
 
-                    // Blocking state
                     VStack(spacing: AppSpacing.xxs) {
                         Image(icon: manager.isBlocking ? .lockApp : .checkmarkShield)
                             .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                            .foregroundStyle(manager.isBlocking ? AppColors.error : AppColors.success)
+                            .foregroundStyle(manager.isBlocking ? AppColors.error : DashboardWidgetChrome.accentPositive)
                         Text(manager.isBlocking ? "Blocked" : "Open")
                             .font(AppTypography.bodySemibold)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                         Text("App Access")
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                     .frame(maxWidth: .infinity)
 
-                    Divider().frame(height: 36)
+                    Rectangle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 1, height: 36)
 
-                    // Settings link
                     NavigationLink {
                         ScreenTimeSettingsView()
                     } label: {
                         VStack(spacing: AppSpacing.xxs) {
                             Image(icon: .gearshapeFill)
                                 .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                                .foregroundStyle(AppColors.primary)
+                                .foregroundStyle(Color.white.opacity(0.75))
                             Text("Settings")
                                 .font(AppTypography.bodySemibold)
-                                .foregroundStyle(AppColors.primary)
+                                .foregroundStyle(Color.white.opacity(0.9))
                             Text("Configure")
                                 .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                 }
 
-                // "View App Usage" shortcut row
                 NavigationLink {
                     ScreenTimeAppDetailView()
                 } label: {
                     HStack(spacing: AppSpacing.xs) {
                         Image(systemName: "app.badge.fill")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppColors.primary)
+                            .foregroundStyle(Color.white.opacity(0.85))
                         Text("View per-app usage for today")
                             .font(AppTypography.captionSemibold)
-                            .foregroundStyle(AppColors.primary)
+                            .foregroundStyle(Color.white.opacity(0.85))
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(AppColors.textTertiary)
+                            .foregroundStyle(DashboardWidgetChrome.labelMuted)
                     }
                     .padding(.horizontal, AppSpacing.xs)
                     .padding(.vertical, AppSpacing.xs)
-                    .background(AppColors.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
                 }
                 .buttonStyle(.plain)
 
-                // Warning banner when blocking is active
                 if manager.isBlocking {
                     blockingBanner
                 }
@@ -267,21 +267,32 @@ struct ScreenTimeStatusCard: View {
         .accessibilityLabel("Screen Time status card")
     }
 
+    private var screenTimeHeaderTitle: some View {
+        HStack(spacing: 10) {
+            Image(icon: .hourglassFill)
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+            Text("Screen Time")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+        }
+    }
+
     // MARK: - Status Badge
 
     private var statusBadge: some View {
         HStack(spacing: AppSpacing.xxs) {
             Circle()
-                .fill(manager.isBlocking ? AppColors.error : AppColors.success)
+                .fill(manager.isBlocking ? AppColors.error : DashboardWidgetChrome.accentPositive)
                 .frame(width: 6, height: 6)
             Text(manager.isBlocking ? "Blocking" : "Active")
                 .font(AppTypography.caption2)
-                .foregroundStyle(manager.isBlocking ? AppColors.error : AppColors.success)
+                .foregroundStyle(manager.isBlocking ? AppColors.error : DashboardWidgetChrome.accentPositive)
         }
         .padding(.horizontal, AppSpacing.xs)
         .padding(.vertical, 3)
         .background(
-            (manager.isBlocking ? AppColors.error : AppColors.success).opacity(0.1),
+            (manager.isBlocking ? AppColors.error : DashboardWidgetChrome.accentPositive).opacity(0.12),
             in: Capsule()
         )
     }
@@ -314,7 +325,7 @@ struct ScreenTimeStatusCard: View {
                 .foregroundStyle(AppColors.success)
             Text("Tracked by iOS Screen Time")
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             Spacer()
         }
     }
@@ -322,11 +333,11 @@ struct ScreenTimeStatusCard: View {
     // MARK: - Helpers
 
     private var usageColor: Color {
-        if todayUsageSeconds == 0 { return AppColors.textSecondary }
+        if todayUsageSeconds == 0 { return DashboardWidgetChrome.labelSecondary }
         let fraction = Double(todayUsageSeconds) / 7200.0
         if fraction >= 1.0 { return AppColors.error }
         if fraction >= 0.8 { return AppColors.warning }
-        return AppColors.primary
+        return Color.white.opacity(0.85)
     }
 
     private func formatSeconds(_ seconds: Int) -> String {
@@ -350,7 +361,7 @@ struct ScreenTimeStatusCard: View {
             }
             .padding(AppSpacing.md)
         }
-        .background(AppColors.backgroundPrimary)
+        .background(DashboardWidgetChrome.pageBackground)
     }
 }
 #endif

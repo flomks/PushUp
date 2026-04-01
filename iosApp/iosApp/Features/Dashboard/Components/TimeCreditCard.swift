@@ -67,15 +67,15 @@ struct DashboardTimeCreditCard: View {
     private let ringLineWidth: CGFloat = 14
 
     var body: some View {
-        Card(padding: AppSpacing.lg) {
-            VStack(spacing: AppSpacing.md) {
-                headerRow
-                progressRing
-                    .padding(.vertical, AppSpacing.xs)
-                footerRow
-            }
-            .frame(maxWidth: .infinity)
+        VStack(spacing: AppSpacing.md) {
+            headerRow
+            progressRing
+                .padding(.vertical, AppSpacing.xs)
+            footerRow
         }
+        .padding(DashboardWidgetChrome.padding)
+        .frame(maxWidth: .infinity)
+        .dashboardWidgetChrome()
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
     }
@@ -83,20 +83,26 @@ struct DashboardTimeCreditCard: View {
     // MARK: - Header
 
     private var headerRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text("Time Credit")
-                    .font(AppTypography.title3)
-                    .foregroundStyle(AppColors.textPrimary)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Available Credit")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
-                Text("Available Screen Time")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                creditStatusBadge
             }
 
             Spacer()
 
-            creditStatusBadge
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: AppIcon.clock.rawValue)
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(Color.white.opacity(0.6))
+            }
         }
     }
 
@@ -106,18 +112,14 @@ struct DashboardTimeCreditCard: View {
         ZStack {
             // Track ring
             Circle()
-                .stroke(AppColors.fill, lineWidth: ringLineWidth)
+                .stroke(Color.white.opacity(0.1), lineWidth: ringLineWidth)
                 .frame(width: ringSize, height: ringSize)
 
             // Progress arc
             Circle()
                 .trim(from: 0, to: progressFraction)
                 .stroke(
-                    LinearGradient(
-                        colors: [AppColors.primary, AppColors.secondary],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
+                    Color.white.opacity(0.85),
                     style: StrokeStyle(
                         lineWidth: ringLineWidth,
                         lineCap: .round
@@ -131,13 +133,13 @@ struct DashboardTimeCreditCard: View {
             if isLoading {
                 ProgressView()
                     .progressViewStyle(.circular)
-                    .tint(AppColors.primary)
+                    .tint(.white)
                     .scaleEffect(1.4)
             } else {
                 VStack(spacing: AppSpacing.xxs) {
                     Text(formattedTime)
                         .font(AppTypography.monoDisplay)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                         .contentTransition(.numericText())
@@ -145,7 +147,7 @@ struct DashboardTimeCreditCard: View {
 
                     Text("available")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
             }
         }
@@ -163,40 +165,40 @@ struct DashboardTimeCreditCard: View {
 
                 Text("Today's budget: \(formattedDailyBudget)")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Spacer()
 
                 if onTap != nil {
                     Text("Details")
                         .font(AppTypography.captionSemibold)
-                        .foregroundStyle(AppColors.primary)
+                        .foregroundStyle(Color.white.opacity(0.85))
 
                     Image(systemName: AppIcon.chevronRight.rawValue)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(AppColors.primary)
+                        .foregroundStyle(Color.white.opacity(0.85))
                 } else {
                     Text(String(format: "%.0f%%", progressFraction * 100) + " remaining")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
             }
         } else {
             HStack(spacing: AppSpacing.xs) {
                 Image(systemName: AppIcon.figureStrengthTraining.rawValue)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
                     .font(.system(size: AppSpacing.iconSizeSmall))
 
                 Text("Complete a workout to earn time credit")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
 
                 Spacer()
 
                 if onTap != nil {
                     Image(systemName: AppIcon.chevronRight.rawValue)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(DashboardWidgetChrome.labelMuted)
                 }
             }
         }
@@ -292,6 +294,6 @@ struct DashboardTimeCreditCard: View {
         }
         .padding(AppSpacing.md)
     }
-    .background(AppColors.backgroundPrimary)
+    .background(DashboardWidgetChrome.pageBackground)
 }
 #endif
