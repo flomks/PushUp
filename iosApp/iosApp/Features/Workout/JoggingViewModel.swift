@@ -465,7 +465,12 @@ final class JoggingViewModel: ObservableObject {
             return
         }
 
-        let resolvedUserId = currentUserId ?? (await AuthService.shared.getCurrentUser())?.id
+        let resolvedUserId: String?
+        if let currentUserId {
+            resolvedUserId = currentUserId
+        } else {
+            resolvedUserId = await AuthService.shared.getCurrentUser()?.id
+        }
         guard let userId = resolvedUserId else {
             phase = .active
             UIApplication.shared.isIdleTimerDisabled = true
@@ -742,16 +747,21 @@ final class JoggingViewModel: ObservableObject {
               let sessionId = selectedLiveRunSessionId,
               let userId = currentUserId else { return }
         let location = routeLocations.last
-        let paceSecondsPerKm: Int32? = currentPaceSecondsPerKm.map { Int32($0) }
+        let presenceState: String = isPaused ? "PAUSED" : "ACTIVE"
+        let distance: Double = distanceMeters
+        let duration: Int64 = Int64(activeDuration)
+        let pace: Int? = currentPaceSecondsPerKm
+        let latitude: Double? = location?.coordinate.latitude
+        let longitude: Double? = location?.coordinate.longitude
         DataBridge.shared.updateLiveRunPresence(
             sessionId: sessionId,
             userId: userId,
-            state: isPaused ? "PAUSED" : "ACTIVE",
-            distanceMeters: distanceMeters,
-            durationSeconds: Int64(activeDuration),
-            paceSecondsPerKm: paceSecondsPerKm,
-            latitude: location?.coordinate.latitude,
-            longitude: location?.coordinate.longitude
+            state: presenceState,
+            distanceMeters: distance,
+            durationSeconds: duration,
+            paceSecondsPerKm: pace,
+            latitude: latitude,
+            longitude: longitude
         ) { _ in }
     }
 
