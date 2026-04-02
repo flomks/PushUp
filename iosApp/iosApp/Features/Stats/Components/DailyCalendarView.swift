@@ -269,14 +269,44 @@ private struct CalendarDayCell: View {
     }
 
     private var intensityOpacity: Double {
-        guard day.activityPoints > 0 else { return 0 }
-        // Scale opacity from 0.25 (low) to 0.85 (high) based on activity points
-        let clamped = min(Double(day.activityPoints), 800.0)
-        return 0.25 + (clamped / 800.0) * 0.60
+        switch intensityLevel {
+        case .none: return 0.0
+        case .low: return 0.28
+        case .medium: return 0.43
+        case .high: return 0.62
+        case .max: return 0.82
+        }
     }
 
     private var intensityColor: Color {
         AppColors.success
+    }
+
+    private var intensityLevel: ActivityIntensityLevel {
+        ActivityIntensityLevel(activityPoints: day.activityPoints)
+    }
+}
+
+private enum ActivityIntensityLevel {
+    case none
+    case low
+    case medium
+    case high
+    case max
+
+    init(activityPoints: Int) {
+        switch activityPoints {
+        case ...0:
+            self = .none
+        case 1..<1000:
+            self = .low
+        case 1000..<3000:
+            self = .medium
+        case 3000..<7000:
+            self = .high
+        default:
+            self = .max
+        }
     }
 }
 
