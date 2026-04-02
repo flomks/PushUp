@@ -750,9 +750,9 @@ final class JoggingViewModel: ObservableObject {
         let presenceState: String = isPaused ? "PAUSED" : "ACTIVE"
         let distance: Double = distanceMeters
         let duration: Int64 = Int64(activeDuration)
-        let pace: Int? = currentPaceSecondsPerKm
-        let latitude: Double? = location?.coordinate.latitude
-        let longitude: Double? = location?.coordinate.longitude
+        let pace: KotlinInt? = currentPaceSecondsPerKm.map { KotlinInt(int: Int32($0)) }
+        let latitude: KotlinDouble? = location?.coordinate.latitude.map { KotlinDouble(value: $0) }
+        let longitude: KotlinDouble? = location?.coordinate.longitude.map { KotlinDouble(value: $0) }
         DataBridge.shared.updateLiveRunPresence(
             sessionId: sessionId,
             userId: userId,
