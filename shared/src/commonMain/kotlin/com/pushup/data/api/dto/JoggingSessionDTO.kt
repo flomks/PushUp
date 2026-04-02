@@ -41,6 +41,7 @@ data class JoggingSessionDTO(
  */
 @Serializable
 data class CreateJoggingSessionRequest(
+    @SerialName("id")                       val id: String,
     @SerialName("user_id")                  val userId: String,
     @SerialName("started_at")               val startedAt: String,
     @SerialName("ended_at")                 val endedAt: String? = null,
@@ -100,6 +101,7 @@ data class RoutePointDTO(
  */
 @Serializable
 data class CreateRoutePointRequest(
+    @SerialName("id")                   val id: String,
     @SerialName("session_id")           val sessionId: String,
     @SerialName("timestamp")            val timestamp: String,
     @SerialName("latitude")             val latitude: Double,
@@ -123,6 +125,7 @@ data class JoggingSegmentDTO(
 
 @Serializable
 data class CreateJoggingSegmentRequest(
+    @SerialName("id")                val id: String,
     @SerialName("session_id")        val sessionId: String,
     @SerialName("segment_type")      val segmentType: String,
     @SerialName("started_at")        val startedAt: String,
@@ -160,6 +163,7 @@ fun JoggingSessionDTO.toDomain(): JoggingSession = JoggingSession(
  * Converts a [JoggingSession] domain model to a [CreateJoggingSessionRequest].
  */
 fun JoggingSession.toCreateRequest(): CreateJoggingSessionRequest = CreateJoggingSessionRequest(
+    id = id,
     userId = userId,
     startedAt = startedAt.toString(),
     endedAt = endedAt?.toString(),
@@ -194,6 +198,7 @@ fun RoutePointDTO.toDomain(): RoutePoint = RoutePoint(
  * Converts a [RoutePoint] domain model to a [CreateRoutePointRequest].
  */
 fun RoutePoint.toCreateRequest(): CreateRoutePointRequest = CreateRoutePointRequest(
+    id = id,
     sessionId = sessionId,
     timestamp = timestamp.toString(),
     latitude = latitude,
@@ -215,6 +220,7 @@ fun JoggingSegmentDTO.toDomain(): JoggingSegment = JoggingSegment(
 )
 
 fun JoggingSegment.toCreateRequest(): CreateJoggingSegmentRequest = CreateJoggingSegmentRequest(
+    id = id,
     sessionId = sessionId,
     segmentType = if (type == JoggingSegmentType.PAUSE) "pause" else "run",
     startedAt = startedAt.toString(),

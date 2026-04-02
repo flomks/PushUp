@@ -7,6 +7,7 @@ import com.pushup.data.api.AuthClient
 import com.pushup.data.api.SupabaseAuthClient
 import com.pushup.data.api.SupabaseClient
 import com.pushup.data.api.createHttpClient
+import com.pushup.data.repository.ActivityStatsRepositoryImpl
 import com.pushup.data.repository.AuthRepositoryImpl
 import com.pushup.data.repository.JoggingSessionRepositoryImpl
 import com.pushup.data.repository.JoggingSegmentRepositoryImpl
@@ -21,6 +22,7 @@ import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.UserSettingsRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.repository.ActivityStatsRepository
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
@@ -36,6 +38,8 @@ import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.ApplyDailyResetUseCase
 import com.pushup.domain.usecase.AwardWorkoutXpUseCase
+import com.pushup.domain.usecase.GetActivityStreakUseCase
+import com.pushup.domain.usecase.GetMonthlyActivityUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
@@ -258,6 +262,15 @@ val repositoryModule: Module = module {
             dispatcher = get(named(DB_DISPATCHER)),
         )
     }
+
+    single<ActivityStatsRepository> {
+        ActivityStatsRepositoryImpl(
+            database = get(),
+            snapshotRepository = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+        )
+    }
 }
 
 /**
@@ -324,6 +337,10 @@ val useCaseModule: Module = module {
     factory { GetUserLevelUseCase(levelRepository = get()) }
     factory { AwardWorkoutXpUseCase(levelRepository = get()) }
     factory { GetExerciseLevelsUseCase(exerciseLevelRepository = get()) }
+
+    // Activity stats use-cases (unified across all workout types)
+    factory { GetMonthlyActivityUseCase(activityStatsRepository = get()) }
+    factory { GetActivityStreakUseCase(activityStatsRepository = get()) }
 
     // Jogging use-cases
     factory { StartJoggingUseCase(sessionRepository = get(), clock = get(), idGenerator = get()) }

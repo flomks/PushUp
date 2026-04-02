@@ -764,3 +764,29 @@ WHERE userId = ?;
 deleteLiveJoggingStatusBySessionId:
 DELETE FROM LiveJoggingStatus
 WHERE sessionId = ?;
+
+-- =============================================================================
+-- Activity Stats Queries (unified across all workout types)
+-- Used by ActivityStatsRepositoryImpl for heatmap and streak calculation.
+-- =============================================================================
+
+-- Completed jogging sessions within a date range (exclusive upper bound).
+selectJoggingSessionsByDateRangeExclusive:
+SELECT *
+FROM JoggingSession
+WHERE userId = ? AND startedAt >= ? AND startedAt < ? AND endedAt IS NOT NULL
+ORDER BY startedAt DESC;
+
+-- Distinct workout dates (for unified streak calculation).
+selectDistinctWorkoutDates:
+SELECT DISTINCT date(startedAt / 1000, 'unixepoch', 'localtime') AS sessionDate
+FROM WorkoutSession
+WHERE userId = ? AND endedAt IS NOT NULL
+ORDER BY sessionDate ASC;
+
+-- Distinct jogging dates (for unified streak calculation).
+selectDistinctJoggingDates:
+SELECT DISTINCT date(startedAt / 1000, 'unixepoch', 'localtime') AS sessionDate
+FROM JoggingSession
+WHERE userId = ? AND endedAt IS NOT NULL
+ORDER BY sessionDate ASC;

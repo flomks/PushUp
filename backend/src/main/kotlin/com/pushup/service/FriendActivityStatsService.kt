@@ -156,10 +156,21 @@ open class FriendActivityStatsService {
                 WorkoutSessions.endedAt.isNotNull()
             }
             .map { it[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
+
+        // Include jogging sessions for unified streak calculation
+        val joggingDays: List<LocalDate> = com.pushup.plugins.JoggingSessions
+            .select(com.pushup.plugins.JoggingSessions.startedAtDay)
+            .where {
+                (com.pushup.plugins.JoggingSessions.userId eq friendId) and
+                com.pushup.plugins.JoggingSessions.endedAt.isNotNull()
+            }
+            .map { it[com.pushup.plugins.JoggingSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
+
+        val allActivityDays = (workoutDays + joggingDays)
             .distinct()
             .sortedDescending()
 
-        val currentStreak = calculateCurrentStreak(workoutDays, today)
+        val currentStreak = calculateCurrentStreak(allActivityDays, today)
 
         // ------------------------------------------------------------------
         // 5. Look up the friend's current XP level

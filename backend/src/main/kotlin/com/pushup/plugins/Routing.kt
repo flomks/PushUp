@@ -1,6 +1,7 @@
 package com.pushup.plugins
 
 import com.pushup.models.HealthResponse
+import com.pushup.routes.activityStatsRoutes
 import com.pushup.routes.deviceTokenRoutes
 import com.pushup.routes.friendActivityStatsRoutes
 import com.pushup.routes.friendCodeRoutes
@@ -12,6 +13,7 @@ import com.pushup.routes.userRoutes
 import com.pushup.routes.userSearchRoutes
 import com.pushup.routes.usernameRoutes
 import com.pushup.service.DeviceTokenService
+import com.pushup.service.ActivityStatsService
 import com.pushup.service.FriendActivityStatsService
 import com.pushup.service.FriendCodeService
 import com.pushup.service.FriendshipService
@@ -30,6 +32,7 @@ import io.ktor.server.routing.routing
 
 fun Application.configureRouting(
     statsService: StatsService = StatsService(),
+    activityStatsService: ActivityStatsService = ActivityStatsService(),
     userDataService: UserDataService = UserDataService(statsService),
     userSearchService: UserSearchService = UserSearchService(),
     deviceTokenService: DeviceTokenService = DeviceTokenService(),
@@ -429,5 +432,6 @@ fun Application.configureRouting(
         friendActivityStatsRoutes(friendActivityStatsService, databaseReady = databaseReady)
         friendCodeRoutes(friendCodeService, databaseReady = databaseReady)
         joggingStatsRoutes(joggingStatsService)
+        activityStatsRoutes(activityStatsService)
     }
 }

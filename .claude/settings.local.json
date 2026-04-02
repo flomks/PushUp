@@ -6,7 +6,12 @@
       "Bash(find C:/Users/flori/Desktop/app/PushUp/iosApp -name Package.resolved -o -name *.resolved)",
       "Bash(find /c/Users/flori/Desktop/app/PushUp -path */.venv -prune -o -type f -name *.kt -path */jogging* -o -name *.swift -path *Jogging*)",
       "Bash(grep -E \"\\\\.kt$\")",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(./gradlew :shared:compileKotlinJvm)",
+      "Bash(./gradlew :shared:compileKotlinJvm --stacktrace)",
+      "Bash(./gradlew :shared:compileKotlinJvm --info)",
+      "Bash(./gradlew :shared:jvmTest)",
+      "Bash(git stash:*)"
     ]
   }
 }

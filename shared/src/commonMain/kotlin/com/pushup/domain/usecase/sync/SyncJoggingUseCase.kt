@@ -126,17 +126,17 @@ class SyncJoggingUseCase(
 
     /**
      * Uploads all route points for a session in a single bulk request.
+     *
+     * Uses `resolution=ignore-duplicates` on the server side, so points that
+     * were already uploaded (e.g. by [LiveJoggingSessionManager]) are silently
+     * skipped while new points are still inserted.
      */
     private suspend fun uploadRoutePoints(sessionId: String) {
         val routePoints = routePointRepository.getBySessionId(sessionId)
         if (routePoints.isEmpty()) return
 
         val requests = routePoints.map { it.toCreateRequest() }
-        try {
-            supabaseClient.createRoutePoints(requests)
-        } catch (_: ApiException.Conflict) {
-            // Route points already exist on server -- that is fine.
-        }
+        supabaseClient.createRoutePoints(requests)
     }
 
     private suspend fun uploadSegments(sessionId: String) {

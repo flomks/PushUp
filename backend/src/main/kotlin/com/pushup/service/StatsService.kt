@@ -189,7 +189,7 @@ class StatsService {
      * @param today Injectable for deterministic unit tests (defaults to UTC today).
      */
     suspend fun getStreak(userId: UUID, today: LocalDate = LocalDate.now(ZoneOffset.UTC)): StreakDTO = newSuspendedTransaction {
-        // SELECT DISTINCT DATE_TRUNC('day', started_at) ... ORDER BY 1 ASC
+        // Distinct dates from workout sessions
         val workoutDays: List<LocalDate> = WorkoutSessions
             .select(WorkoutSessions.startedAtDay)
             .where {
@@ -202,15 +202,31 @@ class StatsService {
                 row[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
             }
 
-        if (workoutDays.isEmpty()) {
+        // Distinct dates from jogging sessions (unified streak)
+        val joggingDays: List<LocalDate> = com.pushup.plugins.JoggingSessions
+            .select(com.pushup.plugins.JoggingSessions.startedAtDay)
+            .where {
+                (com.pushup.plugins.JoggingSessions.userId eq userId) and
+                    com.pushup.plugins.JoggingSessions.endedAt.isNotNull()
+            }
+            .withDistinct()
+            .orderBy(com.pushup.plugins.JoggingSessions.startedAtDay to SortOrder.ASC)
+            .map { row: ResultRow ->
+                row[com.pushup.plugins.JoggingSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
+            }
+
+        // Merge, deduplicate, sort ascending
+        val allDays = (workoutDays + joggingDays).distinct().sorted()
+
+        if (allDays.isEmpty()) {
             return@newSuspendedTransaction StreakDTO(currentStreak = 0, longestStreak = 0, lastWorkoutDate = null)
         }
 
-        val descending = workoutDays.asReversed() // already ASC, reverse is O(1)
+        val descending = allDays.asReversed()
 
         StreakDTO(
             currentStreak = calculateCurrentStreak(descending, today),
-            longestStreak = calculateLongestStreak(workoutDays),
+            longestStreak = calculateLongestStreak(allDays),
             lastWorkoutDate = descending.first().format(ISO_DATE),
         )
     }

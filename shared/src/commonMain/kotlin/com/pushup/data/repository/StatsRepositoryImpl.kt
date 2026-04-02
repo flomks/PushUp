@@ -5,6 +5,7 @@ import com.pushup.data.mapper.toDomain
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.DailyStats
 import com.pushup.domain.model.MonthlyStats
+import com.pushup.domain.model.StreakCalculator
 import com.pushup.domain.model.TotalStats
 import com.pushup.domain.model.WeeklyStats
 import com.pushup.domain.model.WorkoutSession
@@ -194,12 +195,19 @@ class StatsRepositoryImpl(
             val timeCredit = timeCreditRepository.get(userId)
 
             val today = clock.now().toLocalDateTime(timeZone).date
-            val sessionDates = sessions
+
+            // Unified streak: merge push-up dates with jogging dates
+            val workoutDates = sessions
                 .map { sessionDate(it) }
                 .distinct()
-                .sorted()
 
-            val (currentStreak, longestStreak) = calculateStreaks(sessionDates, today)
+            val joggingDates = queries.selectDistinctJoggingDates(userId)
+                .executeAsList()
+                .mapNotNull { it.sessionDate?.let(kotlinx.datetime.LocalDate::parse) }
+
+            val allDates = (workoutDates + joggingDates).distinct().sorted()
+
+            val (currentStreak, longestStreak) = calculateStreaks(allDates, today)
 
             val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
 
@@ -357,56 +365,11 @@ class StatsRepositoryImpl(
     }
 
     /**
-     * Calculates the current and longest streak from a sorted list of distinct
-     * dates that had at least one session.
-     *
-     * **Current streak** is only non-zero when the most recent workout date is
-     * either today or yesterday (relative to [today]). If the last workout was
-     * two or more days ago the streak has been broken and `currentStreak` is `0`.
-     *
-     * @param sortedDates Distinct workout dates in ascending order.
-     * @param today The reference date for "current" streak evaluation.
-     * @return Pair of (currentStreak, longestStreak).
+     * Delegates to [StreakCalculator] for streak computation.
+     * Kept as an internal method for backward compatibility with existing tests.
      */
-    internal fun calculateStreaks(sortedDates: List<LocalDate>, today: LocalDate): Pair<Int, Int> {
-        if (sortedDates.isEmpty()) return 0 to 0
-
-        // Calculate longest streak by scanning consecutive runs
-        var longestStreak = 1
-        var runLength = 1
-
-        for (i in 1 until sortedDates.size) {
-            val expectedNext = sortedDates[i - 1].plus(1, DateTimeUnit.DAY)
-            if (sortedDates[i] == expectedNext) {
-                runLength++
-                if (runLength > longestStreak) longestStreak = runLength
-            } else {
-                runLength = 1
-            }
-        }
-
-        // Current streak: count backwards from the last date only if it is
-        // today or yesterday. Otherwise the streak is already broken.
-        val lastDate = sortedDates.last()
-        val yesterday = today.minus(1, DateTimeUnit.DAY)
-        val currentStreak = if (lastDate == today || lastDate == yesterday) {
-            // Walk backwards from the end to find the length of the trailing run
-            var streak = 1
-            for (i in sortedDates.size - 1 downTo 1) {
-                val expectedPrev = sortedDates[i].minus(1, DateTimeUnit.DAY)
-                if (sortedDates[i - 1] == expectedPrev) {
-                    streak++
-                } else {
-                    break
-                }
-            }
-            streak
-        } else {
-            0
-        }
-
-        return currentStreak to longestStreak
-    }
+    internal fun calculateStreaks(sortedDates: List<LocalDate>, today: LocalDate): Pair<Int, Int> =
+        StreakCalculator.calculateStreaks(sortedDates, today)
 
     /**
      * Returns the average push-ups per session, or `0f` when [sessions] is empty.

@@ -623,7 +623,7 @@ class SupabaseClient(
         val token = tokenProvider()
         httpClient.post("$restBase/route_points") {
             supabaseHeaders(token)
-            header("Prefer", "return=representation")
+            header("Prefer", "return=representation,resolution=ignore-duplicates")
             contentType(ContentType.Application.Json)
             setBody(requests)
         }.also { it.expectSuccess() }
@@ -647,20 +647,22 @@ class SupabaseClient(
         requests: List<CreateJoggingSegmentRequest>,
     ) {
         val token = tokenProvider()
+        // Delete existing segments first, then upsert new ones in a single
+        // retry scope so a transient failure retries both steps.
         withRetry {
             httpClient.delete("$restBase/jogging_segments") {
                 supabaseHeaders(token)
                 url.parameters.append("session_id", "eq.$sessionId")
             }.also { it.expectSuccess() }
-        }
-        if (requests.isEmpty()) return
-        withRetry {
-            httpClient.post("$restBase/jogging_segments") {
-                supabaseHeaders(token)
-                header("Prefer", "return=minimal")
-                contentType(ContentType.Application.Json)
-                setBody(requests)
-            }.also { it.expectSuccess() }
+
+            if (requests.isNotEmpty()) {
+                httpClient.post("$restBase/jogging_segments") {
+                    supabaseHeaders(token)
+                    header("Prefer", "return=minimal,resolution=ignore-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(requests)
+                }.also { it.expectSuccess() }
+            }
         }
     }
 

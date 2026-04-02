@@ -10,6 +10,8 @@ import com.pushup.domain.repository.FriendshipRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.GetActivityStreakUseCase
+import com.pushup.domain.usecase.GetMonthlyActivityUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetUserLevelUseCase
@@ -54,6 +56,8 @@ val presentationModule = module {
             getUserUseCase = get<GetOrCreateLocalUserUseCase>(),
             getUserLevelUseCase = get<GetUserLevelUseCase>(),
             getTotalStatsUseCase = get<GetTotalStatsUseCase>(),
+            getMonthlyActivityUseCase = get<GetMonthlyActivityUseCase>(),
+            getActivityStreakUseCase = get<GetActivityStreakUseCase>(),
         )
     }
 

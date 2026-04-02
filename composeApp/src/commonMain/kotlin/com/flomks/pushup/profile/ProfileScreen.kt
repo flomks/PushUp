@@ -42,11 +42,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.flomks.pushup.components.ActivityHeatmapGrid
+import com.pushup.domain.model.ActivityDayStats
 import com.pushup.domain.model.LevelCalculator
+import com.pushup.domain.model.MonthlyActivitySummary
 import com.pushup.domain.model.TotalStats
 import com.pushup.domain.model.User
 import com.pushup.domain.model.UserLevel
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
 
 // ---------------------------------------------------------------------------
 // Screen entry point
@@ -67,6 +71,8 @@ fun ProfileScreen(
     ProfileContent(
         uiState = uiState,
         onRefresh = viewModel::onRefresh,
+        onPreviousMonth = viewModel::onPreviousMonth,
+        onNextMonth = viewModel::onNextMonth,
         modifier = modifier,
     )
 }
@@ -80,6 +86,8 @@ fun ProfileScreen(
 internal fun ProfileContent(
     uiState: ProfileUiState,
     onRefresh: () -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -118,9 +126,9 @@ internal fun ProfileContent(
                     .padding(innerPadding),
             )
             is ProfileState.Success -> ProfileSuccessContent(
-                user = state.user,
-                userLevel = state.userLevel,
-                totalStats = state.totalStats,
+                state = state,
+                onPreviousMonth = onPreviousMonth,
+                onNextMonth = onNextMonth,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
@@ -180,9 +188,9 @@ private fun ProfileErrorState(
 
 @Composable
 private fun ProfileSuccessContent(
-    user: User,
-    userLevel: UserLevel,
-    totalStats: TotalStats?,
+    state: ProfileState.Success,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -192,15 +200,26 @@ private fun ProfileSuccessContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // User avatar + display name
-        UserHeader(user = user)
+        UserHeader(user = state.user)
 
         // Level card (hero element)
-        LevelCard(userLevel = userLevel)
+        LevelCard(userLevel = state.userLevel)
 
-        // Stats grid
-        if (totalStats != null) {
-            StatsSection(totalStats = totalStats)
+        // Activity heatmap (GitHub-style)
+        state.monthlyActivity?.let { summary ->
+            ActivityHeatmapGrid(
+                summary = summary,
+                onPreviousMonth = onPreviousMonth,
+                onNextMonth = onNextMonth,
+            )
         }
+
+        // Stats grid — now activity-focused
+        StatsSection(
+            totalStats = state.totalStats,
+            activityStreakCurrent = state.activityStreakCurrent,
+            activityStreakLongest = state.activityStreakLongest,
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
     }
@@ -364,12 +383,14 @@ private fun LevelCard(
 }
 
 // ---------------------------------------------------------------------------
-// Stats section
+// Stats section — now activity-focused
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun StatsSection(
-    totalStats: TotalStats,
+    totalStats: TotalStats?,
+    activityStreakCurrent: Int,
+    activityStreakLongest: Int,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -382,7 +403,7 @@ private fun StatsSection(
             fontWeight = FontWeight.SemiBold,
         )
 
-        // Push-ups hero card
+        // Total Workouts hero card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -405,13 +426,13 @@ private fun StatsSection(
                 )
                 Column {
                     Text(
-                        text = totalStats.totalPushUps.toString(),
+                        text = (totalStats?.totalSessions ?: 0).toString(),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                     Text(
-                        text = "Total Push-ups",
+                        text = "Total Workouts",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
                     )
@@ -425,13 +446,13 @@ private fun StatsSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SmallStatCard(
-                label = "Sessions",
-                value = totalStats.totalSessions.toString(),
+                label = "Time Earned",
+                value = formatEarnedTime(totalStats?.totalEarnedSeconds ?: 0),
                 modifier = Modifier.weight(1f),
             )
             SmallStatCard(
-                label = "Best Session",
-                value = "${totalStats.bestSession} reps",
+                label = "Push-ups",
+                value = (totalStats?.totalPushUps ?: 0).toString(),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -442,21 +463,15 @@ private fun StatsSection(
         ) {
             SmallStatCard(
                 label = "Current Streak",
-                value = "${totalStats.currentStreakDays} days",
+                value = "$activityStreakCurrent days",
                 modifier = Modifier.weight(1f),
             )
             SmallStatCard(
                 label = "Longest Streak",
-                value = "${totalStats.longestStreakDays} days",
+                value = "$activityStreakLongest days",
                 modifier = Modifier.weight(1f),
             )
         }
-
-        SmallStatCard(
-            label = "Avg Quality",
-            value = "${(totalStats.averageQuality * 100).toInt()}%",
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -500,6 +515,21 @@ private fun SmallStatCard(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+private fun formatEarnedTime(seconds: Long): String {
+    if (seconds <= 0) return "0m"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        else -> "${minutes}m"
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Previews
 // ---------------------------------------------------------------------------
 
@@ -531,9 +561,25 @@ private fun ProfileSuccessPreview() {
                         currentStreakDays = 5,
                         longestStreakDays = 12,
                     ),
+                    monthlyActivity = MonthlyActivitySummary(
+                        month = 4,
+                        year = 2026,
+                        days = (1..30).map { day ->
+                            ActivityDayStats(
+                                date = LocalDate(2026, 4, day),
+                                totalSessions = if (day % 3 != 0) 1 else 0,
+                                totalEarnedSeconds = if (day % 3 != 0) (day * 60L) else 0L,
+                                workoutTypes = emptySet(),
+                            )
+                        },
+                    ),
+                    activityStreakCurrent = 7,
+                    activityStreakLongest = 14,
                 ),
             ),
             onRefresh = {},
+            onPreviousMonth = {},
+            onNextMonth = {},
         )
     }
 }
@@ -545,6 +591,8 @@ private fun ProfileLoadingPreview() {
         ProfileContent(
             uiState = ProfileUiState(profileState = ProfileState.Loading),
             onRefresh = {},
+            onPreviousMonth = {},
+            onNextMonth = {},
         )
     }
 }
@@ -558,6 +606,8 @@ private fun ProfileErrorPreview() {
                 profileState = ProfileState.Error("No authenticated user found. Please sign in."),
             ),
             onRefresh = {},
+            onPreviousMonth = {},
+            onNextMonth = {},
         )
     }
 }

@@ -196,6 +196,7 @@ class LiveJoggingSessionManager(
 
     private fun RoutePoint.toCreateRequest() =
         com.pushup.data.api.dto.CreateRoutePointRequest(
+            id = id,
             sessionId = sessionId,
             timestamp = timestamp.toString(),
             latitude = latitude,
