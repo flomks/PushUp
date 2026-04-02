@@ -451,8 +451,8 @@ private fun StatsSection(
                 modifier = Modifier.weight(1f),
             )
             SmallStatCard(
-                label = "Push-ups",
-                value = (totalStats?.totalPushUps ?: 0).toString(),
+                label = "Activity XP",
+                value = (totalStats?.totalActivityXp ?: 0L).toString(),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -551,13 +551,13 @@ private fun ProfileSuccessPreview() {
                     userLevel = LevelCalculator.fromTotalXp("u1", 1250L),
                     totalStats = TotalStats(
                         userId = "u1",
-                        totalPushUps = 842,
+                        totalActivityXp = 8420L,
                         totalSessions = 34,
                         totalEarnedSeconds = 5040,
                         totalSpentSeconds = 1800,
                         averageQuality = 0.76f,
-                        averagePushUpsPerSession = 24.8f,
-                        bestSession = 60,
+                        averageActivityXpPerSession = 247.6f,
+                        bestSessionActivityXp = 600L,
                         currentStreakDays = 5,
                         longestStreakDays = 12,
                     ),

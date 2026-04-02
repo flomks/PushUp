@@ -187,7 +187,7 @@ struct StatsView: View {
                         .font(.system(size: AppSpacing.iconSizeSmall))
                         .foregroundStyle(AppColors.info)
 
-                    Text("Tap a green day to see detailed workout stats.")
+                    Text("Tap an active day to see detailed activity stats.")
                         .font(AppTypography.caption1)
                         .foregroundStyle(AppColors.textSecondary)
 
@@ -203,8 +203,8 @@ struct StatsView: View {
     private var weeklyContent: some View {
         WeeklyChartView(
             bars: viewModel.weeklyBars,
-            totalPushUps: viewModel.weeklyTotalPushUps,
-            averagePushUps: viewModel.weeklyAveragePushUps,
+            totalActivityPoints: viewModel.weeklyTotalActivityPoints,
+            averageActivityPoints: viewModel.weeklyAverageActivityPoints,
             totalSessions: viewModel.weeklyTotalSessions,
             earnedMinutes: viewModel.weeklyEarnedMinutes,
             isLoading: viewModel.isLoading
@@ -217,7 +217,7 @@ struct StatsView: View {
     private var monthlyContent: some View {
         MonthlyChartView(
             weeks: viewModel.monthlyWeeks,
-            totalPushUps: viewModel.monthlyTotalPushUps,
+            totalActivityPoints: viewModel.monthlyTotalActivityPoints,
             totalSessions: viewModel.monthlyTotalSessions,
             earnedMinutes: viewModel.monthlyEarnedMinutes,
             comparison: viewModel.monthComparison,
@@ -295,7 +295,7 @@ struct StatsView: View {
         // TODO: Implement CSV export via KMP shared module or local generation.
         // For now, show a placeholder share sheet.
         let csvContent = generateCSVContent()
-        shareContent(csvContent, filename: "pushup_stats.csv")
+        shareContent(csvContent, filename: "activity_stats.csv")
     }
 
     private func exportPDF() {
@@ -305,11 +305,11 @@ struct StatsView: View {
     }
 
     private func generateCSVContent() -> String {
-        var lines = ["Date,Push-Ups,Sessions,Earned Minutes,Quality"]
+        var lines = ["Date,Activity XP,Sessions,Earned Minutes,Quality"]
         for day in viewModel.calendarDays where day.hasWorkout {
             // Use the stable ISO date id ("yyyy-MM-dd") for unambiguous CSV output.
             let quality = String(format: "%.0f", day.averageQuality * 100)
-            lines.append("\(day.id),\(day.pushUps),\(day.sessions),\(day.earnedMinutes),\(quality)")
+            lines.append("\(day.id),\(day.activityPoints),\(day.sessions),\(day.earnedMinutes),\(quality)")
         }
         return lines.joined(separator: "\n")
     }

@@ -7,8 +7,11 @@ import kotlin.math.pow
 /**
  * Represents the current XP / level state for a user.
  *
+ * Account-wide XP is the sum of all activity-specific XP pools
+ * (push-ups, jogging, and future exercise types).
+ *
  * @property userId          Identifier of the user this level belongs to.
- * @property totalXp         Total XP accumulated across all time.
+ * @property totalXp         Total XP accumulated across all activities across all time.
  * @property level           Current level (1-based, starts at 1).
  * @property xpIntoLevel     XP accumulated within the current level (0 until [xpRequiredForNextLevel]).
  * @property xpRequiredForNextLevel XP needed to advance from [level] to [level]+1.
@@ -65,8 +68,9 @@ data class UserLevel(
  *   - Level 10 -> 11: 3162 XP
  *   - Level 20 -> 21: 8944 XP
  *
- * ## XP per push-up
- * Base XP per push-up is **10 XP**.
+ * ## Activity XP
+ * Push-ups currently award **10 XP per rep** before quality multiplier.
+ * Jogging currently awards **10 XP per 100m**.
  *
  * A quality multiplier is applied based on the session's quality score:
  *   - quality > 0.8  -> 1.5x  (excellent form)
@@ -79,6 +83,7 @@ object LevelCalculator {
 
     /** Base XP awarded per push-up before any multiplier. */
     const val BASE_XP_PER_PUSHUP: Int = 10
+    const val BASE_XP_PER_JOGGING_100M: Int = 10
 
     /**
      * Returns the XP required to advance from level [level] to [level]+1.
@@ -118,6 +123,30 @@ object LevelCalculator {
             else            -> 0.7
         }
         return (pushUpCount * BASE_XP_PER_PUSHUP * multiplier).toLong()
+    }
+
+    /**
+     * Calculates XP for a specific [exerciseType].
+     *
+     * The returned XP is scoped to that activity only. Account-wide XP is derived
+     * by summing all activity-specific XP totals.
+     */
+    fun calculateExerciseXp(
+        exerciseType: ExerciseType,
+        amount: Int,
+        quality: Float = 1f,
+    ): Long {
+        require(amount >= 0) { "amount must be >= 0, was $amount" }
+        require(quality in 0f..1f) { "quality must be in [0, 1], was $quality" }
+
+        return when (exerciseType) {
+            ExerciseType.PUSH_UPS -> calculateXp(amount, quality)
+            ExerciseType.JOGGING -> amount.toLong() * BASE_XP_PER_JOGGING_100M.toLong()
+            ExerciseType.PLANK,
+            ExerciseType.JUMPING_JACKS,
+            ExerciseType.SQUATS,
+            ExerciseType.CRUNCHES -> amount.toLong() * BASE_XP_PER_PUSHUP.toLong()
+        }
     }
 
     /**

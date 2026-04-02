@@ -66,7 +66,7 @@ enum ProfileError: LocalizedError {
 
 /// Lifetime account statistics shown on the profile screen.
 struct ProfileStats: Equatable {
-    let totalPushUps: Int
+    let totalActivityXp: Int
     let totalWorkouts: Int
     let totalEarnedMinutes: Int
 }
@@ -136,7 +136,7 @@ private enum ProfileValidation {
 /// - Handle avatar selection from camera or photo library
 /// - Upload avatar image to Supabase Storage (stubbed)
 /// - Allow editing of display name with validation
-/// - Expose account statistics (total push-ups, workouts, earned time)
+/// - Expose account statistics (total activity XP, workouts, earned time)
 /// - Handle logout and account deletion with confirmation
 @MainActor
 final class ProfileViewModel: ObservableObject {
@@ -357,7 +357,7 @@ final class ProfileViewModel: ObservableObject {
             savedDisplayName = ""
             email = ""
             memberSinceText = ""
-            stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+            stats = ProfileStats(totalActivityXp: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
             levelInfo = nil
             exerciseLevels = nil
         }
@@ -718,7 +718,7 @@ final class ProfileViewModel: ObservableObject {
         // Stats will be populated by the session observation Flow.
         // Show zero initially until the first emission arrives.
         if stats == nil {
-            stats = ProfileStats(totalPushUps: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
+            stats = ProfileStats(totalActivityXp: 0, totalWorkouts: 0, totalEarnedMinutes: 0)
         }
     }
 
@@ -780,15 +780,11 @@ final class ProfileViewModel: ObservableObject {
     private func startObservingStats(userId: String) {
         guard sessionObservationJob == nil else { return }
 
-        sessionObservationJob = DataBridge.shared.observeSessions(userId: userId) { [weak self] sessions in
-            guard let self else { return }
-            let completed = sessions.filter { $0.endedAt != nil }
-            let totalPushUps = completed.reduce(0) { $0 + Int($1.pushUpCount) }
-            let totalEarned  = completed.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
-            self.stats = ProfileStats(
-                totalPushUps: totalPushUps,
-                totalWorkouts: completed.count,
-                totalEarnedMinutes: totalEarned / 60
+        DataBridge.shared.fetchTotalStats(userId: userId) { [weak self] result in
+            self?.stats = ProfileStats(
+                totalActivityXp: result.totalPushUps,
+                totalWorkouts: result.totalSessions,
+                totalEarnedMinutes: Int(result.totalEarnedSeconds / 60)
             )
         }
     }

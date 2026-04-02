@@ -118,19 +118,17 @@ class FinishJoggingUseCase(
             timeCreditRepository.addEarnedSeconds(session.userId, earnedCredits)
         }
 
-        // Award XP: 10 XP per 100m jogged (same base as push-ups: 10 XP per rep)
+        // Award XP to the jogging activity itself. Account-wide XP is derived
+        // from the sum of all activity-specific XP totals.
         val distanceUnits = (distanceMeters / 100.0).toInt()
-        val earnedXp = LevelCalculator.calculateXp(distanceUnits, 0.8f) // Good quality for jogging
-        val updatedLevel = if (earnedXp > 0) {
-            levelRepository?.addXp(session.userId, earnedXp)
-        } else {
-            levelRepository?.getOrCreate(session.userId)
-        }
-
-        // Award per-exercise XP (Jogging).
+        val earnedXp = LevelCalculator.calculateExerciseXp(
+            exerciseType = ExerciseType.JOGGING,
+            amount = distanceUnits,
+        )
         if (earnedXp > 0) {
             exerciseLevelRepository?.addXp(session.userId, ExerciseType.JOGGING, earnedXp)
         }
+        val updatedLevel = levelRepository?.getOrCreate(session.userId)
 
         val routePoints = routePointRepository.getBySessionId(sessionId)
         val finishedSession = sessionRepository.getById(sessionId)

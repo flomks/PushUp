@@ -30,12 +30,12 @@ enum StatsTab: Int, CaseIterable, Identifiable {
 struct DayWorkoutData: Identifiable {
     let id: String          // "yyyy-MM-dd"
     let date: Date
-    let pushUps: Int
+    let activityPoints: Int
     let sessions: Int
     let earnedMinutes: Int
     let averageQuality: Double
 
-    var hasWorkout: Bool { pushUps > 0 }
+    var hasWorkout: Bool { activityPoints > 0 }
 }
 
 // MARK: - WeeklyBarData
@@ -44,7 +44,7 @@ struct WeeklyBarData: Identifiable {
     let id: Int
     let label: String
     let date: Date
-    let pushUps: Int
+    let activityPoints: Int
     let sessions: Int
     let earnedMinutes: Int
     let isToday: Bool
@@ -56,7 +56,7 @@ struct MonthlyWeekData: Identifiable {
     let id: Int
     let label: String
     let weekStart: Date
-    let totalPushUps: Int
+    let totalActivityPoints: Int
     let totalSessions: Int
     let totalEarnedMinutes: Int
 }
@@ -64,16 +64,16 @@ struct MonthlyWeekData: Identifiable {
 // MARK: - TotalStatsData
 
 struct TotalStatsData {
-    let totalPushUps: Int
+    let totalActivityPoints: Int
     let totalSessions: Int
     let totalEarnedMinutes: Int
     let longestStreakDays: Int
     let currentStreakDays: Int
-    let averagePushUpsPerSession: Double
+    let averageActivityPointsPerSession: Double
     let averageSessionDurationSeconds: Int
-    let bestSingleSession: Int
-    let bestDay: Int
-    let bestWeek: Int
+    let bestSingleSessionActivityPoints: Int
+    let bestDayActivityPoints: Int
+    let bestWeekActivityPoints: Int
     let activeDays: Int
     let averageQuality: Double
 }
@@ -81,26 +81,25 @@ struct TotalStatsData {
 // MARK: - MonthComparison
 
 struct MonthComparison {
-    let currentMonthPushUps: Int
-    let previousMonthPushUps: Int
+    let currentMonthActivityPoints: Int
+    let previousMonthActivityPoints: Int
 
     var changePercent: Int {
-        guard previousMonthPushUps > 0 else { return 0 }
-        let delta = Double(currentMonthPushUps - previousMonthPushUps)
-        return Int((delta / Double(previousMonthPushUps)) * 100)
+        guard previousMonthActivityPoints > 0 else { return 0 }
+        let delta = Double(currentMonthActivityPoints - previousMonthActivityPoints)
+        return Int((delta / Double(previousMonthActivityPoints)) * 100)
     }
 
-    var isImprovement: Bool { currentMonthPushUps >= previousMonthPushUps }
+    var isImprovement: Bool { currentMonthActivityPoints >= previousMonthActivityPoints }
 }
 
 // MARK: - StatsViewModel
 
 /// Manages all data and state for the Stats screen.
 ///
-/// Observes the local SQLite database via `DataBridge.observeSessions`.
-/// All stats are computed in-memory from the session list, which is instant.
-/// No per-day API calls are made -- the Flow emits the full session list and
-/// this ViewModel aggregates it into daily/weekly/monthly/total views.
+/// Observes the local SQLite database via `DataBridge.observeSessions` and
+/// `DataBridge.observeJoggingSessions`. All stats are computed in-memory from
+/// the combined activity list, so no per-day API calls are needed.
 @MainActor
 final class StatsViewModel: ObservableObject {
 
@@ -116,15 +115,15 @@ final class StatsViewModel: ObservableObject {
 
     // Weekly
     @Published private(set) var weeklyBars: [WeeklyBarData] = []
-    @Published private(set) var weeklyTotalPushUps: Int = 0
-    @Published private(set) var weeklyAveragePushUps: Double = 0
+    @Published private(set) var weeklyTotalActivityPoints: Int = 0
+    @Published private(set) var weeklyAverageActivityPoints: Double = 0
     @Published private(set) var weeklyTotalSessions: Int = 0
     @Published private(set) var weeklyEarnedMinutes: Int = 0
 
     // Monthly
     @Published private(set) var monthlyWeeks: [MonthlyWeekData] = []
     @Published private(set) var monthComparison: MonthComparison? = nil
-    @Published private(set) var monthlyTotalPushUps: Int = 0
+    @Published private(set) var monthlyTotalActivityPoints: Int = 0
     @Published private(set) var monthlyTotalSessions: Int = 0
     @Published private(set) var monthlyEarnedMinutes: Int = 0
 
@@ -138,8 +137,10 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private var allSessions: [Shared.WorkoutSession] = []
+    private var workoutSessions: [Shared.WorkoutSession] = []
+    private var joggingSessions: [Shared.JoggingSession] = []
     private var observationJob: Kotlinx_coroutines_coreJob?
+    private var joggingObservationJob: Kotlinx_coroutines_coreJob?
 
     // MARK: - Init / Deinit
 
@@ -147,6 +148,7 @@ final class StatsViewModel: ObservableObject {
 
     deinit {
         observationJob?.cancel(cause: nil)
+        joggingObservationJob?.cancel(cause: nil)
     }
 
     // MARK: - Actions
@@ -164,7 +166,15 @@ final class StatsViewModel: ObservableObject {
 
         observationJob = DataBridge.shared.observeSessions(userId: user.id) { [weak self] sessions in
             guard let self else { return }
-            self.allSessions = sessions.filter { $0.endedAt != nil }
+            self.workoutSessions = sessions.filter { $0.endedAt != nil }
+            self.rebuildAllStats()
+            self.isLoading = false
+            self.isRefreshing = false
+        }
+
+        joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: user.id) { [weak self] sessions in
+            guard let self else { return }
+            self.joggingSessions = sessions.filter { $0.endedAt != nil }
             self.rebuildAllStats()
             self.isLoading = false
             self.isRefreshing = false
@@ -224,18 +234,18 @@ final class StatsViewModel: ObservableObject {
             return
         }
 
-        let sessionsByDay = groupSessionsByDayKey(allSessions)
+        let sessionsByDay = groupActivityByDayKey(allActivities)
 
         calendarDays = range.compactMap { day -> DayWorkoutData? in
             guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
             let key = Self.isoDateFormatter.string(from: date)
             let daySessions = sessionsByDay[key] ?? []
-            let pushUps = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
-            let earned  = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
+            let activityPoints = daySessions.reduce(0) { $0 + $1.activityPoints }
+            let earned  = daySessions.reduce(0) { $0 + $1.earnedSeconds }
             let quality = daySessions.isEmpty ? 0.0
-                : daySessions.reduce(0.0) { $0 + Double($1.quality) } / Double(daySessions.count)
+                : daySessions.reduce(0.0) { $0 + ($1.quality ?? 0.0) } / Double(daySessions.count)
             return DayWorkoutData(
-                id: key, date: date, pushUps: pushUps,
+                id: key, date: date, activityPoints: activityPoints,
                 sessions: daySessions.count, earnedMinutes: earned / 60,
                 averageQuality: quality
             )
@@ -253,29 +263,29 @@ final class StatsViewModel: ObservableObject {
             return
         }
 
-        let sessionsByDay = groupSessionsByDayKey(allSessions)
-        var totalPU = 0, totalSess = 0, totalEarned = 0
+        let sessionsByDay = groupActivityByDayKey(allActivities)
+        var totalPoints = 0, totalSess = 0, totalEarned = 0
 
         weeklyBars = WeekdayHelper.dayLabels.enumerated().map { idx, label in
             let dayDate = calendar.date(byAdding: .day, value: idx, to: monday) ?? monday
             let key = Self.isoDateFormatter.string(from: dayDate)
             let daySessions = sessionsByDay[key] ?? []
-            let pu = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
-            let earned = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
-            totalPU += pu
+            let points = daySessions.reduce(0) { $0 + $1.activityPoints }
+            let earned = daySessions.reduce(0) { $0 + $1.earnedSeconds }
+            totalPoints += points
             totalSess += daySessions.count
             totalEarned += earned
             return WeeklyBarData(
                 id: idx, label: label, date: dayDate,
-                pushUps: pu, sessions: daySessions.count,
+                activityPoints: points, sessions: daySessions.count,
                 earnedMinutes: earned / 60, isToday: idx == todayIndex
             )
         }
 
-        weeklyTotalPushUps   = totalPU
+        weeklyTotalActivityPoints   = totalPoints
         weeklyTotalSessions  = totalSess
         weeklyEarnedMinutes  = totalEarned / 60
-        weeklyAveragePushUps = totalSess > 0 ? Double(totalPU) / Double(totalSess) : 0
+        weeklyAverageActivityPoints = totalSess > 0 ? Double(totalPoints) / Double(totalSess) : 0
     }
 
     // MARK: - Private: Monthly Stats
@@ -287,24 +297,24 @@ final class StatsViewModel: ObservableObject {
 
         guard let firstDay = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
               let range    = calendar.range(of: .day, in: .month, for: firstDay) else {
-            monthlyWeeks = []; monthlyTotalPushUps = 0; monthlyTotalSessions = 0; monthlyEarnedMinutes = 0
+            monthlyWeeks = []; monthlyTotalActivityPoints = 0; monthlyTotalSessions = 0; monthlyEarnedMinutes = 0
             return
         }
 
-        let sessionsByDay = groupSessionsByDayKey(allSessions)
-        var weekMap: [Int: (pushUps: Int, sessions: Int, earned: Int)] = [:]
-        var totalPU = 0, totalSess = 0, totalEarned = 0
+        let sessionsByDay = groupActivityByDayKey(allActivities)
+        var weekMap: [Int: (activityPoints: Int, sessions: Int, earned: Int)] = [:]
+        var totalPoints = 0, totalSess = 0, totalEarned = 0
 
         for day in range {
             guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { continue }
             let weekOfMonth = calendar.component(.weekOfMonth, from: date)
             let key = Self.isoDateFormatter.string(from: date)
             let daySessions = sessionsByDay[key] ?? []
-            let pu = daySessions.reduce(0) { $0 + Int($1.pushUpCount) }
-            let earned = daySessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
-            totalPU += pu; totalSess += daySessions.count; totalEarned += earned
+            let points = daySessions.reduce(0) { $0 + $1.activityPoints }
+            let earned = daySessions.reduce(0) { $0 + $1.earnedSeconds }
+            totalPoints += points; totalSess += daySessions.count; totalEarned += earned
             var w = weekMap[weekOfMonth] ?? (0, 0, 0)
-            w.pushUps += pu; w.sessions += daySessions.count; w.earned += earned
+            w.activityPoints += points; w.sessions += daySessions.count; w.earned += earned
             weekMap[weekOfMonth] = w
         }
 
@@ -312,12 +322,12 @@ final class StatsViewModel: ObservableObject {
             let weekStart = calendar.date(from: DateComponents(year: year, month: month, day: (weekNum - 1) * 7 + 1)) ?? firstDay
             return MonthlyWeekData(
                 id: weekNum, label: "W\(weekNum)", weekStart: weekStart,
-                totalPushUps: data.pushUps, totalSessions: data.sessions,
+                totalActivityPoints: data.activityPoints, totalSessions: data.sessions,
                 totalEarnedMinutes: data.earned / 60
             )
         }
 
-        monthlyTotalPushUps  = totalPU
+        monthlyTotalActivityPoints  = totalPoints
         monthlyTotalSessions = totalSess
         monthlyEarnedMinutes = totalEarned / 60
 
@@ -325,32 +335,39 @@ final class StatsViewModel: ObservableObject {
         let prevMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
         let prevYear  = calendar.component(.year,  from: prevMonth)
         let prevMo    = calendar.component(.month, from: prevMonth)
-        let prevPU = allSessions.filter { session in
-            let d = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+        let prevPoints = allActivities.filter { session in
+            let d = session.date
             return calendar.component(.year, from: d) == prevYear && calendar.component(.month, from: d) == prevMo
-        }.reduce(0) { $0 + Int($1.pushUpCount) }
+        }.reduce(0) { $0 + $1.activityPoints }
 
-        monthComparison = MonthComparison(currentMonthPushUps: totalPU, previousMonthPushUps: prevPU)
+        monthComparison = MonthComparison(currentMonthActivityPoints: totalPoints, previousMonthActivityPoints: prevPoints)
     }
 
     // MARK: - Private: Total Stats
 
     private func rebuildTotalStats() {
-        guard !allSessions.isEmpty else { totalStats = nil; return }
+        guard !allActivities.isEmpty else { totalStats = nil; return }
 
-        let totalPU   = allSessions.reduce(0) { $0 + Int($1.pushUpCount) }
-        let totalSess = allSessions.count
-        let totalEarned = allSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds) }
-        let bestSession = allSessions.map { Int($0.pushUpCount) }.max() ?? 0
-        let avgQuality  = allSessions.reduce(0.0) { $0 + Double($1.quality) } / Double(totalSess)
-        let avgPU       = Double(totalPU) / Double(totalSess)
+        let totalPoints   = allActivities.reduce(0) { $0 + $1.activityPoints }
+        let totalSess = allActivities.count
+        let totalEarned = allActivities.reduce(0) { $0 + $1.earnedSeconds }
+        let bestSession = allActivities.map { $0.activityPoints }.max() ?? 0
+        let qualityValues = allActivities.compactMap(\.quality)
+        let avgQuality  = qualityValues.isEmpty ? 0.0 : qualityValues.reduce(0.0, +) / Double(qualityValues.count)
+        let avgPoints       = Double(totalPoints) / Double(totalSess)
 
         let calendar = Calendar.current
-        let sessionsByDay = groupSessionsByDayKey(allSessions)
+        let sessionsByDay = groupActivityByDayKey(allActivities)
 
         let activeDays = sessionsByDay.count
         let bestDay = sessionsByDay.values.map { sessions in
-            sessions.reduce(0) { $0 + Int($1.pushUpCount) }
+            sessions.reduce(0) { $0 + $1.activityPoints }
+        }.max() ?? 0
+        let groupedWeeks = Dictionary(grouping: allActivities) { activity in
+            calendar.dateInterval(of: .weekOfYear, for: activity.date)?.start ?? calendar.startOfDay(for: activity.date)
+        }
+        let bestWeek = groupedWeeks.values.map { sessions in
+            sessions.reduce(0) { $0 + $1.activityPoints }
         }.max() ?? 0
 
         // Streak calculation
@@ -392,23 +409,22 @@ final class StatsViewModel: ObservableObject {
             }
         }
 
-        let totalDuration = allSessions.reduce(0) { total, session in
-            guard let endedAt = session.endedAt else { return total }
-            return total + Int(endedAt.epochSeconds - session.startedAt.epochSeconds)
+        let totalDuration = allActivities.reduce(0) { total, session in
+            total + session.durationSeconds
         }
         let avgDuration = totalSess > 0 ? totalDuration / totalSess : 0
 
         totalStats = TotalStatsData(
-            totalPushUps: totalPU,
+            totalActivityPoints: totalPoints,
             totalSessions: totalSess,
             totalEarnedMinutes: totalEarned / 60,
             longestStreakDays: longestStreak,
             currentStreakDays: currentStreak,
-            averagePushUpsPerSession: avgPU,
+            averageActivityPointsPerSession: avgPoints,
             averageSessionDurationSeconds: avgDuration,
-            bestSingleSession: bestSession,
-            bestDay: bestDay,
-            bestWeek: 0,
+            bestSingleSessionActivityPoints: bestSession,
+            bestDayActivityPoints: bestDay,
+            bestWeekActivityPoints: bestWeek,
             activeDays: activeDays,
             averageQuality: avgQuality
         )
@@ -416,22 +432,21 @@ final class StatsViewModel: ObservableObject {
 
     // MARK: - Private: Helpers
 
-    private func groupSessionsByDayKey(_ sessions: [Shared.WorkoutSession]) -> [String: [Shared.WorkoutSession]] {
+    private func groupActivityByDayKey(_ sessions: [ActivityEntry]) -> [String: [ActivityEntry]] {
         Dictionary(grouping: sessions) { session in
-            let d = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
-            return Self.isoDateFormatter.string(from: d)
+            Self.isoDateFormatter.string(from: session.date)
         }
     }
 
     private func applyEmptyState() {
         calendarDays         = []
         weeklyBars           = Self.makeEmptyWeeklyBars()
-        weeklyTotalPushUps   = 0
-        weeklyAveragePushUps = 0
+        weeklyTotalActivityPoints   = 0
+        weeklyAverageActivityPoints = 0
         weeklyTotalSessions  = 0
         weeklyEarnedMinutes  = 0
         monthlyWeeks         = []
-        monthlyTotalPushUps  = 0
+        monthlyTotalActivityPoints  = 0
         monthlyTotalSessions = 0
         monthlyEarnedMinutes = 0
         monthComparison      = nil
@@ -446,8 +461,55 @@ final class StatsViewModel: ObservableObject {
 
         return WeekdayHelper.dayLabels.enumerated().map { idx, label in
             let date = calendar.date(byAdding: .day, value: idx, to: monday) ?? today
-            return WeeklyBarData(id: idx, label: label, date: date, pushUps: 0, sessions: 0, earnedMinutes: 0, isToday: idx == todayIndex)
+            return WeeklyBarData(id: idx, label: label, date: date, activityPoints: 0, sessions: 0, earnedMinutes: 0, isToday: idx == todayIndex)
         }
+    }
+
+    private var allActivities: [ActivityEntry] {
+        let workouts = workoutSessions.compactMap { session -> ActivityEntry? in
+            guard let endedAt = session.endedAt else { return nil }
+            let startedAt = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            let duration = Int(endedAt.epochSeconds - session.startedAt.epochSeconds)
+            return ActivityEntry(
+                date: startedAt,
+                activityPoints: workoutXp(pushUpCount: Int(session.pushUpCount), quality: Double(session.quality)),
+                earnedSeconds: Int(session.earnedTimeCreditSeconds),
+                quality: Double(session.quality),
+                durationSeconds: max(0, duration)
+            )
+        }
+        let joggings = joggingSessions.compactMap { session -> ActivityEntry? in
+            guard let endedAt = session.endedAt else { return nil }
+            let startedAt = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
+            let duration = Int(endedAt.epochSeconds - session.startedAt.epochSeconds)
+            let distanceUnits = Int(session.distanceMeters / 100.0)
+            return ActivityEntry(
+                date: startedAt,
+                activityPoints: distanceUnits * 10,
+                earnedSeconds: Int(session.earnedTimeCreditSeconds),
+                quality: nil,
+                durationSeconds: max(0, duration)
+            )
+        }
+        return (workouts + joggings).sorted { $0.date < $1.date }
+    }
+
+    private func workoutXp(pushUpCount: Int, quality: Double) -> Int {
+        let multiplier: Double
+        switch quality {
+        case let q where q > 0.8: multiplier = 1.5
+        case 0.5...: multiplier = 1.0
+        default: multiplier = 0.7
+        }
+        return Int(Double(pushUpCount * 10) * multiplier)
+    }
+
+    private struct ActivityEntry {
+        let date: Date
+        let activityPoints: Int
+        let earnedSeconds: Int
+        let quality: Double?
+        let durationSeconds: Int
     }
 }
 

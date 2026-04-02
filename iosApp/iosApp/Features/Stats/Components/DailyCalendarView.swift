@@ -5,11 +5,11 @@ import SwiftUI
 /// Calendar view for the Daily stats tab.
 ///
 /// Displays a full month grid with color-coded day cells:
-/// - Green fill  : day with workout
-/// - Empty/muted : day without workout
+/// - Green fill  : day with activity
+/// - Empty/muted : day without activity
 /// - Ring border : today
 ///
-/// Tapping a day that has workout data opens a detail sheet.
+/// Tapping a day that has activity data opens a detail sheet.
 ///
 /// Usage:
 /// ```swift
@@ -159,7 +159,7 @@ struct DailyCalendarView: View {
 
     private var legendRow: some View {
         HStack(spacing: AppSpacing.md) {
-            legendItem(color: AppColors.success.opacity(0.8), label: "Workout")
+            legendItem(color: AppColors.success.opacity(0.8), label: "Active day")
             legendItem(color: AppColors.fill, label: "Rest day")
             Spacer()
         }
@@ -244,7 +244,7 @@ private struct CalendarDayCell: View {
                     .fontWeight(isToday ? .bold : .regular)
                     .foregroundStyle(textColor)
 
-                // Intensity dot for workout days
+                // Intensity dot for active days
                 if day.hasWorkout {
                     Circle()
                         .fill(intensityColor)
@@ -269,10 +269,10 @@ private struct CalendarDayCell: View {
     }
 
     private var intensityOpacity: Double {
-        guard day.pushUps > 0 else { return 0 }
-        // Scale opacity from 0.25 (low) to 0.85 (high) based on push-up count
-        let clamped = min(Double(day.pushUps), 80.0)
-        return 0.25 + (clamped / 80.0) * 0.60
+        guard day.activityPoints > 0 else { return 0 }
+        // Scale opacity from 0.25 (low) to 0.85 (high) based on activity points
+        let clamped = min(Double(day.activityPoints), 800.0)
+        return 0.25 + (clamped / 800.0) * 0.60
     }
 
     private var intensityColor: Color {
@@ -301,7 +301,7 @@ private struct SkeletonDayCell: View {
 
 // MARK: - DayDetailView
 
-/// Sheet shown when the user taps a workout day in the calendar.
+/// Sheet shown when the user taps an active day in the calendar.
 struct DayDetailView: View {
 
     let day: DayWorkoutData
@@ -317,7 +317,7 @@ struct DayDetailView: View {
                             .font(AppTypography.title2)
                             .foregroundStyle(AppColors.textPrimary)
 
-                        Text("Workout Summary")
+                        Text("Activity Summary")
                             .font(AppTypography.subheadline)
                             .foregroundStyle(AppColors.textSecondary)
                     }
@@ -329,8 +329,8 @@ struct DayDetailView: View {
                         spacing: AppSpacing.sm
                     ) {
                         StatCard(
-                            title: "Push-Ups",
-                            value: "\(day.pushUps)",
+                            title: "Activity XP",
+                            value: "\(day.activityPoints)",
                             subtitle: "Total",
                             icon: .figureStrengthTraining,
                             tint: AppColors.primary
@@ -384,19 +384,19 @@ struct DayDetailView: View {
         guard let monthStart = calendar.date(
             from: calendar.dateComponents([.year, .month], from: today)
         ) else { return [] }
-        let pushUps = [35, 0, 52, 18, 42, 0, 0, 28, 45, 0, 61, 33, 0, 0, 40, 22, 55, 0, 38, 0, 0]
+        let activityPoints = [350, 0, 520, 180, 420, 0, 0, 280, 450, 0, 610, 330, 0, 0, 400, 220, 550, 0, 380, 0, 0]
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return (0..<21).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: monthStart) else { return nil }
-            let pu = pushUps[offset]
+            let points = activityPoints[offset]
             return DayWorkoutData(
                 id: formatter.string(from: date),
                 date: date,
-                pushUps: pu,
-                sessions: pu > 0 ? 1 : 0,
-                earnedMinutes: pu / 3,
-                averageQuality: pu > 0 ? 0.82 : 0
+                activityPoints: points,
+                sessions: points > 0 ? 1 : 0,
+                earnedMinutes: points / 30,
+                averageQuality: points > 0 ? 0.82 : 0
             )
         }
     }()

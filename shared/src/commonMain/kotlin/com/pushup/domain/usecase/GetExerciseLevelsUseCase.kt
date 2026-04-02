@@ -2,6 +2,7 @@ package com.pushup.domain.usecase
 
 import com.pushup.domain.model.ExerciseLevel
 import com.pushup.domain.model.ExerciseType
+import com.pushup.domain.repository.LevelRepository
 import com.pushup.domain.repository.ExerciseLevelRepository
 
 /**
@@ -15,6 +16,7 @@ import com.pushup.domain.repository.ExerciseLevelRepository
  */
 class GetExerciseLevelsUseCase(
     private val exerciseLevelRepository: ExerciseLevelRepository,
+    private val levelRepository: LevelRepository,
 ) {
 
     /**
@@ -26,8 +28,20 @@ class GetExerciseLevelsUseCase(
     suspend operator fun invoke(userId: String): List<ExerciseLevel> {
         require(userId.isNotBlank()) { "userId must not be blank" }
 
-        val existing = exerciseLevelRepository.getAll(userId)
+        var existing = exerciseLevelRepository.getAll(userId)
             .associateBy { it.exerciseType }
+
+        // Legacy migration: if the user only has the old aggregate XP row,
+        // seed that history into Push-Ups so total XP becomes the sum of
+        // per-activity totals going forward.
+        if (existing.isEmpty()) {
+            val aggregate = levelRepository.get(userId)
+            existing = exerciseLevelRepository.getAll(userId).associateBy { it.exerciseType }
+            if (existing.isEmpty() && aggregate != null && aggregate.totalXp > 0L) {
+                exerciseLevelRepository.addXp(userId, ExerciseType.PUSH_UPS, aggregate.totalXp)
+                existing = exerciseLevelRepository.getAll(userId).associateBy { it.exerciseType }
+            }
+        }
 
         return ExerciseType.entries.map { type ->
             existing[type] ?: ExerciseLevel.initial(userId, type)

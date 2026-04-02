@@ -125,12 +125,12 @@ data class StreakDTO(
  */
 fun DailyStatsDTO.toDomain(): DailyStats = DailyStats(
     date = LocalDate.parse(date),
-    totalPushUps = totalPushUps,
+    totalActivityXp = totalPushUps.toLong(),
     totalSessions = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
     averageQuality = averageQuality?.toFloat() ?: 0f,
-    averagePushUpsPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
-    bestSession = 0, // Not provided by the daily endpoint; use 0 as a safe default.
+    averageActivityXpPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
+    bestSessionActivityXp = 0L, // Not provided by the daily endpoint; use 0 as a safe default.
 )
 
 /**
@@ -138,11 +138,11 @@ fun DailyStatsDTO.toDomain(): DailyStats = DailyStats(
  */
 fun WeeklyStatsDTO.toDomain(): WeeklyStats = WeeklyStats(
     weekStartDate = LocalDate.parse(weekStart),
-    totalPushUps = totalPushUps,
+    totalActivityXp = totalPushUps.toLong(),
     totalSessions = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
-    averagePushUpsPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
-    bestSession = 0, // Not provided by the weekly endpoint; use 0 as a safe default.
+    averageActivityXpPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
+    bestSessionActivityXp = 0L, // Not provided by the weekly endpoint; use 0 as a safe default.
     dailyBreakdown = dailyBreakdown.map { it.toDomain() },
 )
 
@@ -152,11 +152,11 @@ fun WeeklyStatsDTO.toDomain(): WeeklyStats = WeeklyStats(
 fun MonthlyStatsDTO.toDomain(): MonthlyStats = MonthlyStats(
     month = month,
     year = year,
-    totalPushUps = totalPushUps,
+    totalActivityXp = totalPushUps.toLong(),
     totalSessions = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
-    averagePushUpsPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
-    bestSession = 0, // Not provided by the monthly endpoint; use 0 as a safe default.
+    averageActivityXpPerSession = if (totalSessions > 0) totalPushUps.toFloat() / totalSessions else 0f,
+    bestSessionActivityXp = 0L, // Not provided by the monthly endpoint; use 0 as a safe default.
     weeklyBreakdown = weeklyBreakdown.map { it.toDomain() },
 )
 
@@ -173,13 +173,13 @@ fun TotalStatsDTO.toDomain(
     longestStreakDays: Int = 0,
 ): TotalStats = TotalStats(
     userId = userId,
-    totalPushUps = totalPushUps,
+    totalActivityXp = totalPushUps.toLong(),
     totalSessions = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
     totalSpentSeconds = 0L, // Not tracked server-side in the stats endpoint.
     averageQuality = averageQuality?.toFloat() ?: 0f,
-    averagePushUpsPerSession = averagePushUpsPerSession?.toFloat() ?: 0f,
-    bestSession = bestSessionPushUps ?: 0,
+    averageActivityXpPerSession = averagePushUpsPerSession?.toFloat() ?: 0f,
+    bestSessionActivityXp = bestSessionPushUps?.toLong() ?: 0L,
     currentStreakDays = currentStreakDays,
     longestStreakDays = longestStreakDays,
 )

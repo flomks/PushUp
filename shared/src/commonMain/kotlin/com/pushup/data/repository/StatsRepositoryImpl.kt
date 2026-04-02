@@ -6,6 +6,8 @@ import com.pushup.db.JoggingSession as DbJoggingSession
 import com.pushup.db.PushUpDatabase
 import com.pushup.db.WorkoutSession as DbWorkoutSession
 import com.pushup.domain.model.DailyStats
+import com.pushup.domain.model.ExerciseType
+import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.MonthlyStats
 import com.pushup.domain.model.StreakCalculator
 import com.pushup.domain.model.TotalStats
@@ -121,7 +123,7 @@ class StatsRepositoryImpl(
             if (sessions.isEmpty()) return@safeDbCall null
 
             // Group sessions by day once -- O(n) instead of O(n*days)
-            val sessionsByDay = sessions.groupBy { sessionDate(it) }
+            val sessionsByDay = sessions.groupBy { it.date }
 
             val dailyBreakdown = (0 until 7).map { offset ->
                 val day = weekStart.plus(offset, DateTimeUnit.DAY)
@@ -130,11 +132,11 @@ class StatsRepositoryImpl(
 
             WeeklyStats(
                 weekStartDate = weekStart,
-                totalPushUps = sessions.sumOf { it.pushUpCount },
+                totalActivityXp = sessions.sumOf { it.activityXp },
                 totalSessions = sessions.size,
-                totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-                averagePushUpsPerSession = averagePushUps(sessions),
-                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
+                totalEarnedSeconds = sessions.sumOf { it.earnedSeconds },
+                averageActivityXpPerSession = averageActivityXp(sessions),
+                bestSessionActivityXp = sessions.maxOfOrNull { it.activityXp } ?: 0L,
                 dailyBreakdown = dailyBreakdown,
             )
         }
@@ -169,11 +171,11 @@ class StatsRepositoryImpl(
             MonthlyStats(
                 month = month,
                 year = year,
-                totalPushUps = sessions.sumOf { it.pushUpCount },
+                totalActivityXp = sessions.sumOf { it.activityXp },
                 totalSessions = sessions.size,
-                totalEarnedSeconds = sessions.sumOf { it.earnedTimeCreditSeconds },
-                averagePushUpsPerSession = averagePushUps(sessions),
-                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
+                totalEarnedSeconds = sessions.sumOf { it.earnedSeconds },
+                averageActivityXpPerSession = averageActivityXp(sessions),
+                bestSessionActivityXp = sessions.maxOfOrNull { it.activityXp } ?: 0L,
                 weeklyBreakdown = weeklyBreakdown,
             )
         }
@@ -189,46 +191,36 @@ class StatsRepositoryImpl(
             dispatcher,
             "Failed to get total stats for user '$userId'",
         ) {
-            val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
-                .executeAsList()
-            val sessions = workoutRows.map { session -> session.toDomain() }
-
+            val sessions = queryAllSessions(userId)
             if (sessions.isEmpty()) return@safeDbCall null
 
             val timeCredit = timeCreditRepository.get(userId)
 
             val today = clock.now().toLocalDateTime(timeZone).date
 
-            // Unified streak: merge push-up dates with jogging dates
-            val workoutDates: List<LocalDate> = sessions
-                .map(::sessionDate)
+            val allDates = sessions
+                .map { it.date }
                 .distinct()
-
-            val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
-                .executeAsList()
-            val joggingDates: List<LocalDate> = joggingRows
-                .filter { it.endedAt != null }
-                .map { row ->
-                    Instant.fromEpochMilliseconds(row.startedAt)
-                    .toLocalDateTime(timeZone).date }
-                .distinct()
-
-            val allDates = (workoutDates + joggingDates).distinct().sorted()
+                .sorted()
 
             val (currentStreak, longestStreak) = calculateStreaks(allDates, today)
 
-            val avgQuality = sessions.map { it.quality.toDouble() }.average().toFloat()
+            val avgQuality = sessions
+                .mapNotNull { it.quality?.toDouble() }
+                .average()
+                .toFloat()
+                .takeIf { !it.isNaN() } ?: 0f
 
             TotalStats(
                 userId = userId,
-                totalPushUps = sessions.sumOf { it.pushUpCount },
+                totalActivityXp = sessions.sumOf { it.activityXp },
                 totalSessions = sessions.size,
                 totalEarnedSeconds = timeCredit?.totalEarnedSeconds
-                    ?: sessions.sumOf { it.earnedTimeCreditSeconds },
+                    ?: sessions.sumOf { it.earnedSeconds },
                 totalSpentSeconds = timeCredit?.totalSpentSeconds ?: 0L,
                 averageQuality = avgQuality,
-                averagePushUpsPerSession = averagePushUps(sessions),
-                bestSession = sessions.maxOfOrNull { it.pushUpCount } ?: 0,
+                averageActivityXpPerSession = averageActivityXp(sessions),
+                bestSessionActivityXp = sessions.maxOfOrNull { it.activityXp } ?: 0L,
                 currentStreakDays = currentStreak,
                 longestStreakDays = longestStreak,
             )
@@ -249,7 +241,7 @@ class StatsRepositoryImpl(
         userId: String,
         from: LocalDate,
         toExclusive: LocalDate,
-    ): List<WorkoutSession> {
+    ): List<ActivitySessionStats> {
         val fromMs = from.atStartOfDayIn(timeZone).toEpochMilliseconds()
         val toMs = toExclusive.atStartOfDayIn(timeZone).toEpochMilliseconds()
         val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByDateRangeExclusive(
@@ -257,7 +249,18 @@ class StatsRepositoryImpl(
             startedAt = fromMs,
             startedAt_ = toMs,
         ).executeAsList()
-        return workoutRows.map { session -> session.toDomain() }
+        val workoutSessions = workoutRows.map { row -> row.toDomain().toActivityStats() }
+
+        val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByDateRange(
+            userId = userId,
+            startedAt = fromMs,
+            startedAt_ = toMs,
+        ).executeAsList()
+        val joggingSessions = joggingRows
+            .filter { row -> row.endedAt != null }
+            .map { row -> row.toActivityStats() }
+
+        return (workoutSessions + joggingSessions).sortedBy { it.date }
     }
 
     /**
@@ -266,45 +269,64 @@ class StatsRepositoryImpl(
     private fun sessionDate(session: WorkoutSession): LocalDate =
         session.startedAt.toLocalDateTime(timeZone).date
 
+    private fun queryAllSessions(userId: String): List<ActivitySessionStats> {
+        val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
+            .executeAsList()
+        val workoutSessions = workoutRows
+            .filter { row -> row.endedAt != null }
+            .map { row -> row.toDomain().toActivityStats() }
+
+        val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
+            .executeAsList()
+        val joggingSessions = joggingRows
+            .filter { row -> row.endedAt != null }
+            .map { row -> row.toActivityStats() }
+
+        return (workoutSessions + joggingSessions).sortedBy { it.date }
+    }
+
     /**
      * Builds a [DailyStats] from a date and its associated sessions in a single pass.
      * Returns a zero-activity entry when [sessions] is empty.
      */
-    private fun buildDailyStats(date: LocalDate, sessions: List<WorkoutSession>): DailyStats {
+    private fun buildDailyStats(date: LocalDate, sessions: List<ActivitySessionStats>): DailyStats {
         if (sessions.isEmpty()) {
             return DailyStats(
                 date = date,
-                totalPushUps = 0,
+                totalActivityXp = 0L,
                 totalSessions = 0,
                 totalEarnedSeconds = 0L,
                 averageQuality = 0f,
-                averagePushUpsPerSession = 0f,
-                bestSession = 0,
+                averageActivityXpPerSession = 0f,
+                bestSessionActivityXp = 0L,
             )
         }
 
-        // Single pass over sessions to collect all aggregates
-        var totalPushUps = 0
+        var totalActivityXp = 0L
         var totalEarnedSeconds = 0L
         var qualitySum = 0.0
-        var bestSession = 0
+        var qualityCount = 0
+        var bestSessionActivityXp = 0L
 
         for (session in sessions) {
-            totalPushUps += session.pushUpCount
-            totalEarnedSeconds += session.earnedTimeCreditSeconds
-            qualitySum += session.quality
-            if (session.pushUpCount > bestSession) bestSession = session.pushUpCount
+            totalActivityXp += session.activityXp
+            totalEarnedSeconds += session.earnedSeconds
+            if (session.quality != null) {
+                qualitySum += session.quality
+                qualityCount++
+            }
+            if (session.activityXp > bestSessionActivityXp) bestSessionActivityXp = session.activityXp
         }
 
         val count = sessions.size
         return DailyStats(
             date = date,
-            totalPushUps = totalPushUps,
+            totalActivityXp = totalActivityXp,
             totalSessions = count,
             totalEarnedSeconds = totalEarnedSeconds,
-            averageQuality = (qualitySum / count).toFloat(),
-            averagePushUpsPerSession = totalPushUps.toFloat() / count,
-            bestSession = bestSession,
+            averageQuality = if (qualityCount > 0) (qualitySum / qualityCount).toFloat() else 0f,
+            averageActivityXpPerSession = totalActivityXp.toFloat() / count,
+            bestSessionActivityXp = bestSessionActivityXp,
         )
     }
 
@@ -316,12 +338,11 @@ class StatsRepositoryImpl(
      * weeks and days without repeated filtering.
      */
     private fun buildWeeklyBreakdown(
-        sessions: List<WorkoutSession>,
+        sessions: List<ActivitySessionStats>,
         monthStart: LocalDate,
         monthEnd: LocalDate,
     ): List<WeeklyStats> {
-        // Group all sessions by their calendar date once -- O(n)
-        val sessionsByDay: Map<LocalDate, List<WorkoutSession>> = sessions.groupBy { sessionDate(it) }
+        val sessionsByDay: Map<LocalDate, List<ActivitySessionStats>> = sessions.groupBy { it.date }
 
         // Collect the Monday of every ISO week that overlaps with the month
         val weekStarts = mutableSetOf<LocalDate>()
@@ -334,7 +355,7 @@ class StatsRepositoryImpl(
         return weekStarts.sorted().map { weekStart ->
             // Single pass: build daily breakdown and accumulate week-level aggregates together
             val dailyBreakdown = ArrayList<DailyStats>(7)
-            val weekSessions = ArrayList<WorkoutSession>()
+            val weekSessions = ArrayList<ActivitySessionStats>()
 
             for (offset in 0 until 7) {
                 val day = weekStart.plus(offset, DateTimeUnit.DAY)
@@ -345,11 +366,11 @@ class StatsRepositoryImpl(
 
             WeeklyStats(
                 weekStartDate = weekStart,
-                totalPushUps = weekSessions.sumOf { it.pushUpCount },
+                totalActivityXp = weekSessions.sumOf { it.activityXp },
                 totalSessions = weekSessions.size,
-                totalEarnedSeconds = weekSessions.sumOf { it.earnedTimeCreditSeconds },
-                averagePushUpsPerSession = averagePushUps(weekSessions),
-                bestSession = weekSessions.maxOfOrNull { it.pushUpCount } ?: 0,
+                totalEarnedSeconds = weekSessions.sumOf { it.earnedSeconds },
+                averageActivityXpPerSession = averageActivityXp(weekSessions),
+                bestSessionActivityXp = weekSessions.maxOfOrNull { it.activityXp } ?: 0L,
                 dailyBreakdown = dailyBreakdown,
             )
         }
@@ -383,7 +404,39 @@ class StatsRepositoryImpl(
     /**
      * Returns the average push-ups per session, or `0f` when [sessions] is empty.
      */
-    private fun averagePushUps(sessions: List<WorkoutSession>): Float =
+    private fun averageActivityXp(sessions: List<ActivitySessionStats>): Float =
         if (sessions.isEmpty()) 0f
-        else sessions.sumOf { it.pushUpCount }.toFloat() / sessions.size
+        else sessions.sumOf { it.activityXp }.toFloat() / sessions.size
+
+    private fun WorkoutSession.toActivityStats(): ActivitySessionStats =
+        ActivitySessionStats(
+            date = sessionDate(this),
+            earnedSeconds = earnedTimeCreditSeconds,
+            activityXp = LevelCalculator.calculateExerciseXp(
+                exerciseType = ExerciseType.PUSH_UPS,
+                amount = pushUpCount,
+                quality = quality,
+            ),
+            quality = quality,
+        )
+
+    private fun DbJoggingSession.toActivityStats(): ActivitySessionStats {
+        val distanceUnits = (distanceMeters / 100.0).toInt()
+        return ActivitySessionStats(
+            date = Instant.fromEpochMilliseconds(startedAt).toLocalDateTime(timeZone).date,
+            earnedSeconds = earnedTimeCredits,
+            activityXp = LevelCalculator.calculateExerciseXp(
+                exerciseType = ExerciseType.JOGGING,
+                amount = distanceUnits,
+            ),
+            quality = null,
+        )
+    }
+
+    private data class ActivitySessionStats(
+        val date: LocalDate,
+        val earnedSeconds: Long,
+        val activityXp: Long,
+        val quality: Float?,
+    )
 }

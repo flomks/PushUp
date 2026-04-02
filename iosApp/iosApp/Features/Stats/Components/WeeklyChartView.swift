@@ -12,8 +12,8 @@ import SwiftUI
 /// ```swift
 /// WeeklyChartView(
 ///     bars: viewModel.weeklyBars,
-///     totalPushUps: viewModel.weeklyTotalPushUps,
-///     averagePushUps: viewModel.weeklyAveragePushUps,
+///     totalActivityPoints: viewModel.weeklyTotalActivityPoints,
+///     averageActivityPoints: viewModel.weeklyAverageActivityPoints,
 ///     totalSessions: viewModel.weeklyTotalSessions,
 ///     earnedMinutes: viewModel.weeklyEarnedMinutes,
 ///     isLoading: viewModel.isLoading
@@ -22,8 +22,8 @@ import SwiftUI
 struct WeeklyChartView: View {
 
     let bars: [WeeklyBarData]
-    let totalPushUps: Int
-    let averagePushUps: Double
+    let totalActivityPoints: Int
+    let averageActivityPoints: Double
     let totalSessions: Int
     let earnedMinutes: Int
     let isLoading: Bool
@@ -53,8 +53,8 @@ struct WeeklyChartView: View {
 
                 Spacer()
 
-                if !isLoading, totalPushUps > 0 {
-                    Text("\(totalPushUps) Push-Ups")
+                if !isLoading, totalActivityPoints > 0 {
+                    Text("\(totalActivityPoints) Activity XP")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
                 }
@@ -79,13 +79,13 @@ struct WeeklyChartView: View {
         Chart(bars) { bar in
             BarMark(
                 x: .value("Day", bar.label),
-                y: .value("Push-Ups", bar.pushUps)
+                y: .value("Activity XP", bar.activityPoints)
             )
             .foregroundStyle(barColor(for: bar))
             .cornerRadius(6)
             .annotation(position: .top, alignment: .center) {
-                if bar.pushUps > 0 {
-                    Text("\(bar.pushUps)")
+                if bar.activityPoints > 0 {
+                    Text("\(bar.activityPoints)")
                         .font(AppTypography.caption2)
                         .foregroundStyle(
                             bar.isToday ? AppColors.primary : AppColors.textSecondary
@@ -123,11 +123,11 @@ struct WeeklyChartView: View {
             plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
         }
         .frame(height: 180)
-        .animation(.spring(duration: 0.6, bounce: 0.15), value: bars.map(\.pushUps))
+        .animation(.spring(duration: 0.6, bounce: 0.15), value: bars.map(\.activityPoints))
     }
 
     private func barColor(for bar: WeeklyBarData) -> AnyShapeStyle {
-        if bar.isToday && bar.pushUps > 0 {
+        if bar.isToday && bar.activityPoints > 0 {
             return AnyShapeStyle(
                 LinearGradient(
                     colors: [AppColors.primary, AppColors.secondary],
@@ -135,7 +135,7 @@ struct WeeklyChartView: View {
                     endPoint: .top
                 )
             )
-        } else if bar.pushUps > 0 {
+        } else if bar.activityPoints > 0 {
             return AnyShapeStyle(AppColors.primary.opacity(0.45))
         } else {
             return AnyShapeStyle(AppColors.fill)
@@ -165,16 +165,16 @@ struct WeeklyChartView: View {
                 }
             } else {
                 StatCard(
-                    title: "Total Push-Ups",
-                    value: "\(totalPushUps)",
+                    title: "Total Activity XP",
+                    value: "\(totalActivityPoints)",
                     subtitle: "This week",
                     icon: .figureStrengthTraining,
                     tint: AppColors.primary
                 )
                 StatCard(
                     title: "Daily Average",
-                    value: String(format: "%.0f", averagePushUps),
-                    subtitle: "Active days",
+                    value: String(format: "%.0f", averageActivityPoints),
+                    subtitle: "Per session",
                     icon: .chartBar,
                     tint: AppColors.info
                 )
@@ -262,7 +262,7 @@ private struct SkeletonStatCard: View {
 #Preview("WeeklyChartView") {
     let sampleBars: [WeeklyBarData] = {
         let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        let pushUps = [35, 0, 52, 18, 42, 0, 0]
+        let activityPoints = [350, 0, 520, 180, 420, 0, 0]
         let sessions = [1, 0, 2, 1, 2, 0, 0]
         let earned = [12, 0, 17, 6, 14, 0, 0]
         return labels.enumerated().map { idx, label in
@@ -270,7 +270,7 @@ private struct SkeletonStatCard: View {
                 id: idx,
                 label: label,
                 date: Date(),
-                pushUps: pushUps[idx],
+                activityPoints: activityPoints[idx],
                 sessions: sessions[idx],
                 earnedMinutes: earned[idx],
                 isToday: idx == 4
@@ -282,16 +282,16 @@ private struct SkeletonStatCard: View {
         VStack(spacing: AppSpacing.md) {
             WeeklyChartView(
                 bars: sampleBars,
-                totalPushUps: 147,
-                averagePushUps: 29.4,
+                totalActivityPoints: 1470,
+                averageActivityPoints: 294.0,
                 totalSessions: 6,
                 earnedMinutes: 49,
                 isLoading: false
             )
             WeeklyChartView(
                 bars: [],
-                totalPushUps: 0,
-                averagePushUps: 0,
+                totalActivityPoints: 0,
+                averageActivityPoints: 0,
                 totalSessions: 0,
                 earnedMinutes: 0,
                 isLoading: true

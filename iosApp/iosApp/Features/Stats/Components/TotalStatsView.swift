@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// Displays:
 /// - Prominent streak banner (fire icon + days)
-/// - Hero total push-ups counter
+/// - Hero total activity-XP counter
 /// - Records section (best session, best day, best week)
 /// - Averages section
 /// - Activity overview
@@ -110,11 +110,11 @@ struct TotalStatsView: View {
     private func heroCard(_ stats: TotalStatsData) -> some View {
         Card(padding: AppSpacing.lg) {
             VStack(spacing: AppSpacing.sm) {
-                Text("Total Push-Ups")
+                Text("Total Activity XP")
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
 
-                Text("\(stats.totalPushUps)")
+                Text("\(stats.totalActivityPoints)")
                     .font(AppTypography.displayLarge)
                     .foregroundStyle(AppColors.textPrimary)
                     .contentTransition(.numericText())
@@ -175,22 +175,22 @@ struct TotalStatsView: View {
             LazyVGrid(columns: Self.twoColumns, spacing: AppSpacing.sm) {
                 StatCard(
                     title: "Best Session",
-                    value: "\(stats.bestSingleSession)",
-                    subtitle: "Push-Ups",
+                    value: "\(stats.bestSingleSessionActivityPoints)",
+                    subtitle: "Activity XP",
                     icon: .figureStrengthTraining,
                     tint: AppColors.primary
                 )
                 StatCard(
                     title: "Best Day",
-                    value: "\(stats.bestDay)",
-                    subtitle: "Push-Ups",
+                    value: "\(stats.bestDayActivityPoints)",
+                    subtitle: "Activity XP",
                     icon: .calendarBadgeCheckmark,
                     tint: AppColors.secondary
                 )
                 StatCard(
                     title: "Best Week",
-                    value: "\(stats.bestWeek)",
-                    subtitle: "Push-Ups",
+                    value: "\(stats.bestWeekActivityPoints)",
+                    subtitle: "Activity XP",
                     icon: .chartBar,
                     tint: AppColors.info
                 )
@@ -214,8 +214,8 @@ struct TotalStatsView: View {
             LazyVGrid(columns: Self.twoColumns, spacing: AppSpacing.sm) {
                 StatCard(
                     title: "Per Session",
-                    value: String(format: "%.0f", stats.averagePushUpsPerSession),
-                    subtitle: "Push-Ups",
+                    value: String(format: "%.0f", stats.averageActivityPointsPerSession),
+                    subtitle: "Activity XP",
                     icon: .figureStrengthTraining,
                     tint: AppColors.primary
                 )
@@ -387,16 +387,16 @@ private struct ShimmerModifier: ViewModifier {
 #if DEBUG
 #Preview("TotalStatsView") {
     let sampleStats = TotalStatsData(
-        totalPushUps: 2_847,
+        totalActivityPoints: 28_470,
         totalSessions: 94,
         totalEarnedMinutes: 948,
         longestStreakDays: 14,
         currentStreakDays: 7,
-        averagePushUpsPerSession: 30.3,
+        averageActivityPointsPerSession: 303.0,
         averageSessionDurationSeconds: 7 * 60 + 12,
-        bestSingleSession: 68,
-        bestDay: 112,
-        bestWeek: 287,
+        bestSingleSessionActivityPoints: 680,
+        bestDayActivityPoints: 1120,
+        bestWeekActivityPoints: 2870,
         activeDays: 61,
         averageQuality: 0.81
     )

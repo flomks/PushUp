@@ -13,7 +13,7 @@ import PhotosUI
 /// |                                   |
 /// |  [Avatar]  Name  Email  Since     |  <- hero header card
 /// |                                   |
-/// |  [Push-Ups] [Workouts] [Time]     |  <- stats grid
+/// |  [Activity] [Workouts] [Time]     |  <- stats grid
 /// |                                   |
 /// |  Achievements (placeholder)       |  <- achievements section
 /// |                                   |
@@ -26,7 +26,7 @@ import PhotosUI
 /// - Avatar upload from camera or photo library (stored in Supabase Storage)
 /// - Editable display name with inline save and validation
 /// - Read-only email and member-since date
-/// - Lifetime stats: total push-ups, workouts, earned time
+/// - Lifetime stats: total activity XP, workouts, earned time
 /// - Achievements section (placeholder for future implementation)
 /// - Logout with immediate transition to auth flow
 /// - Account deletion with confirmation alert
@@ -561,8 +561,8 @@ struct ProfileView: View {
             spacing: AppSpacing.sm
         ) {
             ProfileStatCell(
-                value: formatLargeNumber(stats.totalPushUps),
-                label: "Push-Ups",
+                value: formatLargeNumber(stats.totalActivityXp),
+                label: "Activity XP",
                 icon: .figureStrengthTraining,
                 tint: AppColors.primary
             )

@@ -335,8 +335,8 @@ val useCaseModule: Module = module {
     factory { GetMonthlyStatsUseCase(statsRepository = get()) }
     factory { GetTotalStatsUseCase(statsRepository = get()) }
     factory { GetUserLevelUseCase(levelRepository = get()) }
-    factory { AwardWorkoutXpUseCase(levelRepository = get()) }
-    factory { GetExerciseLevelsUseCase(exerciseLevelRepository = get()) }
+    factory { AwardWorkoutXpUseCase(levelRepository = get(), exerciseLevelRepository = get()) }
+    factory { GetExerciseLevelsUseCase(exerciseLevelRepository = get(), levelRepository = get()) }
 
     // Activity stats use-cases (unified across all workout types)
     factory { GetMonthlyActivityUseCase(activityStatsRepository = get()) }

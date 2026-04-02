@@ -1,7 +1,9 @@
 package com.pushup.domain.usecase
 
+import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.UserLevel
+import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.LevelRepository
 
 /**
@@ -19,6 +21,7 @@ import com.pushup.domain.repository.LevelRepository
  */
 class AwardWorkoutXpUseCase(
     private val levelRepository: LevelRepository,
+    private val exerciseLevelRepository: ExerciseLevelRepository,
 ) {
 
     /**
@@ -38,10 +41,14 @@ class AwardWorkoutXpUseCase(
         require(pushUpCount >= 0) { "pushUpCount must be >= 0, was $pushUpCount" }
         require(quality in 0f..1f) { "quality must be in [0, 1], was $quality" }
 
-        val xpEarned = LevelCalculator.calculateXp(pushUpCount, quality)
-        if (xpEarned == 0L) {
-            return levelRepository.getOrCreate(userId)
+        val xpEarned = LevelCalculator.calculateExerciseXp(
+            exerciseType = ExerciseType.PUSH_UPS,
+            amount = pushUpCount,
+            quality = quality,
+        )
+        if (xpEarned > 0L) {
+            exerciseLevelRepository.addXp(userId, ExerciseType.PUSH_UPS, xpEarned)
         }
-        return levelRepository.addXp(userId, xpEarned)
+        return levelRepository.getOrCreate(userId)
     }
 }

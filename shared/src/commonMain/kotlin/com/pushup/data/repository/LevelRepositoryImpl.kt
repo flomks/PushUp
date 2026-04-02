@@ -2,6 +2,7 @@ package com.pushup.data.repository
 
 import com.pushup.data.mapper.toDomain
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.UserLevel
 import com.pushup.domain.repository.LevelRepository
@@ -33,26 +34,20 @@ class LevelRepositoryImpl(
         dispatcher,
         "Failed to get user level for user '$userId'",
     ) {
-        queries.selectUserLevelByUserId(userId).executeAsOneOrNull()?.toDomain()
+        val aggregateXp = ensureAggregateConsistency(userId)
+        if (aggregateXp != null) {
+            LevelCalculator.fromTotalXp(userId, aggregateXp)
+        } else {
+            null
+        }
     }
 
     override suspend fun getOrCreate(userId: String): UserLevel = safeDbCall(
         dispatcher,
         "Failed to get or create user level for user '$userId'",
     ) {
-        val existing = queries.selectUserLevelByUserId(userId).executeAsOneOrNull()
-        if (existing != null) {
-            existing.toDomain()
-        } else {
-            val now = clock.now().toEpochMilliseconds()
-            queries.insertUserLevel(
-                id = userId,
-                userId = userId,
-                totalXp = 0L,
-                lastUpdatedAt = now,
-            )
-            UserLevel.initial(userId)
-        }
+        val aggregateXp = ensureAggregateConsistency(userId, createIfMissing = true) ?: 0L
+        LevelCalculator.fromTotalXp(userId, aggregateXp)
     }
 
     override suspend fun addXp(userId: String, xpToAdd: Long): UserLevel {
@@ -84,5 +79,59 @@ class LevelRepositoryImpl(
             }
             LevelCalculator.fromTotalXp(userId, newTotalXp)
         }
+    }
+
+    /**
+     * Keeps the aggregate [UserLevel] row aligned with the sum of all
+     * [ExerciseType]-specific XP rows.
+     *
+     * Migration rule for legacy users:
+     * if no per-exercise rows exist yet but a legacy user-level row has XP,
+     * seed that XP into [ExerciseType.PUSH_UPS].
+     */
+    private fun ensureAggregateConsistency(
+        userId: String,
+        createIfMissing: Boolean = false,
+    ): Long? {
+        val existingUserLevel = queries.selectUserLevelByUserId(userId).executeAsOneOrNull()
+        val existingExerciseLevels = queries.selectExerciseLevelsByUserId(userId).executeAsList()
+
+        val now = clock.now().toEpochMilliseconds()
+
+        if (existingExerciseLevels.isEmpty() && existingUserLevel != null && existingUserLevel.totalXp > 0L) {
+            queries.insertExerciseLevel(
+                id = "${userId}_${ExerciseType.PUSH_UPS.id}",
+                userId = userId,
+                exerciseType = ExerciseType.PUSH_UPS.id,
+                totalXp = existingUserLevel.totalXp,
+                lastUpdatedAt = now,
+            )
+        }
+
+        val aggregateXp = queries.selectExerciseLevelsByUserId(userId)
+            .executeAsList()
+            .sumOf { row -> row.totalXp }
+
+        if (aggregateXp > 0L || createIfMissing) {
+            if (existingUserLevel != null) {
+                if (existingUserLevel.totalXp != aggregateXp) {
+                    queries.updateUserLevelXp(
+                        totalXp = aggregateXp,
+                        lastUpdatedAt = now,
+                        userId = userId,
+                    )
+                }
+            } else {
+                queries.insertUserLevel(
+                    id = userId,
+                    userId = userId,
+                    totalXp = aggregateXp,
+                    lastUpdatedAt = now,
+                )
+            }
+            return aggregateXp
+        }
+
+        return existingUserLevel?.toDomain()?.totalXp
     }
 }

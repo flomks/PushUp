@@ -122,18 +122,17 @@ class FinishWorkoutUseCase(
             timeCreditRepository.addEarnedSeconds(session.userId, earnedCredits)
         }
 
-        // Award XP for the completed session (quality multiplier applied by LevelCalculator).
-        val earnedXp = LevelCalculator.calculateXp(session.pushUpCount, session.quality)
-        val updatedLevel = if (earnedXp > 0) {
-            levelRepository?.addXp(session.userId, earnedXp)
-        } else {
-            levelRepository?.getOrCreate(session.userId)
-        }
-
-        // Award per-exercise XP (Push-Ups).
+        // Award XP to the activity itself. Account-wide XP is derived from the
+        // sum of all activity-specific XP totals.
+        val earnedXp = LevelCalculator.calculateExerciseXp(
+            exerciseType = ExerciseType.PUSH_UPS,
+            amount = session.pushUpCount,
+            quality = session.quality,
+        )
         if (earnedXp > 0) {
             exerciseLevelRepository?.addXp(session.userId, ExerciseType.PUSH_UPS, earnedXp)
         }
+        val updatedLevel = levelRepository?.getOrCreate(session.userId)
 
         val records = recordRepository.getBySessionId(sessionId)
         // Re-read the session from the DB to ensure the returned summary reflects

@@ -12,7 +12,7 @@ import SwiftUI
 /// ```swift
 /// MonthlyChartView(
 ///     weeks: viewModel.monthlyWeeks,
-///     totalPushUps: viewModel.monthlyTotalPushUps,
+///     totalActivityPoints: viewModel.monthlyTotalActivityPoints,
 ///     totalSessions: viewModel.monthlyTotalSessions,
 ///     earnedMinutes: viewModel.monthlyEarnedMinutes,
 ///     comparison: viewModel.monthComparison,
@@ -22,7 +22,7 @@ import SwiftUI
 struct MonthlyChartView: View {
 
     let weeks: [MonthlyWeekData]
-    let totalPushUps: Int
+    let totalActivityPoints: Int
     let totalSessions: Int
     let earnedMinutes: Int
     let comparison: MonthComparison?
@@ -56,8 +56,8 @@ struct MonthlyChartView: View {
 
                 Spacer()
 
-                if !isLoading, totalPushUps > 0 {
-                    Text("\(totalPushUps) Push-Ups")
+                if !isLoading, totalActivityPoints > 0 {
+                    Text("\(totalActivityPoints) Activity XP")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.primary)
                 }
@@ -83,7 +83,7 @@ struct MonthlyChartView: View {
             // Area fill under the line
             AreaMark(
                 x: .value("Week", week.label),
-                y: .value("Push-Ups", week.totalPushUps)
+                y: .value("Activity XP", week.totalActivityPoints)
             )
             .foregroundStyle(
                 LinearGradient(
@@ -97,7 +97,7 @@ struct MonthlyChartView: View {
             // Line
             LineMark(
                 x: .value("Week", week.label),
-                y: .value("Push-Ups", week.totalPushUps)
+                y: .value("Activity XP", week.totalActivityPoints)
             )
             .foregroundStyle(
                 LinearGradient(
@@ -112,12 +112,12 @@ struct MonthlyChartView: View {
             // Data point dots
             PointMark(
                 x: .value("Week", week.label),
-                y: .value("Push-Ups", week.totalPushUps)
+                y: .value("Activity XP", week.totalActivityPoints)
             )
             .foregroundStyle(AppColors.primary)
             .symbolSize(36)
             .annotation(position: .top, alignment: .center) {
-                Text("\(week.totalPushUps)")
+                Text("\(week.totalActivityPoints)")
                     .font(AppTypography.caption2)
                     .foregroundStyle(AppColors.textSecondary)
                     .padding(.bottom, 2)
@@ -151,7 +151,7 @@ struct MonthlyChartView: View {
             plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
         }
         .frame(height: 180)
-        .animation(.spring(duration: 0.7, bounce: 0.1), value: weeks.map(\.totalPushUps))
+        .animation(.spring(duration: 0.7, bounce: 0.1), value: weeks.map(\.totalActivityPoints))
     }
 
     // MARK: - Line Chart Skeleton
@@ -208,7 +208,7 @@ struct MonthlyChartView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
-                    Text("\(comparison.currentMonthPushUps)")
+                    Text("\(comparison.currentMonthActivityPoints)")
                         .font(AppTypography.displayMedium)
                         .foregroundStyle(AppColors.textPrimary)
                     Text("this month")
@@ -229,8 +229,8 @@ struct MonthlyChartView: View {
                 }
             } else {
                 StatCard(
-                    title: "Total Push-Ups",
-                    value: "\(totalPushUps)",
+                    title: "Total Activity XP",
+                    value: "\(totalActivityPoints)",
                     subtitle: "This month",
                     icon: .figureStrengthTraining,
                     tint: AppColors.primary
@@ -252,8 +252,8 @@ struct MonthlyChartView: View {
                 StatCard(
                     title: "Weekly Avg",
                     value: weeks.isEmpty ? "0"
-                        : "\(totalPushUps / max(1, weeks.count))",
-                    subtitle: "Push-Ups",
+                        : "\(totalActivityPoints / max(1, weeks.count))",
+                    subtitle: "Activity XP",
                     icon: .chartBar,
                     tint: AppColors.info
                 )
@@ -333,28 +333,28 @@ private struct MonthlySkeletonCard: View {
 #if DEBUG
 #Preview("MonthlyChartView") {
     let sampleWeeks: [MonthlyWeekData] = [
-        MonthlyWeekData(id: 0, label: "W1", weekStart: Date(), totalPushUps: 87, totalSessions: 3, totalEarnedMinutes: 29),
-        MonthlyWeekData(id: 1, label: "W2", weekStart: Date(), totalPushUps: 147, totalSessions: 5, totalEarnedMinutes: 49),
-        MonthlyWeekData(id: 2, label: "W3", weekStart: Date(), totalPushUps: 112, totalSessions: 4, totalEarnedMinutes: 37),
-        MonthlyWeekData(id: 3, label: "W4", weekStart: Date(), totalPushUps: 98, totalSessions: 3, totalEarnedMinutes: 33),
+        MonthlyWeekData(id: 0, label: "W1", weekStart: Date(), totalActivityPoints: 870, totalSessions: 3, totalEarnedMinutes: 29),
+        MonthlyWeekData(id: 1, label: "W2", weekStart: Date(), totalActivityPoints: 1470, totalSessions: 5, totalEarnedMinutes: 49),
+        MonthlyWeekData(id: 2, label: "W3", weekStart: Date(), totalActivityPoints: 1120, totalSessions: 4, totalEarnedMinutes: 37),
+        MonthlyWeekData(id: 3, label: "W4", weekStart: Date(), totalActivityPoints: 980, totalSessions: 3, totalEarnedMinutes: 33),
     ]
 
     ScrollView {
         VStack(spacing: AppSpacing.md) {
             MonthlyChartView(
                 weeks: sampleWeeks,
-                totalPushUps: 444,
+                totalActivityPoints: 444,
                 totalSessions: 15,
                 earnedMinutes: 148,
                 comparison: MonthComparison(
-                    currentMonthPushUps: 444,
-                    previousMonthPushUps: 312
+                    currentMonthActivityPoints: 4440,
+                    previousMonthActivityPoints: 3120
                 ),
                 isLoading: false
             )
             MonthlyChartView(
                 weeks: [],
-                totalPushUps: 0,
+                totalActivityPoints: 0,
                 totalSessions: 0,
                 earnedMinutes: 0,
                 comparison: nil,
