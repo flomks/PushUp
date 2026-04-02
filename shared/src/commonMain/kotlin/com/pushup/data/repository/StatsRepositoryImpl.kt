@@ -200,15 +200,16 @@ class StatsRepositoryImpl(
             val today = clock.now().toLocalDateTime(timeZone).date
 
             // Unified streak: merge push-up dates with jogging dates
-            val workoutDates = sessions
-                .map { sessionDate(it) }
+            val workoutDates: List<LocalDate> = sessions
+                .map(::sessionDate)
                 .distinct()
 
             val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
-            val joggingDates = joggingRows
+            val joggingDates: List<LocalDate> = joggingRows
                 .filter { it.endedAt != null }
-                .map { Instant.fromEpochMilliseconds(it.startedAt)
+                .map { row ->
+                    Instant.fromEpochMilliseconds(row.startedAt)
                     .toLocalDateTime(timeZone).date }
                 .distinct()
 

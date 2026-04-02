@@ -65,12 +65,14 @@ class ActivityStatsRepositoryImpl(
             val workoutSessions = workoutRows.map { session -> session.toDomain() }
 
             // Query completed jogging sessions for this month
-            val joggingRows: List<DbJoggingSession> = queries.selectCompletedJoggingSessionsByDateRange(
+            val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByDateRange(
                 userId = userId,
-                fromMs = fromMs,
-                toMs = toMs,
+                startedAt = fromMs,
+                startedAt_ = toMs,
             ).executeAsList()
-            val joggingSessions = joggingRows.map { session -> session.toDomain() }
+            val joggingSessions = joggingRows
+                .filter { row -> row.endedAt != null }
+                .map { session -> session.toDomain() }
 
             // Group workout sessions by date
             val workoutByDate = workoutSessions.groupBy { session ->
