@@ -782,8 +782,8 @@ final class ProfileViewModel: ObservableObject {
 
         DataBridge.shared.fetchTotalStats(userId: userId) { [weak self] result in
             self?.stats = ProfileStats(
-                totalActivityXp: result.totalPushUps,
-                totalWorkouts: result.totalSessions,
+                totalActivityXp: Int(result.totalPushUps),
+                totalWorkouts: Int(result.totalSessions),
                 totalEarnedMinutes: Int(result.totalEarnedSeconds / 60)
             )
         }
