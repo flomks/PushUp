@@ -20,6 +20,7 @@ import com.pushup.db.RoutePoint as DbRoutePoint
 fun DbJoggingSession.toDomain(): JoggingSession = JoggingSession(
     id = id,
     userId = userId,
+    liveRunSessionId = liveRunSessionId,
     startedAt = Instant.fromEpochMilliseconds(startedAt),
     endedAt = endedAt?.let { Instant.fromEpochMilliseconds(it) },
     distanceMeters = distanceMeters,
@@ -41,6 +42,7 @@ fun DbJoggingSession.toDomain(): JoggingSession = JoggingSession(
 fun JoggingSession.toDbEntity(updatedAt: Instant): DbJoggingSession = DbJoggingSession(
     id = id,
     userId = userId,
+    liveRunSessionId = liveRunSessionId,
     startedAt = startedAt.toEpochMilliseconds(),
     endedAt = endedAt?.toEpochMilliseconds(),
     distanceMeters = distanceMeters,

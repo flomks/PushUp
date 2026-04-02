@@ -49,6 +49,7 @@ class JoggingSessionRepositoryImpl(
         if (existing != null) {
             // UPDATE existing row -- preserves RoutePoint child rows
             queries.updateJoggingSession(
+                liveRunSessionId = session.liveRunSessionId,
                 startedAt = session.startedAt.toEpochMilliseconds(),
                 endedAt = session.endedAt?.toEpochMilliseconds(),
                 distanceMeters = session.distanceMeters,
@@ -70,6 +71,7 @@ class JoggingSessionRepositoryImpl(
             queries.insertJoggingSession(
                 id = session.id,
                 userId = session.userId,
+                liveRunSessionId = session.liveRunSessionId,
                 startedAt = session.startedAt.toEpochMilliseconds(),
                 endedAt = session.endedAt?.toEpochMilliseconds(),
                 distanceMeters = session.distanceMeters,

@@ -19,6 +19,7 @@
 --   v9 (8.sqm)   — Added composite jogging indexes for running queries.
 --   v10 (9.sqm)  — Added dashboardWidgetOrderJson on UserSettings (cloud-synced layout).
 --   v11 (10.sqm) — Added ExerciseLevel table for per-exercise XP tracking.
+--   v12 (11.sqm) — Added social running events, live sessions, presence, and XP awards.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -526,6 +527,7 @@ WHERE userId = ?;
 CREATE TABLE JoggingSession (
     id                    TEXT    NOT NULL PRIMARY KEY,
     userId                TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    liveRunSessionId      TEXT REFERENCES LiveRunSession(id) ON DELETE SET NULL,
     startedAt             INTEGER NOT NULL,
     endedAt               INTEGER,
     distanceMeters        REAL    NOT NULL DEFAULT 0.0,
@@ -591,8 +593,8 @@ CREATE INDEX idx_jogging_segment_started_at ON JoggingSegment(sessionId, started
 -- =============================================================================
 
 insertJoggingSession:
-INSERT INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO JoggingSession (id, userId, liveRunSessionId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectJoggingSessionById:
 SELECT *
@@ -606,14 +608,14 @@ ORDER BY startedAt DESC;
 
 updateJoggingSession:
 UPDATE JoggingSession
-SET startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, activeDurationSeconds = ?, pauseDurationSeconds = ?, activeDistanceMeters = ?, pauseDistanceMeters = ?, pauseCount = ?, syncStatus = ?, updatedAt = ?
+SET liveRunSessionId = ?, startedAt = ?, endedAt = ?, distanceMeters = ?, durationSeconds = ?, avgPaceSecondsPerKm = ?, caloriesBurned = ?, earnedTimeCredits = ?, activeDurationSeconds = ?, pauseDurationSeconds = ?, activeDistanceMeters = ?, pauseDistanceMeters = ?, pauseCount = ?, syncStatus = ?, updatedAt = ?
 WHERE id = ?;
 
 upsertJoggingSession:
 -- NOTE: Kept SQLite 3.18-compatible syntax for SQLDelight generator compatibility.
 -- Safe write behavior is enforced in repository code via UPDATE-first + INSERT-fallback.
-INSERT OR REPLACE INTO JoggingSession (id, userId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO JoggingSession (id, userId, liveRunSessionId, startedAt, endedAt, distanceMeters, durationSeconds, avgPaceSecondsPerKm, caloriesBurned, earnedTimeCredits, activeDurationSeconds, pauseDurationSeconds, activeDistanceMeters, pauseDistanceMeters, pauseCount, syncStatus, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteJoggingSession:
 DELETE FROM JoggingSession
@@ -790,3 +792,361 @@ SELECT DISTINCT date(startedAt / 1000, 'unixepoch', 'localtime') AS sessionDate
 FROM JoggingSession
 WHERE userId = ? AND endedAt IS NOT NULL
 ORDER BY sessionDate ASC;
+
+-- =============================================================================
+-- RunEvent Queries
+-- =============================================================================
+
+insertRunEvent:
+INSERT INTO RunEvent (id, createdBy, title, description, mode, visibility, plannedStartAt, plannedEndAt, checkInOpensAt, status, locationName, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectRunEventById:
+SELECT *
+FROM RunEvent
+WHERE id = ?;
+
+selectRunEventsByCreatorId:
+SELECT *
+FROM RunEvent
+WHERE createdBy = ?
+ORDER BY plannedStartAt DESC;
+
+selectRunEventsByStatus:
+SELECT *
+FROM RunEvent
+WHERE status = ?
+ORDER BY plannedStartAt ASC;
+
+updateRunEvent:
+UPDATE RunEvent
+SET createdBy = ?, title = ?, description = ?, mode = ?, visibility = ?, plannedStartAt = ?, plannedEndAt = ?, checkInOpensAt = ?, status = ?, locationName = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteRunEvent:
+DELETE FROM RunEvent
+WHERE id = ?;
+
+-- =============================================================================
+-- RunEventParticipant Queries
+-- =============================================================================
+
+insertRunEventParticipant:
+INSERT INTO RunEventParticipant (id, eventId, userId, role, status, invitedBy, invitedAt, respondedAt, checkedInAt, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectRunEventParticipantByEventIdAndUserId:
+SELECT *
+FROM RunEventParticipant
+WHERE eventId = ? AND userId = ?;
+
+selectRunEventParticipantsByEventId:
+SELECT *
+FROM RunEventParticipant
+WHERE eventId = ?
+ORDER BY createdAt ASC;
+
+selectRunEventParticipantsByUserId:
+SELECT *
+FROM RunEventParticipant
+WHERE userId = ?
+ORDER BY createdAt DESC;
+
+updateRunEventParticipant:
+UPDATE RunEventParticipant
+SET eventId = ?, userId = ?, role = ?, status = ?, invitedBy = ?, invitedAt = ?, respondedAt = ?, checkedInAt = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteRunEventParticipant:
+DELETE FROM RunEventParticipant
+WHERE eventId = ? AND userId = ?;
+
+-- =============================================================================
+-- LiveRunSession Queries
+-- =============================================================================
+
+insertLiveRunSession:
+INSERT INTO LiveRunSession (id, sourceType, linkedEventId, leaderUserId, visibility, mode, state, startedAt, cooldownStartedAt, endedAt, lastActivityAt, maxEndsAt, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLiveRunSessionById:
+SELECT *
+FROM LiveRunSession
+WHERE id = ?;
+
+selectLiveRunSessionsByLeaderUserId:
+SELECT *
+FROM LiveRunSession
+WHERE leaderUserId = ?
+ORDER BY startedAt DESC;
+
+selectLiveRunSessionsByEventId:
+SELECT *
+FROM LiveRunSession
+WHERE linkedEventId = ?
+ORDER BY startedAt DESC;
+
+selectLiveRunSessionsByState:
+SELECT *
+FROM LiveRunSession
+WHERE state = ?
+ORDER BY lastActivityAt DESC;
+
+updateLiveRunSession:
+UPDATE LiveRunSession
+SET sourceType = ?, linkedEventId = ?, leaderUserId = ?, visibility = ?, mode = ?, state = ?, startedAt = ?, cooldownStartedAt = ?, endedAt = ?, lastActivityAt = ?, maxEndsAt = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteLiveRunSession:
+DELETE FROM LiveRunSession
+WHERE id = ?;
+
+-- =============================================================================
+-- LiveRunParticipant Queries
+-- =============================================================================
+
+insertLiveRunParticipant:
+INSERT INTO LiveRunParticipant (id, sessionId, userId, status, joinedAt, becameActiveAt, finishedAt, leftAt, isLeader, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLiveRunParticipantBySessionIdAndUserId:
+SELECT *
+FROM LiveRunParticipant
+WHERE sessionId = ? AND userId = ?;
+
+selectLiveRunParticipantsBySessionId:
+SELECT *
+FROM LiveRunParticipant
+WHERE sessionId = ?
+ORDER BY isLeader DESC, joinedAt ASC;
+
+selectLiveRunParticipantsByUserId:
+SELECT *
+FROM LiveRunParticipant
+WHERE userId = ?
+ORDER BY createdAt DESC;
+
+updateLiveRunParticipant:
+UPDATE LiveRunParticipant
+SET sessionId = ?, userId = ?, status = ?, joinedAt = ?, becameActiveAt = ?, finishedAt = ?, leftAt = ?, isLeader = ?, updatedAt = ?
+WHERE id = ?;
+
+deleteLiveRunParticipant:
+DELETE FROM LiveRunParticipant
+WHERE sessionId = ? AND userId = ?;
+
+-- =============================================================================
+-- LiveRunPresence Queries
+-- =============================================================================
+
+upsertLiveRunPresence:
+INSERT OR REPLACE INTO LiveRunPresence (id, sessionId, userId, presenceState, lastSeenAt, currentDistanceMeters, currentDurationSeconds, currentPaceSecondsPerKm, currentLatitude, currentLongitude, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLiveRunPresenceBySessionIdAndUserId:
+SELECT *
+FROM LiveRunPresence
+WHERE sessionId = ? AND userId = ?;
+
+selectLiveRunPresenceBySessionId:
+SELECT *
+FROM LiveRunPresence
+WHERE sessionId = ?
+ORDER BY lastSeenAt DESC;
+
+selectLiveRunPresenceByUserId:
+SELECT *
+FROM LiveRunPresence
+WHERE userId = ?
+ORDER BY lastSeenAt DESC;
+
+deleteLiveRunPresenceBySessionId:
+DELETE FROM LiveRunPresence
+WHERE sessionId = ?;
+
+deleteLiveRunPresenceByUserId:
+DELETE FROM LiveRunPresence
+WHERE userId = ?;
+
+-- =============================================================================
+-- RunXpAward Queries
+-- =============================================================================
+
+insertRunXpAward:
+INSERT INTO RunXpAward (id, userId, sessionId, baseXp, bonusType, bonusMultiplier, bonusXp, totalXpAwarded, awardedAt, createdAt, updatedAt)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectRunXpAwardsBySessionId:
+SELECT *
+FROM RunXpAward
+WHERE sessionId = ?
+ORDER BY awardedAt ASC;
+
+selectRunXpAwardsByUserId:
+SELECT *
+FROM RunXpAward
+WHERE userId = ?
+ORDER BY awardedAt DESC;
+
+selectRunXpAwardBySessionIdAndUserId:
+SELECT *
+FROM RunXpAward
+WHERE sessionId = ? AND userId = ?;
+
+deleteRunXpAwardsBySessionId:
+DELETE FROM RunXpAward
+WHERE sessionId = ?;
+
+-- =============================================================================
+-- RunEvent
+-- Planned social run events.
+-- =============================================================================
+
+CREATE TABLE RunEvent (
+    id                TEXT    NOT NULL PRIMARY KEY,
+    createdBy         TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    title             TEXT    NOT NULL,
+    description       TEXT,
+    mode              TEXT    NOT NULL CHECK (mode IN ('recovery', 'base', 'tempo', 'long_run', 'race')),
+    visibility        TEXT    NOT NULL CHECK (visibility IN ('private', 'friends', 'invite_only')),
+    plannedStartAt    INTEGER NOT NULL,
+    plannedEndAt      INTEGER,
+    checkInOpensAt    INTEGER NOT NULL,
+    status            TEXT    NOT NULL CHECK (status IN ('planned', 'check_in_open', 'live', 'completed', 'cancelled')),
+    locationName      TEXT,
+    createdAt         INTEGER NOT NULL,
+    updatedAt         INTEGER NOT NULL,
+    CHECK (plannedEndAt IS NULL OR plannedEndAt >= plannedStartAt),
+    CHECK (checkInOpensAt <= plannedStartAt)
+);
+
+CREATE INDEX idx_run_event_created_by ON RunEvent(createdBy);
+CREATE INDEX idx_run_event_planned_start_at ON RunEvent(plannedStartAt DESC);
+CREATE INDEX idx_run_event_status ON RunEvent(status);
+CREATE INDEX idx_run_event_visibility ON RunEvent(visibility);
+
+-- =============================================================================
+-- RunEventParticipant
+-- RSVP rows for planned run events.
+-- =============================================================================
+
+CREATE TABLE RunEventParticipant (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    eventId       TEXT    NOT NULL REFERENCES RunEvent(id) ON DELETE CASCADE,
+    userId        TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    role          TEXT    NOT NULL DEFAULT 'member' CHECK (role IN ('organizer', 'member')),
+    status        TEXT    NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'accepted', 'declined', 'checked_in')),
+    invitedBy     TEXT REFERENCES User(id) ON DELETE SET NULL,
+    invitedAt     INTEGER,
+    respondedAt   INTEGER,
+    checkedInAt   INTEGER,
+    createdAt     INTEGER NOT NULL,
+    updatedAt     INTEGER NOT NULL,
+    UNIQUE(eventId, userId)
+);
+
+CREATE INDEX idx_run_event_participant_event_id ON RunEventParticipant(eventId);
+CREATE INDEX idx_run_event_participant_user_id ON RunEventParticipant(userId);
+CREATE INDEX idx_run_event_participant_status ON RunEventParticipant(status);
+
+-- =============================================================================
+-- LiveRunSession
+-- Active run sessions that can be joined by multiple people.
+-- =============================================================================
+
+CREATE TABLE LiveRunSession (
+    id                  TEXT    NOT NULL PRIMARY KEY,
+    sourceType          TEXT    NOT NULL CHECK (sourceType IN ('planned', 'spontaneous')),
+    linkedEventId       TEXT REFERENCES RunEvent(id) ON DELETE SET NULL,
+    leaderUserId        TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    visibility          TEXT    NOT NULL DEFAULT 'friends' CHECK (visibility IN ('private', 'friends', 'invite_only')),
+    mode                TEXT    NOT NULL CHECK (mode IN ('recovery', 'base', 'tempo', 'long_run', 'race')),
+    state               TEXT    NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'cooldown', 'finished')),
+    startedAt           INTEGER NOT NULL,
+    cooldownStartedAt   INTEGER,
+    endedAt             INTEGER,
+    lastActivityAt      INTEGER NOT NULL,
+    maxEndsAt           INTEGER NOT NULL,
+    createdAt           INTEGER NOT NULL,
+    updatedAt           INTEGER NOT NULL,
+    CHECK (maxEndsAt >= startedAt)
+);
+
+CREATE INDEX idx_live_run_session_leader_user_id ON LiveRunSession(leaderUserId);
+CREATE INDEX idx_live_run_session_linked_event_id ON LiveRunSession(linkedEventId);
+CREATE INDEX idx_live_run_session_state ON LiveRunSession(state);
+CREATE INDEX idx_live_run_session_last_activity_at ON LiveRunSession(lastActivityAt DESC);
+
+-- =============================================================================
+-- LiveRunParticipant
+-- Participant rows for a live run session.
+-- =============================================================================
+
+CREATE TABLE LiveRunParticipant (
+    id              TEXT    NOT NULL PRIMARY KEY,
+    sessionId       TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    userId          TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    status          TEXT    NOT NULL DEFAULT 'joined' CHECK (status IN ('invited', 'joined', 'active', 'paused', 'finished', 'left')),
+    joinedAt        INTEGER NOT NULL,
+    becameActiveAt   INTEGER,
+    finishedAt      INTEGER,
+    leftAt          INTEGER,
+    isLeader        INTEGER NOT NULL DEFAULT 0 CHECK (isLeader IN (0, 1)),
+    createdAt       INTEGER NOT NULL,
+    updatedAt       INTEGER NOT NULL,
+    UNIQUE(sessionId, userId)
+);
+
+CREATE INDEX idx_live_run_participant_session_id ON LiveRunParticipant(sessionId);
+CREATE INDEX idx_live_run_participant_user_id ON LiveRunParticipant(userId);
+CREATE INDEX idx_live_run_participant_status ON LiveRunParticipant(status);
+CREATE INDEX idx_live_run_participant_is_leader ON LiveRunParticipant(sessionId, isLeader);
+
+-- =============================================================================
+-- LiveRunPresence
+-- Realtime presence snapshot for a user inside a live run session.
+-- =============================================================================
+
+CREATE TABLE LiveRunPresence (
+    id                      TEXT    NOT NULL PRIMARY KEY,
+    sessionId               TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    userId                  TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    presenceState           TEXT    NOT NULL DEFAULT 'active' CHECK (presenceState IN ('active', 'paused', 'disconnected', 'finished')),
+    lastSeenAt              INTEGER NOT NULL,
+    currentDistanceMeters   REAL    NOT NULL DEFAULT 0.0,
+    currentDurationSeconds  INTEGER NOT NULL DEFAULT 0,
+    currentPaceSecondsPerKm INTEGER,
+    currentLatitude         REAL,
+    currentLongitude        REAL,
+    updatedAt               INTEGER NOT NULL,
+    UNIQUE(sessionId, userId)
+);
+
+CREATE INDEX idx_live_run_presence_session_id ON LiveRunPresence(sessionId);
+CREATE INDEX idx_live_run_presence_user_id ON LiveRunPresence(userId);
+CREATE INDEX idx_live_run_presence_last_seen_at ON LiveRunPresence(lastSeenAt DESC);
+
+-- =============================================================================
+-- RunXpAward
+-- XP audit row for a user inside a live run session.
+-- =============================================================================
+
+CREATE TABLE RunXpAward (
+    id               TEXT    NOT NULL PRIMARY KEY,
+    userId           TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    sessionId        TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    baseXp           INTEGER NOT NULL DEFAULT 0,
+    bonusType        TEXT    NOT NULL DEFAULT 'solo' CHECK (bonusType IN ('solo', 'crew', 'synced')),
+    bonusMultiplier  REAL    NOT NULL DEFAULT 1.0,
+    bonusXp          INTEGER NOT NULL DEFAULT 0,
+    totalXpAwarded   INTEGER NOT NULL DEFAULT 0,
+    awardedAt        INTEGER NOT NULL,
+    createdAt        INTEGER NOT NULL,
+    updatedAt        INTEGER NOT NULL,
+    UNIQUE(userId, sessionId),
+    CHECK (bonusMultiplier >= 1.0),
+    CHECK (baseXp >= 0 AND bonusXp >= 0 AND totalXpAwarded >= baseXp)
+);
+
+CREATE INDEX idx_run_xp_award_user_id ON RunXpAward(userId);
+CREATE INDEX idx_run_xp_award_session_id ON RunXpAward(sessionId);

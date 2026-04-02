@@ -2,10 +2,17 @@ package com.pushup.di
 
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.JoggingSegment
+import com.pushup.domain.model.LiveRunSessionState
+import com.pushup.domain.model.RunMode
+import com.pushup.domain.model.RunPresenceState
+import com.pushup.domain.model.RunVisibility
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.LiveRunPresenceRepository
+import com.pushup.domain.repository.LiveRunSessionRepository
+import com.pushup.domain.repository.RunEventRepository
 import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.PushUpRecordRepository
@@ -13,13 +20,23 @@ import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.domain.usecase.CreateRunEventUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
+import com.pushup.domain.usecase.GetUpcomingRunEventsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
+import com.pushup.domain.usecase.FinishLiveRunSessionUseCase
+import com.pushup.domain.usecase.JoinLiveRunSessionUseCase
+import com.pushup.domain.usecase.LeaveLiveRunSessionUseCase
+import com.pushup.domain.usecase.ObserveFriendsActiveRunsUseCase
+import com.pushup.domain.usecase.ObserveLiveRunSessionUseCase
+import com.pushup.domain.usecase.RespondToRunEventUseCase
+import com.pushup.domain.usecase.StartLiveRunSessionUseCase
+import com.pushup.domain.usecase.UpdateLiveRunPresenceUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
 import com.pushup.domain.usecase.ApplyDailyResetUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
@@ -34,6 +51,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -70,6 +88,55 @@ import org.koin.core.component.get
 object DataBridge : KoinComponent {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private fun parseRunMode(raw: String): RunMode =
+        runCatching { RunMode.valueOf(raw.trim().uppercase()) }.getOrDefault(RunMode.BASE)
+
+    private fun parseRunVisibility(raw: String): RunVisibility =
+        runCatching { RunVisibility.valueOf(raw.trim().uppercase()) }.getOrDefault(RunVisibility.FRIENDS)
+
+    private fun parseRunPresenceState(raw: String): RunPresenceState =
+        runCatching { RunPresenceState.valueOf(raw.trim().uppercase()) }.getOrDefault(RunPresenceState.ACTIVE)
+
+    private fun toRunEventResult(
+        event: com.pushup.domain.model.RunEvent,
+        participantCount: Int = 0,
+        currentUserStatus: String? = null,
+    ): RunEventResult = RunEventResult(
+        id = event.id,
+        title = event.title,
+        mode = event.mode.name,
+        visibility = event.visibility.name,
+        status = event.status.name,
+        plannedStartAt = event.plannedStartAt.toString(),
+        plannedEndAt = event.plannedEndAt?.toString(),
+        locationName = event.locationName,
+        participantCount = participantCount,
+        currentUserStatus = currentUserStatus,
+    )
+
+    private fun toLiveRunSessionResult(
+        session: com.pushup.domain.model.LiveRunSession,
+        participantCount: Int = 0,
+    ): LiveRunSessionResult = LiveRunSessionResult(
+        id = session.id,
+        linkedEventId = session.linkedEventId,
+        leaderUserId = session.leaderUserId,
+        mode = session.mode.name,
+        visibility = session.visibility.name,
+        state = session.state.name,
+        startedAt = session.startedAt.toString(),
+        participantCount = participantCount,
+    )
+
+    private fun toLiveRunParticipantResult(
+        participant: com.pushup.domain.model.LiveRunParticipant,
+    ): LiveRunParticipantResult = LiveRunParticipantResult(
+        id = participant.id,
+        userId = participant.userId,
+        status = participant.status.name,
+        isLeader = participant.isLeader,
+    )
 
     // =========================================================================
     // Session observation
@@ -117,6 +184,301 @@ object DataBridge : KoinComponent {
             .collect { sessions ->
                 withContext(Dispatchers.Main) { onUpdate(sessions) }
             }
+    }
+
+    // =========================================================================
+    // Social running
+    // =========================================================================
+
+    fun fetchUpcomingRunEvents(
+        userId: String,
+        onResult: (List<RunEventResult>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val repository = get<RunEventRepository>()
+                val events = get<GetUpcomingRunEventsUseCase>().invoke(userId)
+                val results = events.map { event ->
+                    val participants = repository.getParticipants(event.id)
+                    toRunEventResult(
+                        event = event,
+                        participantCount = participants.size,
+                        currentUserStatus = participants.firstOrNull { it.userId == userId }?.status?.name,
+                    )
+                }
+                withContext(Dispatchers.Main) { onResult(results) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    fun fetchFriendsActiveRuns(
+        userId: String,
+        onResult: (List<LiveRunSessionResult>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val repository = get<LiveRunSessionRepository>()
+                val sessions = get<ObserveFriendsActiveRunsUseCase>().invoke(userId)
+                    .filter { it.state != LiveRunSessionState.FINISHED }
+                val results = sessions.map { session ->
+                    toLiveRunSessionResult(
+                        session = session,
+                        participantCount = repository.getParticipants(session.id).size,
+                    )
+                }
+                withContext(Dispatchers.Main) { onResult(results) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    fun observeLiveRunSession(
+        sessionId: String,
+        onUpdate: (LiveRunSessionSnapshotResult) -> Unit,
+    ): Job = scope.launch {
+        get<ObserveLiveRunSessionUseCase>()
+            .invoke(sessionId)
+            .catch { /* best-effort live updates */ }
+            .collect { snapshot ->
+                val result = LiveRunSessionSnapshotResult(
+                    session = snapshot.session?.let { session ->
+                        toLiveRunSessionResult(
+                            session = session,
+                            participantCount = snapshot.participants.size,
+                        )
+                    },
+                    participants = snapshot.participants.map(::toLiveRunParticipantResult),
+                    presenceCount = snapshot.presenceCount,
+                )
+                withContext(Dispatchers.Main) { onUpdate(result) }
+            }
+    }
+
+    fun fetchLiveRunSessionSnapshot(
+        sessionId: String,
+        onResult: (LiveRunSessionSnapshotResult?) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val sessionRepository = get<LiveRunSessionRepository>()
+                val presenceRepository = get<LiveRunPresenceRepository>()
+                val session = sessionRepository.getById(sessionId)
+                val participants = sessionRepository.getParticipants(sessionId)
+                val result = LiveRunSessionSnapshotResult(
+                    session = session?.let {
+                        toLiveRunSessionResult(
+                            session = it,
+                            participantCount = participants.size,
+                        )
+                    },
+                    participants = participants.map(::toLiveRunParticipantResult),
+                    presenceCount = presenceRepository.getForSession(sessionId).size,
+                )
+                withContext(Dispatchers.Main) { onResult(result) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun startLiveRunSession(
+        leaderUserId: String,
+        mode: String,
+        visibility: String,
+        linkedEventId: String?,
+        onResult: (LiveRunSessionResult?) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val session = get<StartLiveRunSessionUseCase>().invoke(
+                    leaderUserId = leaderUserId,
+                    mode = parseRunMode(mode),
+                    visibility = parseRunVisibility(visibility),
+                    linkedEventId = linkedEventId,
+                )
+                val participantCount = get<LiveRunSessionRepository>().getParticipants(session.id).size
+                withContext(Dispatchers.Main) {
+                    onResult(toLiveRunSessionResult(session, participantCount))
+                }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun joinLiveRunSession(
+        sessionId: String,
+        userId: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<JoinLiveRunSessionUseCase>().invoke(sessionId, userId)
+            }.isSuccess
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    fun inviteUserToLiveRunSession(
+        sessionId: String,
+        userId: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                val repository = get<LiveRunSessionRepository>()
+                repository.getById(sessionId) ?: error("Live run session not found: $sessionId")
+                val now = Instant.fromEpochMilliseconds(kotlinx.datetime.Clock.System.now().toEpochMilliseconds())
+                val existing = repository.getParticipants(sessionId).firstOrNull { it.userId == userId }
+                repository.upsertParticipant(
+                    existing?.copy(
+                        status = com.pushup.domain.model.RunParticipantStatus.INVITED,
+                        leftAt = null,
+                        finishedAt = null,
+                        updatedAt = now,
+                    ) ?: com.pushup.domain.model.LiveRunParticipant(
+                        id = "invite_${sessionId}_${userId}_${now.toEpochMilliseconds()}",
+                        sessionId = sessionId,
+                        userId = userId,
+                        status = com.pushup.domain.model.RunParticipantStatus.INVITED,
+                        joinedAt = now,
+                        becameActiveAt = null,
+                        finishedAt = null,
+                        leftAt = null,
+                        isLeader = false,
+                        createdAt = now,
+                        updatedAt = now,
+                    )
+                )
+            }.isSuccess
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    fun leaveLiveRunSession(
+        sessionId: String,
+        userId: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<LeaveLiveRunSessionUseCase>().invoke(sessionId, userId)
+            }.isSuccess
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    fun finishLiveRunSession(
+        sessionId: String,
+        userId: String,
+        onResult: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<FinishLiveRunSessionUseCase>().invoke(sessionId, userId)
+            }.isSuccess
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    fun updateLiveRunPresence(
+        sessionId: String,
+        userId: String,
+        state: String,
+        distanceMeters: Double,
+        durationSeconds: Long,
+        paceSecondsPerKm: Int?,
+        latitude: Double?,
+        longitude: Double?,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<UpdateLiveRunPresenceUseCase>().invoke(
+                    sessionId = sessionId,
+                    userId = userId,
+                    state = parseRunPresenceState(state),
+                    distanceMeters = distanceMeters,
+                    durationSeconds = durationSeconds,
+                    paceSecondsPerKm = paceSecondsPerKm,
+                    latitude = latitude,
+                    longitude = longitude,
+                )
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
+        }
+    }
+
+    fun createRunEvent(
+        organizerUserId: String,
+        title: String,
+        mode: String,
+        visibility: String,
+        plannedStartAt: String,
+        invitedUserIds: List<String>,
+        description: String?,
+        plannedEndAt: String?,
+        locationName: String?,
+        onResult: (RunEventResult?) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val event = get<CreateRunEventUseCase>().invoke(
+                    organizerUserId = organizerUserId,
+                    title = title,
+                    mode = parseRunMode(mode),
+                    visibility = parseRunVisibility(visibility),
+                    plannedStartAt = Instant.parse(plannedStartAt),
+                    invitedUserIds = invitedUserIds,
+                    description = description,
+                    plannedEndAt = plannedEndAt?.let(Instant::parse),
+                    locationName = locationName,
+                )
+                val participantCount = get<RunEventRepository>().getParticipants(event.id).size
+                withContext(Dispatchers.Main) { onResult(toRunEventResult(event, participantCount)) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun respondToRunEvent(
+        eventId: String,
+        userId: String,
+        status: String,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                val normalized = status.trim().uppercase()
+                get<RespondToRunEventUseCase>().invoke(
+                    eventId = eventId,
+                    userId = userId,
+                    accept = normalized != "DECLINED",
+                )
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
+        }
+    }
+
+    fun checkInRunEvent(
+        eventId: String,
+        userId: String,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<RunEventRepository>().updateParticipantStatus(
+                    eventId = eventId,
+                    userId = userId,
+                    status = com.pushup.domain.model.RunParticipantStatus.CHECKED_IN,
+                )
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
+        }
     }
 
     // =========================================================================
@@ -542,4 +904,41 @@ data class TotalStatsResult(
     val bestSession: Int,
     val currentStreakDays: Int,
     val longestStreakDays: Int,
+)
+
+data class RunEventResult(
+    val id: String,
+    val title: String,
+    val mode: String,
+    val visibility: String,
+    val status: String,
+    val plannedStartAt: String,
+    val plannedEndAt: String?,
+    val locationName: String?,
+    val participantCount: Int,
+    val currentUserStatus: String?,
+)
+
+data class LiveRunSessionResult(
+    val id: String,
+    val linkedEventId: String?,
+    val leaderUserId: String,
+    val mode: String,
+    val visibility: String,
+    val state: String,
+    val startedAt: String,
+    val participantCount: Int,
+)
+
+data class LiveRunParticipantResult(
+    val id: String,
+    val userId: String,
+    val status: String,
+    val isLeader: Boolean,
+)
+
+data class LiveRunSessionSnapshotResult(
+    val session: LiveRunSessionResult?,
+    val participants: List<LiveRunParticipantResult>,
+    val presenceCount: Int,
 )

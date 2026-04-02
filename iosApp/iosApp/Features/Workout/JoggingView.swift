@@ -18,6 +18,7 @@ struct JoggingView: View {
     @State private var showStopConfirmation = false
     @State private var showShareSheet = false
     @State private var showParticipantsSheet = false
+    @State private var showMusicSheet = false
     @State private var isMapFocusMode = false
     @State private var shareImage: UIImage?
     @State private var isRenderingShareImage = false
@@ -61,6 +62,9 @@ struct JoggingView: View {
         }
         .sheet(isPresented: $showParticipantsSheet) {
             runParticipantsSheet
+        }
+        .sheet(isPresented: $showMusicSheet) {
+            musicSheet
         }
     }
 
@@ -205,7 +209,7 @@ struct JoggingView: View {
 
                     Text(
                         viewModel.hasLocationPermission
-                        ? "GPS is ready. Start a run, invite others, or jump into music before you move."
+                        ? "GPS is ready. Go solo, join a live crew run, or launch a planned event with your people."
                         : "Allow location first so distance, pace, route, and earned time can be tracked correctly."
                     )
                     .font(AppTypography.caption1)
@@ -219,8 +223,19 @@ struct JoggingView: View {
                     .foregroundStyle(AppColors.info)
                     .padding(.horizontal, AppSpacing.sm)
                     .padding(.vertical, AppSpacing.xs)
-                    .background(AppColors.info.opacity(0.10), in: Capsule())
+                .background(AppColors.info.opacity(0.10), in: Capsule())
             }
+
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppColors.info)
+                Text(viewModel.socialSelectionSummary)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.xs)
 
             if !viewModel.hasLocationPermission {
                 HStack(spacing: AppSpacing.sm) {
@@ -253,7 +268,7 @@ struct JoggingView: View {
                 HStack(spacing: AppSpacing.sm) {
                     Image(systemName: viewModel.hasLocationPermission ? "play.fill" : "location.fill")
                         .font(.system(size: 18, weight: .bold))
-                    Text(viewModel.hasLocationPermission ? "Start Run" : "Enable Location")
+                    Text(viewModel.startActionTitle)
                         .font(AppTypography.title3)
                 }
                 .foregroundStyle(.white)
@@ -277,7 +292,7 @@ struct JoggingView: View {
             HStack(spacing: AppSpacing.sm) {
                 quickRunAction(
                     title: "Crew",
-                    subtitle: "\(viewModel.runParticipants.count) ready",
+                    subtitle: viewModel.socialSelectionSummary,
                     icon: "person.2.fill"
                 ) {
                     showParticipantsSheet = true
@@ -285,10 +300,10 @@ struct JoggingView: View {
 
                 quickRunAction(
                     title: "Music",
-                    subtitle: "Open player",
+                    subtitle: viewModel.musicCardSubtitle,
                     icon: "music.note"
                 ) {
-                    openMusicApp()
+                    showMusicSheet = true
                 }
             }
         }
@@ -500,13 +515,70 @@ struct JoggingView: View {
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.top, 24)
             .overlay(alignment: .top) {
-                if viewModel.isPaused {
-                    Text("PAUSED")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.orange)
-                        .tracking(2)
-                        .padding(.top, 98)
+                VStack(spacing: 10) {
+                    if let stateLabel = viewModel.activeRunStateLabel {
+                        activeRunStatusChip(stateLabel)
+                    }
+
+                    if let banner = viewModel.liveRunBannerMessage {
+                        activeRunBanner(banner)
+                    }
+
+                    if viewModel.isPaused {
+                        Text("PAUSED")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.orange)
+                            .tracking(2)
+                    }
                 }
+                .padding(.top, 98)
+            }
+
+            if viewModel.selectedLiveRunSessionId != nil || viewModel.lastDetachedLiveRunSessionId != nil {
+                HStack {
+                    Spacer()
+                    if viewModel.selectedLiveRunSessionId != nil {
+                        Button {
+                            viewModel.leaveCurrentLiveRun()
+                        } label: {
+                            HStack(spacing: 8) {
+                                if viewModel.isLeavingLiveRun {
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                                Text(viewModel.isLeavingLiveRun ? "Leaving..." : "Leave Crew")
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.black.opacity(0.35), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.isLeavingLiveRun)
+                    } else if viewModel.lastDetachedLiveRunSessionId != nil {
+                        Button {
+                            viewModel.rejoinLastLiveRun()
+                        } label: {
+                            HStack(spacing: 8) {
+                                if viewModel.isRejoiningLiveRun {
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                                Text(viewModel.isRejoiningLiveRun ? "Rejoining..." : "Rejoin Crew")
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.orange.opacity(0.88), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.isRejoiningLiveRun)
+                    }
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, 12)
             }
 
             Spacer()
@@ -563,7 +635,7 @@ struct JoggingView: View {
 
             HStack(spacing: 18) {
                 Button {
-                    openMusicApp()
+                    showMusicSheet = true
                 } label: {
                     Circle()
                         .fill(Color.black.opacity(0.35))
@@ -604,6 +676,20 @@ struct JoggingView: View {
                                 .foregroundStyle(Color.white.opacity(0.85))
                         )
                 }
+            }
+            .overlay(alignment: .top) {
+                VStack(spacing: 6) {
+                    Text(viewModel.currentTrack.title)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text(viewModel.jamStatusLabel)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.68))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.black.opacity(0.35), in: Capsule())
+                .offset(y: -58)
             }
             .padding(.bottom, 24)
         }
@@ -1255,6 +1341,35 @@ struct JoggingView: View {
         .background(Color.black.opacity(0.3), in: Capsule())
     }
 
+    private func activeRunStatusChip(_ text: String) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(Color.orange)
+                .frame(width: 8, height: 8)
+            Text(text)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .tracking(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.42), in: Capsule())
+    }
+
+    private func activeRunBanner(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.orange.opacity(0.92))
+            )
+            .padding(.horizontal, 32)
+    }
+
     private var runParticipantsSheet: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -1271,6 +1386,129 @@ struct JoggingView: View {
                             } else {
                                 ForEach(viewModel.runParticipants) { participant in
                                     participantRow(participant)
+                                }
+                            }
+                        }
+
+                        if viewModel.lastDetachedLiveRunSessionId != nil {
+                            Section("Rejoin crew") {
+                                Button {
+                                    viewModel.rejoinLastLiveRun()
+                                } label: {
+                                    HStack {
+                                        Text(viewModel.isRejoiningLiveRun ? "Rejoining..." : "Rejoin the last crew run")
+                                            .font(AppTypography.bodySemibold)
+                                        Spacer()
+                                        if viewModel.isRejoiningLiveRun {
+                                            ProgressView()
+                                        } else {
+                                            Image(systemName: "arrow.clockwise.circle.fill")
+                                                .foregroundStyle(Color.orange)
+                                        }
+                                    }
+                                }
+                                .disabled(viewModel.isRejoiningLiveRun)
+
+                                Text("Your personal tracking keeps running either way. Rejoin only reconnects the social session.")
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+
+                        Section("Live runs") {
+                            if viewModel.activeFriendRuns.isEmpty {
+                                Text("No live friend runs right now.")
+                                    .foregroundStyle(AppColors.textSecondary)
+                            } else {
+                                ForEach(viewModel.activeFriendRuns) { run in
+                                    runOptionRow(
+                                        initials: "LR",
+                                        title: run.title,
+                                        subtitle: run.subtitle,
+                                        actionTitle: viewModel.selectedLiveRunSessionId == run.id ? "Selected" : "Join"
+                                    ) {
+                                        viewModel.selectActiveRun(run.id)
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Plan a run") {
+                            TextField("Crew sunrise run", text: $viewModel.plannedRunTitle)
+                                .textInputAutocapitalization(.words)
+
+                            DatePicker(
+                                "Start time",
+                                selection: $viewModel.plannedRunDate,
+                                displayedComponents: [.date, .hourAndMinute]
+                            )
+
+                            Button {
+                                viewModel.createPlannedRun()
+                            } label: {
+                                HStack {
+                                    if viewModel.isCreatingPlannedRun {
+                                        ProgressView()
+                                            .tint(.white)
+                                    }
+                                    Text(viewModel.isCreatingPlannedRun ? "Creating..." : "Create Planned Run")
+                                        .font(AppTypography.bodySemibold)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                            }
+                            .disabled(!viewModel.canCreatePlannedRun || viewModel.isCreatingPlannedRun)
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(viewModel.canCreatePlannedRun ? Color.orange.opacity(0.92) : AppColors.backgroundSecondary)
+                            )
+
+                            if let message = viewModel.plannedRunStatusMessage {
+                                Text(message)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            } else {
+                                Text("Uses the currently invited crew as the planned event lineup.")
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+
+                        Section("Upcoming runs") {
+                            if viewModel.upcomingRuns.isEmpty {
+                                Text("No planned runs yet.")
+                                    .foregroundStyle(AppColors.textSecondary)
+                            } else {
+                                ForEach(viewModel.upcomingRuns) { run in
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        runOptionRow(
+                                            initials: "EV",
+                                            title: run.title,
+                                            subtitle: run.subtitle,
+                                            actionTitle: viewModel.upcomingRunPrimaryActionTitle(for: run)
+                                        ) {
+                                            viewModel.handleUpcomingRunPrimaryAction(run)
+                                        }
+
+                                        if run.status?.uppercased() == "INVITED" {
+                                            HStack {
+                                                Spacer()
+                                                Button {
+                                                    viewModel.declineUpcomingRun(run.id)
+                                                } label: {
+                                                    Text("Decline")
+                                                        .font(AppTypography.captionSemibold)
+                                                        .foregroundStyle(AppColors.textSecondary)
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        } else if let status = run.status {
+                                            Text("Status: \(status.replacingOccurrences(of: \"_\", with: \" \").capitalized)")
+                                                .font(AppTypography.caption1)
+                                                .foregroundStyle(AppColors.textSecondary)
+                                        }
+                                    }
+                                    .padding(.vertical, 2)
                                 }
                             }
                         }
@@ -1299,13 +1537,23 @@ struct JoggingView: View {
                                         Button {
                                             viewModel.inviteFriendToRun(friend.id)
                                         } label: {
-                                            Text("Invite")
-                                                .font(AppTypography.captionSemibold)
-                                                .foregroundStyle(.white)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 6)
-                                                .background(Color.orange, in: Capsule())
+                                            Group {
+                                                if viewModel.isInvitingToLiveRun && viewModel.selectedLiveRunSessionId != nil {
+                                                    ProgressView()
+                                                        .tint(.white)
+                                                        .padding(.horizontal, 16)
+                                                        .padding(.vertical, 6)
+                                                } else {
+                                                    Text("Invite")
+                                                        .font(AppTypography.captionSemibold)
+                                                        .foregroundStyle(.white)
+                                                        .padding(.horizontal, 12)
+                                                        .padding(.vertical, 6)
+                                                }
+                                            }
+                                            .background(Color.orange, in: Capsule())
                                         }
+                                        .disabled(viewModel.isInvitingToLiveRun && viewModel.selectedLiveRunSessionId != nil)
                                         .buttonStyle(.plain)
                                     }
                                     .padding(.vertical, 2)
@@ -1319,12 +1567,106 @@ struct JoggingView: View {
             .navigationTitle("Run group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if viewModel.selectedLiveRunSessionId != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(viewModel.isLeavingLiveRun ? "Leaving..." : "Leave Crew") {
+                            viewModel.leaveCurrentLiveRun()
+                        }
+                        .disabled(viewModel.isLeavingLiveRun)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { showParticipantsSheet = false }
                 }
             }
             .task {
                 await viewModel.loadRunSocialData()
+            }
+        }
+    }
+
+    private var musicSheet: some View {
+        NavigationStack {
+            List {
+                Section("Provider") {
+                    HStack {
+                        Label("Spotify", systemImage: "waveform")
+                            .font(AppTypography.bodySemibold)
+                        Spacer()
+                        Text(viewModel.spotifyConnected ? "Connected" : "Not connected")
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : AppColors.textSecondary)
+                    }
+
+                    Button(viewModel.spotifyConnected ? "Refresh Spotify" : "Connect Spotify") {
+                        viewModel.connectSpotify()
+                    }
+                }
+
+                Section("Run mode") {
+                    Picker("Mode", selection: $viewModel.selectedAudioMode) {
+                        ForEach(RunAudioMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Button("Cycle Mode Preset") {
+                        viewModel.cycleAudioMode()
+                    }
+                }
+
+                Section("Now playing") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(viewModel.currentTrack.title)
+                            .font(AppTypography.bodySemibold)
+                        Text(viewModel.currentTrack.artist)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                        Text(viewModel.currentTrack.vibe)
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.info)
+                    }
+
+                    HStack(spacing: 12) {
+                        Button(viewModel.musicPrimaryActionTitle) {
+                            if !viewModel.spotifyConnected {
+                                viewModel.connectSpotify()
+                            } else if viewModel.jamActive {
+                                viewModel.isCurrentUserInJam ? viewModel.leaveJam() : viewModel.joinJam()
+                            } else if viewModel.selectedLiveRunSessionId != nil {
+                                viewModel.startJam()
+                            } else {
+                                viewModel.connectSpotify()
+                            }
+                        }
+
+                        Button("Next Track") {
+                            viewModel.nextTrack()
+                        }
+                    }
+                }
+
+                Section("Run jam") {
+                    Text(viewModel.jamStatusLabel)
+                        .font(AppTypography.bodySemibold)
+                    if viewModel.jamActive {
+                        Text("Hosted by \(viewModel.jamHostDisplayName)")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    } else {
+                        Text("Start a jam when you want the crew to move on the same soundtrack.")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+            }
+            .navigationTitle("Run Audio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showMusicSheet = false }
+                }
             }
         }
     }
@@ -1354,6 +1696,39 @@ struct JoggingView: View {
                     (participant.status == .running ? AppColors.success : AppColors.warning).opacity(0.14),
                     in: Capsule()
                 )
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func runOptionRow(
+        initials: String,
+        title: String,
+        subtitle: String,
+        actionTitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            participantAvatar(initials: initials)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTypography.bodySemibold)
+                Text(subtitle)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+
+            Spacer()
+
+            Button(action: action) {
+                Text(actionTitle)
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(actionTitle == "Selected" ? AppColors.info : Color.orange, in: Capsule())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 2)
     }

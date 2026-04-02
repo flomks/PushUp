@@ -20,6 +20,7 @@ import kotlinx.serialization.Serializable
 data class JoggingSessionDTO(
     @SerialName("id")                       val id: String,
     @SerialName("user_id")                  val userId: String,
+    @SerialName("live_run_session_id")      val liveRunSessionId: String? = null,
     @SerialName("started_at")               val startedAt: String,
     @SerialName("ended_at")                 val endedAt: String? = null,
     @SerialName("distance_meters")          val distanceMeters: Float,
@@ -43,6 +44,7 @@ data class JoggingSessionDTO(
 data class CreateJoggingSessionRequest(
     @SerialName("id")                       val id: String,
     @SerialName("user_id")                  val userId: String,
+    @SerialName("live_run_session_id")      val liveRunSessionId: String? = null,
     @SerialName("started_at")               val startedAt: String,
     @SerialName("ended_at")                 val endedAt: String? = null,
     @SerialName("distance_meters")          val distanceMeters: Float = 0f,
@@ -62,6 +64,7 @@ data class CreateJoggingSessionRequest(
  */
 @Serializable
 data class UpdateJoggingSessionRequest(
+    @SerialName("live_run_session_id")      val liveRunSessionId: String? = null,
     @SerialName("ended_at")                 val endedAt: String? = null,
     @SerialName("distance_meters")          val distanceMeters: Float? = null,
     @SerialName("duration_seconds")         val durationSeconds: Int? = null,
@@ -144,6 +147,7 @@ data class CreateJoggingSegmentRequest(
 fun JoggingSessionDTO.toDomain(): JoggingSession = JoggingSession(
     id = id,
     userId = userId,
+    liveRunSessionId = liveRunSessionId,
     startedAt = Instant.parse(startedAt),
     endedAt = endedAt?.let { Instant.parse(it) },
     distanceMeters = distanceMeters.toDouble(),
@@ -165,6 +169,7 @@ fun JoggingSessionDTO.toDomain(): JoggingSession = JoggingSession(
 fun JoggingSession.toCreateRequest(): CreateJoggingSessionRequest = CreateJoggingSessionRequest(
     id = id,
     userId = userId,
+    liveRunSessionId = liveRunSessionId,
     startedAt = startedAt.toString(),
     endedAt = endedAt?.toString(),
     distanceMeters = distanceMeters.toFloat(),

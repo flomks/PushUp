@@ -2,21 +2,35 @@ package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
 import com.pushup.data.api.dto.CreateJoggingSegmentRequest
+import com.pushup.data.api.dto.CreateLiveRunParticipantRequest
+import com.pushup.data.api.dto.CreateLiveRunSessionRequest
 import com.pushup.data.api.dto.CreatePushUpRecordRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
+import com.pushup.data.api.dto.CreateRunEventParticipantRequest
+import com.pushup.data.api.dto.CreateRunEventRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.JoggingSessionDTO
 import com.pushup.data.api.dto.JoggingSegmentDTO
+import com.pushup.data.api.dto.LiveRunParticipantDTO
+import com.pushup.data.api.dto.LiveRunPresenceDTO
+import com.pushup.data.api.dto.LiveRunSessionDTO
 import com.pushup.data.api.dto.LiveJoggingStatusDTO
 import com.pushup.data.api.dto.PushUpRecordDTO
 import com.pushup.data.api.dto.RoutePointDTO
+import com.pushup.data.api.dto.RunEventDTO
+import com.pushup.data.api.dto.RunEventParticipantDTO
 import com.pushup.data.api.dto.SetUsernameRequest
 import com.pushup.data.api.dto.TimeCreditDTO
+import com.pushup.data.api.dto.UpdateLiveRunParticipantRequest
+import com.pushup.data.api.dto.UpdateLiveRunSessionRequest
 import com.pushup.data.api.dto.UpdateJoggingSessionRequest
+import com.pushup.data.api.dto.UpdateRunEventParticipantRequest
+import com.pushup.data.api.dto.UpdateRunEventRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
+import com.pushup.data.api.dto.UpsertLiveRunPresenceRequest
 import com.pushup.data.api.dto.ExerciseLevelDTO
 import com.pushup.data.api.dto.UpsertExerciseLevelRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
@@ -701,6 +715,209 @@ class SupabaseClient(
             url.parameters.append("user_id", "in.($inFilter)")
         }.also { it.expectSuccess() }
             .body<List<LiveJoggingStatusDTO>>()
+    }
+
+    // =========================================================================
+    // Social Running
+    // =========================================================================
+
+    override suspend fun getRunEvents(): List<RunEventDTO> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/run_events") {
+            supabaseHeaders(token)
+            url.parameters.append("order", "planned_start_at.asc")
+        }.also { it.expectSuccess() }
+            .body<List<RunEventDTO>>()
+    }
+
+    override suspend fun getRunEvent(id: String): RunEventDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/run_events") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$id")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<RunEventDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun createRunEvent(request: CreateRunEventRequest): RunEventDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.post("$restBase/run_events") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<RunEventDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun updateRunEvent(id: String, request: UpdateRunEventRequest): RunEventDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.patch("$restBase/run_events") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("id", "eq.$id")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<RunEventDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/run_event_participants") {
+            supabaseHeaders(token)
+            url.parameters.append("event_id", "eq.$eventId")
+            url.parameters.append("order", "created_at.asc")
+        }.also { it.expectSuccess() }
+            .body<List<RunEventParticipantDTO>>()
+    }
+
+    override suspend fun createRunEventParticipants(
+        requests: List<CreateRunEventParticipantRequest>,
+    ): List<RunEventParticipantDTO> = withRetry {
+        if (requests.isEmpty()) return@withRetry emptyList()
+        val token = tokenProvider()
+        httpClient.post("$restBase/run_event_participants") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation,resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(requests)
+        }.also { it.expectSuccess() }
+            .body<List<RunEventParticipantDTO>>()
+    }
+
+    override suspend fun updateRunEventParticipant(
+        eventId: String,
+        userId: String,
+        request: UpdateRunEventParticipantRequest,
+    ): RunEventParticipantDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.patch("$restBase/run_event_participants") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("event_id", "eq.$eventId")
+            url.parameters.append("user_id", "eq.$userId")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<RunEventParticipantDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun getLiveRunSessions(): List<LiveRunSessionDTO> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/live_run_sessions") {
+            supabaseHeaders(token)
+            url.parameters.append("order", "last_activity_at.desc")
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunSessionDTO>>()
+    }
+
+    override suspend fun getLiveRunSession(id: String): LiveRunSessionDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/live_run_sessions") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$id")
+            url.parameters.append("limit", "1")
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunSessionDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun createLiveRunSession(request: CreateLiveRunSessionRequest): LiveRunSessionDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.post("$restBase/live_run_sessions") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunSessionDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun updateLiveRunSession(
+        id: String,
+        request: UpdateLiveRunSessionRequest,
+    ): LiveRunSessionDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.patch("$restBase/live_run_sessions") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("id", "eq.$id")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunSessionDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun getLiveRunParticipants(sessionId: String): List<LiveRunParticipantDTO> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/live_run_participants") {
+            supabaseHeaders(token)
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("order", "joined_at.asc")
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunParticipantDTO>>()
+    }
+
+    override suspend fun createLiveRunParticipants(
+        requests: List<CreateLiveRunParticipantRequest>,
+    ): List<LiveRunParticipantDTO> = withRetry {
+        if (requests.isEmpty()) return@withRetry emptyList()
+        val token = tokenProvider()
+        httpClient.post("$restBase/live_run_participants") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation,resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(requests)
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunParticipantDTO>>()
+    }
+
+    override suspend fun updateLiveRunParticipant(
+        sessionId: String,
+        userId: String,
+        request: UpdateLiveRunParticipantRequest,
+    ): LiveRunParticipantDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.patch("$restBase/live_run_participants") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("user_id", "eq.$userId")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunParticipantDTO>>()
+            .firstOrNull()
+    }
+
+    override suspend fun getLiveRunPresence(sessionId: String): List<LiveRunPresenceDTO> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/live_run_presence") {
+            supabaseHeaders(token)
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("order", "last_seen_at.desc")
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunPresenceDTO>>()
+    }
+
+    override suspend fun upsertLiveRunPresence(request: UpsertLiveRunPresenceRequest): LiveRunPresenceDTO? = withRetry {
+        val token = tokenProvider()
+        httpClient.post("$restBase/live_run_presence") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation,resolution=merge-duplicates")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<LiveRunPresenceDTO>>()
+            .firstOrNull()
     }
 
     // =========================================================================

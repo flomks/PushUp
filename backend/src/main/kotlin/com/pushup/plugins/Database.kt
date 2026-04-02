@@ -410,6 +410,7 @@ object FriendCodes : Table("friend_codes") {
 object JoggingSessions : Table("jogging_sessions") {
     val id                   = uuid("id")
     val userId               = uuid("user_id").references(Users.id)
+    val liveRunSessionId     = uuid("live_run_session_id").nullable().references(LiveRunSessions.id)
     val startedAt            = timestampWithTimeZone("started_at")
     val endedAt              = timestampWithTimeZone("ended_at").nullable()
     val distanceMeters       = float("distance_meters")

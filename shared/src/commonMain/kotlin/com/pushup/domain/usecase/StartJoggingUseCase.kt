@@ -27,8 +27,12 @@ class StartJoggingUseCase(
      * @param userId The ID of the user starting the jog.
      * @return The newly created [JoggingSession], or the existing active session.
      */
-    suspend operator fun invoke(userId: String): JoggingSession {
+    suspend operator fun invoke(
+        userId: String,
+        liveRunSessionId: String? = null,
+    ): JoggingSession {
         require(userId.isNotBlank()) { "userId must not be blank" }
+        liveRunSessionId?.let { require(it.isNotBlank()) { "liveRunSessionId must not be blank" } }
 
         val activeSessions = sessionRepository.getAllByUserId(userId)
             .filter { it.isActive }
@@ -40,6 +44,7 @@ class StartJoggingUseCase(
         val session = JoggingSession(
             id = idGenerator.generate(),
             userId = userId,
+            liveRunSessionId = liveRunSessionId,
             startedAt = now,
             endedAt = null,
             distanceMeters = 0.0,

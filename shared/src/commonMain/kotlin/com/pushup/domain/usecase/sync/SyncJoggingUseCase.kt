@@ -152,6 +152,7 @@ class SyncJoggingUseCase(
                 supabaseClient.updateJoggingSession(
                     id = local.id,
                     request = UpdateJoggingSessionRequest(
+                        liveRunSessionId = local.liveRunSessionId,
                         endedAt = local.endedAt?.toString(),
                         distanceMeters = local.distanceMeters.toFloat(),
                         durationSeconds = local.durationSeconds.toInt(),
@@ -186,6 +187,7 @@ class SyncJoggingUseCase(
                 supabaseClient.updateJoggingSession(
                     id = local.id,
                     request = UpdateJoggingSessionRequest(
+                        liveRunSessionId = local.liveRunSessionId,
                         endedAt = local.endedAt?.toString(),
                         distanceMeters = local.distanceMeters.toFloat(),
                         durationSeconds = local.durationSeconds.toInt(),
@@ -220,6 +222,7 @@ class SyncJoggingUseCase(
 
     private fun sessionsEffectivelyEqual(local: JoggingSession, remote: JoggingSession): Boolean {
         return local.startedAt == remote.startedAt &&
+            local.liveRunSessionId == remote.liveRunSessionId &&
             local.endedAt == remote.endedAt &&
             nearlyEqual(local.distanceMeters, remote.distanceMeters, distanceEpsilonMeters) &&
             nearlyEqual(local.activeDistanceMeters, remote.activeDistanceMeters, distanceEpsilonMeters) &&

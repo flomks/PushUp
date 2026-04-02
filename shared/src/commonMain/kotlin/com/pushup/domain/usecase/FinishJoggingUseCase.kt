@@ -32,6 +32,7 @@ class FinishJoggingUseCase(
     private val settingsRepository: UserSettingsRepository,
     private val levelRepository: LevelRepository? = null,
     private val exerciseLevelRepository: ExerciseLevelRepository? = null,
+    private val awardSocialRunXpUseCase: AwardSocialRunXpUseCase? = null,
     private val clock: Clock = Clock.System,
 ) {
 
@@ -127,6 +128,13 @@ class FinishJoggingUseCase(
         )
         if (earnedXp > 0) {
             exerciseLevelRepository?.addXp(session.userId, ExerciseType.JOGGING, earnedXp)
+            session.liveRunSessionId?.let { liveRunSessionId ->
+                awardSocialRunXpUseCase?.invoke(
+                    userId = session.userId,
+                    sessionId = liveRunSessionId,
+                    baseXp = earnedXp,
+                )
+            }
         }
         val updatedLevel = levelRepository?.getOrCreate(session.userId)
 

@@ -109,6 +109,7 @@ final class JoggingTrackingManager: ObservableObject {
     // MARK: - Private: Session State
 
     private var activeSessionId: String?
+    private var activeLiveRunSessionId: String?
     private var activeUserId: String?
     private var sessionStartDate: Date?
     private var sessionTimer: Timer?
@@ -173,7 +174,7 @@ final class JoggingTrackingManager: ObservableObject {
     // MARK: - Public API
 
     /// Starts a jogging tracking session.
-    func startTracking() {
+    func startTracking(liveRunSessionId: String? = nil) {
         guard !isTracking else {
             #if DEBUG
             print("[JoggingTrackingManager] startTracking() called while already tracking -- ignored")
@@ -190,6 +191,7 @@ final class JoggingTrackingManager: ObservableObject {
 
         lastError = nil
         resetState()
+        activeLiveRunSessionId = liveRunSessionId
 
         // Start GPS tracking
         locationManager.startTracking()
@@ -274,6 +276,7 @@ final class JoggingTrackingManager: ObservableObject {
         isTracking = false
         isPaused = false
         activeSessionId = nil
+        activeLiveRunSessionId = nil
         activeUserId = nil
         stopSessionTimer()
 
@@ -333,6 +336,7 @@ final class JoggingTrackingManager: ObservableObject {
         caloriesBurned = 0
         routeLocations = []
         activeSessionId = nil
+        activeLiveRunSessionId = nil
         routeDistanceMeters = 0
         isPaused = false
         pauseStartedAt = nil
@@ -399,7 +403,11 @@ final class JoggingTrackingManager: ObservableObject {
             try Task.checkCancellation()
 
             let session = try await withKMPSuspend { handler in
-                self.startJogging.invoke(userId: user.id, completionHandler: handler)
+                self.startJogging.invoke(
+                    userId: user.id,
+                    liveRunSessionId: self.activeLiveRunSessionId,
+                    completionHandler: handler
+                )
             } as Shared.JoggingSession
 
             guard !Task.isCancelled else { return }

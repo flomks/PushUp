@@ -25,6 +25,7 @@ import kotlinx.serialization.Serializable
 data class JoggingSession(
     val id: String,
     val userId: String,
+    val liveRunSessionId: String? = null,
     val startedAt: Instant,
     val endedAt: Instant?,
     val distanceMeters: Double,
@@ -42,6 +43,7 @@ data class JoggingSession(
     init {
         require(id.isNotBlank()) { "JoggingSession.id must not be blank" }
         require(userId.isNotBlank()) { "JoggingSession.userId must not be blank" }
+        liveRunSessionId?.let { require(it.isNotBlank()) { "JoggingSession.liveRunSessionId must not be blank" } }
         require(distanceMeters >= 0.0) { "JoggingSession.distanceMeters must be >= 0, was $distanceMeters" }
         require(durationSeconds >= 0) { "JoggingSession.durationSeconds must be >= 0, was $durationSeconds" }
         require(caloriesBurned >= 0) { "JoggingSession.caloriesBurned must be >= 0, was $caloriesBurned" }

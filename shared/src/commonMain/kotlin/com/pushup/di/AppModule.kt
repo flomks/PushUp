@@ -13,8 +13,12 @@ import com.pushup.data.repository.JoggingSessionRepositoryImpl
 import com.pushup.data.repository.JoggingSegmentRepositoryImpl
 import com.pushup.data.repository.ExerciseLevelRepositoryImpl
 import com.pushup.data.repository.LevelRepositoryImpl
+import com.pushup.data.repository.LiveRunPresenceRepositoryImpl
+import com.pushup.data.repository.LiveRunSessionRepositoryImpl
 import com.pushup.data.repository.PushUpRecordRepositoryImpl
 import com.pushup.data.repository.RoutePointRepositoryImpl
+import com.pushup.data.repository.RunEventRepositoryImpl
+import com.pushup.data.repository.RunXpAwardRepositoryImpl
 import com.pushup.data.repository.StatsRepositoryImpl
 import com.pushup.data.repository.DailyCreditSnapshotRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
@@ -28,8 +32,12 @@ import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.LevelRepository
+import com.pushup.domain.repository.LiveRunPresenceRepository
+import com.pushup.domain.repository.LiveRunSessionRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.RoutePointRepository
+import com.pushup.domain.repository.RunEventRepository
+import com.pushup.domain.repository.RunXpAwardRepository
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.TimeCreditRepository
@@ -37,17 +45,20 @@ import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.domain.usecase.ApplyDailyResetUseCase
+import com.pushup.domain.usecase.AwardSocialRunXpUseCase
 import com.pushup.domain.usecase.AwardWorkoutXpUseCase
 import com.pushup.domain.usecase.GetActivityStreakUseCase
 import com.pushup.domain.usecase.GetMonthlyActivityUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
 import com.pushup.domain.usecase.FinishWorkoutUseCase
+import com.pushup.domain.usecase.FinishLiveRunSessionUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetExerciseLevelsUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetMonthlyStatsUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
+import com.pushup.domain.usecase.GetUpcomingRunEventsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
 import com.pushup.domain.usecase.GetUserLevelUseCase
@@ -55,13 +66,21 @@ import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.IdGenerator
 import com.pushup.domain.usecase.FinishJoggingUseCase
+import com.pushup.domain.usecase.JoinLiveRunSessionUseCase
 import com.pushup.domain.usecase.LiveJoggingSessionManager
+import com.pushup.domain.usecase.LeaveLiveRunSessionUseCase
+import com.pushup.domain.usecase.ObserveFriendsActiveRunsUseCase
+import com.pushup.domain.usecase.ObserveLiveRunSessionUseCase
 import com.pushup.domain.usecase.RecordPushUpUseCase
 import com.pushup.domain.usecase.RecordRoutePointUseCase
+import com.pushup.domain.usecase.CreateRunEventUseCase
+import com.pushup.domain.usecase.RespondToRunEventUseCase
 import com.pushup.domain.usecase.SpendTimeCreditUseCase
+import com.pushup.domain.usecase.StartLiveRunSessionUseCase
 import com.pushup.domain.usecase.StartJoggingUseCase
 import com.pushup.domain.usecase.SaveJoggingSegmentsUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
+import com.pushup.domain.usecase.UpdateLiveRunPresenceUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
 import com.pushup.domain.usecase.auth.GetCurrentUserUseCase
 import com.pushup.domain.usecase.auth.LoginWithAppleUseCase
@@ -271,6 +290,42 @@ val repositoryModule: Module = module {
             clock = get(),
         )
     }
+
+    single<RunEventRepository> {
+        RunEventRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
+        )
+    }
+
+    single<LiveRunSessionRepository> {
+        LiveRunSessionRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            clock = get(),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
+        )
+    }
+
+    single<LiveRunPresenceRepository> {
+        LiveRunPresenceRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+            cloudSyncApi = getOrNull<CloudSyncApi>(),
+            networkMonitor = getOrNull<NetworkMonitor>(named(NETWORK_MONITOR)),
+        )
+    }
+
+    single<RunXpAwardRepository> {
+        RunXpAwardRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+        )
+    }
 }
 
 /**
@@ -334,6 +389,26 @@ val useCaseModule: Module = module {
     factory { GetWeeklyStatsUseCase(statsRepository = get()) }
     factory { GetMonthlyStatsUseCase(statsRepository = get()) }
     factory { GetTotalStatsUseCase(statsRepository = get()) }
+    factory { CreateRunEventUseCase(repository = get(), clock = get(), idGenerator = get()) }
+    factory { GetUpcomingRunEventsUseCase(repository = get()) }
+    factory { RespondToRunEventUseCase(repository = get()) }
+    factory { StartLiveRunSessionUseCase(repository = get(), clock = get(), idGenerator = get()) }
+    factory { JoinLiveRunSessionUseCase(repository = get(), clock = get(), idGenerator = get()) }
+    factory { LeaveLiveRunSessionUseCase(repository = get(), clock = get()) }
+    factory { FinishLiveRunSessionUseCase(repository = get(), clock = get()) }
+    factory { ObserveLiveRunSessionUseCase(sessionRepository = get(), presenceRepository = get()) }
+    factory { ObserveFriendsActiveRunsUseCase(repository = get()) }
+    factory { UpdateLiveRunPresenceUseCase(repository = get(), clock = get(), idGenerator = get()) }
+    factory {
+        AwardSocialRunXpUseCase(
+            liveRunSessionRepository = get(),
+            runXpAwardRepository = get(),
+            exerciseLevelRepository = get(),
+            levelRepository = get(),
+            clock = get(),
+            idGenerator = get(),
+        )
+    }
     factory { GetUserLevelUseCase(levelRepository = get()) }
     factory { AwardWorkoutXpUseCase(levelRepository = get(), exerciseLevelRepository = get()) }
     factory { GetExerciseLevelsUseCase(exerciseLevelRepository = get(), levelRepository = get()) }
@@ -361,6 +436,7 @@ val useCaseModule: Module = module {
             settingsRepository = get(),
             levelRepository = get(),
             exerciseLevelRepository = get(),
+            awardSocialRunXpUseCase = get(),
             clock = get(),
         )
     }

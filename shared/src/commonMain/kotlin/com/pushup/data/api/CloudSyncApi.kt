@@ -5,12 +5,26 @@ import com.pushup.data.api.dto.CreateJoggingSegmentRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.LiveJoggingStatusDTO
+import com.pushup.data.api.dto.LiveRunParticipantDTO
+import com.pushup.data.api.dto.LiveRunPresenceDTO
+import com.pushup.data.api.dto.LiveRunSessionDTO
+import com.pushup.data.api.dto.CreateLiveRunParticipantRequest
+import com.pushup.data.api.dto.CreateLiveRunSessionRequest
+import com.pushup.data.api.dto.CreateRunEventParticipantRequest
+import com.pushup.data.api.dto.CreateRunEventRequest
+import com.pushup.data.api.dto.RunEventDTO
+import com.pushup.data.api.dto.RunEventParticipantDTO
 import com.pushup.data.api.dto.SetUsernameRequest
+import com.pushup.data.api.dto.UpdateLiveRunParticipantRequest
+import com.pushup.data.api.dto.UpdateLiveRunSessionRequest
+import com.pushup.data.api.dto.UpdateRunEventParticipantRequest
+import com.pushup.data.api.dto.UpdateRunEventRequest
 import com.pushup.data.api.dto.UpdateJoggingSessionRequest
 import com.pushup.data.api.dto.UpdateTimeCreditRequest
 import com.pushup.data.api.dto.UpdateUserProfileRequest
 import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
 import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
+import com.pushup.data.api.dto.UpsertLiveRunPresenceRequest
 import com.pushup.data.api.dto.UpsertExerciseLevelRequest
 import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
@@ -247,4 +261,34 @@ interface CloudSyncApi {
      * Used to check which friends are currently running.
      */
     suspend fun getLiveJoggingStatuses(userIds: List<String>): List<LiveJoggingStatusDTO>
+
+    // =========================================================================
+    // Social Running
+    // =========================================================================
+
+    suspend fun getRunEvents(): List<RunEventDTO> = emptyList()
+    suspend fun getRunEvent(id: String): RunEventDTO? = null
+    suspend fun createRunEvent(request: CreateRunEventRequest): RunEventDTO? = null
+    suspend fun updateRunEvent(id: String, request: UpdateRunEventRequest): RunEventDTO? = null
+    suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> = emptyList()
+    suspend fun createRunEventParticipants(requests: List<CreateRunEventParticipantRequest>): List<RunEventParticipantDTO> = emptyList()
+    suspend fun updateRunEventParticipant(
+        eventId: String,
+        userId: String,
+        request: UpdateRunEventParticipantRequest,
+    ): RunEventParticipantDTO? = null
+
+    suspend fun getLiveRunSessions(): List<LiveRunSessionDTO> = emptyList()
+    suspend fun getLiveRunSession(id: String): LiveRunSessionDTO? = null
+    suspend fun createLiveRunSession(request: CreateLiveRunSessionRequest): LiveRunSessionDTO? = null
+    suspend fun updateLiveRunSession(id: String, request: UpdateLiveRunSessionRequest): LiveRunSessionDTO? = null
+    suspend fun getLiveRunParticipants(sessionId: String): List<LiveRunParticipantDTO> = emptyList()
+    suspend fun createLiveRunParticipants(requests: List<CreateLiveRunParticipantRequest>): List<LiveRunParticipantDTO> = emptyList()
+    suspend fun updateLiveRunParticipant(
+        sessionId: String,
+        userId: String,
+        request: UpdateLiveRunParticipantRequest,
+    ): LiveRunParticipantDTO? = null
+    suspend fun getLiveRunPresence(sessionId: String): List<LiveRunPresenceDTO> = emptyList()
+    suspend fun upsertLiveRunPresence(request: UpsertLiveRunPresenceRequest): LiveRunPresenceDTO? = null
 }

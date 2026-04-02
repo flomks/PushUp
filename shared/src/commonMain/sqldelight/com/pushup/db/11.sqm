@@ -1,0 +1,127 @@
+-- v12: Add social running event/session tables.
+
+CREATE TABLE RunEvent (
+    id                TEXT    NOT NULL PRIMARY KEY,
+    createdBy         TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    title             TEXT    NOT NULL,
+    description       TEXT,
+    mode              TEXT    NOT NULL CHECK (mode IN ('recovery', 'base', 'tempo', 'long_run', 'race')),
+    visibility        TEXT    NOT NULL CHECK (visibility IN ('private', 'friends', 'invite_only')),
+    plannedStartAt    INTEGER NOT NULL,
+    plannedEndAt      INTEGER,
+    checkInOpensAt    INTEGER NOT NULL,
+    status            TEXT    NOT NULL CHECK (status IN ('planned', 'check_in_open', 'live', 'completed', 'cancelled')),
+    locationName      TEXT,
+    createdAt         INTEGER NOT NULL,
+    updatedAt         INTEGER NOT NULL,
+    CHECK (plannedEndAt IS NULL OR plannedEndAt >= plannedStartAt),
+    CHECK (checkInOpensAt <= plannedStartAt)
+);
+
+CREATE INDEX idx_run_event_created_by ON RunEvent(createdBy);
+CREATE INDEX idx_run_event_planned_start_at ON RunEvent(plannedStartAt DESC);
+CREATE INDEX idx_run_event_status ON RunEvent(status);
+CREATE INDEX idx_run_event_visibility ON RunEvent(visibility);
+
+CREATE TABLE RunEventParticipant (
+    id            TEXT    NOT NULL PRIMARY KEY,
+    eventId       TEXT    NOT NULL REFERENCES RunEvent(id) ON DELETE CASCADE,
+    userId        TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    role          TEXT    NOT NULL DEFAULT 'member' CHECK (role IN ('organizer', 'member')),
+    status        TEXT    NOT NULL DEFAULT 'invited' CHECK (status IN ('invited', 'accepted', 'declined', 'checked_in')),
+    invitedBy     TEXT REFERENCES User(id) ON DELETE SET NULL,
+    invitedAt     INTEGER,
+    respondedAt   INTEGER,
+    checkedInAt   INTEGER,
+    createdAt     INTEGER NOT NULL,
+    updatedAt     INTEGER NOT NULL,
+    UNIQUE(eventId, userId)
+);
+
+CREATE INDEX idx_run_event_participant_event_id ON RunEventParticipant(eventId);
+CREATE INDEX idx_run_event_participant_user_id ON RunEventParticipant(userId);
+CREATE INDEX idx_run_event_participant_status ON RunEventParticipant(status);
+
+CREATE TABLE LiveRunSession (
+    id                  TEXT    NOT NULL PRIMARY KEY,
+    sourceType          TEXT    NOT NULL CHECK (sourceType IN ('planned', 'spontaneous')),
+    linkedEventId       TEXT REFERENCES RunEvent(id) ON DELETE SET NULL,
+    leaderUserId        TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    visibility          TEXT    NOT NULL DEFAULT 'friends' CHECK (visibility IN ('private', 'friends', 'invite_only')),
+    mode                TEXT    NOT NULL CHECK (mode IN ('recovery', 'base', 'tempo', 'long_run', 'race')),
+    state               TEXT    NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'cooldown', 'finished')),
+    startedAt           INTEGER NOT NULL,
+    cooldownStartedAt   INTEGER,
+    endedAt             INTEGER,
+    lastActivityAt      INTEGER NOT NULL,
+    maxEndsAt           INTEGER NOT NULL,
+    createdAt           INTEGER NOT NULL,
+    updatedAt           INTEGER NOT NULL,
+    CHECK (maxEndsAt >= startedAt)
+);
+
+CREATE INDEX idx_live_run_session_leader_user_id ON LiveRunSession(leaderUserId);
+CREATE INDEX idx_live_run_session_linked_event_id ON LiveRunSession(linkedEventId);
+CREATE INDEX idx_live_run_session_state ON LiveRunSession(state);
+CREATE INDEX idx_live_run_session_last_activity_at ON LiveRunSession(lastActivityAt DESC);
+
+CREATE TABLE LiveRunParticipant (
+    id              TEXT    NOT NULL PRIMARY KEY,
+    sessionId       TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    userId          TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    status          TEXT    NOT NULL DEFAULT 'joined' CHECK (status IN ('invited', 'joined', 'active', 'paused', 'finished', 'left')),
+    joinedAt        INTEGER NOT NULL,
+    becameActiveAt   INTEGER,
+    finishedAt      INTEGER,
+    leftAt          INTEGER,
+    isLeader        INTEGER NOT NULL DEFAULT 0 CHECK (isLeader IN (0, 1)),
+    createdAt       INTEGER NOT NULL,
+    updatedAt       INTEGER NOT NULL,
+    UNIQUE(sessionId, userId)
+);
+
+CREATE INDEX idx_live_run_participant_session_id ON LiveRunParticipant(sessionId);
+CREATE INDEX idx_live_run_participant_user_id ON LiveRunParticipant(userId);
+CREATE INDEX idx_live_run_participant_status ON LiveRunParticipant(status);
+CREATE INDEX idx_live_run_participant_is_leader ON LiveRunParticipant(sessionId, isLeader);
+
+CREATE TABLE LiveRunPresence (
+    id                      TEXT    NOT NULL PRIMARY KEY,
+    sessionId               TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    userId                  TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    presenceState           TEXT    NOT NULL DEFAULT 'active' CHECK (presenceState IN ('active', 'paused', 'disconnected', 'finished')),
+    lastSeenAt              INTEGER NOT NULL,
+    currentDistanceMeters   REAL    NOT NULL DEFAULT 0.0,
+    currentDurationSeconds  INTEGER NOT NULL DEFAULT 0,
+    currentPaceSecondsPerKm INTEGER,
+    currentLatitude         REAL,
+    currentLongitude        REAL,
+    updatedAt               INTEGER NOT NULL,
+    UNIQUE(sessionId, userId)
+);
+
+CREATE INDEX idx_live_run_presence_session_id ON LiveRunPresence(sessionId);
+CREATE INDEX idx_live_run_presence_user_id ON LiveRunPresence(userId);
+CREATE INDEX idx_live_run_presence_last_seen_at ON LiveRunPresence(lastSeenAt DESC);
+
+CREATE TABLE RunXpAward (
+    id               TEXT    NOT NULL PRIMARY KEY,
+    userId           TEXT    NOT NULL REFERENCES User(id) ON DELETE CASCADE,
+    sessionId        TEXT    NOT NULL REFERENCES LiveRunSession(id) ON DELETE CASCADE,
+    baseXp           INTEGER NOT NULL DEFAULT 0,
+    bonusType        TEXT    NOT NULL DEFAULT 'solo' CHECK (bonusType IN ('solo', 'crew', 'synced')),
+    bonusMultiplier  REAL    NOT NULL DEFAULT 1.0,
+    bonusXp          INTEGER NOT NULL DEFAULT 0,
+    totalXpAwarded   INTEGER NOT NULL DEFAULT 0,
+    awardedAt        INTEGER NOT NULL,
+    createdAt        INTEGER NOT NULL,
+    updatedAt        INTEGER NOT NULL,
+    UNIQUE(userId, sessionId),
+    CHECK (bonusMultiplier >= 1.0),
+    CHECK (baseXp >= 0 AND bonusXp >= 0 AND totalXpAwarded >= baseXp)
+);
+
+CREATE INDEX idx_run_xp_award_user_id ON RunXpAward(userId);
+CREATE INDEX idx_run_xp_award_session_id ON RunXpAward(sessionId);
+
+ALTER TABLE JoggingSession ADD COLUMN liveRunSessionId TEXT REFERENCES LiveRunSession(id) ON DELETE SET NULL;
