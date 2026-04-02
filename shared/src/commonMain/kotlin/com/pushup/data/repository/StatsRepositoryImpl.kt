@@ -2,7 +2,9 @@ package com.pushup.data.repository
 
 import com.pushup.data.api.KtorApiClient
 import com.pushup.data.mapper.toDomain
+import com.pushup.db.JoggingSession as DbJoggingSession
 import com.pushup.db.PushUpDatabase
+import com.pushup.db.WorkoutSession as DbWorkoutSession
 import com.pushup.domain.model.DailyStats
 import com.pushup.domain.model.MonthlyStats
 import com.pushup.domain.model.StreakCalculator
@@ -187,9 +189,9 @@ class StatsRepositoryImpl(
             dispatcher,
             "Failed to get total stats for user '$userId'",
         ) {
-            val sessions = queries.selectWorkoutSessionsByUserId(userId)
+            val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
                 .executeAsList()
-                .map { it.toDomain() }
+            val sessions = workoutRows.map { session -> session.toDomain() }
 
             if (sessions.isEmpty()) return@safeDbCall null
 
@@ -202,8 +204,9 @@ class StatsRepositoryImpl(
                 .map { sessionDate(it) }
                 .distinct()
 
-            val joggingDates = queries.selectJoggingSessionsByUserId(userId)
+            val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
+            val joggingDates = joggingRows
                 .filter { it.endedAt != null }
                 .map { Instant.fromEpochMilliseconds(it.startedAt)
                     .toLocalDateTime(timeZone).date }
@@ -248,11 +251,12 @@ class StatsRepositoryImpl(
     ): List<WorkoutSession> {
         val fromMs = from.atStartOfDayIn(timeZone).toEpochMilliseconds()
         val toMs = toExclusive.atStartOfDayIn(timeZone).toEpochMilliseconds()
-        return queries.selectWorkoutSessionsByDateRangeExclusive(
+        val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByDateRangeExclusive(
             userId = userId,
             startedAt = fromMs,
             startedAt_ = toMs,
-        ).executeAsList().map { it.toDomain() }
+        ).executeAsList()
+        return workoutRows.map { session -> session.toDomain() }
     }
 
     /**

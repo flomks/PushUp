@@ -1,7 +1,9 @@
 package com.pushup.data.repository
 
 import com.pushup.data.mapper.toDomain
+import com.pushup.db.JoggingSession as DbJoggingSession
 import com.pushup.db.PushUpDatabase
+import com.pushup.db.WorkoutSession as DbWorkoutSession
 import com.pushup.domain.model.ActivityDayStats
 import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.MonthlyActivitySummary
@@ -55,18 +57,20 @@ class ActivityStatsRepositoryImpl(
             val toMs = monthEnd.atStartOfDayIn(timeZone).toEpochMilliseconds()
 
             // Query workout sessions (push-ups) for this month
-            val workoutSessions = queries.selectWorkoutSessionsByDateRangeExclusive(
+            val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByDateRangeExclusive(
                 userId = userId,
                 startedAt = fromMs,
                 startedAt_ = toMs,
-            ).executeAsList().map { it.toDomain() }
+            ).executeAsList()
+            val workoutSessions = workoutRows.map { session -> session.toDomain() }
 
             // Query completed jogging sessions for this month
-            val joggingSessions = queries.selectCompletedJoggingSessionsByDateRange(
+            val joggingRows: List<DbJoggingSession> = queries.selectCompletedJoggingSessionsByDateRange(
                 userId = userId,
                 fromMs = fromMs,
                 toMs = toMs,
-            ).executeAsList().map { it.toDomain() }
+            ).executeAsList()
+            val joggingSessions = joggingRows.map { session -> session.toDomain() }
 
             // Group workout sessions by date
             val workoutByDate = workoutSessions.groupBy { session ->
@@ -124,15 +128,17 @@ class ActivityStatsRepositoryImpl(
 
             // Get distinct workout dates by querying all completed sessions
             // and extracting dates in Kotlin (avoids SQLite date() type issues)
-            val workoutDates = queries.selectWorkoutSessionsByUserId(userId)
+            val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
                 .executeAsList()
+            val workoutDates = workoutRows
                 .filter { it.endedAt != null }
                 .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
                 .distinct()
 
             // Get distinct jogging dates
-            val joggingDates = queries.selectJoggingSessionsByUserId(userId)
+            val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
+            val joggingDates = joggingRows
                 .filter { it.endedAt != null }
                 .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
                 .distinct()
