@@ -275,7 +275,7 @@ final class JoggingViewModel: ObservableObject {
                         return
                     }
                     self.isInvitingToLiveRun = false
-                    self.plannedRunStatusMessage = success ? "Live run invite sent." : "Failed to invite runner."
+                    self.plannedRunStatusMessage = success.boolValue ? "Live run invite sent." : "Failed to invite runner."
                     Task {
                         await self.loadRunSocialData()
                     }
@@ -465,7 +465,8 @@ final class JoggingViewModel: ObservableObject {
             return
         }
 
-        guard let userId = currentUserId ?? (await AuthService.shared.getCurrentUser()?.id) else {
+        let resolvedUserId = currentUserId ?? (await AuthService.shared.getCurrentUser())?.id
+        guard let userId = resolvedUserId else {
             phase = .active
             UIApplication.shared.isIdleTimerDisabled = true
             trackingManager.startTracking()
@@ -602,7 +603,7 @@ final class JoggingViewModel: ObservableObject {
                     return
                 }
                 self.isUpdatingUpcomingRun = false
-                self.plannedRunStatusMessage = success
+                self.plannedRunStatusMessage = success.boolValue
                     ? (accept ? "Joined planned run." : "Declined planned run.")
                     : "Failed to update planned run."
                 Task { await self.refreshRunOptions() }
@@ -623,7 +624,7 @@ final class JoggingViewModel: ObservableObject {
                     return
                 }
                 self.isUpdatingUpcomingRun = false
-                self.plannedRunStatusMessage = success ? "Checked in for planned run." : "Failed to check in."
+                self.plannedRunStatusMessage = success.boolValue ? "Checked in for planned run." : "Failed to check in."
                 Task { await self.refreshRunOptions() }
                 continuation.resume()
             }
@@ -655,7 +656,7 @@ final class JoggingViewModel: ObservableObject {
     private func joinSelectedLiveRun(sessionId: String, userId: String) async -> String? {
         await withCheckedContinuation { continuation in
             DataBridge.shared.joinLiveRunSession(sessionId: sessionId, userId: userId) { success in
-                continuation.resume(returning: success ? sessionId : nil)
+                continuation.resume(returning: success.boolValue ? sessionId : nil)
             }
         }
     }
@@ -741,13 +742,14 @@ final class JoggingViewModel: ObservableObject {
               let sessionId = selectedLiveRunSessionId,
               let userId = currentUserId else { return }
         let location = routeLocations.last
+        let paceSecondsPerKm: Int32? = currentPaceSecondsPerKm.map { Int32($0) }
         DataBridge.shared.updateLiveRunPresence(
             sessionId: sessionId,
             userId: userId,
             state: isPaused ? "PAUSED" : "ACTIVE",
             distanceMeters: distanceMeters,
             durationSeconds: Int64(activeDuration),
-            paceSecondsPerKm: currentPaceSecondsPerKm.map(Int32.init),
+            paceSecondsPerKm: paceSecondsPerKm,
             latitude: location?.coordinate.latitude,
             longitude: location?.coordinate.longitude
         ) { _ in }
@@ -885,7 +887,7 @@ final class JoggingViewModel: ObservableObject {
                     return
                 }
                 self.isLeavingLiveRun = false
-                if success {
+                if success.boolValue {
                     self.stopPresenceHeartbeat()
                     self.stopActiveSessionRefreshLoop()
                     self.liveRunObservationJob?.cancel(cause: nil)
