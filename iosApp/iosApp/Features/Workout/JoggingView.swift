@@ -69,125 +69,237 @@ struct JoggingView: View {
     private var idleView: some View {
         ScrollView {
             VStack(spacing: AppSpacing.md) {
-                // Back button
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        HStack(spacing: AppSpacing.xs) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Back")
-                                .font(AppTypography.bodySemibold)
-                        }
-                        .foregroundStyle(AppColors.textSecondary)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.vertical, AppSpacing.sm)
-                        .background(.ultraThinMaterial, in: Capsule())
-                    }
-                    Spacer()
-                }
-                .padding(.top, AppSpacing.md)
+                idleTopBar
+                    .padding(.top, AppSpacing.md)
 
-                // Hero
-                Card {
-                    VStack(spacing: AppSpacing.sm) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [AppColors.info, AppColors.info.opacity(0.7)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 90, height: 90)
-
-                            Image(icon: .figureRun)
-                                .font(.system(size: 44, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .symbolRenderingMode(.hierarchical)
-                        }
-
-                        Text("Running Dashboard")
-                            .font(AppTypography.title3)
-                            .foregroundStyle(AppColors.textPrimary)
-
-                        Text("Track your route, progress, and pace. Earn 1 min per km.")
-                            .font(AppTypography.subheadline)
-                            .foregroundStyle(AppColors.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-
+                runningHubHero
+                runLaunchCard
                 runningHighlightsCard
                 runningPersonalBestCard
                 recentRunsCard
-
-                if !viewModel.hasLocationPermission {
-                    VStack(spacing: AppSpacing.md) {
-                        HStack(spacing: AppSpacing.sm) {
-                            Image(systemName: "location.fill")
-                                .foregroundStyle(AppColors.warning)
-                            Text("Location access required")
-                                .font(AppTypography.subheadlineSemibold)
-                                .foregroundStyle(AppColors.textPrimary)
-                        }
-
-                        Button {
-                            viewModel.requestLocationPermission()
-                        } label: {
-                            Text("Grant Location Access")
-                                .font(AppTypography.bodySemibold)
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, AppSpacing.md)
-                                .background(AppColors.info, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
-                        }
-                    }
-                    .padding(AppSpacing.md)
-                    .background(AppColors.backgroundSecondary)
-                    .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-                }
-
-                Button {
-                    viewModel.startWorkout()
-                } label: {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 20))
-                        Text("Start Run")
-                            .font(AppTypography.title3)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.lg)
-                    .background(
-                        LinearGradient(
-                            colors: [AppColors.info, AppColors.info.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                    )
-                    .shadow(color: AppColors.info.opacity(0.4), radius: 12, x: 0, y: 6)
-                }
-                .disabled(!viewModel.hasLocationPermission)
-                .opacity(viewModel.hasLocationPermission ? 1 : 0.6)
-                .padding(.top, AppSpacing.xs)
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
     }
 
+    private var idleTopBar: some View {
+        HStack(alignment: .center) {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: AppSpacing.xs) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Training")
+                        .font(AppTypography.bodySemibold)
+                }
+                .foregroundStyle(AppColors.textSecondary)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+                .background(AppColors.backgroundSecondary, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            HStack(spacing: AppSpacing.xs) {
+                Image(systemName: "figure.run")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Run Hub")
+                    .font(AppTypography.captionSemibold)
+            }
+            .foregroundStyle(AppColors.info)
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.xs)
+            .background(AppColors.info.opacity(0.10), in: Capsule())
+        }
+    }
+
+    private var runningHubHero: some View {
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge + 4)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.97, green: 0.40, blue: 0.22),
+                            Color(red: 0.90, green: 0.18, blue: 0.28),
+                            Color(red: 0.26, green: 0.08, blue: 0.14)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(alignment: .topTrailing) {
+                    Circle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 180, height: 180)
+                        .blur(radius: 8)
+                        .offset(x: 48, y: -36)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        .frame(width: 170, height: 170)
+                        .offset(x: 44, y: 50)
+                }
+
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                        Text("RUNNING")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .tracking(2)
+
+                        Text("Your next run starts here.")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.14))
+                            .frame(width: 58, height: 58)
+
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+                Text("Built for route tracking, pace control, and repeatable progress. This is the core running surface for the app going forward.")
+                    .font(AppTypography.body)
+                    .foregroundStyle(Color.white.opacity(0.82))
+
+                HStack(spacing: AppSpacing.sm) {
+                    heroMetricPill(
+                        title: "This Week",
+                        value: formatDistance(viewModel.dashboard.weekDistanceMeters)
+                    )
+                    heroMetricPill(
+                        title: "Runs",
+                        value: "\(viewModel.dashboard.weekRuns)"
+                    )
+                    heroMetricPill(
+                        title: "Avg Pace",
+                        value: formatPace(viewModel.dashboard.averagePaceSecondsPerKm)
+                    )
+                }
+            }
+            .padding(AppSpacing.xl)
+        }
+        .frame(minHeight: 270)
+    }
+
+    private var runLaunchCard: some View {
+        VStack(spacing: AppSpacing.md) {
+            HStack(alignment: .top, spacing: AppSpacing.md) {
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    Text("Quick Start")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Text(
+                        viewModel.hasLocationPermission
+                        ? "GPS is ready. Start a run, invite others, or jump into music before you move."
+                        : "Allow location first so distance, pace, route, and earned time can be tracked correctly."
+                    )
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Text("+1 min / km")
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(AppColors.info)
+                    .padding(.horizontal, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(AppColors.info.opacity(0.10), in: Capsule())
+            }
+
+            if !viewModel.hasLocationPermission {
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(AppColors.warning)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Location access required")
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+                        Text("Without location, running metrics and route capture cannot start.")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(AppSpacing.md)
+                .background(AppColors.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            }
+
+            Button {
+                if viewModel.hasLocationPermission {
+                    viewModel.startWorkout()
+                } else {
+                    viewModel.requestLocationPermission()
+                }
+            } label: {
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: viewModel.hasLocationPermission ? "play.fill" : "location.fill")
+                        .font(.system(size: 18, weight: .bold))
+                    Text(viewModel.hasLocationPermission ? "Start Run" : "Enable Location")
+                        .font(AppTypography.title3)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.lg)
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.98, green: 0.42, blue: 0.18),
+                            Color(red: 0.91, green: 0.20, blue: 0.18)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+                )
+                .shadow(color: Color(red: 0.95, green: 0.32, blue: 0.20).opacity(0.28), radius: 18, x: 0, y: 10)
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: AppSpacing.sm) {
+                quickRunAction(
+                    title: "Crew",
+                    subtitle: "\(viewModel.runParticipants.count) ready",
+                    icon: "person.2.fill"
+                ) {
+                    showParticipantsSheet = true
+                }
+
+                quickRunAction(
+                    title: "Music",
+                    subtitle: "Open player",
+                    icon: "music.note"
+                ) {
+                    openMusicApp()
+                }
+            }
+        }
+        .padding(AppSpacing.lg)
+        .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+    }
+
     private var runningHighlightsCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Label("This Week", icon: .chartBar)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                sectionEyebrow(title: "Weekly Flow", subtitle: "Your current running rhythm")
 
                 HStack(spacing: AppSpacing.sm) {
                     statItem(
@@ -212,10 +324,8 @@ struct JoggingView: View {
 
     private var runningPersonalBestCard: some View {
         Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Label("Personal Best", icon: .starFill)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionEyebrow(title: "Personal Bests", subtitle: "Benchmarks you can beat")
 
                 summaryRow(
                     icon: "flag.fill",
@@ -238,37 +348,27 @@ struct JoggingView: View {
 
     private var recentRunsCard: some View {
         Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Label("Recent Runs", icon: .clockArrowCirclepath)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionEyebrow(title: "Recent Runs", subtitle: "Your latest sessions")
 
                 if viewModel.dashboard.recentRuns.isEmpty {
-                    Text("No runs yet. Start your first run to build your progress.")
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                    VStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "figure.run.circle")
+                            .font(.system(size: 34, weight: .light))
+                            .foregroundStyle(AppColors.textTertiary)
+                        Text("No runs yet")
+                            .font(AppTypography.subheadlineSemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+                        Text("Start your first run to begin building your route history, pacing trends, and weekly volume.")
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.xl)
                 } else {
                     ForEach(viewModel.dashboard.recentRuns) { run in
-                        HStack(spacing: AppSpacing.sm) {
-                            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                                Text(Self.shortDateFormatter.string(from: run.date))
-                                    .font(AppTypography.captionSemibold)
-                                    .foregroundStyle(AppColors.textPrimary)
-                                Text(formatDurationSeconds(run.durationSeconds))
-                                    .font(AppTypography.caption2)
-                                    .foregroundStyle(AppColors.textSecondary)
-                            }
-
-                            Spacer()
-
-                            Text(formatDistance(run.distanceMeters))
-                                .font(AppTypography.bodySemibold)
-                                .foregroundStyle(AppColors.textPrimary)
-
-                            Text(formatPace(run.avgPaceSecondsPerKm))
-                                .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
-                        }
+                        recentRunRow(run)
                         if run.id != viewModel.dashboard.recentRuns.last?.id {
                             Divider()
                         }
@@ -925,7 +1025,7 @@ struct JoggingView: View {
         VStack(spacing: AppSpacing.xxs) {
             Image(systemName: icon)
                 .font(.system(size: 16))
-                .foregroundStyle(AppColors.info)
+                .foregroundStyle(Color(red: 0.95, green: 0.33, blue: 0.19))
 
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -940,8 +1040,124 @@ struct JoggingView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.sm)
-        .background(AppColors.backgroundPrimary.opacity(0.5))
+        .background(
+            LinearGradient(
+                colors: [
+                    AppColors.backgroundPrimary.opacity(0.92),
+                    AppColors.backgroundPrimary.opacity(0.72)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+    }
+
+    private func heroMetricPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.62))
+                .tracking(1.5)
+
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+    }
+
+    private func quickRunAction(
+        title: String,
+        subtitle: String,
+        icon: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(AppColors.info.opacity(0.10))
+                        .frame(width: 38, height: 38)
+
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppColors.info)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text(subtitle)
+                        .font(AppTypography.caption2)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+
+                Spacer()
+            }
+            .padding(AppSpacing.md)
+            .background(AppColors.backgroundPrimary.opacity(0.65), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionEyebrow(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(AppTypography.headline)
+                .foregroundStyle(AppColors.textPrimary)
+            Text(subtitle)
+                .font(AppTypography.caption1)
+                .foregroundStyle(AppColors.textSecondary)
+        }
+    }
+
+    private func recentRunRow(_ run: RunningDashboardData.RecentRun) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.95, green: 0.33, blue: 0.19).opacity(0.10))
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: "figure.run")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.95, green: 0.33, blue: 0.19))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Self.shortDateFormatter.string(from: run.date))
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                HStack(spacing: AppSpacing.xs) {
+                    Text(formatDurationSeconds(run.durationSeconds))
+                    Text("•")
+                    Text("+\(run.earnedMinutes)m")
+                }
+                .font(AppTypography.caption2)
+                .foregroundStyle(AppColors.textSecondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(formatDistance(run.distanceMeters))
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Text(formatPace(run.avgPaceSecondsPerKm))
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private var speedValueDisplay: String {
