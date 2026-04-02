@@ -15,6 +15,7 @@ import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -201,9 +202,12 @@ class StatsRepositoryImpl(
                 .map { sessionDate(it) }
                 .distinct()
 
-            val joggingDates = queries.selectDistinctJoggingDates(userId)
+            val joggingDates = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
-                .mapNotNull { it.sessionDate?.let(kotlinx.datetime.LocalDate::parse) }
+                .filter { it.endedAt != null }
+                .map { Instant.fromEpochMilliseconds(it.startedAt)
+                    .toLocalDateTime(timeZone).date }
+                .distinct()
 
             val allDates = (workoutDates + joggingDates).distinct().sorted()
 

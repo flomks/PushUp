@@ -771,10 +771,10 @@ WHERE sessionId = ?;
 -- =============================================================================
 
 -- Completed jogging sessions within a date range (exclusive upper bound).
-selectJoggingSessionsByDateRangeExclusive:
+selectCompletedJoggingSessionsByDateRange:
 SELECT *
 FROM JoggingSession
-WHERE userId = ? AND startedAt >= ? AND startedAt < ? AND endedAt IS NOT NULL
+WHERE userId = :userId AND startedAt >= :fromMs AND startedAt < :toMs AND endedAt IS NOT NULL
 ORDER BY startedAt DESC;
 
 -- Distinct workout dates (for unified streak calculation).

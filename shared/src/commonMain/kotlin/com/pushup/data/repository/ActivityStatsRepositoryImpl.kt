@@ -11,6 +11,7 @@ import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.datetime.Clock
 import kotlinx.datetime.DateTimeUnit
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
@@ -20,18 +21,9 @@ import kotlinx.datetime.toLocalDateTime
 /**
  * Local-first implementation of [ActivityStatsRepository].
  *
- * Merges data from [WorkoutSession] (push-ups) and [JoggingSession] tables
+ * Merges data from WorkoutSession (push-ups) and JoggingSession tables
  * to produce unified activity statistics for heatmap rendering and streak
  * calculation.
- *
- * ## Data source strategy for heatmap
- * 1. Query both WorkoutSession and JoggingSession tables for the month.
- * 2. Group by date and merge into [ActivityDayStats] entries.
- * 3. Fill in zero-activity days so the UI gets a complete calendar grid.
- *
- * ## Streak calculation
- * Queries distinct dates from both tables, merges them, and delegates
- * to [StreakCalculator] for the actual computation.
  */
 class ActivityStatsRepositoryImpl(
     private val database: PushUpDatabase,
@@ -69,11 +61,11 @@ class ActivityStatsRepositoryImpl(
                 startedAt_ = toMs,
             ).executeAsList().map { it.toDomain() }
 
-            // Query jogging sessions for this month
-            val joggingSessions = queries.selectJoggingSessionsByDateRangeExclusive(
+            // Query completed jogging sessions for this month
+            val joggingSessions = queries.selectCompletedJoggingSessionsByDateRange(
                 userId = userId,
-                startedAt = fromMs,
-                startedAt_ = toMs,
+                fromMs = fromMs,
+                toMs = toMs,
             ).executeAsList().map { it.toDomain() }
 
             // Group workout sessions by date
@@ -130,15 +122,20 @@ class ActivityStatsRepositoryImpl(
         ) {
             val today = clock.now().toLocalDateTime(timeZone).date
 
-            // Get distinct workout dates
-            val workoutDates = queries.selectDistinctWorkoutDates(userId)
+            // Get distinct workout dates by querying all completed sessions
+            // and extracting dates in Kotlin (avoids SQLite date() type issues)
+            val workoutDates = queries.selectWorkoutSessionsByUserId(userId)
                 .executeAsList()
-                .mapNotNull { it.sessionDate?.let(LocalDate::parse) }
+                .filter { it.endedAt != null }
+                .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
+                .distinct()
 
             // Get distinct jogging dates
-            val joggingDates = queries.selectDistinctJoggingDates(userId)
+            val joggingDates = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
-                .mapNotNull { it.sessionDate?.let(LocalDate::parse) }
+                .filter { it.endedAt != null }
+                .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
+                .distinct()
 
             // Merge, deduplicate, sort
             val allDates = (workoutDates + joggingDates).distinct().sorted()
