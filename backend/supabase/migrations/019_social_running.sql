@@ -181,12 +181,6 @@ BEGIN
 END;
 $$;
 
-ALTER TABLE public.jogging_sessions
-  ADD COLUMN IF NOT EXISTS live_run_session_id UUID REFERENCES public.live_run_sessions(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS idx_jogging_sessions_live_run_session_id
-  ON public.jogging_sessions(live_run_session_id);
-
 CREATE TABLE IF NOT EXISTS public.live_run_sessions (
   id                UUID                  PRIMARY KEY DEFAULT gen_random_uuid(),
   source_type       public.live_run_source_type NOT NULL DEFAULT 'spontaneous',
@@ -204,6 +198,12 @@ CREATE TABLE IF NOT EXISTS public.live_run_sessions (
   updated_at        TIMESTAMPTZ           NOT NULL DEFAULT NOW(),
   CONSTRAINT live_run_sessions_time_window CHECK (max_ends_at >= started_at)
 );
+
+ALTER TABLE public.jogging_sessions
+  ADD COLUMN IF NOT EXISTS live_run_session_id UUID REFERENCES public.live_run_sessions(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_jogging_sessions_live_run_session_id
+  ON public.jogging_sessions(live_run_session_id);
 
 CREATE INDEX IF NOT EXISTS idx_live_run_sessions_leader_user_id
   ON public.live_run_sessions(leader_user_id);
