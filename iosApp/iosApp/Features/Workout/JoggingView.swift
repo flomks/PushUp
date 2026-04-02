@@ -1503,7 +1503,7 @@ struct JoggingView: View {
                                                 .buttonStyle(.plain)
                                             }
                                         } else if let status = run.status {
-                                            Text("Status: \(status.replacingOccurrences(of: \"_\", with: \" \").capitalized)")
+                                            Text(verbatim: "Status: " + status.replacingOccurrences(of: "_", with: " ").capitalized)
                                                 .font(AppTypography.caption1)
                                                 .foregroundStyle(AppColors.textSecondary)
                                         }
