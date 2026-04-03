@@ -1695,6 +1695,7 @@ struct JoggingView: View {
                         spotifyConnectionHeader
                         nowPlayingCard
                         playbackControls
+                        runModeSelector
                         if viewModel.jamActive || viewModel.selectedLiveRunSessionId != nil {
                             runJamCard
                         }
@@ -1915,6 +1916,171 @@ struct JoggingView: View {
             }
             .frame(height: 100)
             .drawingGroup()         // render in a single Metal pass
+        }
+    }
+
+    // MARK: - Run Mode Selector
+
+    private var runModeSelector: some View {
+        let spotifyGreen = Color(red: 0.13, green: 0.81, blue: 0.41)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            Text("Run Mode")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+
+            // Horizontal pill selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(RunAudioMode.allCases) { mode in
+                        let isSelected = viewModel.selectedAudioMode == mode
+                        Button {
+                            viewModel.selectedAudioMode = mode
+                            viewModel.applyCurrentModePreset()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: runModeIcon(for: mode))
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(mode.rawValue)
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(isSelected ? .black : .white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                isSelected ? spotifyGreen : Color.white.opacity(0.08),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Current track / loading
+            if viewModel.isLoadingModeQueue {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(spotifyGreen)
+                    Text("Finding tracks...")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else if !viewModel.modeQueue.isEmpty {
+                // Queue list — show up to 5 upcoming tracks
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.modeQueue.enumerated().prefix(5)), id: \.element.id) { index, track in
+                        let isCurrent = index == viewModel.modeQueueIndex
+                        Button {
+                            viewModel.playFromModeQueue(at: index)
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(isCurrent ? spotifyGreen.opacity(0.2) : Color.white.opacity(0.06))
+                                        .frame(width: 36, height: 36)
+
+                                    if isCurrent && viewModel.spotifyIsPlaying {
+                                        Image(systemName: "waveform")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(spotifyGreen)
+                                            .symbolEffect(.variableColor.iterative, isActive: true)
+                                    } else {
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                                            .foregroundStyle(isCurrent ? spotifyGreen : Color.white.opacity(0.3))
+                                    }
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(track.title)
+                                        .font(.system(size: 14, weight: isCurrent ? .bold : .semibold, design: .rounded))
+                                        .foregroundStyle(isCurrent ? .white : Color.white.opacity(0.7))
+                                        .lineLimit(1)
+
+                                    Text(track.artist)
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundStyle(Color.white.opacity(0.4))
+                                        .lineLimit(1)
+                                }
+
+                                Spacer()
+
+                                if isCurrent {
+                                    Image(systemName: "play.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(spotifyGreen)
+                                }
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 14)
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < min(viewModel.modeQueue.count, 5) - 1 {
+                            Divider()
+                                .background(Color.white.opacity(0.06))
+                                .padding(.leading, 62)
+                        }
+                    }
+                }
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                // Fallback: show current preset track
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(viewModel.currentTrack.title)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+
+                        Text(viewModel.currentTrack.vibe)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(spotifyGreen.opacity(0.8))
+                    }
+
+                    Spacer()
+
+                    if viewModel.spotifyConnected {
+                        Button {
+                            viewModel.applyCurrentModePreset()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wand.and.stars")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("Generate")
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                            }
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(spotifyGreen, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+        .padding(20)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private func runModeIcon(for mode: RunAudioMode) -> String {
+        switch mode {
+        case .recovery: return "wind"
+        case .base: return "figure.run"
+        case .tempo: return "metronome.fill"
+        case .longRun: return "road.lanes"
+        case .race: return "bolt.fill"
         }
     }
 
