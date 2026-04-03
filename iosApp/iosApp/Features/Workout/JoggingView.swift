@@ -166,7 +166,7 @@ struct JoggingView: View {
                         Text("Your next run starts here.")
                             .font(.system(size: 34, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
-                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer(minLength: 12)
@@ -181,6 +181,7 @@ struct JoggingView: View {
                             .foregroundStyle(.white)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
 
                 Text("Built for route tracking, pace control, and repeatable progress. This is the core running surface for the app going forward.")
                     .font(AppTypography.body)
