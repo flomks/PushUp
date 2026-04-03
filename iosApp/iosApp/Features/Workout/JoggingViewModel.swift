@@ -97,7 +97,21 @@ private struct SpotifyArtistResponse: Decodable {
 }
 
 private struct SpotifyDeviceResponse: Decodable {
+    let id: String?
     let name: String
+    let isActive: Bool
+    let isRestricted: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case isActive = "is_active"
+        case isRestricted = "is_restricted"
+    }
+}
+
+private struct SpotifyAvailableDevicesResponse: Decodable {
+    let devices: [SpotifyDeviceResponse]
 }
 
 // MARK: - Recommendations API Response
@@ -144,15 +158,15 @@ struct RunModeAudioParams {
     static func params(for mode: RunAudioMode) -> RunModeAudioParams {
         switch mode {
         case .recovery:
-            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "pop"])
+            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "ambient", "chill", "pop"])
         case .base:
-            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "pop"])
+            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "house", "pop", "electro"])
         case .tempo:
-            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["edm", "dance"])
+            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["edm", "dance", "electro", "techno"])
         case .longRun:
-            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "pop"])
+            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "indie", "pop", "alt-rock"])
         case .race:
-            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["edm", "rock"])
+            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["edm", "techno", "rock", "electro"])
         }
     }
 }
@@ -287,8 +301,8 @@ final class SpotifyService: NSObject {
 
     /// Fetches recommended tracks from Spotify based on the given audio parameters.
     func fetchRecommendations(params: RunModeAudioParams, limit: Int = 20) async throws -> [SpotifyRecommendedRunTrack] {
-        let trackSeeds = Array(try await fetchSeedTrackIDs().prefix(2))
-        let primaryGenres = Array(params.genreSeeds.prefix(trackSeeds.isEmpty ? 2 : 1))
+        let trackSeeds = Array(try await fetchSeedTrackIDs(limit: 10).shuffled().prefix(2))
+        let primaryGenres = Array(params.genreSeeds.shuffled().prefix(trackSeeds.isEmpty ? 2 : 1))
         let variants = [
             recommendationQueryItems(
                 params: params,
@@ -326,7 +340,7 @@ final class SpotifyService: NSObject {
                         uri: track.uri
                     )
                 }
-                let deduplicated = Array(Dictionary(grouping: mapped, by: \.uri).compactMap { $0.value.first })
+                let deduplicated = Array(Dictionary(grouping: mapped, by: \.uri).compactMap { $0.value.first }).shuffled()
                 if !deduplicated.isEmpty {
                     return deduplicated
                 }
@@ -344,7 +358,8 @@ final class SpotifyService: NSObject {
 
     /// Starts playback of a specific track URI on the user's active device.
     func playTrack(uri: String) async throws {
-        var request = try await authorizedRequest(path: "/v1/me/player/play")
+        let deviceID = try await ensurePlaybackDevice()
+        var request = try await authorizedRequest(path: "/v1/me/player/play?device_id=\(deviceID)")
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["uris": [uri]]
@@ -359,13 +374,61 @@ final class SpotifyService: NSObject {
     /// Queues a track URI to play next.
     func addToQueue(uri: String) async throws {
         let encoded = uri.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? uri
-        var request = try await authorizedRequest(path: "/v1/me/player/queue?uri=\(encoded)")
+        let deviceID = try await ensurePlaybackDevice()
+        var request = try await authorizedRequest(path: "/v1/me/player/queue?uri=\(encoded)&device_id=\(deviceID)")
         request.httpMethod = "POST"
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
             let msg = String(data: data, encoding: .utf8) ?? ""
             throw NSError(domain: "SpotifyService", code: 25, userInfo: [NSLocalizedDescriptionKey: "Queue failed: \(msg)"])
         }
+    }
+
+    private func fetchAvailableDevices() async throws -> [SpotifyDeviceResponse] {
+        let request = try await authorizedRequest(path: "/v1/me/player/devices")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        let payload = try JSONDecoder().decode(SpotifyAvailableDevicesResponse.self, from: data)
+        return payload.devices
+    }
+
+    private func transferPlayback(to deviceID: String, play: Bool) async throws {
+        var request = try await authorizedRequest(path: "/v1/me/player")
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "device_ids": [deviceID],
+            "play": play
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "SpotifyService", code: 28, userInfo: [NSLocalizedDescriptionKey: "Transfer playback failed: \(body)"])
+        }
+    }
+
+    private func ensurePlaybackDevice() async throws -> String {
+        let devices = try await fetchAvailableDevices()
+
+        if let active = devices.first(where: { $0.isActive && !($0.isRestricted ?? false) }),
+           let deviceID = active.id,
+           !deviceID.isEmpty {
+            return deviceID
+        }
+
+        if let candidate = devices.first(where: { !($0.isRestricted ?? false) }),
+           let deviceID = candidate.id,
+           !deviceID.isEmpty {
+            try await transferPlayback(to: deviceID, play: false)
+            return deviceID
+        }
+
+        throw NSError(
+            domain: "SpotifyService",
+            code: 29,
+            userInfo: [NSLocalizedDescriptionKey: "No Spotify playback device is available. Open Spotify on your phone or another device first."]
+        )
     }
 
     // MARK: - Playback Controls (Web API)
@@ -901,6 +964,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var spotifyAccountName: String?
     @Published private(set) var spotifyProductTier: String?
     @Published private(set) var spotifyPlaybackLabel: String = "No playback detected"
+    @Published private(set) var spotifyGeneratorStatusMessage: String?
     @Published private(set) var spotifyNowPlayingTitle: String?
     @Published private(set) var spotifyNowPlayingArtist: String?
     @Published private(set) var spotifyIsPlaying: Bool = false
@@ -1180,8 +1244,10 @@ final class JoggingViewModel: ObservableObject {
     func applyCurrentModePreset() {
         guard spotifyConnected else {
             applyTrackPresetForMode()
+            spotifyGeneratorStatusMessage = "Connect Spotify to generate a dynamic run queue."
             return
         }
+        spotifyGeneratorStatusMessage = "Generating \(selectedAudioMode.rawValue) tracks..."
         Task { await loadModeRecommendations() }
     }
 
@@ -1524,6 +1590,7 @@ final class JoggingViewModel: ObservableObject {
         switch result {
         case .connected:
             plannedRunStatusMessage = "Spotify connected for your next run."
+            spotifyGeneratorStatusMessage = "Spotify connected. Generate a fresh run queue."
             await refreshSpotifyDetailsIfNeeded()
             if phase == .active {
                 startSpotifyRefreshLoop()
@@ -1532,8 +1599,10 @@ final class JoggingViewModel: ObservableObject {
             plannedRunStatusMessage = spotifyAppInstalled
                 ? "Opened Spotify. Add SpotifyClientID to enable in-app auth."
                 : "Opened Spotify on the web. Add SpotifyClientID to enable in-app auth."
+            spotifyGeneratorStatusMessage = plannedRunStatusMessage
         case .unavailable(let message):
             plannedRunStatusMessage = message
+            spotifyGeneratorStatusMessage = message
         }
     }
 
@@ -1963,6 +2032,7 @@ final class JoggingViewModel: ObservableObject {
             modeQueue = tracks
             modeQueueIndex = 0
             plannedRunStatusMessage = "Loaded \(tracks.count) Spotify tracks for \(selectedAudioMode.rawValue)."
+            spotifyGeneratorStatusMessage = "Loaded \(tracks.count) tracks for \(selectedAudioMode.rawValue)."
 
             // Update the currentTrack display from the first recommendation
             if let first = tracks.first {
@@ -1979,6 +2049,7 @@ final class JoggingViewModel: ObservableObject {
             modeQueueIndex = 0
             applyTrackPresetForMode()
             plannedRunStatusMessage = "Spotify generator failed: \(error.localizedDescription)"
+            spotifyGeneratorStatusMessage = "Spotify generator failed: \(error.localizedDescription)"
         }
     }
 
@@ -1991,6 +2062,7 @@ final class JoggingViewModel: ObservableObject {
 
         do {
             try await spotifyService.playTrack(uri: track.uri)
+            spotifyGeneratorStatusMessage = "Playing \(track.title) on Spotify."
 
             // Pre-queue the next 2 tracks for gapless playback
             for offset in 1...2 {
@@ -2008,6 +2080,7 @@ final class JoggingViewModel: ObservableObject {
             plannedRunStatusMessage = opened
                 ? "Playback handoff sent to Spotify for \(track.title)."
                 : "Could not start playback. Open Spotify on an active device and try again."
+            spotifyGeneratorStatusMessage = plannedRunStatusMessage
         }
     }
 

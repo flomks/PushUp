@@ -1986,6 +1986,29 @@ struct JoggingView: View {
                 }
             }
 
+            if let status = viewModel.spotifyGeneratorStatusMessage, !status.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: status.localizedCaseInsensitiveContains("failed") || status.localizedCaseInsensitiveContains("could not")
+                          ? "exclamationmark.triangle.fill"
+                          : "info.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(
+                            status.localizedCaseInsensitiveContains("failed") || status.localizedCaseInsensitiveContains("could not")
+                                ? Color.orange
+                                : spotifyGreen
+                        )
+
+                    Text(status)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .multilineTextAlignment(.leading)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
             // Current track / loading
             if viewModel.isLoadingModeQueue {
                 HStack(spacing: 10) {
