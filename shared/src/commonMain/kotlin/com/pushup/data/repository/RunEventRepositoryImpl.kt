@@ -162,21 +162,39 @@ class RunEventRepositoryImpl(
     ) {
         database.transaction {
             ensureLocalUsersExist(event, participants)
-            queries.insertRunEvent(
-                id = event.id,
-                createdBy = event.createdBy,
-                title = event.title,
-                description = event.description,
-                mode = event.mode.toDbValue(),
-                visibility = event.visibility.toDbValue(),
-                plannedStartAt = event.plannedStartAt.toEpochMilliseconds(),
-                plannedEndAt = event.plannedEndAt?.toEpochMilliseconds(),
-                checkInOpensAt = event.checkInOpensAt.toEpochMilliseconds(),
-                status = event.status.toDbValue(),
-                locationName = event.locationName,
-                createdAt = event.createdAt.toEpochMilliseconds(),
-                updatedAt = event.updatedAt.toEpochMilliseconds(),
-            )
+            val existingEvent = queries.selectRunEventById(event.id).executeAsOneOrNull()
+            if (existingEvent == null) {
+                queries.insertRunEvent(
+                    id = event.id,
+                    createdBy = event.createdBy,
+                    title = event.title,
+                    description = event.description,
+                    mode = event.mode.toDbValue(),
+                    visibility = event.visibility.toDbValue(),
+                    plannedStartAt = event.plannedStartAt.toEpochMilliseconds(),
+                    plannedEndAt = event.plannedEndAt?.toEpochMilliseconds(),
+                    checkInOpensAt = event.checkInOpensAt.toEpochMilliseconds(),
+                    status = event.status.toDbValue(),
+                    locationName = event.locationName,
+                    createdAt = event.createdAt.toEpochMilliseconds(),
+                    updatedAt = event.updatedAt.toEpochMilliseconds(),
+                )
+            } else {
+                queries.updateRunEvent(
+                    createdBy = event.createdBy,
+                    title = event.title,
+                    description = event.description,
+                    mode = event.mode.toDbValue(),
+                    visibility = event.visibility.toDbValue(),
+                    plannedStartAt = event.plannedStartAt.toEpochMilliseconds(),
+                    plannedEndAt = event.plannedEndAt?.toEpochMilliseconds(),
+                    checkInOpensAt = event.checkInOpensAt.toEpochMilliseconds(),
+                    status = event.status.toDbValue(),
+                    locationName = event.locationName,
+                    updatedAt = event.updatedAt.toEpochMilliseconds(),
+                    id = event.id,
+                )
+            }
             participants.forEach { participant ->
                 val existing = queries.selectRunEventParticipantByEventIdAndUserId(participant.eventId, participant.userId)
                     .executeAsOneOrNull()

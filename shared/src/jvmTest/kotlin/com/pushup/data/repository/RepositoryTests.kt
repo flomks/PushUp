@@ -1,13 +1,23 @@
 package com.pushup.data.repository
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.dto.RunEventParticipantDTO
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.PushUpRecord
+import com.pushup.domain.model.RunEvent
+import com.pushup.domain.model.RunEventParticipant
+import com.pushup.domain.model.RunEventStatus
+import com.pushup.domain.model.RunMode
+import com.pushup.domain.model.RunParticipantRole
+import com.pushup.domain.model.RunParticipantStatus
+import com.pushup.domain.model.RunVisibility
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.usecase.sync.AlwaysConnectedNetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -1209,5 +1219,87 @@ class RepositoryTests {
 
         val records = recordRepo.getBySessionId("session-1")
         assertTrue(records.isEmpty())
+    }
+
+    @Test
+    fun runEventRepo_getParticipants_resyncsExistingEventWithoutDuplicateInsert() = runTest {
+        val now = Instant.fromEpochMilliseconds(1_700_000_000_000L)
+        val eventId = "event-1"
+        val userId = "user-1"
+
+        database.databaseQueries.insertUser(
+            id = userId,
+            email = "runner@example.com",
+            username = null,
+            displayName = "Runner",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
+            createdAt = now.toEpochMilliseconds(),
+            syncedAt = now.toEpochMilliseconds(),
+        )
+
+        val repo = RunEventRepositoryImpl(
+            database = database,
+            dispatcher = testDispatcher,
+            clock = fixedClock,
+            cloudSyncApi = object : CloudSyncApi() {
+                override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> =
+                    listOf(
+                        RunEventParticipantDTO(
+                            id = "participant-1",
+                            eventId = eventId,
+                            userId = userId,
+                            role = "organizer",
+                            status = "accepted",
+                            invitedBy = null,
+                            invitedAt = now.toString(),
+                            respondedAt = now.toString(),
+                            checkedInAt = null,
+                            createdAt = now.toString(),
+                            updatedAt = now.toString(),
+                        )
+                    )
+            },
+            networkMonitor = AlwaysConnectedNetworkMonitor,
+        )
+
+        repo.create(
+            event = RunEvent(
+                id = eventId,
+                createdBy = userId,
+                title = "Morning Run",
+                description = null,
+                mode = RunMode.BASE,
+                visibility = RunVisibility.FRIENDS,
+                plannedStartAt = now,
+                plannedEndAt = null,
+                checkInOpensAt = now,
+                locationName = null,
+                status = RunEventStatus.PLANNED,
+                createdAt = now,
+                updatedAt = now,
+            ),
+            participants = listOf(
+                RunEventParticipant(
+                    id = "participant-1",
+                    eventId = eventId,
+                    userId = userId,
+                    role = RunParticipantRole.ORGANIZER,
+                    status = RunParticipantStatus.ACCEPTED,
+                    invitedBy = null,
+                    invitedAt = now,
+                    respondedAt = now,
+                    checkedInAt = null,
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            ),
+        )
+
+        val participants = repo.getParticipants(eventId)
+
+        assertEquals(1, participants.size)
+        assertEquals(userId, participants.single().userId)
+        assertEquals("Morning Run", repo.getById(eventId)?.title)
     }
 }
