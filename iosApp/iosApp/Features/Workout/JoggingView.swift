@@ -724,7 +724,7 @@ struct JoggingView: View {
                     Circle()
                         .fill(Color.black.opacity(0.45))
 
-                    KilometerProgressRing(distanceMeters: effectiveDistanceMeters)
+                    KilometerProgressRing(distanceMeters: viewModel.distanceMeters)
 
                     VStack(spacing: 10) {
                         Text(paceValueDisplay)
