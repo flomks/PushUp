@@ -10,6 +10,7 @@ import com.pushup.data.api.createHttpClient
 import com.pushup.data.repository.ActivityStatsRepositoryImpl
 import com.pushup.data.repository.AuthRepositoryImpl
 import com.pushup.data.repository.JoggingSessionRepositoryImpl
+import com.pushup.data.repository.JoggingPlaybackEntryRepositoryImpl
 import com.pushup.data.repository.JoggingSegmentRepositoryImpl
 import com.pushup.data.repository.ExerciseLevelRepositoryImpl
 import com.pushup.data.repository.LevelRepositoryImpl
@@ -29,6 +30,7 @@ import com.pushup.db.PushUpDatabase
 import com.pushup.domain.repository.ActivityStatsRepository
 import com.pushup.domain.repository.AuthRepository
 import com.pushup.domain.repository.JoggingSessionRepository
+import com.pushup.domain.repository.JoggingPlaybackEntryRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.ExerciseLevelRepository
 import com.pushup.domain.repository.LevelRepository
@@ -58,6 +60,7 @@ import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetMonthlyStatsUseCase
 import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
 import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
+import com.pushup.domain.usecase.GetJoggingPlaybackEntriesUseCase
 import com.pushup.domain.usecase.GetUpcomingRunEventsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
@@ -79,6 +82,7 @@ import com.pushup.domain.usecase.SpendTimeCreditUseCase
 import com.pushup.domain.usecase.StartLiveRunSessionUseCase
 import com.pushup.domain.usecase.StartJoggingUseCase
 import com.pushup.domain.usecase.SaveJoggingSegmentsUseCase
+import com.pushup.domain.usecase.SaveJoggingPlaybackEntriesUseCase
 import com.pushup.domain.usecase.StartWorkoutUseCase
 import com.pushup.domain.usecase.UpdateLiveRunPresenceUseCase
 import com.pushup.domain.usecase.UpdateUserSettingsUseCase
@@ -275,6 +279,13 @@ val repositoryModule: Module = module {
         )
     }
 
+    single<JoggingPlaybackEntryRepository> {
+        JoggingPlaybackEntryRepositoryImpl(
+            database = get(),
+            dispatcher = get(named(DB_DISPATCHER)),
+        )
+    }
+
     single<RoutePointRepository> {
         RoutePointRepositoryImpl(
             database = get(),
@@ -442,6 +453,8 @@ val useCaseModule: Module = module {
     }
     factory { SaveJoggingSegmentsUseCase(segmentRepository = get()) }
     factory { GetJoggingSegmentsUseCase(segmentRepository = get()) }
+    factory { SaveJoggingPlaybackEntriesUseCase(playbackRepository = get()) }
+    factory { GetJoggingPlaybackEntriesUseCase(playbackRepository = get()) }
 
     // Auth use-cases (Task 1B.8)
     factory { RegisterWithEmailUseCase(authRepository = get()) }

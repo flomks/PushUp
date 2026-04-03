@@ -1,11 +1,13 @@
 package com.pushup.data.mapper
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
 import kotlinx.datetime.Instant
+import com.pushup.db.JoggingPlaybackEntry as DbJoggingPlaybackEntry
 import com.pushup.db.JoggingSession as DbJoggingSession
 import com.pushup.db.JoggingSegment as DbJoggingSegment
 import com.pushup.db.RoutePoint as DbRoutePoint
@@ -71,6 +73,24 @@ fun DbJoggingSegment.toDomain(): JoggingSegment = JoggingSegment(
     endedAt = endedAt?.let { Instant.fromEpochMilliseconds(it) },
     distanceMeters = distanceMeters,
     durationSeconds = durationSeconds,
+)
+
+// =============================================================================
+// JoggingPlaybackEntry mappers
+// =============================================================================
+
+fun DbJoggingPlaybackEntry.toDomain(): JoggingPlaybackEntry = JoggingPlaybackEntry(
+    id = id,
+    sessionId = sessionId,
+    source = source,
+    trackTitle = trackTitle,
+    artistName = artistName,
+    startedAt = Instant.fromEpochMilliseconds(startedAt),
+    endedAt = Instant.fromEpochMilliseconds(endedAt),
+    startDistanceMeters = startDistanceMeters,
+    endDistanceMeters = endDistanceMeters,
+    startActiveDurationSeconds = startActiveDurationSeconds,
+    endActiveDurationSeconds = endActiveDurationSeconds,
 )
 
 // =============================================================================

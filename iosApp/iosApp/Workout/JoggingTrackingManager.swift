@@ -99,6 +99,7 @@ final class JoggingTrackingManager: ObservableObject {
     private let recordRoutePoint: RecordRoutePointUseCase
     private let finishJogging: FinishJoggingUseCase
     private let saveJoggingSegments: SaveJoggingSegmentsUseCase
+    private let saveJoggingPlaybackEntries: SaveJoggingPlaybackEntriesUseCase
     private let liveSessionManager: LiveJoggingSessionManager
 
     // MARK: - Published: Anti-Cheat
@@ -120,6 +121,8 @@ final class JoggingTrackingManager: ObservableObject {
     private var lastProcessedLocation: CLLocation?
     private var routeDistanceMeters: Double = 0.0
     private var segmentEvents: [LocalJoggingSegment] = []
+    private var playbackEntries: [LocalJoggingPlaybackEntry] = []
+    private var activePlaybackEntry: ActiveJoggingPlaybackEntry?
     private var currentSegmentStartDate: Date?
     private var currentSegmentDistanceStart: Double = 0
     private var pauseStartedAt: Date?
@@ -144,6 +147,7 @@ final class JoggingTrackingManager: ObservableObject {
         recordRoutePoint: RecordRoutePointUseCase,
         finishJogging: FinishJoggingUseCase,
         saveJoggingSegments: SaveJoggingSegmentsUseCase,
+        saveJoggingPlaybackEntries: SaveJoggingPlaybackEntriesUseCase,
         liveSessionManager: LiveJoggingSessionManager
     ) {
         self.locationManager = locationManager
@@ -152,6 +156,7 @@ final class JoggingTrackingManager: ObservableObject {
         self.recordRoutePoint = recordRoutePoint
         self.finishJogging = finishJogging
         self.saveJoggingSegments = saveJoggingSegments
+        self.saveJoggingPlaybackEntries = saveJoggingPlaybackEntries
         self.liveSessionManager = liveSessionManager
     }
 
@@ -166,6 +171,7 @@ final class JoggingTrackingManager: ObservableObject {
             recordRoutePoint: helper.recordRoutePointUseCase(),
             finishJogging: helper.finishJoggingUseCase(),
             saveJoggingSegments: helper.saveJoggingSegmentsUseCase(),
+            saveJoggingPlaybackEntries: helper.saveJoggingPlaybackEntriesUseCase(),
             liveSessionManager: helper.liveJoggingSessionManager()
         )
     }
@@ -286,6 +292,7 @@ final class JoggingTrackingManager: ObservableObject {
 
         Task {
             await persistSegmentsIfPossible(sessionId: sessionId)
+            await persistPlaybackEntriesIfPossible(sessionId: sessionId)
             await finishKMPSession(sessionId: sessionId)
         }
     }
@@ -326,6 +333,42 @@ final class JoggingTrackingManager: ObservableObject {
         currentSegmentDistanceStart = routeDistanceMeters
     }
 
+    func updatePlaybackState(
+        source: String = "spotify",
+        trackTitle: String?,
+        artistName: String?,
+        isPlaying: Bool
+    ) {
+        guard isTracking else { return }
+
+        let now = Date()
+        let normalizedTitle = trackTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedArtist = artistName?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard isPlaying, let normalizedTitle, !normalizedTitle.isEmpty else {
+            endActivePlaybackEntry(at: now)
+            return
+        }
+
+        if let activePlaybackEntry,
+           activePlaybackEntry.source == source,
+           activePlaybackEntry.trackTitle == normalizedTitle,
+           activePlaybackEntry.artistName == normalizedArtist {
+            return
+        }
+
+        endActivePlaybackEntry(at: now)
+        activePlaybackEntry = ActiveJoggingPlaybackEntry(
+            id: UUID().uuidString,
+            source: source,
+            trackTitle: normalizedTitle,
+            artistName: normalizedArtist?.isEmpty == false ? normalizedArtist : nil,
+            startedAt: now,
+            startDistanceMeters: activeDistanceMeters,
+            startActiveDurationSeconds: Int64(activeDuration)
+        )
+    }
+
     // MARK: - Private: State
 
     private func resetState() {
@@ -348,6 +391,8 @@ final class JoggingTrackingManager: ObservableObject {
         accumulatedPauseDuration = 0
         lastProcessedLocation = nil
         segmentEvents = []
+        playbackEntries = []
+        activePlaybackEntry = nil
         currentSegmentStartDate = nil
         currentSegmentDistanceStart = 0
         isVehicleDetected = false
@@ -759,6 +804,76 @@ final class JoggingTrackingManager: ObservableObject {
             lastError = .sessionFinishFailed(error.localizedDescription)
         }
     }
+
+    private func endActivePlaybackEntry(at end: Date) {
+        guard let activePlaybackEntry else { return }
+        playbackEntries.append(
+            LocalJoggingPlaybackEntry(
+                id: activePlaybackEntry.id,
+                source: activePlaybackEntry.source,
+                trackTitle: activePlaybackEntry.trackTitle,
+                artistName: activePlaybackEntry.artistName,
+                startedAt: activePlaybackEntry.startedAt,
+                endedAt: end,
+                startDistanceMeters: activePlaybackEntry.startDistanceMeters,
+                endDistanceMeters: activeDistanceMeters,
+                startActiveDurationSeconds: activePlaybackEntry.startActiveDurationSeconds,
+                endActiveDurationSeconds: Int64(activeDuration)
+            )
+        )
+        self.activePlaybackEntry = nil
+    }
+
+    private func persistPlaybackEntriesIfPossible(sessionId: String?) async {
+        guard let sessionId else { return }
+        endActivePlaybackEntry(at: Date())
+        let mappedEntries: [Shared.JoggingPlaybackEntry] = playbackEntries.map { entry in
+            Shared.JoggingPlaybackEntry(
+                id: entry.id,
+                sessionId: sessionId,
+                source: entry.source,
+                trackTitle: entry.trackTitle,
+                artistName: entry.artistName,
+                startedAt: Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+                    epochMilliseconds: Int64(entry.startedAt.timeIntervalSince1970 * 1000.0)
+                ),
+                endedAt: Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
+                    epochMilliseconds: Int64(entry.endedAt.timeIntervalSince1970 * 1000.0)
+                ),
+                startDistanceMeters: entry.startDistanceMeters,
+                endDistanceMeters: entry.endDistanceMeters,
+                startActiveDurationSeconds: entry.startActiveDurationSeconds,
+                endActiveDurationSeconds: entry.endActiveDurationSeconds
+            )
+        }
+
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let lock = NSLock()
+                var hasResumed = false
+
+                self.saveJoggingPlaybackEntries.invoke(
+                    sessionId: sessionId,
+                    entries: mappedEntries
+                ) { error in
+                    lock.lock()
+                    defer { lock.unlock() }
+                    guard !hasResumed else { return }
+                    hasResumed = true
+
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: ())
+                    }
+                }
+            }
+        } catch {
+            #if DEBUG
+            print("[JoggingTrackingManager] Failed to persist playback entries: \(error)")
+            #endif
+        }
+    }
 }
 
 private struct LocalJoggingSegment {
@@ -768,6 +883,29 @@ private struct LocalJoggingSegment {
     let distanceMeters: Double
     let durationSeconds: Int64
     let isPause: Bool
+}
+
+private struct ActiveJoggingPlaybackEntry {
+    let id: String
+    let source: String
+    let trackTitle: String
+    let artistName: String?
+    let startedAt: Date
+    let startDistanceMeters: Double
+    let startActiveDurationSeconds: Int64
+}
+
+private struct LocalJoggingPlaybackEntry {
+    let id: String
+    let source: String
+    let trackTitle: String
+    let artistName: String?
+    let startedAt: Date
+    let endedAt: Date
+    let startDistanceMeters: Double
+    let endDistanceMeters: Double
+    let startActiveDurationSeconds: Int64
+    let endActiveDurationSeconds: Int64
 }
 
 // MARK: - KMP Coroutine Bridge (reused from PushUpTrackingManager)

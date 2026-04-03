@@ -38,9 +38,6 @@ struct SyncIndicator: View {
     @ObservedObject private var syncService    = SyncService.shared
     @ObservedObject private var networkMonitor = NetworkMonitor.shared
 
-    /// Controls the continuous rotation animation for the syncing state.
-    @State private var isRotating: Bool = false
-
     /// Controls the scale-pop animation for the success state.
     @State private var showSuccessScale: Bool = false
 
@@ -86,13 +83,14 @@ struct SyncIndicator: View {
                 .foregroundStyle(AppColors.textTertiary)
 
         case .syncing:
-            Image(icon: .arrowTriangle2Circlepath)
-                .foregroundStyle(AppColors.primary)
-                .rotationEffect(.degrees(isRotating ? 360 : 0))
-                .animation(
-                    .linear(duration: 1.0).repeatForever(autoreverses: false),
-                    value: isRotating
+            MotionLoadingIndicator(
+                tint: AppColors.primary,
+                lineCount: 4,
+                lineWidth: 3,
+                height: 14,
+                speed: 1.1
                 )
+                .frame(width: 20, height: 16)
 
         case .success:
             Image(icon: .checkmarkCircleFill)
@@ -137,13 +135,8 @@ struct SyncIndicator: View {
         switch state {
         case .syncing:
             showSuccessScale = false
-            // Only start the rotation if it is not already running.
-            // Setting `isRotating = true` when it is already `true` would
-            // restart the animation from 0 degrees.
-            if !isRotating { isRotating = true }
 
         case .success:
-            isRotating = false
             showSuccessScale = true
             // Reset scale after the spring animation settles (~0.5 s).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -151,7 +144,6 @@ struct SyncIndicator: View {
             }
 
         case .idle, .error, .offline:
-            isRotating      = false
             showSuccessScale = false
         }
     }

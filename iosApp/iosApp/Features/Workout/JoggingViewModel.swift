@@ -1490,9 +1490,19 @@ final class JoggingViewModel: ObservableObject {
                 if spotifyIsPlaying {
                     try await spotifyService.pausePlayback()
                     spotifyIsPlaying = false
+                    trackingManager.updatePlaybackState(
+                        trackTitle: spotifyNowPlayingTitle,
+                        artistName: spotifyNowPlayingArtist,
+                        isPlaying: false
+                    )
                 } else {
                     try await spotifyService.resumePlayback()
                     spotifyIsPlaying = true
+                    trackingManager.updatePlaybackState(
+                        trackTitle: spotifyNowPlayingTitle,
+                        artistName: spotifyNowPlayingArtist,
+                        isPlaying: true
+                    )
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 await refreshSpotifyDetailsIfNeeded(force: true)
@@ -1650,6 +1660,7 @@ final class JoggingViewModel: ObservableObject {
             spotifyNowPlayingTitle = nil
             spotifyNowPlayingArtist = nil
             spotifyIsPlaying = false
+            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
             stopSpotifyRefreshLoop()
             plannedRunStatusMessage = "Spotify disconnected."
         } else {
@@ -1779,6 +1790,7 @@ final class JoggingViewModel: ObservableObject {
                 spotifyNowPlayingTitle = nil
                 spotifyNowPlayingArtist = nil
                 spotifyIsPlaying = false
+                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
             }
             return
         }
@@ -1807,6 +1819,7 @@ final class JoggingViewModel: ObservableObject {
                 spotifyIsPlaying = false
                 spotifyPlaybackLabel = "No active playback"
                 spotifyStatusDetail = spotifyService.sessionStatusDescription
+                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
             }
         } catch {
             spotifyNowPlayingTitle = nil
@@ -1814,6 +1827,7 @@ final class JoggingViewModel: ObservableObject {
             spotifyIsPlaying = false
             spotifyStatusDetail = "Spotify connected, but details could not be loaded"
             spotifyPlaybackLabel = "Playback unavailable"
+            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
         }
     }
 
@@ -2192,6 +2206,7 @@ final class JoggingViewModel: ObservableObject {
         spotifyNowPlayingArtist = track.artist
         spotifyIsPlaying = true
         spotifyPlaybackLabel = "\(track.title) - \(track.artist)"
+        trackingManager.updatePlaybackState(trackTitle: track.title, artistName: track.artist, isPlaying: true)
     }
 
     private func refreshPlaybackAfterTransportChange(
@@ -2235,6 +2250,11 @@ final class JoggingViewModel: ObservableObject {
         spotifyPlaybackLabel = playback.isPlaying
             ? "\(playback.trackTitle) - \(playback.artistName)"
             : "Paused: \(playback.trackTitle) - \(playback.artistName)"
+        trackingManager.updatePlaybackState(
+            trackTitle: playback.trackTitle,
+            artistName: playback.artistName,
+            isPlaying: playback.isPlaying
+        )
     }
 
     private func rememberGeneratedTracks(_ tracks: [SpotifyRecommendedRunTrack]) {
