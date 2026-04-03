@@ -27,7 +27,7 @@ class JoggingPlaybackEntryRepositoryImpl(
                     trackTitle = entry.trackTitle,
                     artistName = entry.artistName,
                     startedAt = entry.startedAt.toEpochMilliseconds(),
-                    endedAt = entry.endedAt?.toEpochMilliseconds(),
+                    endedAt = entry.endedAt.toEpochMilliseconds(),
                     startDistanceMeters = entry.startDistanceMeters,
                     endDistanceMeters = entry.endDistanceMeters,
                     startActiveDurationSeconds = entry.startActiveDurationSeconds,

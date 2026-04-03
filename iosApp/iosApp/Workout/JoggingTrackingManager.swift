@@ -137,6 +137,7 @@ final class JoggingTrackingManager: ObservableObject {
 
     private let speedValueStaleAfterSeconds: TimeInterval = 2.5
     private let stationarySpeedThresholdMetersPerSecond: Double = 0.18
+    private let minimumPlaybackEntryDurationSeconds: TimeInterval = 3.0
 
     // MARK: - Init
 
@@ -807,6 +808,11 @@ final class JoggingTrackingManager: ObservableObject {
 
     private func endActivePlaybackEntry(at end: Date) {
         guard let activePlaybackEntry else { return }
+        let duration = max(0, end.timeIntervalSince(activePlaybackEntry.startedAt))
+        guard duration >= minimumPlaybackEntryDurationSeconds else {
+            self.activePlaybackEntry = nil
+            return
+        }
         playbackEntries.append(
             LocalJoggingPlaybackEntry(
                 id: activePlaybackEntry.id,

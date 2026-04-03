@@ -1,6 +1,7 @@
 package com.pushup.data.api.dto
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.RoutePoint
@@ -137,6 +138,36 @@ data class CreateJoggingSegmentRequest(
     @SerialName("duration_seconds")  val durationSeconds: Int = 0,
 )
 
+@Serializable
+data class JoggingPlaybackEntryDTO(
+    @SerialName("id")                             val id: String,
+    @SerialName("session_id")                     val sessionId: String,
+    @SerialName("source")                         val source: String,
+    @SerialName("track_title")                    val trackTitle: String,
+    @SerialName("artist_name")                    val artistName: String? = null,
+    @SerialName("started_at")                     val startedAt: String,
+    @SerialName("ended_at")                       val endedAt: String,
+    @SerialName("start_distance_meters")          val startDistanceMeters: Float = 0f,
+    @SerialName("end_distance_meters")            val endDistanceMeters: Float = 0f,
+    @SerialName("start_active_duration_seconds")  val startActiveDurationSeconds: Int = 0,
+    @SerialName("end_active_duration_seconds")    val endActiveDurationSeconds: Int = 0,
+)
+
+@Serializable
+data class CreateJoggingPlaybackEntryRequest(
+    @SerialName("id")                             val id: String,
+    @SerialName("session_id")                     val sessionId: String,
+    @SerialName("source")                         val source: String,
+    @SerialName("track_title")                    val trackTitle: String,
+    @SerialName("artist_name")                    val artistName: String? = null,
+    @SerialName("started_at")                     val startedAt: String,
+    @SerialName("ended_at")                       val endedAt: String,
+    @SerialName("start_distance_meters")          val startDistanceMeters: Float = 0f,
+    @SerialName("end_distance_meters")            val endDistanceMeters: Float = 0f,
+    @SerialName("start_active_duration_seconds")  val startActiveDurationSeconds: Int = 0,
+    @SerialName("end_active_duration_seconds")    val endActiveDurationSeconds: Int = 0,
+)
+
 // =============================================================================
 // Domain model mappers
 // =============================================================================
@@ -232,6 +263,34 @@ fun JoggingSegment.toCreateRequest(): CreateJoggingSegmentRequest = CreateJoggin
     endedAt = endedAt?.toString(),
     distanceMeters = distanceMeters.toFloat(),
     durationSeconds = durationSeconds.toInt(),
+)
+
+fun JoggingPlaybackEntryDTO.toDomain(): JoggingPlaybackEntry = JoggingPlaybackEntry(
+    id = id,
+    sessionId = sessionId,
+    source = source,
+    trackTitle = trackTitle,
+    artistName = artistName,
+    startedAt = Instant.parse(startedAt),
+    endedAt = Instant.parse(endedAt),
+    startDistanceMeters = startDistanceMeters.toDouble(),
+    endDistanceMeters = endDistanceMeters.toDouble(),
+    startActiveDurationSeconds = startActiveDurationSeconds.toLong(),
+    endActiveDurationSeconds = endActiveDurationSeconds.toLong(),
+)
+
+fun JoggingPlaybackEntry.toCreateRequest(): CreateJoggingPlaybackEntryRequest = CreateJoggingPlaybackEntryRequest(
+    id = id,
+    sessionId = sessionId,
+    source = source,
+    trackTitle = trackTitle,
+    artistName = artistName,
+    startedAt = startedAt.toString(),
+    endedAt = endedAt.toString(),
+    startDistanceMeters = startDistanceMeters.toFloat(),
+    endDistanceMeters = endDistanceMeters.toFloat(),
+    startActiveDurationSeconds = startActiveDurationSeconds.toInt(),
+    endActiveDurationSeconds = endActiveDurationSeconds.toInt(),
 )
 
 // =============================================================================

@@ -86,11 +86,11 @@ fun DbJoggingPlaybackEntry.toDomain(): JoggingPlaybackEntry = JoggingPlaybackEnt
     trackTitle = trackTitle,
     artistName = artistName,
     startedAt = Instant.fromEpochMilliseconds(startedAt),
-    endedAt = Instant.fromEpochMilliseconds(endedAt),
+    endedAt = Instant.fromEpochMilliseconds(requireNotNull(endedAt)),
     startDistanceMeters = startDistanceMeters,
-    endDistanceMeters = endDistanceMeters,
-    startActiveDurationSeconds = startActiveDurationSeconds,
-    endActiveDurationSeconds = endActiveDurationSeconds,
+    endDistanceMeters = requireNotNull(endDistanceMeters),
+    startActiveDurationSeconds = requireNotNull(startActiveDurationSeconds),
+    endActiveDurationSeconds = requireNotNull(endActiveDurationSeconds),
 )
 
 // =============================================================================
