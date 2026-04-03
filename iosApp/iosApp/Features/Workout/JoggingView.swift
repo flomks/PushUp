@@ -1925,35 +1925,64 @@ struct JoggingView: View {
         let spotifyGreen = Color(red: 0.13, green: 0.81, blue: 0.41)
 
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Run Mode")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+            HStack(spacing: 12) {
+                Text("Run Mode")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
 
-            // Horizontal pill selector
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(RunAudioMode.allCases) { mode in
-                        let isSelected = viewModel.selectedAudioMode == mode
-                        Button {
-                            viewModel.selectedAudioMode = mode
-                            viewModel.applyCurrentModePreset()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: runModeIcon(for: mode))
-                                    .font(.system(size: 12, weight: .bold))
-                                Text(mode.rawValue)
-                                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                            }
-                            .foregroundStyle(isSelected ? .black : .white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(
-                                isSelected ? spotifyGreen : Color.white.opacity(0.08),
-                                in: Capsule()
-                            )
+                Spacer()
+
+                if viewModel.spotifyConnected {
+                    Button {
+                        viewModel.applyCurrentModePreset()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Generate")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(spotifyGreen, in: Capsule())
                     }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                alignment: .leading,
+                spacing: 10
+            ) {
+                ForEach(RunAudioMode.allCases) { mode in
+                    let isSelected = viewModel.selectedAudioMode == mode
+                    Button {
+                        viewModel.selectedAudioMode = mode
+                        viewModel.applyCurrentModePreset()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: runModeIcon(for: mode))
+                                .font(.system(size: 12, weight: .bold))
+                            Text(mode.rawValue)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(isSelected ? .black : .white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(isSelected ? spotifyGreen : Color.white.opacity(0.08))
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -2044,23 +2073,6 @@ struct JoggingView: View {
 
                     Spacer()
 
-                    if viewModel.spotifyConnected {
-                        Button {
-                            viewModel.applyCurrentModePreset()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "wand.and.stars")
-                                    .font(.system(size: 12, weight: .bold))
-                                Text("Generate")
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                            }
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(spotifyGreen, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(14)
                 .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

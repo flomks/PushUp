@@ -139,19 +139,20 @@ struct RunModeAudioParams {
     let targetTempo: Double
     let targetEnergy: Double
     let targetValence: Double
+    let genreSeeds: [String]
 
     static func params(for mode: RunAudioMode) -> RunModeAudioParams {
         switch mode {
         case .recovery:
-            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4)
+            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "pop"])
         case .base:
-            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5)
+            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "pop"])
         case .tempo:
-            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6)
+            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["edm", "dance"])
         case .longRun:
-            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5)
+            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "pop"])
         case .race:
-            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7)
+            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["edm", "rock"])
         }
     }
 }
@@ -286,34 +287,59 @@ final class SpotifyService: NSObject {
 
     /// Fetches recommended tracks from Spotify based on the given audio parameters.
     func fetchRecommendations(params: RunModeAudioParams, limit: Int = 20) async throws -> [SpotifyRecommendedRunTrack] {
-        let seeds = try await fetchSeedTrackIDs()
-        let seedParam = seeds.isEmpty ? "" : "&seed_tracks=\(seeds.prefix(2).joined(separator: ","))"
-        // Always include a genre seed as fallback
-        let genreSeed = seeds.isEmpty ? "&seed_genres=pop,electronic" : "&seed_genres=electronic"
-
-        let path = "/v1/recommendations?"
-            + "limit=\(limit)"
-            + seedParam
-            + genreSeed
-            + "&target_tempo=\(params.targetTempo)"
-            + "&min_tempo=\(params.minTempo)"
-            + "&max_tempo=\(params.maxTempo)"
-            + "&target_energy=\(params.targetEnergy)"
-            + "&target_valence=\(params.targetValence)"
-
-        let request = try await authorizedRequest(path: path)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response: response, data: data)
-        let payload = try JSONDecoder().decode(SpotifyRecommendationsResponse.self, from: data)
-
-        return payload.tracks.map { track in
-            SpotifyRecommendedRunTrack(
-                id: track.uri,
-                title: track.name,
-                artist: track.artists.map(\.name).joined(separator: ", "),
-                uri: track.uri
+        let trackSeeds = Array(try await fetchSeedTrackIDs().prefix(2))
+        let primaryGenres = Array(params.genreSeeds.prefix(trackSeeds.isEmpty ? 2 : 1))
+        let variants = [
+            recommendationQueryItems(
+                params: params,
+                limit: limit,
+                trackSeeds: trackSeeds,
+                genreSeeds: primaryGenres
+            ),
+            recommendationQueryItems(
+                params: params,
+                limit: limit,
+                trackSeeds: [],
+                genreSeeds: params.genreSeeds,
+                includeTempoBounds: false
+            ),
+            recommendationQueryItems(
+                params: params,
+                limit: limit,
+                trackSeeds: [],
+                genreSeeds: ["pop"],
+                includeTempoBounds: false,
+                includeMoodTargets: false
             )
+        ]
+
+        var lastError: Error?
+
+        for queryItems in variants {
+            do {
+                let payload = try await fetchRecommendations(queryItems: queryItems)
+                let mapped = payload.tracks.map { track in
+                    SpotifyRecommendedRunTrack(
+                        id: track.uri,
+                        title: track.name,
+                        artist: track.artists.map(\.name).joined(separator: ", "),
+                        uri: track.uri
+                    )
+                }
+                let deduplicated = Array(Dictionary(grouping: mapped, by: \.uri).compactMap { $0.value.first })
+                if !deduplicated.isEmpty {
+                    return deduplicated
+                }
+            } catch {
+                lastError = error
+            }
         }
+
+        throw lastError ?? NSError(
+            domain: "SpotifyService",
+            code: 26,
+            userInfo: [NSLocalizedDescriptionKey: "Spotify returned no matching tracks for this run mode."]
+        )
     }
 
     /// Starts playback of a specific track URI on the user's active device.
@@ -625,6 +651,49 @@ final class SpotifyService: NSObject {
             }
             .joined(separator: "&")
         return Data(body.utf8)
+    }
+
+    private func fetchRecommendations(queryItems: [URLQueryItem]) async throws -> SpotifyRecommendationsResponse {
+        var components = URLComponents()
+        components.path = "/v1/recommendations"
+        components.queryItems = queryItems
+
+        let request = try await authorizedRequest(path: components.string ?? "/v1/recommendations")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode(SpotifyRecommendationsResponse.self, from: data)
+    }
+
+    private func recommendationQueryItems(
+        params: RunModeAudioParams,
+        limit: Int,
+        trackSeeds: [String],
+        genreSeeds: [String],
+        includeTempoBounds: Bool = true,
+        includeMoodTargets: Bool = true
+    ) -> [URLQueryItem] {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+
+        if !trackSeeds.isEmpty {
+            items.append(URLQueryItem(name: "seed_tracks", value: trackSeeds.joined(separator: ",")))
+        }
+        if !genreSeeds.isEmpty {
+            items.append(URLQueryItem(name: "seed_genres", value: genreSeeds.joined(separator: ",")))
+        }
+
+        items.append(URLQueryItem(name: "target_tempo", value: String(Int(params.targetTempo.rounded()))))
+
+        if includeTempoBounds {
+            items.append(URLQueryItem(name: "min_tempo", value: String(Int(params.minTempo.rounded()))))
+            items.append(URLQueryItem(name: "max_tempo", value: String(Int(params.maxTempo.rounded()))))
+        }
+
+        if includeMoodTargets {
+            items.append(URLQueryItem(name: "target_energy", value: String(params.targetEnergy)))
+            items.append(URLQueryItem(name: "target_valence", value: String(params.targetValence)))
+        }
+
+        return items
     }
 
     private static let scopes = [
@@ -1877,12 +1946,23 @@ final class JoggingViewModel: ObservableObject {
 
     private func loadModeRecommendations(andPlay: Bool = true) async {
         isLoadingModeQueue = true
+        modeQueue = []
+        modeQueueIndex = 0
         let params = RunModeAudioParams.params(for: selectedAudioMode)
+        defer { isLoadingModeQueue = false }
 
         do {
             let tracks = try await spotifyService.fetchRecommendations(params: params)
+            guard !tracks.isEmpty else {
+                throw NSError(
+                    domain: "SpotifyService",
+                    code: 27,
+                    userInfo: [NSLocalizedDescriptionKey: "Spotify returned no tracks for \(selectedAudioMode.rawValue)."]
+                )
+            }
             modeQueue = tracks
             modeQueueIndex = 0
+            plannedRunStatusMessage = "Loaded \(tracks.count) Spotify tracks for \(selectedAudioMode.rawValue)."
 
             // Update the currentTrack display from the first recommendation
             if let first = tracks.first {
@@ -1895,10 +1975,11 @@ final class JoggingViewModel: ObservableObject {
             }
         } catch {
             // Fallback to hardcoded presets if API fails
+            modeQueue = []
+            modeQueueIndex = 0
             applyTrackPresetForMode()
+            plannedRunStatusMessage = "Spotify generator failed: \(error.localizedDescription)"
         }
-
-        isLoadingModeQueue = false
     }
 
     private func playModeQueueTrack(at index: Int) async {
@@ -1922,7 +2003,11 @@ final class JoggingViewModel: ObservableObject {
             await refreshSpotifyDetailsIfNeeded(force: true)
         } catch {
             // Fallback: open in Spotify
-            _ = spotifyService.openTrack(currentTrack)
+            let fallbackTrack = RunTrack(title: track.title, artist: track.artist, vibe: bpmLabel)
+            let opened = spotifyService.openTrack(fallbackTrack)
+            plannedRunStatusMessage = opened
+                ? "Playback handoff sent to Spotify for \(track.title)."
+                : "Could not start playback. Open Spotify on an active device and try again."
         }
     }
 
