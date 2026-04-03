@@ -842,6 +842,56 @@ private extension Array {
 }
 
 private extension RunAudioMode {
+    var searchProfile: RunAudioSearchProfile {
+        switch self {
+        case .recovery:
+            return RunAudioSearchProfile(
+                anchorQueries: ["easy run", "recovery run", "cool down run", "chill cardio"],
+                moodQueries: ["soft", "calm", "smooth", "light"],
+                positiveKeywords: ["easy", "chill", "calm", "soft", "breathe", "slow", "smooth", "sunset"],
+                secondaryKeywords: ["acoustic", "cool", "glow", "float", "dream", "night"],
+                negativeKeywords: ["race", "sprint", "hard", "rage", "metal", "drill", "phonk"],
+                prefersHighEnergyEdits: false
+            )
+        case .base:
+            return RunAudioSearchProfile(
+                anchorQueries: ["base run", "steady run", "running workout", "daily run"],
+                moodQueries: ["steady", "groove", "flow", "cruise"],
+                positiveKeywords: ["steady", "groove", "flow", "drive", "cruise", "motion", "city", "night"],
+                secondaryKeywords: ["run", "road", "pace", "ride", "pulse", "move"],
+                negativeKeywords: ["sleep", "meditation", "race", "sprint", "lullaby", "ambient"],
+                prefersHighEnergyEdits: true
+            )
+        case .tempo:
+            return RunAudioSearchProfile(
+                anchorQueries: ["tempo run", "interval run", "high energy run", "fast workout"],
+                moodQueries: ["push", "focus", "charge", "intense"],
+                positiveKeywords: ["tempo", "push", "focus", "speed", "charge", "fire", "redline", "power"],
+                secondaryKeywords: ["fast", "energy", "run", "drive", "burn", "attack"],
+                negativeKeywords: ["sleep", "calm", "acoustic", "lullaby", "ambient", "slow"],
+                prefersHighEnergyEdits: true
+            )
+        case .longRun:
+            return RunAudioSearchProfile(
+                anchorQueries: ["long run", "endurance run", "steady cardio", "distance running"],
+                moodQueries: ["endless", "open road", "horizon", "steady"],
+                positiveKeywords: ["long", "endless", "road", "horizon", "coast", "steady", "distance", "sunrise"],
+                secondaryKeywords: ["run", "cruise", "open", "ride", "drive", "journey"],
+                negativeKeywords: ["sprint", "race", "rage", "hardstyle", "drill", "phonk"],
+                prefersHighEnergyEdits: false
+            )
+        case .race:
+            return RunAudioSearchProfile(
+                anchorQueries: ["race day run", "sprint workout", "race pace", "high intensity run"],
+                moodQueries: ["adrenaline", "victory", "attack", "explosive"],
+                positiveKeywords: ["race", "sprint", "victory", "adrenaline", "attack", "blast", "final", "finish"],
+                secondaryKeywords: ["fast", "power", "run", "hype", "rush", "energy"],
+                negativeKeywords: ["sleep", "calm", "acoustic", "folk", "meditation", "slow"],
+                prefersHighEnergyEdits: true
+            )
+        }
+    }
+
     var searchQuery: String {
         searchQueries.first ?? "running workout"
     }
