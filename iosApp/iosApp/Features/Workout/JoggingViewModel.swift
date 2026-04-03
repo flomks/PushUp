@@ -2079,7 +2079,7 @@ final class JoggingViewModel: ObservableObject {
 
     private func refreshPlaybackAfterTransportChange(
         previousTitle: String?,
-        previousArtist: String?,
+        previousArtist: String?
     ) async {
         let attempts = 8
         for attempt in 0..<attempts {
