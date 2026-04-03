@@ -82,6 +82,7 @@ struct JoggingView: View {
                     .padding(.top, AppSpacing.md)
 
                 runningHubHero
+                runModeCard
                 runLaunchCard
                 futureRunsCard
                 runningHighlightsCard
@@ -209,13 +210,15 @@ struct JoggingView: View {
         VStack(spacing: AppSpacing.md) {
             HStack(alignment: .top, spacing: AppSpacing.md) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                    Text("Quick Start")
+                    Text("Start Run")
                         .font(AppTypography.headline)
                         .foregroundStyle(AppColors.textPrimary)
 
                     Text(
                         viewModel.hasLocationPermission
-                        ? "GPS is ready. Go solo, join a live crew run, or launch a planned event with your people."
+                        ? (viewModel.launchMode == .solo
+                           ? "GPS is ready. Start clean and run solo without touching your pending crew setup."
+                           : "Your run will use the current crew context: join live, start planned, or launch with invited runners.")
                         : "Allow location first so distance, pace, route, and earned time can be tracked correctly."
                     )
                     .font(AppTypography.caption1)
@@ -242,19 +245,6 @@ struct JoggingView: View {
                 Spacer()
             }
             .padding(.horizontal, AppSpacing.xs)
-
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text("Run Mode")
-                    .font(AppTypography.captionSemibold)
-                    .foregroundStyle(AppColors.textSecondary)
-
-                Picker("Run Mode", selection: $viewModel.launchMode) {
-                    ForEach(RunLaunchMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
 
             if !viewModel.hasLocationPermission {
                 HStack(spacing: AppSpacing.sm) {
@@ -338,6 +328,45 @@ struct JoggingView: View {
         }
         .padding(AppSpacing.lg)
         .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+    }
+
+    private var runModeCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionEyebrow(
+                    title: "Run Setup",
+                    subtitle: "Decide first whether the next start is purely yours or tied to a crew context"
+                )
+
+                HStack(spacing: AppSpacing.sm) {
+                    runModeOption(
+                        mode: .solo,
+                        title: "Solo Run",
+                        subtitle: "No live crew session is created. Pending invites stay untouched for later.",
+                        icon: "figure.run"
+                    )
+
+                    runModeOption(
+                        mode: .crew,
+                        title: "Crew Run",
+                        subtitle: "Use live runs, planned events, or invited runners as the social context.",
+                        icon: "person.3.fill"
+                    )
+                }
+
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: viewModel.launchMode == .solo ? "bolt.shield.fill" : "dot.radiowaves.left.and.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(viewModel.launchMode == .solo ? AppColors.success : AppColors.secondary)
+
+                    Text(viewModel.socialSelectionSummary)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+
+                    Spacer()
+                }
+            }
+        }
     }
 
     private var futureRunsCard: some View {
@@ -1300,6 +1329,80 @@ struct JoggingView: View {
             }
             .padding(AppSpacing.md)
             .background(AppColors.backgroundPrimary.opacity(0.65), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func runModeOption(
+        mode: RunLaunchMode,
+        title: String,
+        subtitle: String,
+        icon: String
+    ) -> some View {
+        let isSelected = viewModel.launchMode == mode
+
+        return Button {
+            viewModel.setLaunchMode(mode)
+        } label: {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(isSelected ? Color.white.opacity(0.20) : AppColors.fill)
+                            .frame(width: 40, height: 40)
+
+                        Image(systemName: icon)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(isSelected ? .white : AppColors.textPrimary)
+                    }
+
+                    Spacer()
+
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+                Text(title)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(isSelected ? .white : AppColors.textPrimary)
+
+                Text(subtitle)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.80) : AppColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+            .padding(AppSpacing.md)
+            .background(
+                Group {
+                    if isSelected {
+                        LinearGradient(
+                            colors: mode == .solo
+                                ? [Color(red: 0.13, green: 0.70, blue: 0.36), Color(red: 0.08, green: 0.44, blue: 0.22)]
+                                : [Color(red: 0.98, green: 0.42, blue: 0.18), Color(red: 0.84, green: 0.21, blue: 0.18)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    } else {
+                        LinearGradient(
+                            colors: [
+                                AppColors.backgroundSecondary,
+                                AppColors.backgroundSecondary.opacity(0.92)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(isSelected ? Color.clear : AppColors.separator.opacity(0.26), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }

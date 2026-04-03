@@ -103,12 +103,18 @@ struct CrewRunView: View {
                     .font(AppTypography.body)
                     .foregroundStyle(Color.white.opacity(0.86))
 
-                Picker("Run Mode", selection: $viewModel.launchMode) {
-                    ForEach(RunLaunchMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
+                HStack(spacing: AppSpacing.sm) {
+                    crewModeButton(
+                        mode: .solo,
+                        title: "Solo",
+                        icon: "figure.run"
+                    )
+                    crewModeButton(
+                        mode: .crew,
+                        title: "Crew",
+                        icon: "person.3.fill"
+                    )
                 }
-                .pickerStyle(.segmented)
 
                 HStack(spacing: AppSpacing.sm) {
                     crewMetric(title: "Lineup", value: "\(viewModel.runParticipants.count)")
@@ -464,6 +470,41 @@ struct CrewRunView: View {
         .padding(.horizontal, AppSpacing.sm)
         .padding(.vertical, AppSpacing.xs)
         .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+    }
+
+    private func crewModeButton(
+        mode: RunLaunchMode,
+        title: String,
+        icon: String
+    ) -> some View {
+        let isSelected = viewModel.launchMode == mode
+
+        return Button {
+            viewModel.setLaunchMode(mode)
+        } label: {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                Text(title)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .background(
+                isSelected
+                    ? (mode == .solo ? Color(red: 0.13, green: 0.70, blue: 0.36) : Color(red: 0.95, green: 0.44, blue: 0.23))
+                    : Color.white.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private func participantRow(_ participant: RunParticipant) -> some View {
