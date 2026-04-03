@@ -7,6 +7,7 @@ import com.pushup.data.api.dto.toCreateRequest
 import com.pushup.data.api.isTransient
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
+import com.pushup.domain.repository.JoggingPlaybackEntryRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.RoutePointRepository
@@ -34,6 +35,7 @@ class SyncJoggingUseCase(
     private val sessionRepository: JoggingSessionRepository,
     private val segmentRepository: JoggingSegmentRepository,
     private val routePointRepository: RoutePointRepository,
+    private val playbackRepository: JoggingPlaybackEntryRepository? = null,
     private val supabaseClient: CloudSyncApi,
     private val networkMonitor: NetworkMonitor,
     private val maxRetries: Int = 3,
@@ -117,6 +119,7 @@ class SyncJoggingUseCase(
             // Upload route points for this session
             uploadRoutePoints(session.id)
             uploadSegments(session.id)
+            uploadPlaybackEntries(session.id)
             sessionRepository.markAsSynced(session.id)
             UploadOutcome.SYNCED
         } catch (e: ApiException.Conflict) {
@@ -145,6 +148,13 @@ class SyncJoggingUseCase(
         supabaseClient.replaceJoggingSegments(sessionId, requests)
     }
 
+    private suspend fun uploadPlaybackEntries(sessionId: String) {
+        val repository = playbackRepository ?: return
+        val entries = repository.getBySessionId(sessionId)
+        val requests = entries.map { it.toCreateRequest() }
+        supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
+    }
+
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
         return try {
             val remote = supabaseClient.getJoggingSession(local.id)
@@ -168,6 +178,7 @@ class SyncJoggingUseCase(
                 )
                 uploadRoutePoints(local.id)
                 uploadSegments(local.id)
+                uploadPlaybackEntries(local.id)
                 sessionRepository.markAsSynced(local.id)
                 return UploadOutcome.SYNCED
             }
@@ -177,6 +188,7 @@ class SyncJoggingUseCase(
             // upload that only sent the header without GPS data.
             uploadRoutePoints(local.id)
             uploadSegments(local.id)
+            uploadPlaybackEntries(local.id)
 
             if (sessionsEffectivelyEqual(local, remote)) {
                 sessionRepository.markAsSynced(local.id)

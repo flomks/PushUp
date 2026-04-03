@@ -20,6 +20,7 @@
 --   v10 (9.sqm)  — Added dashboardWidgetOrderJson on UserSettings (cloud-synced layout).
 --   v11 (10.sqm) — Added ExerciseLevel table for per-exercise XP tracking.
 --   v12 (11.sqm) — Added social running events, live sessions, presence, and XP awards.
+--   v13 (12.sqm) — Added jogging playback timeline entries.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------

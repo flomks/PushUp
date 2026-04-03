@@ -1,6 +1,7 @@
 package com.pushup.di
 
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.LiveRunSessionState
 import com.pushup.domain.model.RunMode
@@ -25,6 +26,7 @@ import com.pushup.db.PushUpDatabase
 import com.pushup.domain.usecase.CreateRunEventUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
+import com.pushup.domain.usecase.GetJoggingPlaybackEntriesUseCase
 import com.pushup.domain.usecase.GetJoggingSegmentsUseCase
 import com.pushup.domain.usecase.GetTimeCreditUseCase
 import com.pushup.domain.usecase.GetTotalStatsUseCase
@@ -532,6 +534,20 @@ object DataBridge : KoinComponent {
             try {
                 val segments = get<GetJoggingSegmentsUseCase>().invoke(sessionId)
                 withContext(Dispatchers.Main) { onResult(segments) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    fun fetchJoggingPlaybackEntriesForSession(
+        sessionId: String,
+        onResult: (List<JoggingPlaybackEntry>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val entries = get<GetJoggingPlaybackEntriesUseCase>().invoke(sessionId)
+                withContext(Dispatchers.Main) { onResult(entries) }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(emptyList()) }
             }

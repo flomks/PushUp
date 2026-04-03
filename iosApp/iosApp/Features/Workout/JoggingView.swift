@@ -2441,6 +2441,7 @@ private struct RecentRunDetailSheet: View {
                     heroCard
                     routeCard
                     segmentCard
+                    playbackCard
                     checkpointCard
                     crewCard
                 }
@@ -2667,6 +2668,69 @@ private struct RecentRunDetailSheet: View {
         }
     }
 
+    private var playbackCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                detailSectionHeader("Soundtrack", subtitle: "Songs captured during the run timeline with distance and active-time context")
+
+                if viewModel.playbackRows.isEmpty {
+                    Text("No tracked playback blocks are available for this run.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                } else {
+                    HStack(spacing: AppSpacing.sm) {
+                        detailStatTile(title: "Tracks", value: "\(viewModel.playbackRows.count)", icon: "music.note.list", tint: AppColors.secondary)
+                        detailStatTile(title: "Listening", value: Self.formatDuration(viewModel.playbackTrackedDurationSeconds), icon: "waveform", tint: AppColors.info)
+                    }
+
+                    ForEach(Array(viewModel.playbackRows.enumerated()), id: \.element.id) { index, row in
+                        HStack(alignment: .top, spacing: AppSpacing.sm) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(AppColors.secondary.opacity(0.10))
+                                    .frame(width: 44, height: 44)
+
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 17, weight: .bold))
+                                    .foregroundStyle(AppColors.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(row.title)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(row.subtitle)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                                Text(row.context)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(AppColors.secondary.opacity(0.92))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text(row.durationLabel)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(row.timeWindowLabel)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                                Text("Active \(row.activeWindowLabel)")
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+
+                        if index != viewModel.playbackRows.indices.last {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var crewCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
@@ -2875,6 +2939,7 @@ private final class RecentRunDetailViewModel: ObservableObject {
     @Published private(set) var session: Shared.JoggingSession?
     @Published private(set) var routePoints: [Shared.RoutePoint] = []
     @Published private(set) var segments: [Shared.JoggingSegment] = []
+    @Published private(set) var playbackEntries: [Shared.JoggingPlaybackEntry] = []
     @Published private(set) var liveSnapshot: RunCrewSnapshot?
     @Published private(set) var xpAwards: [RunXpAwardSummary] = []
     @Published private(set) var usersById: [String: RunUserSummary] = [:]
@@ -2931,6 +2996,13 @@ private final class RecentRunDetailViewModel: ObservableObject {
         session?.liveRunSessionId != nil
     }
 
+    var playbackTrackedDurationSeconds: Int {
+        playbackEntries.reduce(0) { partialResult, entry in
+            let duration = max(entry.endedAt.epochSeconds - entry.startedAt.epochSeconds, 0)
+            return partialResult + Int(duration)
+        }
+    }
+
     var syncLabel: String {
         guard let session else { return "Local" }
         return String(describing: session.syncStatus)
@@ -2962,6 +3034,25 @@ private final class RecentRunDetailViewModel: ObservableObject {
                 metric: RecentRunDetailSheet.formatDistance(distance),
                 trailingDetail: isPause ? "Paused" : RecentRunDetailSheet.formatPace(secondsPerKm),
                 durationSeconds: duration
+            )
+        }
+    }
+
+    var playbackRows: [RunPlaybackRow] {
+        playbackEntries.map { entry in
+            let duration = Int(max(entry.endedAt.epochSeconds - entry.startedAt.epochSeconds, 0))
+            let artist = (entry.artistName?.isEmpty == false) ? entry.artistName! : "Unknown artist"
+            let distanceDelta = max(entry.endDistanceMeters - entry.startDistanceMeters, 0)
+            let activeDelta = max(Int(entry.endActiveDurationSeconds - entry.startActiveDurationSeconds), 0)
+
+            return RunPlaybackRow(
+                id: entry.id,
+                title: entry.trackTitle,
+                subtitle: artist,
+                context: "\(Self.formatDistance(entry.startDistanceMeters)) → \(Self.formatDistance(entry.endDistanceMeters))  •  +\(Self.formatDistance(distanceDelta))",
+                durationLabel: RecentRunDetailSheet.formatDuration(duration),
+                timeWindowLabel: "\(Self.timeLabel(epochSeconds: entry.startedAt.epochSeconds)) – \(Self.timeLabel(epochSeconds: entry.endedAt.epochSeconds))",
+                activeWindowLabel: RecentRunDetailSheet.formatDuration(activeDelta)
             )
         }
     }
@@ -3023,11 +3114,13 @@ private final class RecentRunDetailViewModel: ObservableObject {
         async let sessionTask = fetchSession()
         async let routeTask = fetchRoutePoints()
         async let segmentTask = fetchSegments()
+        async let playbackTask = fetchPlaybackEntries()
 
         let resolvedSession = await sessionTask
         session = resolvedSession
         routePoints = await routeTask
         segments = await segmentTask
+        playbackEntries = await playbackTask
 
         if let liveRunSessionId = resolvedSession?.liveRunSessionId {
             async let snapshotTask = fetchLiveSnapshot(sessionId: liveRunSessionId)
@@ -3076,6 +3169,14 @@ private final class RecentRunDetailViewModel: ObservableObject {
         await withCheckedContinuation { continuation in
             DataBridge.shared.fetchJoggingSegmentsForSession(sessionId: run.id) { segments in
                 continuation.resume(returning: segments)
+            }
+        }
+    }
+
+    private func fetchPlaybackEntries() async -> [Shared.JoggingPlaybackEntry] {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchJoggingPlaybackEntriesForSession(sessionId: run.id) { entries in
+                continuation.resume(returning: entries)
             }
         }
     }
@@ -3294,6 +3395,16 @@ private struct RunCheckpoint: Identifiable {
     let coordinateLabel: String
     let timestampLabel: String
     let timestamp: Date
+}
+
+private struct RunPlaybackRow: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let context: String
+    let durationLabel: String
+    let timeWindowLabel: String
+    let activeWindowLabel: String
 }
 
 private struct RunCrewSnapshot {

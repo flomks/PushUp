@@ -1242,7 +1242,7 @@ class RepositoryTests {
             database = database,
             dispatcher = testDispatcher,
             clock = fixedClock,
-            cloudSyncApi = object : CloudSyncApi() {
+            cloudSyncApi = object : CloudSyncApi {
                 override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> =
                     listOf(
                         RunEventParticipantDTO(

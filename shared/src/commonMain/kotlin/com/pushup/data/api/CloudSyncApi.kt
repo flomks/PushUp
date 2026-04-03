@@ -1,6 +1,7 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateJoggingPlaybackEntryRequest
 import com.pushup.data.api.dto.CreateJoggingSegmentRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
@@ -30,6 +31,7 @@ import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.TimeCredit
@@ -222,6 +224,24 @@ interface CloudSyncApi {
     suspend fun replaceJoggingSegments(
         sessionId: String,
         requests: List<CreateJoggingSegmentRequest>,
+    ) {
+        // no-op default
+    }
+
+    /**
+     * Returns all playback timeline entries for [sessionId], ordered by start time.
+     */
+    suspend fun getJoggingPlaybackEntries(sessionId: String): List<JoggingPlaybackEntry> {
+        return emptyList()
+    }
+
+    /**
+     * Replaces all playback timeline entries for [sessionId] with the provided list.
+     * Default implementation is a no-op for compatibility with test fakes.
+     */
+    suspend fun replaceJoggingPlaybackEntries(
+        sessionId: String,
+        requests: List<CreateJoggingPlaybackEntryRequest>,
     ) {
         // no-op default
     }

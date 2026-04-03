@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pushup.data.api.ApiException
 import com.pushup.data.api.CloudSyncApi
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateJoggingPlaybackEntryRequest
 import com.pushup.data.api.dto.CreateRoutePointRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.LiveJoggingStatusDTO
@@ -18,6 +19,7 @@ import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.SyncStatus
@@ -243,6 +245,11 @@ class CloudSyncRepositoryTests {
             throw UnsupportedOperationException()
         override suspend fun getRoutePoints(sessionId: String): List<RoutePoint> = emptyList()
         override suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint> = emptyList()
+        override suspend fun getJoggingPlaybackEntries(sessionId: String): List<JoggingPlaybackEntry> = emptyList()
+        override suspend fun replaceJoggingPlaybackEntries(
+            sessionId: String,
+            requests: List<CreateJoggingPlaybackEntryRequest>,
+        ) {}
         override suspend fun upsertLiveJoggingStatus(request: UpsertLiveJoggingStatusRequest) {}
         override suspend fun deleteLiveJoggingStatus(userId: String) {}
         override suspend fun getLiveJoggingStatuses(userIds: List<String>): List<LiveJoggingStatusDTO> = emptyList()

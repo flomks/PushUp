@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MotionLoadingIndicator: View {
-    let tint: Color
+    let gradientColors: [Color]
     let lineCount: Int
     let lineWidth: CGFloat
     let height: CGFloat
@@ -9,12 +9,17 @@ struct MotionLoadingIndicator: View {
 
     init(
         tint: Color = Color(red: 0.13, green: 0.81, blue: 0.41),
+        gradientColors: [Color]? = nil,
         lineCount: Int = 5,
         lineWidth: CGFloat = 4,
         height: CGFloat = 18,
         speed: Double = 1.0
     ) {
-        self.tint = tint
+        self.gradientColors = gradientColors ?? [
+            tint.opacity(0.32),
+            tint.opacity(0.72),
+            tint
+        ]
         self.lineCount = max(lineCount, 3)
         self.lineWidth = lineWidth
         self.height = height
@@ -31,11 +36,7 @@ struct MotionLoadingIndicator: View {
                     Capsule(style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    tint.opacity(0.32),
-                                    tint.opacity(0.72),
-                                    tint
-                                ],
+                                colors: gradientColors,
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -65,30 +66,39 @@ struct MotionLoadingRow: View {
     let title: String
     let subtitle: String?
     let tint: Color
+    let gradientColors: [Color]?
+    let titleColor: Color
+    let subtitleColor: Color
 
     init(
         title: String,
         subtitle: String? = nil,
-        tint: Color = Color(red: 0.13, green: 0.81, blue: 0.41)
+        tint: Color = Color(red: 0.13, green: 0.81, blue: 0.41),
+        gradientColors: [Color]? = nil,
+        titleColor: Color = .white,
+        subtitleColor: Color = Color.white.opacity(0.48)
     ) {
         self.title = title
         self.subtitle = subtitle
         self.tint = tint
+        self.gradientColors = gradientColors
+        self.titleColor = titleColor
+        self.subtitleColor = subtitleColor
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            MotionLoadingIndicator(tint: tint)
+            MotionLoadingIndicator(tint: tint, gradientColors: gradientColors)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(titleColor)
 
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.48))
+                        .foregroundStyle(subtitleColor)
                 }
             }
 

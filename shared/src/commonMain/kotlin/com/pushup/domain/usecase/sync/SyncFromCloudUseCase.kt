@@ -8,6 +8,7 @@ import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.JoggingPlaybackEntryRepository
 import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.RoutePointRepository
@@ -60,6 +61,7 @@ class SyncFromCloudUseCase(
     private val timeCreditRepository: TimeCreditRepository,
     private val userRepository: UserRepository,
     private val joggingSessionRepository: JoggingSessionRepository? = null,
+    private val joggingPlaybackEntryRepository: JoggingPlaybackEntryRepository? = null,
     private val joggingSegmentRepository: JoggingSegmentRepository? = null,
     private val routePointRepository: RoutePointRepository? = null,
     private val supabaseClient: CloudSyncApi,
@@ -211,6 +213,7 @@ class SyncFromCloudUseCase(
                     // route map is not empty after a cloud sync.
                     fetchAndMergeRoutePoints(remote.id)
                     fetchAndMergeJoggingSegments(remote.id)
+                    fetchAndMergeJoggingPlaybackEntries(remote.id)
                     insertedOrUpdated++
                 } else {
                     keptLocal++
@@ -254,6 +257,16 @@ class SyncFromCloudUseCase(
             segRepo.replaceSegmentsForSession(sessionId, remoteSegments)
         } catch (_: Exception) {
             // Non-fatal: timeline remains optional if fetch fails.
+        }
+    }
+
+    private suspend fun fetchAndMergeJoggingPlaybackEntries(sessionId: String) {
+        val playbackRepo = joggingPlaybackEntryRepository ?: return
+        try {
+            val remoteEntries = supabaseClient.getJoggingPlaybackEntries(sessionId)
+            playbackRepo.replaceEntriesForSession(sessionId, remoteEntries)
+        } catch (_: Exception) {
+            // Non-fatal: soundtrack timeline remains optional if fetch fails.
         }
     }
 

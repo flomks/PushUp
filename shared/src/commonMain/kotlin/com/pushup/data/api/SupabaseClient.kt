@@ -1,6 +1,7 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateJoggingPlaybackEntryRequest
 import com.pushup.data.api.dto.CreateJoggingSegmentRequest
 import com.pushup.data.api.dto.CreateLiveRunParticipantRequest
 import com.pushup.data.api.dto.CreateLiveRunSessionRequest
@@ -10,6 +11,7 @@ import com.pushup.data.api.dto.CreateRunEventParticipantRequest
 import com.pushup.data.api.dto.CreateRunEventRequest
 import com.pushup.data.api.dto.CreateWorkoutSessionRequest
 import com.pushup.data.api.dto.JoggingSessionDTO
+import com.pushup.data.api.dto.JoggingPlaybackEntryDTO
 import com.pushup.data.api.dto.JoggingSegmentDTO
 import com.pushup.data.api.dto.LiveRunParticipantDTO
 import com.pushup.data.api.dto.LiveRunPresenceDTO
@@ -43,6 +45,7 @@ import com.pushup.data.api.dto.toDomain
 import com.pushup.domain.model.ExerciseLevel
 import com.pushup.domain.model.ExerciseType
 import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.model.PushUpRecord
@@ -671,6 +674,39 @@ class SupabaseClient(
 
             if (requests.isNotEmpty()) {
                 httpClient.post("$restBase/jogging_segments") {
+                    supabaseHeaders(token)
+                    header("Prefer", "return=minimal,resolution=ignore-duplicates")
+                    contentType(ContentType.Application.Json)
+                    setBody(requests)
+                }.also { it.expectSuccess() }
+            }
+        }
+    }
+
+    override suspend fun getJoggingPlaybackEntries(sessionId: String): List<JoggingPlaybackEntry> = withRetry {
+        val token = tokenProvider()
+        httpClient.get("$restBase/jogging_playback_entries") {
+            supabaseHeaders(token)
+            url.parameters.append("session_id", "eq.$sessionId")
+            url.parameters.append("order", "started_at.asc")
+        }.also { it.expectSuccess() }
+            .body<List<JoggingPlaybackEntryDTO>>()
+            .map { it.toDomain() }
+    }
+
+    override suspend fun replaceJoggingPlaybackEntries(
+        sessionId: String,
+        requests: List<CreateJoggingPlaybackEntryRequest>,
+    ) {
+        val token = tokenProvider()
+        withRetry {
+            httpClient.delete("$restBase/jogging_playback_entries") {
+                supabaseHeaders(token)
+                url.parameters.append("session_id", "eq.$sessionId")
+            }.also { it.expectSuccess() }
+
+            if (requests.isNotEmpty()) {
+                httpClient.post("$restBase/jogging_playback_entries") {
                     supabaseHeaders(token)
                     header("Prefer", "return=minimal,resolution=ignore-duplicates")
                     contentType(ContentType.Application.Json)
