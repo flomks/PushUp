@@ -148,7 +148,9 @@ struct FriendStatsView: View {
         let activityScoreValue = stats.map { "\($0.activityPoints)" } ?? "--"
         let sessionsValue = stats.map { "\($0.totalSessions)" } ?? "--"
         let earnedTimeValue = stats.map { formatDuration(seconds: $0.totalEarnedSeconds) } ?? "--"
-        let normalizedQuality = averageQuality.map(Double.init)
+        let normalizedQuality = averageQuality.map { quality in
+            Double(truncating: quality)
+        }
         let formQualityValue = normalizedQuality.map { "\(Int(($0 * 100.0).rounded()))%" } ?? "--"
         let formQualityTint = normalizedQuality.map { quality in
             AppColors.formScoreColor(quality)
