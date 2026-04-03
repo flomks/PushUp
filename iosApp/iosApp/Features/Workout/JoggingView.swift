@@ -29,8 +29,6 @@ struct JoggingView: View {
     @State private var isCurrentMarkerPulsing = false
 #if DEBUG
     /// Temporary: simulates 0→1000 m for ring + DIST only; remove when no longer needed.
-    @State private var simulatedDistanceMeters: Double?
-    @State private var distanceSimulationTask: Task<Void, Never>?
 #endif
 
     var body: some View {
@@ -756,17 +754,9 @@ struct JoggingView: View {
                 .frame(width: KilometerProgressRing.ringDiameter, height: KilometerProgressRing.ringDiameter)
 
                 HStack(spacing: 18) {
-#if DEBUG
-                    activeInfoPill(title: "DIST", value: displayDistancePillText())
-#else
-                    activeInfoPill(title: "DIST", value: formatDistanceMeters(effectiveDistanceMeters))
-#endif
-                    activeInfoPill(title: "PAUSE", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
+                    activeInfoPill(title: "DIST", value: formatDistanceMeters(viewModel.distanceMeters))
+                    activeInfoPill(title: "PAUSED", value: formatDurationSeconds(Int(viewModel.pauseDuration)))
                 }
-
-#if DEBUG
-                testDistanceSimulationButton
-#endif
             }
 
             Spacer()
@@ -817,7 +807,7 @@ struct JoggingView: View {
             }
             .overlay(alignment: .top) {
                 activeSpotifyNowPlayingCard
-                    .offset(y: -118)
+                    .offset(y: -92)
             }
             .padding(.bottom, 24)
         }
@@ -830,7 +820,7 @@ struct JoggingView: View {
         } label: {
             HStack(spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
@@ -841,10 +831,10 @@ struct JoggingView: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 58, height: 58)
+                        .frame(width: 46, height: 46)
 
                     Image(systemName: viewModel.spotifyConnected ? "waveform.circle.fill" : "link.circle.fill")
-                        .font(.system(size: 24, weight: .semibold))
+                        .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.88))
                 }
 
@@ -858,7 +848,7 @@ struct JoggingView: View {
                         HStack(spacing: 5) {
                             Circle()
                                 .fill(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.32))
-                                .frame(width: 7, height: 7)
+                                .frame(width: 6, height: 6)
 
                             Text(viewModel.spotifyIsPlaying ? "LIVE" : viewModel.spotifyProviderStatusLabel.uppercased())
                                 .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -867,12 +857,14 @@ struct JoggingView: View {
                     }
 
                     Text(viewModel.spotifyNowPlayingTitle ?? viewModel.currentTrack.title)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text(viewModel.spotifyNowPlayingArtist ?? viewModel.currentTrack.artist)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.62))
                         .lineLimit(1)
                 }
@@ -884,33 +876,24 @@ struct JoggingView: View {
                         isAnimating: viewModel.spotifyConnected && viewModel.spotifyIsPlaying,
                         tint: AppColors.success
                     )
-                    .frame(width: 56, height: 30)
+                    .frame(width: 42, height: 24)
 
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .bold))
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Color.white.opacity(0.38))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 20)
-            .frame(maxWidth: min(UIScreen.main.bounds.width - 64, 360))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: min(UIScreen.main.bounds.width - 56, 334))
             .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(Color.black.opacity(0.62))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .stroke(Color.white.opacity(0.10), lineWidth: 1)
                     )
             )
-            .overlay(alignment: .bottomLeading) {
-                Text(viewModel.spotifyRunStatusLabel)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.white.opacity(0.48))
-                    .lineLimit(1)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-            }
             .shadow(color: Color.black.opacity(0.28), radius: 18, y: 10)
         }
         .buttonStyle(.plain)
@@ -1621,71 +1604,12 @@ struct JoggingView: View {
         return String(format: "%.2f", paceMinutes)
     }
 
-    private var effectiveDistanceMeters: Double {
-#if DEBUG
-        simulatedDistanceMeters ?? viewModel.distanceMeters
-#else
-        viewModel.distanceMeters
-#endif
-    }
-
     private func formatDistanceMeters(_ m: Double) -> String {
         if m >= 1000 {
             return String(format: "%.2f km", m / 1000.0)
         }
         return String(format: "%.0f m", m)
     }
-
-#if DEBUG
-    /// DIST during simulation uses tenths of a meter so the value steps visibly with the timer; live GPS uses `formatDistanceMeters`.
-    private func displayDistancePillText() -> String {
-        if simulatedDistanceMeters != nil {
-            let m = effectiveDistanceMeters
-            if m >= 1000 {
-                return String(format: "%.2f km", m / 1000.0)
-            }
-            return String(format: "%.1f m", m)
-        }
-        return formatDistanceMeters(effectiveDistanceMeters)
-    }
-
-    private var testDistanceSimulationButton: some View {
-        Button {
-            startSimulatedKilometerTest()
-        } label: {
-            Text("Test 1 km (10s)")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.18), in: Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func startSimulatedKilometerTest() {
-        distanceSimulationTask?.cancel()
-        simulatedDistanceMeters = 0
-
-        let duration: TimeInterval = 10
-        let targetMeters = 999.99
-        let stepCount = 200
-        let stepNanos = UInt64((duration / Double(stepCount)) * 1_000_000_000)
-
-        distanceSimulationTask = Task { @MainActor in
-            for step in 0...stepCount {
-                guard !Task.isCancelled else { return }
-                let t = Double(step) / Double(stepCount)
-                simulatedDistanceMeters = t * targetMeters
-                if step < stepCount {
-                    try? await Task.sleep(nanoseconds: stepNanos)
-                }
-            }
-            guard !Task.isCancelled else { return }
-            simulatedDistanceMeters = nil
-        }
-    }
-#endif
 
     private func activeInfoPill(title: String, value: String) -> some View {
         VStack(spacing: 3) {
@@ -3273,10 +3197,10 @@ private struct SpotifyLiveBarsView: View {
     let isAnimating: Bool
     let tint: Color
 
-    private let baseline: [CGFloat] = [0.34, 0.74, 0.46, 0.90, 0.56, 0.82, 0.38, 0.68]
+    private let baseline: [CGFloat] = [0.34, 0.70, 0.48, 0.86, 0.58, 0.78, 0.42, 0.64]
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 0.14, paused: !isAnimating)) { context in
+        TimelineView(.animation(minimumInterval: 0.06, paused: !isAnimating)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
 
             HStack(alignment: .bottom, spacing: 4) {
@@ -3301,11 +3225,12 @@ private struct SpotifyLiveBarsView: View {
     }
 
     private func barHeight(at index: Int, time: TimeInterval) -> CGFloat {
-        guard isAnimating else { return 8 + (baseline[index] * 10) }
-        let wave = sin(time * 5.2 + Double(index) * 0.85)
-        let shimmer = cos(time * 3.4 + Double(index) * 0.55)
-        let value = max(0.18, baseline[index] + CGFloat((wave + shimmer) * 0.18))
-        return 8 + (value * 22)
+        guard isAnimating else { return 7 + (baseline[index] * 8) }
+        let primary = 0.5 + 0.5 * sin(time * 2.8 + Double(index) * 0.52)
+        let secondary = 0.5 + 0.5 * sin(time * 1.9 + Double(index) * 0.91 + 0.8)
+        let blend = (primary * 0.72) + (secondary * 0.28)
+        let value = max(0.20, baseline[index] * 0.72 + CGFloat(blend) * 0.58)
+        return 7 + (value * 16)
     }
 }
 
