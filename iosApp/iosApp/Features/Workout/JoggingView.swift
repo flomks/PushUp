@@ -371,69 +371,45 @@ struct JoggingView: View {
     }
 
     private var futureRunsCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionEyebrow(title: "Run Calendar", subtitle: "Future events you joined or planned")
-
-                HStack(alignment: .top, spacing: AppSpacing.md) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(viewModel.upcomingEventCountLabel)
-                            .font(AppTypography.bodySemibold)
-                            .foregroundStyle(AppColors.textPrimary)
-                        Text(viewModel.nextUpcomingRunSummary)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Button("Open Planner") {
-                        showCrewView = true
-                    }
-                    .font(AppTypography.captionSemibold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, AppSpacing.md)
-                    .padding(.vertical, AppSpacing.xs)
-                    .background(AppColors.secondary, in: Capsule())
-                    .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack {
+                HStack(spacing: 10) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                    Text("Upcoming")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
 
-                if viewModel.upcomingRuns.isEmpty {
-                    Text("No events on the calendar yet. Open the planner to schedule a crew run in the future.")
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
-                } else {
-                    VStack(spacing: AppSpacing.sm) {
-                        ForEach(Array(viewModel.upcomingRuns.sorted(by: { $0.plannedStartAt < $1.plannedStartAt }).prefix(3))) { run in
-                            HStack(spacing: AppSpacing.sm) {
-                                VStack(spacing: 2) {
-                                    Text(Self.calendarMonthFormatter.string(from: run.plannedStartAt).uppercased())
-                                        .font(AppTypography.caption2)
-                                        .foregroundStyle(AppColors.textSecondary)
-                                    Text("\(Calendar.current.component(.day, from: run.plannedStartAt))")
-                                        .font(.system(size: 22, weight: .bold, design: .rounded))
-                                        .foregroundStyle(AppColors.textPrimary)
-                                }
-                                .frame(width: 52)
-                                .padding(.vertical, AppSpacing.xs)
-                                .background(AppColors.backgroundPrimary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                Spacer()
 
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(run.title)
-                                        .font(AppTypography.bodySemibold)
-                                        .foregroundStyle(AppColors.textPrimary)
-                                    Text(run.subtitle)
-                                        .font(AppTypography.caption1)
-                                        .foregroundStyle(AppColors.textSecondary)
-                                }
+                Button("View All") {
+                    showCrewView = true
+                }
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.42))
+                .buttonStyle(.plain)
+            }
 
-                                Spacer()
-                            }
-                        }
+            if viewModel.upcomingRuns.isEmpty {
+                Text("No events on the calendar yet. Open the planner to schedule a crew run in the future.")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(Color.white.opacity(0.46))
+            } else {
+                VStack(spacing: AppSpacing.sm) {
+                    ForEach(Array(viewModel.upcomingRuns.sorted(by: { $0.plannedStartAt < $1.plannedStartAt }).prefix(3).enumerated()), id: \.element.id) { index, run in
+                        upcomingPreviewRow(run: run, showsConnector: index != min(viewModel.upcomingRuns.count, 3) - 1)
                     }
                 }
             }
         }
+        .padding(20)
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var runningHighlightsCard: some View {
@@ -1408,6 +1384,71 @@ struct JoggingView: View {
         .buttonStyle(.plain)
     }
 
+    private func upcomingPreviewRow(run: UpcomingRunOption, showsConnector: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(Color.white.opacity(0.20))
+                    .frame(width: 16, height: 16)
+                    .overlay(Circle().stroke(Color.white.opacity(0.40), lineWidth: 2))
+
+                if showsConnector {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 1, height: 58)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    Text(run.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("\(run.participantCount)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.40))
+                }
+
+                Text(upcomingTimelineDateText(for: run))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.40))
+
+                HStack(spacing: 6) {
+                    Image(systemName: "figure.run")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.40))
+                    Text(upcomingTimelineBadgeText(for: run))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.60))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.white.opacity(0.05), in: Capsule())
+            }
+            .padding(.bottom, showsConnector ? 0 : 2)
+        }
+    }
+
+    private func upcomingTimelineDateText(for run: UpcomingRunOption) -> String {
+        Self.upcomingTimelineDateFormatter.string(from: run.plannedStartAt)
+    }
+
+    private func upcomingTimelineBadgeText(for run: UpcomingRunOption) -> String {
+        if let status = run.status, !status.isEmpty {
+            return status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+        return "Crew run"
+    }
+
     private func sectionEyebrow(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -2202,6 +2243,13 @@ struct JoggingView: View {
     private static let calendarMonthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+
+    private static let upcomingTimelineDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd • HH:mm"
         formatter.locale = Locale(identifier: "en_US")
         return formatter
     }()

@@ -141,26 +141,28 @@ private struct DayBar: View {
     }
 
     private var barHeight: CGFloat {
-        guard day.sessions > 0 else { return barMinHeight }
+        guard day.sessions > 0 else { return 0 }
         return max(barMinHeight, barMaxHeight * heightFraction)
     }
 
     var body: some View {
-        let displayHeight = appeared ? barHeight : barMinHeight
-        let fill = day.sessions > 0 ? DashboardWidgetChrome.barFill : DashboardWidgetChrome.barTrack
+        let displayHeight = appeared ? barHeight : 0
 
         VStack(spacing: 8) {
             ZStack(alignment: .bottom) {
-                Color.clear
+                Capsule()
+                    .fill(DashboardWidgetChrome.barTrack)
                     .frame(height: barMaxHeight)
 
-                Capsule()
-                    .fill(fill)
-                    .frame(height: displayHeight)
-                    .animation(
-                        .spring(duration: 0.6, bounce: 0.2).delay(Double(day.id) * 0.05),
-                        value: appeared
-                    )
+                if day.sessions > 0 {
+                    Capsule()
+                        .fill(DashboardWidgetChrome.barFill)
+                        .frame(height: displayHeight)
+                        .animation(
+                            .spring(duration: 0.6, bounce: 0.2).delay(Double(day.id) * 0.05),
+                            value: appeared
+                        )
+                }
             }
             .frame(maxWidth: .infinity)
 
@@ -184,16 +186,10 @@ private struct EmptyDayBar: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ZStack(alignment: .bottom) {
-                Capsule()
-                    .fill(DashboardWidgetChrome.barTrack)
-                    .frame(height: barMaxHeight)
-
-                Capsule()
-                    .fill(isToday ? Color.white.opacity(0.2) : DashboardWidgetChrome.barTrack)
-                    .frame(height: 4)
-            }
-            .frame(maxWidth: .infinity)
+            Capsule()
+                .fill(DashboardWidgetChrome.barTrack)
+                .frame(height: barMaxHeight)
+                .frame(maxWidth: .infinity)
 
             Text(letter)
                 .font(.system(size: 11, weight: .medium))

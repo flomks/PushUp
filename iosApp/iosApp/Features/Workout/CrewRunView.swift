@@ -254,47 +254,45 @@ struct CrewRunView: View {
     }
 
     private var upcomingRunsCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionHeader("Upcoming Runs", subtitle: "Accepted, invited, and ready-to-start sessions")
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack {
+                HStack(spacing: 10) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+                    Text("Upcoming")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
 
-                if viewModel.upcomingRuns.isEmpty {
-                    emptyState("No planned runs yet.")
-                } else {
-                    ForEach(viewModel.upcomingRuns) { run in
-                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                            optionRow(
-                                initials: "EV",
-                                title: run.title,
-                                subtitle: run.subtitle,
-                                actionTitle: viewModel.upcomingRunPrimaryActionTitle(for: run),
-                                actionTint: AppColors.secondary
-                            ) {
-                                viewModel.handleUpcomingRunPrimaryAction(run)
-                            }
+                Spacer()
 
-                            HStack(spacing: AppSpacing.xs) {
-                                if let status = run.status {
-                                    statusChip(status.replacingOccurrences(of: "_", with: " ").capitalized)
-                                }
+                Text("\(viewModel.upcomingRuns.count)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.42))
+            }
 
-                                Spacer()
-
-                                if run.status?.uppercased() == "INVITED" {
-                                    Button("Decline") {
-                                        viewModel.declineUpcomingRun(run.id)
-                                    }
-                                    .font(AppTypography.captionSemibold)
-                                    .foregroundStyle(AppColors.textSecondary)
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.vertical, AppSpacing.xxs)
+            if viewModel.upcomingRuns.isEmpty {
+                Text("No planned runs yet.")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(Color.white.opacity(0.46))
+            } else {
+                VStack(spacing: AppSpacing.sm) {
+                    ForEach(Array(viewModel.upcomingRuns.enumerated()), id: \.element.id) { index, run in
+                        crewUpcomingRow(
+                            run: run,
+                            showsConnector: index != viewModel.upcomingRuns.count - 1
+                        )
                     }
                 }
             }
         }
+        .padding(20)
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var calendarCard: some View {
@@ -542,6 +540,84 @@ struct CrewRunView: View {
         .padding(.vertical, 2)
     }
 
+    private func crewUpcomingRow(run: UpcomingRunOption, showsConnector: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(Color.white.opacity(0.20))
+                    .frame(width: 16, height: 16)
+                    .overlay(Circle().stroke(Color.white.opacity(0.40), lineWidth: 2))
+
+                if showsConnector {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 1, height: 64)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    Text(run.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.2")
+                            .font(.system(size: 12, weight: .medium))
+                        Text("\(run.participantCount)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.40))
+                }
+
+                Text(Self.upcomingDateFormatter.string(from: run.plannedStartAt))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.40))
+
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.40))
+                        Text((run.status?.replacingOccurrences(of: "_", with: " ").capitalized).flatMap { $0.isEmpty ? nil : $0 } ?? "Crew run")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.60))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.05), in: Capsule())
+
+                    Spacer()
+
+                    Button {
+                        viewModel.handleUpcomingRunPrimaryAction(run)
+                    } label: {
+                        Text(viewModel.upcomingRunPrimaryActionTitle(for: run))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(AppColors.secondary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if run.status?.uppercased() == "INVITED" {
+                    Button("Decline") {
+                        viewModel.declineUpcomingRun(run.id)
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.40))
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private func optionRow(
         initials: String,
         title: String,
@@ -729,6 +805,13 @@ struct CrewRunView: View {
     private static let dayTitleFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+
+    private static let upcomingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd • HH:mm"
         formatter.locale = Locale(identifier: "en_US")
         return formatter
     }()
