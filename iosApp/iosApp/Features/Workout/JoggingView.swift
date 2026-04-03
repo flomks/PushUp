@@ -1709,6 +1709,16 @@ struct JoggingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        viewModel.refreshSpotifyDetails()
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.82))
+                    }
+                    .buttonStyle(.plain)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { showMusicSheet = false }
                         .foregroundStyle(.white)
@@ -1732,6 +1742,20 @@ struct JoggingView: View {
                  : "Not connected")
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
+
+            if let accountTier = spotifyAccountTierLabel {
+                Text(accountTier)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(accountTier == "Premium" ? .black : Color.white.opacity(0.78))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        accountTier == "Premium"
+                            ? Color(red: 0.13, green: 0.81, blue: 0.41)
+                            : Color.white.opacity(0.10),
+                        in: Capsule()
+                    )
+            }
 
             Spacer()
 
@@ -1858,6 +1882,18 @@ struct JoggingView: View {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    private var spotifyAccountTierLabel: String? {
+        guard viewModel.spotifyConnected else { return nil }
+        let raw = viewModel.spotifyProductTier?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if raw == "premium" {
+            return "Premium"
+        }
+        if raw == "free" || raw == "open" {
+            return "Free"
+        }
+        return nil
     }
 
     // MARK: - Audio Visualizer
@@ -2184,18 +2220,6 @@ struct JoggingView: View {
                 }
             }
 
-            Button {
-                viewModel.refreshSpotifyDetails()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 12, weight: .bold))
-                    Text("Refresh")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                }
-                .foregroundStyle(Color.white.opacity(0.4))
-            }
-            .buttonStyle(.plain)
         }
     }
 

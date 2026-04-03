@@ -114,35 +114,19 @@ private struct SpotifyAvailableDevicesResponse: Decodable {
     let devices: [SpotifyDeviceResponse]
 }
 
-private struct SpotifyAvailableGenreSeedsResponse: Decodable {
-    let genres: [String]
+private struct SpotifySearchResponse: Decodable {
+    let tracks: SpotifySearchTracksPage
 }
 
-// MARK: - Recommendations API Response
-
-private struct SpotifyRecommendationsResponse: Decodable {
-    let tracks: [SpotifyRecommendedTrack]
-}
-
-private struct SpotifyRecommendedTrack: Decodable {
-    let name: String
-    let uri: String
-    let artists: [SpotifyArtistResponse]
-
-    enum CodingKeys: String, CodingKey {
-        case name, uri, artists
-    }
+private struct SpotifySearchTracksPage: Decodable {
+    let items: [SpotifyTrackResponse]
 }
 
 private struct SpotifyTopTracksResponse: Decodable {
-    let items: [SpotifyTopTrackItem]
+    let items: [SpotifyTrackResponse]
 }
 
-private struct SpotifyTopTrackItem: Decodable {
-    let id: String
-}
-
-/// A real Spotify track fetched from the Recommendations API.
+/// A real Spotify track fetched from the Spotify search API.
 struct SpotifyRecommendedRunTrack: Identifiable, Equatable {
     let id: String          // Spotify URI
     let title: String
@@ -150,8 +134,9 @@ struct SpotifyRecommendedRunTrack: Identifiable, Equatable {
     let uri: String
 }
 
-/// Audio parameters for each RunAudioMode used to query Spotify recommendations.
+/// Audio parameters for each RunAudioMode used to label and shape generated run music.
 struct RunModeAudioParams {
+    let mode: RunAudioMode
     let minTempo: Double
     let maxTempo: Double
     let targetTempo: Double
@@ -162,15 +147,15 @@ struct RunModeAudioParams {
     static func params(for mode: RunAudioMode) -> RunModeAudioParams {
         switch mode {
         case .recovery:
-            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "chill", "pop", "indie-pop"])
+            return RunModeAudioParams(mode: mode, minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "chill", "pop", "indie-pop"])
         case .base:
-            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "pop", "disco", "rock"])
+            return RunModeAudioParams(mode: mode, minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "pop", "disco", "rock"])
         case .tempo:
-            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["dance", "electronic", "pop", "rock"])
+            return RunModeAudioParams(mode: mode, minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["dance", "electronic", "pop", "rock"])
         case .longRun:
-            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "indie", "pop", "folk"])
+            return RunModeAudioParams(mode: mode, minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "indie", "pop", "folk"])
         case .race:
-            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["dance", "electronic", "rock", "pop"])
+            return RunModeAudioParams(mode: mode, minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["dance", "electronic", "rock", "pop"])
         }
     }
 }
@@ -290,78 +275,61 @@ final class SpotifyService: NSObject {
         )
     }
 
-    // MARK: - Recommendations API
+    // MARK: - Search Based Generator
 
-    /// Fetches the user's top track IDs to use as seeds for recommendations.
-    private func fetchSeedTrackIDs(limit: Int = 5) async throws -> [String] {
+    /// Fetches the user's top tracks so search queries can be biased toward familiar artists.
+    private func fetchTopTracks(limit: Int = 5) async throws -> [SpotifyTrackResponse] {
         let request = try await authorizedRequest(path: "/v1/me/top/tracks?limit=\(limit)&time_range=short_term")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             return []
         }
         let payload = try JSONDecoder().decode(SpotifyTopTracksResponse.self, from: data)
-        return payload.items.map(\.id)
+        return payload.items
     }
 
-    /// Fetches recommended tracks from Spotify based on the given audio parameters.
+    /// Generates tracks for the selected run mode using Spotify search.
     func fetchRecommendations(params: RunModeAudioParams, limit: Int = 20) async throws -> [SpotifyRecommendedRunTrack] {
-        let trackSeeds = Array(try await fetchSeedTrackIDs(limit: 10).shuffled().prefix(2))
-        let availableGenres = try await fetchAvailableGenreSeeds()
-        let filteredGenres = params.genreSeeds.filter { availableGenres.contains($0) }
-        let fallbackGenres = filteredGenres.isEmpty
-            ? availableGenres.filter { ["pop", "dance", "rock", "electronic"].contains($0) }
-            : filteredGenres
-        let primaryGenres = Array(fallbackGenres.shuffled().prefix(trackSeeds.isEmpty ? 2 : 1))
-        let variants = [
-            recommendationQueryItems(
-                params: params,
-                limit: limit,
-                trackSeeds: trackSeeds,
-                genreSeeds: primaryGenres
-            ),
-            recommendationQueryItems(
-                params: params,
-                limit: limit,
-                trackSeeds: [],
-                genreSeeds: Array(fallbackGenres.prefix(2)),
-                includeTempoBounds: false
-            ),
-            recommendationQueryItems(
-                params: params,
-                limit: limit,
-                trackSeeds: [],
-                genreSeeds: ["pop"],
-                includeTempoBounds: false,
-                includeMoodTargets: false
-            )
-        ]
+        let topTracks = try await fetchTopTracks(limit: 10)
+        let artistBias = Array(Set(topTracks.flatMap(\.artists).map(\.name))).shuffled()
+        let searchQueries = buildSearchQueries(for: params.mode, artistBias: artistBias)
 
+        var collected = [SpotifyRecommendedRunTrack]()
+        var seenURIs = Set<String>()
         var lastError: Error?
 
-        for queryItems in variants {
+        for query in searchQueries {
             do {
-                let payload = try await fetchRecommendations(queryItems: queryItems)
-                let mapped = payload.tracks.map { track in
-                    SpotifyRecommendedRunTrack(
-                        id: track.uri,
-                        title: track.name,
-                        artist: track.artists.map(\.name).joined(separator: ", "),
-                        uri: track.uri
+                let offset = Int.random(in: 0...15)
+                let tracks = try await searchTracks(query: query, limit: 10, offset: offset)
+                for track in tracks.shuffled() {
+                    guard let uri = track.uri, !uri.isEmpty, !seenURIs.contains(uri) else { continue }
+                    seenURIs.insert(uri)
+                    collected.append(
+                        SpotifyRecommendedRunTrack(
+                            id: uri,
+                            title: track.name,
+                            artist: track.artists.map(\.name).joined(separator: ", "),
+                            uri: uri
+                        )
                     )
-                }
-                let deduplicated = Array(Dictionary(grouping: mapped, by: \.uri).compactMap { $0.value.first }).shuffled()
-                if !deduplicated.isEmpty {
-                    return deduplicated
+                    if collected.count >= limit {
+                        return collected
+                    }
                 }
             } catch {
                 lastError = error
             }
         }
 
+        if !collected.isEmpty {
+            return collected
+        }
+
         throw lastError ?? NSError(
             domain: "SpotifyService",
             code: 26,
-            userInfo: [NSLocalizedDescriptionKey: "Spotify returned no matching tracks for this run mode."]
+            userInfo: [NSLocalizedDescriptionKey: "Spotify search returned no matching tracks for this run mode."]
         )
     }
 
@@ -399,14 +367,6 @@ final class SpotifyService: NSObject {
         try validate(response: response, data: data)
         let payload = try JSONDecoder().decode(SpotifyAvailableDevicesResponse.self, from: data)
         return payload.devices
-    }
-
-    private func fetchAvailableGenreSeeds() async throws -> Set<String> {
-        let request = try await authorizedRequest(path: "/v1/recommendations/available-genre-seeds")
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try validate(response: response, data: data)
-        let payload = try JSONDecoder().decode(SpotifyAvailableGenreSeedsResponse.self, from: data)
-        return Set(payload.genres)
     }
 
     private func transferPlayback(to deviceID: String, play: Bool) async throws {
@@ -739,47 +699,29 @@ final class SpotifyService: NSObject {
         return Data(body.utf8)
     }
 
-    private func fetchRecommendations(queryItems: [URLQueryItem]) async throws -> SpotifyRecommendationsResponse {
+    private func searchTracks(query: String, limit: Int, offset: Int) async throws -> [SpotifyTrackResponse] {
         var components = URLComponents()
-        components.path = "/v1/recommendations"
-        components.queryItems = queryItems
+        components.path = "/v1/search"
+        components.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "type", value: "track"),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
 
-        let request = try await authorizedRequest(path: components.string ?? "/v1/recommendations")
+        let request = try await authorizedRequest(path: components.string ?? "/v1/search")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
-        return try JSONDecoder().decode(SpotifyRecommendationsResponse.self, from: data)
+        let payload = try JSONDecoder().decode(SpotifySearchResponse.self, from: data)
+        return payload.tracks.items
     }
 
-    private func recommendationQueryItems(
-        params: RunModeAudioParams,
-        limit: Int,
-        trackSeeds: [String],
-        genreSeeds: [String],
-        includeTempoBounds: Bool = true,
-        includeMoodTargets: Bool = true
-    ) -> [URLQueryItem] {
-        var items = [URLQueryItem(name: "limit", value: String(limit))]
-
-        if !trackSeeds.isEmpty {
-            items.append(URLQueryItem(name: "seed_tracks", value: trackSeeds.joined(separator: ",")))
+    private func buildSearchQueries(for mode: RunAudioMode, artistBias: [String]) -> [String] {
+        let artistTerms = artistBias.prefix(2).map { "artist:\"\($0)\"" }
+        let biasedQueries = mode.searchQueries.prefix(2).flatMap { query in
+            artistTerms.map { artist in "\(query) \(artist)" }
         }
-        if !genreSeeds.isEmpty {
-            items.append(URLQueryItem(name: "seed_genres", value: genreSeeds.joined(separator: ",")))
-        }
-
-        items.append(URLQueryItem(name: "target_tempo", value: String(Int(params.targetTempo.rounded()))))
-
-        if includeTempoBounds {
-            items.append(URLQueryItem(name: "min_tempo", value: String(Int(params.minTempo.rounded()))))
-            items.append(URLQueryItem(name: "max_tempo", value: String(Int(params.maxTempo.rounded()))))
-        }
-
-        if includeMoodTargets {
-            items.append(URLQueryItem(name: "target_energy", value: String(params.targetEnergy)))
-            items.append(URLQueryItem(name: "target_valence", value: String(params.targetValence)))
-        }
-
-        return items
+        return Array((mode.searchQueries + biasedQueries + ["workout", "running", "cardio"]).uniqued().prefix(8))
     }
 
     private static let scopes = [
@@ -810,19 +752,55 @@ private extension String {
     }
 }
 
+private extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen = Set<Element>()
+        return filter { seen.insert($0).inserted }
+    }
+}
+
 private extension RunAudioMode {
     var searchQuery: String {
+        searchQueries.first ?? "running workout"
+    }
+
+    var searchQueries: [String] {
         switch self {
         case .recovery:
-            return "recovery run playlist"
+            return [
+                "chill running",
+                "easy run",
+                "recovery workout",
+                "acoustic cardio"
+            ]
         case .base:
-            return "base run playlist"
+            return [
+                "running workout",
+                "steady cardio",
+                "dance run",
+                "base run"
+            ]
         case .tempo:
-            return "tempo run playlist"
+            return [
+                "tempo run",
+                "high energy run",
+                "interval workout",
+                "fast running"
+            ]
         case .longRun:
-            return "long run playlist"
+            return [
+                "long run",
+                "endurance run",
+                "indie running",
+                "steady workout"
+            ]
         case .race:
-            return "race pace playlist"
+            return [
+                "race day run",
+                "sprint workout",
+                "power running",
+                "high intensity cardio"
+            ]
         }
     }
 }
