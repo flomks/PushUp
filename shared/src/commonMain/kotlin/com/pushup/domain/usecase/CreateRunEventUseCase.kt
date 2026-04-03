@@ -56,7 +56,7 @@ class CreateRunEventUseCase(
                     userId = organizerUserId,
                     role = RunParticipantRole.ORGANIZER,
                     status = RunParticipantStatus.ACCEPTED,
-                    invitedBy = organizerUserId,
+                    invitedBy = null,
                     invitedAt = now,
                     respondedAt = now,
                     checkedInAt = null,

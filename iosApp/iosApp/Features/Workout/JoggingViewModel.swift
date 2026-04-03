@@ -1018,8 +1018,7 @@ final class JoggingViewModel: ObservableObject {
 
     var canCreatePlannedRun: Bool {
         currentUserId != nil &&
-        !plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        runParticipants.contains(where: { $0.status == .invited })
+        !plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var musicCardSubtitle: String {
@@ -1265,10 +1264,6 @@ final class JoggingViewModel: ObservableObject {
         let inviteIds = runParticipants
             .filter { $0.status == .invited }
             .map(\.id)
-        guard !inviteIds.isEmpty else {
-            plannedRunStatusMessage = "Invite at least one friend first."
-            return
-        }
 
         let trimmedTitle = plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {

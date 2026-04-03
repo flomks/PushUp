@@ -246,7 +246,7 @@ struct CrewRunView: View {
                     viewModel.createPlannedRun()
                 }
 
-                Text(viewModel.plannedRunStatusMessage ?? "Uses the currently invited crew as the event lineup.")
+                Text(viewModel.plannedRunStatusMessage ?? "Create a run now and invite people later if needed.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
             }

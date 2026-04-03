@@ -13,12 +13,21 @@ import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.model.RunEvent
+import com.pushup.domain.model.RunEventParticipant
+import com.pushup.domain.model.RunMode
+import com.pushup.domain.model.RunParticipantRole
+import com.pushup.domain.model.RunParticipantStatus
+import com.pushup.domain.model.RunVisibility
 import com.pushup.domain.repository.PushUpRecordRepository
+import com.pushup.domain.repository.RunEventRepository
 import com.pushup.domain.repository.StatsRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -260,6 +269,90 @@ class UseCaseTests {
         assertFailsWith<IllegalArgumentException> {
             useCase("")
         }
+    }
+
+    @Test
+    fun createRunEvent_allowsCreationWithoutInvitedFriends() = runTest {
+        var capturedEvent: RunEvent? = null
+        var capturedParticipants: List<RunEventParticipant> = emptyList()
+        val repository = object : RunEventRepository {
+            override suspend fun create(event: RunEvent, participants: List<RunEventParticipant>): RunEvent {
+                capturedEvent = event
+                capturedParticipants = participants
+                return event
+            }
+
+            override suspend fun getById(eventId: String): RunEvent? = null
+
+            override suspend fun getUpcomingForUser(userId: String): List<RunEvent> = emptyList()
+
+            override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = emptyList()
+
+            override suspend fun updateParticipantStatus(
+                eventId: String,
+                userId: String,
+                status: RunParticipantStatus,
+            ): RunEventParticipant = error("Not needed in this test")
+
+            override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
+        }
+        val useCase = CreateRunEventUseCase(repository, fixedClock, sequentialIdGenerator)
+
+        val event = useCase(
+            organizerUserId = "user-1",
+            title = "Morning Run",
+            mode = RunMode.BASE,
+            visibility = RunVisibility.FRIENDS,
+            plannedStartAt = Instant.fromEpochMilliseconds(1_700_000_600_000L),
+            invitedUserIds = emptyList(),
+        )
+
+        assertNotNull(capturedEvent)
+        assertEquals(event.id, capturedEvent?.id)
+        assertEquals(1, capturedParticipants.size)
+        assertEquals("user-1", capturedParticipants.single().userId)
+        assertEquals(RunParticipantRole.ORGANIZER, capturedParticipants.single().role)
+        assertEquals(RunParticipantStatus.ACCEPTED, capturedParticipants.single().status)
+    }
+
+    @Test
+    fun createRunEvent_doesNotSelfInviteOrganizer() = runTest {
+        var organizerParticipant: RunEventParticipant? = null
+        val repository = object : RunEventRepository {
+            override suspend fun create(event: RunEvent, participants: List<RunEventParticipant>): RunEvent {
+                organizerParticipant = participants.single { it.role == RunParticipantRole.ORGANIZER }
+                return event
+            }
+
+            override suspend fun getById(eventId: String): RunEvent? = null
+
+            override suspend fun getUpcomingForUser(userId: String): List<RunEvent> = emptyList()
+
+            override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = emptyList()
+
+            override suspend fun updateParticipantStatus(
+                eventId: String,
+                userId: String,
+                status: RunParticipantStatus,
+            ): RunEventParticipant = error("Not needed in this test")
+
+            override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
+        }
+        val useCase = CreateRunEventUseCase(repository, fixedClock, sequentialIdGenerator)
+
+        useCase(
+            organizerUserId = "user-1",
+            title = "Solo Planning Run",
+            mode = RunMode.BASE,
+            visibility = RunVisibility.FRIENDS,
+            plannedStartAt = Instant.fromEpochMilliseconds(1_700_000_600_000L),
+            invitedUserIds = listOf("friend-1"),
+        )
+
+        assertNotNull(organizerParticipant)
+        assertEquals(null, organizerParticipant?.invitedBy)
+        assertEquals(organizerParticipant?.createdAt, organizerParticipant?.invitedAt)
+        assertEquals(organizerParticipant?.createdAt, organizerParticipant?.respondedAt)
     }
 
     // =========================================================================
