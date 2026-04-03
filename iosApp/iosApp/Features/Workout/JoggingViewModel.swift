@@ -210,6 +210,48 @@ final class SpotifyService: NSObject {
         )
     }
 
+    // MARK: - Playback Controls (Web API)
+
+    func skipToNext() async throws {
+        var request = try await authorizedRequest(path: "/v1/me/player/next")
+        request.httpMethod = "POST"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "SpotifyService", code: 20, userInfo: [NSLocalizedDescriptionKey: "Skip failed: \(body)"])
+        }
+    }
+
+    func skipToPrevious() async throws {
+        var request = try await authorizedRequest(path: "/v1/me/player/previous")
+        request.httpMethod = "POST"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "SpotifyService", code: 21, userInfo: [NSLocalizedDescriptionKey: "Previous failed: \(body)"])
+        }
+    }
+
+    func resumePlayback() async throws {
+        var request = try await authorizedRequest(path: "/v1/me/player/play")
+        request.httpMethod = "PUT"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "SpotifyService", code: 22, userInfo: [NSLocalizedDescriptionKey: "Resume failed: \(body)"])
+        }
+    }
+
+    func pausePlayback() async throws {
+        var request = try await authorizedRequest(path: "/v1/me/player/pause")
+        request.httpMethod = "PUT"
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) || http.statusCode == 204 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "SpotifyService", code: 23, userInfo: [NSLocalizedDescriptionKey: "Pause failed: \(body)"])
+        }
+    }
+
     private var spotifyClientID: String? {
         Bundle.main.object(forInfoDictionaryKey: "SpotifyClientID") as? String
     }
@@ -959,9 +1001,54 @@ final class JoggingViewModel: ObservableObject {
     }
 
     func nextTrack() {
-        applyTrackPresetForMode(advance: true)
-        _ = spotifyService.openTrack(currentTrack)
-        refreshSpotifyState()
+        guard spotifyConnected else {
+            applyTrackPresetForMode(advance: true)
+            _ = spotifyService.openTrack(currentTrack)
+            return
+        }
+        Task {
+            do {
+                try await spotifyService.skipToNext()
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await refreshSpotifyDetailsIfNeeded(force: true)
+            } catch {
+                applyTrackPresetForMode(advance: true)
+                _ = spotifyService.openTrack(currentTrack)
+            }
+        }
+    }
+
+    func previousTrack() {
+        guard spotifyConnected else { return }
+        Task {
+            do {
+                try await spotifyService.skipToPrevious()
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await refreshSpotifyDetailsIfNeeded(force: true)
+            } catch { }
+        }
+    }
+
+    func togglePlayback() {
+        guard spotifyConnected else {
+            connectSpotify()
+            return
+        }
+        Task {
+            do {
+                if spotifyIsPlaying {
+                    try await spotifyService.pausePlayback()
+                    spotifyIsPlaying = false
+                } else {
+                    try await spotifyService.resumePlayback()
+                    spotifyIsPlaying = true
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await refreshSpotifyDetailsIfNeeded(force: true)
+            } catch {
+                _ = spotifyService.openConnectDestination()
+            }
+        }
     }
 
     func selectActiveRun(_ sessionId: String) {
@@ -1077,7 +1164,7 @@ final class JoggingViewModel: ObservableObject {
         if jamActive {
             return isCurrentUserInJam ? "Jam live with \(jamListenerCount) runners" : "Jam active - join now"
         }
-        return spotifyNowPlayingTitle ?? currentTrack.title
+        return spotifyNowPlayingTitle ?? "No playback"
     }
 
     var jamStatusLabel: String {
@@ -1091,35 +1178,8 @@ final class JoggingViewModel: ObservableObject {
         return spotifyAppInstalled ? "Spotify app installed" : "Spotify web handoff"
     }
 
-    var spotifyRunStatusLabel: String {
-        if !spotifyConnected {
-            return spotifyAppInstalled ? "Connect Spotify to bring audio into the run HUD." : "Spotify available via web handoff."
-        }
-        if spotifyIsPlaying {
-            return jamActive ? "Live playback synced with your run jam." : "Playback is active on your connected Spotify session."
-        }
-        return "Spotify is connected. Start playback to light up the live bars."
-    }
-
-    var musicPrimaryActionTitle: String {
-        if !spotifyConnected { return "Connect Spotify" }
-        if jamActive {
-            return isCurrentUserInJam ? "Leave Jam" : "Join Jam"
-        }
-        return selectedLiveRunSessionId != nil ? "Start Jam" : "Play Solo"
-    }
-
-    var spotifyProviderStatusLabel: String {
-        if spotifyConnected { return "Connected" }
-        return spotifyAppInstalled ? "App installed" : "Web fallback"
-    }
-
-    var spotifyConnectActionTitle: String {
-        spotifyConnected ? "Reconnect Spotify" : "Connect Spotify"
-    }
-
-    var spotifySecondaryActionTitle: String {
-        spotifyConnected ? "Disconnect Spotify" : "Open Spotify"
+    func openSpotifyApp() {
+        _ = spotifyService.openConnectDestination()
     }
 
     func handleSpotifySecondaryAction() {
