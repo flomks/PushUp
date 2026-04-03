@@ -816,25 +816,107 @@ struct JoggingView: View {
                 }
             }
             .overlay(alignment: .top) {
-                VStack(spacing: 6) {
-                    Text(viewModel.currentTrack.title)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text(viewModel.jamStatusLabel)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.68))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.black.opacity(0.35), in: Capsule())
-                .offset(y: -58)
+                activeSpotifyNowPlayingCard
+                    .offset(y: -118)
             }
             .padding(.bottom, 24)
         }
         .allowsHitTesting(!isMapFocusMode)
     }
 
-    // MARK: - Route Map
+    private var activeSpotifyNowPlayingCard: some View {
+        Button {
+            showMusicSheet = true
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.13, green: 0.14, blue: 0.15),
+                                    Color(red: 0.08, green: 0.09, blue: 0.10)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 58, height: 58)
+
+                    Image(systemName: viewModel.spotifyConnected ? "waveform.circle.fill" : "link.circle.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.88))
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Text(viewModel.spotifyConnected ? "Spotify" : "Audio")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .tracking(1.6)
+                            .foregroundStyle(Color.white.opacity(0.60))
+
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.32))
+                                .frame(width: 7, height: 7)
+
+                            Text(viewModel.spotifyIsPlaying ? "LIVE" : viewModel.spotifyProviderStatusLabel.uppercased())
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.72))
+                        }
+                    }
+
+                    Text(viewModel.spotifyNowPlayingTitle ?? viewModel.currentTrack.title)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    Text(viewModel.spotifyNowPlayingArtist ?? viewModel.currentTrack.artist)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 8) {
+                    SpotifyLiveBarsView(
+                        isAnimating: viewModel.spotifyConnected && viewModel.spotifyIsPlaying,
+                        tint: AppColors.success
+                    )
+                    .frame(width: 56, height: 30)
+
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.38))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 20)
+            .frame(maxWidth: min(UIScreen.main.bounds.width - 64, 360))
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Color.black.opacity(0.62))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
+            )
+            .overlay(alignment: .bottomLeading) {
+                Text(viewModel.spotifyRunStatusLabel)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.48))
+                    .lineLimit(1)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+            .shadow(color: Color.black.opacity(0.28), radius: 18, y: 10)
+        }
+        .buttonStyle(.plain)
+    }
+
+// MARK: - Route Map
 
     private var displayRouteCoordinates: [CLLocationCoordinate2D] {
         RouteSmoothing.smoothCoordinates(viewModel.routeLocations.map(\.coordinate))
@@ -3185,6 +3267,46 @@ private struct RunUserSummary: Identifiable {
     let username: String?
     let displayName: String
     let avatarUrl: String?
+}
+
+private struct SpotifyLiveBarsView: View {
+    let isAnimating: Bool
+    let tint: Color
+
+    private let baseline: [CGFloat] = [0.34, 0.74, 0.46, 0.90, 0.56, 0.82, 0.38, 0.68]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.14, paused: !isAnimating)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(baseline.indices, id: \.self) { index in
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    tint.opacity(isAnimating ? 0.96 : 0.26),
+                                    tint.opacity(isAnimating ? 0.60 : 0.16)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: 4, height: barHeight(at: index, time: time))
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func barHeight(at index: Int, time: TimeInterval) -> CGFloat {
+        guard isAnimating else { return 8 + (baseline[index] * 10) }
+        let wave = sin(time * 5.2 + Double(index) * 0.85)
+        let shimmer = cos(time * 3.4 + Double(index) * 0.55)
+        let value = max(0.18, baseline[index] + CGFloat((wave + shimmer) * 0.18))
+        return 8 + (value * 22)
+    }
 }
 
 // MARK: - Previews

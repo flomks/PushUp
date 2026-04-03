@@ -648,6 +648,9 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var spotifyAccountName: String?
     @Published private(set) var spotifyProductTier: String?
     @Published private(set) var spotifyPlaybackLabel: String = "No playback detected"
+    @Published private(set) var spotifyNowPlayingTitle: String?
+    @Published private(set) var spotifyNowPlayingArtist: String?
+    @Published private(set) var spotifyIsPlaying: Bool = false
     @Published private(set) var jamActive: Bool = false
     @Published private(set) var jamListenerCount: Int = 1
     @Published private(set) var jamHostDisplayName: String = "You"
@@ -1028,7 +1031,7 @@ final class JoggingViewModel: ObservableObject {
         if jamActive {
             return isCurrentUserInJam ? "Jam live with \(jamListenerCount) runners" : "Jam active - join now"
         }
-        return currentTrack.title
+        return spotifyNowPlayingTitle ?? currentTrack.title
     }
 
     var jamStatusLabel: String {
@@ -1037,8 +1040,19 @@ final class JoggingViewModel: ObservableObject {
                 ? "Jam live • \(jamListenerCount) listening"
                 : "Jam active • hosted by \(jamHostDisplayName)"
         }
+        if spotifyConnected, spotifyIsPlaying { return "Spotify live" }
         if spotifyConnected { return "Spotify connected" }
         return spotifyAppInstalled ? "Spotify app installed" : "Spotify web handoff"
+    }
+
+    var spotifyRunStatusLabel: String {
+        if !spotifyConnected {
+            return spotifyAppInstalled ? "Connect Spotify to bring audio into the run HUD." : "Spotify available via web handoff."
+        }
+        if spotifyIsPlaying {
+            return jamActive ? "Live playback synced with your run jam." : "Playback is active on your connected Spotify session."
+        }
+        return "Spotify is connected. Start playback to light up the live bars."
     }
 
     var musicPrimaryActionTitle: String {
@@ -1069,6 +1083,9 @@ final class JoggingViewModel: ObservableObject {
             spotifyAccountName = nil
             spotifyProductTier = nil
             spotifyPlaybackLabel = "No playback detected"
+            spotifyNowPlayingTitle = nil
+            spotifyNowPlayingArtist = nil
+            spotifyIsPlaying = false
             plannedRunStatusMessage = "Spotify disconnected."
         } else {
             let opened = spotifyService.openConnectDestination()
@@ -1184,6 +1201,9 @@ final class JoggingViewModel: ObservableObject {
                 spotifyAccountName = nil
                 spotifyProductTier = nil
                 spotifyPlaybackLabel = "No playback detected"
+                spotifyNowPlayingTitle = nil
+                spotifyNowPlayingArtist = nil
+                spotifyIsPlaying = false
             }
             return
         }
@@ -1199,6 +1219,9 @@ final class JoggingViewModel: ObservableObject {
             spotifyAccountName = resolvedProfile.displayName
             spotifyProductTier = resolvedProfile.product
             if let resolvedPlayback {
+                spotifyNowPlayingTitle = resolvedPlayback.trackTitle
+                spotifyNowPlayingArtist = resolvedPlayback.artistName
+                spotifyIsPlaying = resolvedPlayback.isPlaying
                 spotifyPlaybackLabel = resolvedPlayback.isPlaying
                     ? "\(resolvedPlayback.trackTitle) - \(resolvedPlayback.artistName)"
                     : "Paused: \(resolvedPlayback.trackTitle) - \(resolvedPlayback.artistName)"
@@ -1208,10 +1231,16 @@ final class JoggingViewModel: ObservableObject {
                     spotifyStatusDetail = spotifyService.sessionStatusDescription
                 }
             } else {
+                spotifyNowPlayingTitle = nil
+                spotifyNowPlayingArtist = nil
+                spotifyIsPlaying = false
                 spotifyPlaybackLabel = "No active playback"
                 spotifyStatusDetail = spotifyService.sessionStatusDescription
             }
         } catch {
+            spotifyNowPlayingTitle = nil
+            spotifyNowPlayingArtist = nil
+            spotifyIsPlaying = false
             spotifyStatusDetail = "Spotify connected, but details could not be loaded"
             spotifyPlaybackLabel = "Playback unavailable"
         }
