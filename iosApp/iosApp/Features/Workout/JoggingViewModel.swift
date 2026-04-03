@@ -114,6 +114,10 @@ private struct SpotifyAvailableDevicesResponse: Decodable {
     let devices: [SpotifyDeviceResponse]
 }
 
+private struct SpotifyAvailableGenreSeedsResponse: Decodable {
+    let genres: [String]
+}
+
 // MARK: - Recommendations API Response
 
 private struct SpotifyRecommendationsResponse: Decodable {
@@ -158,15 +162,15 @@ struct RunModeAudioParams {
     static func params(for mode: RunAudioMode) -> RunModeAudioParams {
         switch mode {
         case .recovery:
-            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "ambient", "chill", "pop"])
+            return RunModeAudioParams(minTempo: 105, maxTempo: 125, targetTempo: 115, targetEnergy: 0.3, targetValence: 0.4, genreSeeds: ["acoustic", "chill", "pop", "indie-pop"])
         case .base:
-            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "house", "pop", "electro"])
+            return RunModeAudioParams(minTempo: 150, maxTempo: 168, targetTempo: 160, targetEnergy: 0.6, targetValence: 0.5, genreSeeds: ["dance", "pop", "disco", "rock"])
         case .tempo:
-            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["edm", "dance", "electro", "techno"])
+            return RunModeAudioParams(minTempo: 168, maxTempo: 185, targetTempo: 175, targetEnergy: 0.8, targetValence: 0.6, genreSeeds: ["dance", "electronic", "pop", "rock"])
         case .longRun:
-            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "indie", "pop", "alt-rock"])
+            return RunModeAudioParams(minTempo: 140, maxTempo: 158, targetTempo: 150, targetEnergy: 0.5, targetValence: 0.5, genreSeeds: ["rock", "indie", "pop", "folk"])
         case .race:
-            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["edm", "techno", "rock", "electro"])
+            return RunModeAudioParams(minTempo: 178, maxTempo: 195, targetTempo: 185, targetEnergy: 0.9, targetValence: 0.7, genreSeeds: ["dance", "electronic", "rock", "pop"])
         }
     }
 }
@@ -302,7 +306,12 @@ final class SpotifyService: NSObject {
     /// Fetches recommended tracks from Spotify based on the given audio parameters.
     func fetchRecommendations(params: RunModeAudioParams, limit: Int = 20) async throws -> [SpotifyRecommendedRunTrack] {
         let trackSeeds = Array(try await fetchSeedTrackIDs(limit: 10).shuffled().prefix(2))
-        let primaryGenres = Array(params.genreSeeds.shuffled().prefix(trackSeeds.isEmpty ? 2 : 1))
+        let availableGenres = try await fetchAvailableGenreSeeds()
+        let filteredGenres = params.genreSeeds.filter { availableGenres.contains($0) }
+        let fallbackGenres = filteredGenres.isEmpty
+            ? availableGenres.filter { ["pop", "dance", "rock", "electronic"].contains($0) }
+            : filteredGenres
+        let primaryGenres = Array(fallbackGenres.shuffled().prefix(trackSeeds.isEmpty ? 2 : 1))
         let variants = [
             recommendationQueryItems(
                 params: params,
@@ -314,7 +323,7 @@ final class SpotifyService: NSObject {
                 params: params,
                 limit: limit,
                 trackSeeds: [],
-                genreSeeds: params.genreSeeds,
+                genreSeeds: Array(fallbackGenres.prefix(2)),
                 includeTempoBounds: false
             ),
             recommendationQueryItems(
@@ -390,6 +399,14 @@ final class SpotifyService: NSObject {
         try validate(response: response, data: data)
         let payload = try JSONDecoder().decode(SpotifyAvailableDevicesResponse.self, from: data)
         return payload.devices
+    }
+
+    private func fetchAvailableGenreSeeds() async throws -> Set<String> {
+        let request = try await authorizedRequest(path: "/v1/recommendations/available-genre-seeds")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        let payload = try JSONDecoder().decode(SpotifyAvailableGenreSeedsResponse.self, from: data)
+        return Set(payload.genres)
     }
 
     private func transferPlayback(to deviceID: String, play: Bool) async throws {
@@ -510,8 +527,14 @@ final class SpotifyService: NSObject {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "unknown response"
-            throw NSError(domain: "SpotifyService", code: 13, userInfo: [NSLocalizedDescriptionKey: "Spotify API request failed: \(body)"])
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let body = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let message = (body?.isEmpty == false) ? body! : "empty response body"
+            throw NSError(
+                domain: "SpotifyService",
+                code: 13,
+                userInfo: [NSLocalizedDescriptionKey: "Spotify API request failed (\(statusCode)): \(message)"]
+            )
         }
     }
 
