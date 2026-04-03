@@ -796,8 +796,10 @@ struct JoggingView: View {
                 }
             }
             .overlay(alignment: .top) {
-                activeSpotifyNowPlayingCard
-                    .offset(y: -92)
+                if viewModel.spotifyConnected && viewModel.spotifyIsPlaying {
+                    activeSpotifyNowPlayingCard
+                        .offset(y: -92)
+                }
             }
             .padding(.bottom, 24)
         }
@@ -829,7 +831,8 @@ struct JoggingView: View {
                 isAnimating: viewModel.spotifyConnected && viewModel.spotifyIsPlaying,
                 tint: AppColors.success
             )
-            .frame(width: 34, height: 18)
+            .frame(width: 30, height: 16)
+            .clipped()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -3143,13 +3146,13 @@ private struct SpotifyLiveBarsView: View {
     let isAnimating: Bool
     let tint: Color
 
-    private let baseline: [CGFloat] = [0.34, 0.70, 0.48, 0.86, 0.58, 0.78, 0.42, 0.64]
+    private let baseline: [CGFloat] = [0.34, 0.70, 0.48, 0.86, 0.58, 0.78]
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 0.06, paused: !isAnimating)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
 
-            HStack(alignment: .bottom, spacing: 4) {
+            HStack(alignment: .bottom, spacing: 3) {
                 ForEach(baseline.indices, id: \.self) { index in
                     Capsule(style: .continuous)
                         .fill(
@@ -3162,21 +3165,21 @@ private struct SpotifyLiveBarsView: View {
                                 endPoint: .bottom
                             )
                         )
-                        .frame(width: 4, height: barHeight(at: index, time: time))
+                        .frame(width: 3, height: barHeight(at: index, time: time))
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .bottom)
+            .frame(width: 30, height: 16, alignment: .bottom)
         }
         .accessibilityHidden(true)
     }
 
     private func barHeight(at index: Int, time: TimeInterval) -> CGFloat {
-        guard isAnimating else { return 7 + (baseline[index] * 8) }
+        guard isAnimating else { return 6 + (baseline[index] * 6) }
         let primary = 0.5 + 0.5 * sin(time * 2.8 + Double(index) * 0.52)
         let secondary = 0.5 + 0.5 * sin(time * 1.9 + Double(index) * 0.91 + 0.8)
         let blend = (primary * 0.72) + (secondary * 0.28)
         let value = max(0.20, baseline[index] * 0.72 + CGFloat(blend) * 0.58)
-        return 7 + (value * 16)
+        return 6 + (value * 9)
     }
 }
 
