@@ -148,8 +148,11 @@ struct FriendStatsView: View {
         let activityScoreValue = stats.map { "\($0.activityPoints)" } ?? "--"
         let sessionsValue = stats.map { "\($0.totalSessions)" } ?? "--"
         let earnedTimeValue = stats.map { formatDuration(seconds: $0.totalEarnedSeconds) } ?? "--"
-        let formQualityValue = averageQuality.map { "\(Int(($0 * 100).rounded()))%" } ?? "--"
-        let formQualityTint = averageQuality.map(AppColors.formScoreColor) ?? AppColors.textSecondary
+        let normalizedQuality = averageQuality.map(Double.init)
+        let formQualityValue = normalizedQuality.map { "\(Int(($0 * 100.0).rounded()))%" } ?? "--"
+        let formQualityTint = normalizedQuality.map { quality in
+            AppColors.formScoreColor(quality)
+        } ?? AppColors.textSecondary
 
         return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.sm) {
             metricCard(title: "Activity Score", value: activityScoreValue, icon: "bolt.fill", tint: AppColors.primary)
