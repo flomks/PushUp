@@ -765,6 +765,14 @@ private extension String {
     }
 }
 
+private extension Int {
+    func positiveModulo(_ modulus: Int) -> Int {
+        guard modulus > 0 else { return self }
+        let remainder = self % modulus
+        return remainder >= 0 ? remainder : remainder + modulus
+    }
+}
+
 private extension Array where Element: Hashable {
     func uniqued() -> [Element] {
         var seen = Set<Element>()
@@ -1295,7 +1303,8 @@ final class JoggingViewModel: ObservableObject {
 
     func nextTrack() {
         guard spotifyConnected else {
-            applyTrackPresetForMode(advance: true)
+            advancePresetTrack(step: 1)
+            applyOptimisticNowPlaying(from: currentTrack)
             _ = spotifyService.openTrack(currentTrack)
             return
         }
@@ -1312,6 +1321,8 @@ final class JoggingViewModel: ObservableObject {
                 }
             } else {
                 // No queue, just skip via API
+                advancePresetTrack(step: 1)
+                applyOptimisticNowPlaying(from: currentTrack)
                 do {
                     try await spotifyService.skipToNext()
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -1322,12 +1333,19 @@ final class JoggingViewModel: ObservableObject {
     }
 
     func previousTrack() {
-        guard spotifyConnected else { return }
+        guard spotifyConnected else {
+            advancePresetTrack(step: -1)
+            applyOptimisticNowPlaying(from: currentTrack)
+            _ = spotifyService.openTrack(currentTrack)
+            return
+        }
         Task {
             if !modeQueue.isEmpty, modeQueueIndex > 0 {
                 modeQueueIndex -= 1
                 await playModeQueueTrack(at: modeQueueIndex)
             } else {
+                advancePresetTrack(step: -1)
+                applyOptimisticNowPlaying(from: currentTrack)
                 do {
                     try await spotifyService.skipToPrevious()
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -1992,6 +2010,17 @@ final class JoggingViewModel: ObservableObject {
     }
 
     private func applyTrackPresetForMode(advance: Bool = false) {
+        let tracks = presetTracksForSelectedAudioMode()
+        guard !tracks.isEmpty else { return }
+        if advance, let currentIndex = tracks.firstIndex(of: currentTrack) {
+            let nextIndex = tracks.index(after: currentIndex)
+            currentTrack = nextIndex < tracks.endIndex ? tracks[nextIndex] : tracks[tracks.startIndex]
+        } else {
+            currentTrack = tracks[tracks.startIndex]
+        }
+    }
+
+    private func presetTracksForSelectedAudioMode() -> [RunTrack] {
         let options: [RunAudioMode: [RunTrack]] = [
             .recovery: [
                 RunTrack(title: "Soft Horizon", artist: "PushUp Run Club", vibe: "118 BPM • Recovery"),
@@ -2014,15 +2043,25 @@ final class JoggingViewModel: ObservableObject {
                 RunTrack(title: "Final Kick", artist: "PushUp Run Club", vibe: "186 BPM • Push")
             ]
         ]
+        return options[selectedAudioMode] ?? []
+    }
 
-        let tracks = options[selectedAudioMode] ?? []
+    private func advancePresetTrack(step: Int) {
+        let tracks = presetTracksForSelectedAudioMode()
         guard !tracks.isEmpty else { return }
-        if advance, let currentIndex = tracks.firstIndex(of: currentTrack) {
-            let nextIndex = tracks.index(after: currentIndex)
-            currentTrack = nextIndex < tracks.endIndex ? tracks[nextIndex] : tracks[tracks.startIndex]
+        if let currentIndex = tracks.firstIndex(of: currentTrack) {
+            let nextIndex = (currentIndex + step).positiveModulo(tracks.count)
+            currentTrack = tracks[nextIndex]
         } else {
-            currentTrack = tracks[tracks.startIndex]
+            currentTrack = step < 0 ? (tracks.last ?? tracks[tracks.startIndex]) : tracks[tracks.startIndex]
         }
+    }
+
+    private func applyOptimisticNowPlaying(from track: RunTrack) {
+        spotifyNowPlayingTitle = track.title
+        spotifyNowPlayingArtist = track.artist
+        spotifyIsPlaying = true
+        spotifyPlaybackLabel = "\(track.title) - \(track.artist)"
     }
 
     // MARK: - Mode Recommendations
@@ -2073,6 +2112,7 @@ final class JoggingViewModel: ObservableObject {
         let params = RunModeAudioParams.params(for: selectedAudioMode)
         let bpmLabel = "\(Int(params.targetTempo)) BPM • \(selectedAudioMode.rawValue)"
         currentTrack = RunTrack(title: track.title, artist: track.artist, vibe: bpmLabel)
+        applyOptimisticNowPlaying(from: currentTrack)
 
         do {
             try await spotifyService.playTrack(uri: track.uri)

@@ -1160,11 +1160,18 @@ struct JoggingView: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 18) {
-                HStack {
-                    Text(viewModel.finishedTitle)
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+            VStack(spacing: AppSpacing.md) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                        Text(viewModel.completedRunCounts ? "RUN COMPLETE" : "RUN ENDED")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.62))
+                            .tracking(2)
+
+                        Text(viewModel.finishedTitle)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
 
                     Spacer()
 
@@ -1172,87 +1179,87 @@ struct JoggingView: View {
                         Button {
                             prepareShareImage()
                         } label: {
-                            Circle()
-                                .fill(Color.orange)
-                                .frame(width: 44, height: 44)
-                                .overlay {
-                                    if isRenderingShareImage {
-                                        ProgressView()
-                                            .tint(.white)
-                                            .scaleEffect(0.7)
-                                    } else {
-                                        Image(systemName: "square.and.arrow.up")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .foregroundStyle(.white)
-                                    }
+                            ZStack {
+                                Circle()
+                                    .fill(Color.white.opacity(0.10))
+                                    .frame(width: 46, height: 46)
+
+                                if isRenderingShareImage {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(0.76)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(.white)
                                 }
+                            }
                         }
+                        .buttonStyle(.plain)
                         .disabled(isRenderingShareImage)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, AppSpacing.md)
 
-                Circle()
-                    .stroke(Color.orange.opacity(0.85), lineWidth: 2)
-                    .frame(width: 255, height: 255)
-                    .overlay(
-                        Circle()
-                            .fill(Color.black.opacity(0.42))
-                            .overlay(
-                                VStack(spacing: 10) {
-                                    Text(viewModel.formattedDistance)
-                                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.white)
-                                        .monospacedDigit()
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
-
-                                    Text("TOTAL DISTANCE")
-                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Color.white.opacity(0.58))
-                                        .tracking(1.6)
-                                }
-                            )
-                    )
-
-                HStack(spacing: 12) {
-                    finishedStat(value: viewModel.formattedDuration, label: "TIME")
-                    finishedStat(value: viewModel.formattedPace, label: "PACE")
-                    finishedStat(value: "\(viewModel.finishedCaloriesBurned)", label: "CAL")
-                }
-
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill((viewModel.completedRunCounts ? Color.orange : Color.white).opacity(0.18))
-                        .frame(width: 42, height: 42)
-                        .overlay(
-                            Image(systemName: viewModel.completedRunCounts ? "clock.badge.checkmark" : "exclamationmark.circle")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(viewModel.completedRunCounts ? Color.orange : Color.white)
-                        )
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(viewModel.completedRunCounts ? "SCREEN TIME EARNED" : "RUN STATUS")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.56))
-                            .tracking(1)
-                        Text(viewModel.completedRunCounts ? "+\(viewModel.earnedMinutes) min" : "Not saved")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                VStack(alignment: .leading, spacing: AppSpacing.md) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(viewModel.formattedDistance)
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        Spacer(minLength: 12)
+
+                        statusPill(
+                            title: viewModel.completedRunCounts ? "Saved" : "Not saved",
+                            icon: viewModel.completedRunCounts ? "checkmark.circle.fill" : "minus.circle.fill",
+                            tint: viewModel.completedRunCounts ? Color(red: 0.98, green: 0.42, blue: 0.18) : Color.white.opacity(0.84)
+                        )
                     }
 
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
+                    Text("Total Distance")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.54))
+                        .tracking(1.8)
 
-                Text(viewModel.finishedSubtitle)
-                    .font(AppTypography.body)
-                    .foregroundStyle(Color.white.opacity(0.80))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
+                    Text(viewModel.finishedSubtitle)
+                        .font(AppTypography.body)
+                        .foregroundStyle(Color.white.opacity(0.78))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(AppSpacing.xl)
+                .background(finishedWidgetBackground, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+
+                HStack(spacing: 12) {
+                    finishedStat(value: viewModel.formattedDuration, label: "Time")
+                    finishedStat(value: viewModel.formattedPace, label: "Pace")
+                    finishedStat(value: "\(viewModel.finishedCaloriesBurned)", label: "Calories")
+                }
+
+                HStack(spacing: 12) {
+                    insightCard(
+                        title: viewModel.completedRunCounts ? "Screen Time Earned" : "Run Status",
+                        value: viewModel.completedRunCounts ? "+\(viewModel.earnedMinutes) min" : "No activity",
+                        subtitle: viewModel.completedRunCounts ? "Unlocked from this run" : "Nothing was saved to history",
+                        icon: viewModel.completedRunCounts ? "clock.badge.checkmark" : "waveform.path.ecg",
+                        tint: viewModel.completedRunCounts ? Color(red: 0.98, green: 0.42, blue: 0.18) : Color.white.opacity(0.80)
+                    )
+
+                    insightCard(
+                        title: "Finish State",
+                        value: viewModel.completedRunCounts ? "Stored" : "Discarded",
+                        subtitle: viewModel.completedRunCounts ? "Available in recent runs" : "Start a new run when ready",
+                        icon: viewModel.completedRunCounts ? "archivebox.fill" : "xmark.bin",
+                        tint: viewModel.completedRunCounts ? Color(red: 0.42, green: 0.55, blue: 0.82) : Color.white.opacity(0.74)
+                    )
+                }
 
                 Spacer()
 
@@ -1261,13 +1268,28 @@ struct JoggingView: View {
                         Button {
                             prepareShareImage()
                         } label: {
-                            Text("Share")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 52)
-                                .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+                            HStack(spacing: 8) {
+                                if isRenderingShareImage {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(0.76)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .bold))
+                                }
+                                Text("Share")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
                         }
+                        .buttonStyle(.plain)
                         .disabled(isRenderingShareImage)
                     }
 
@@ -1278,11 +1300,22 @@ struct JoggingView: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(Color.orange, in: RoundedRectangle(cornerRadius: 14))
+                            .frame(height: 54)
+                            .background(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.98, green: 0.42, blue: 0.18),
+                                        Color(red: 0.90, green: 0.18, blue: 0.28)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, AppSpacing.md)
             }
             .padding(.horizontal, AppSpacing.screenHorizontal)
         }
@@ -1295,8 +1328,19 @@ struct JoggingView: View {
 
     // MARK: - Finished View Helpers
 
+    private var finishedWidgetBackground: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.08, green: 0.08, blue: 0.09),
+                Color(red: 0.05, green: 0.05, blue: 0.06)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     private func finishedStat(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(value)
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
@@ -1309,9 +1353,71 @@ struct JoggingView: View {
                 .foregroundStyle(Color.white.opacity(0.56))
                 .tracking(1)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(finishedWidgetBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+    }
+
+    private func statusPill(title: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.06), in: Capsule())
+    }
+
+    private func insightCard(
+        title: String,
+        value: String,
+        subtitle: String,
+        icon: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 40, height: 40)
+
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(tint)
+            }
+
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.52))
+                .tracking(1.4)
+
+            Text(value)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Text(subtitle)
+                .font(AppTypography.caption1)
+                .foregroundStyle(Color.white.opacity(0.60))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 182, alignment: .leading)
+        .padding(18)
+        .background(finishedWidgetBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     // MARK: - Share Image Generation
@@ -1707,12 +1813,20 @@ struct JoggingView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 18) {
+                    VStack(spacing: 0) {
                         spotifyConnectionHeader
+                        Spacer()
+                            .frame(height: 18)
                         nowPlayingCard
+                        Spacer()
+                            .frame(height: 18)
                         playbackControls
+                        Spacer()
+                            .frame(height: 18)
                         runModeSelector
                         if viewModel.jamActive || viewModel.selectedLiveRunSessionId != nil {
+                            Spacer()
+                                .frame(height: 18)
                             runJamCard
                         }
                     }
