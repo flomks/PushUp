@@ -1160,106 +1160,66 @@ struct JoggingView: View {
             )
             .ignoresSafeArea()
 
-            VStack(spacing: AppSpacing.md) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                        Text(viewModel.completedRunCounts ? "RUN COMPLETE" : "RUN ENDED")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.62))
-                            .tracking(2)
+            VStack(spacing: AppSpacing.lg) {
+                Spacer(minLength: 20)
 
-                        Text(viewModel.finishedTitle)
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                    }
+                VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(viewModel.completedRunCounts ? "SESSION COMPLETE" : "SESSION ENDED")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.white.opacity(0.50))
+                                .tracking(1.8)
 
-                    Spacer()
-
-                    if viewModel.completedRunCounts {
-                        Button {
-                            prepareShareImage()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.white.opacity(0.10))
-                                    .frame(width: 46, height: 46)
-
-                                if isRenderingShareImage {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .scaleEffect(0.76)
-                                } else {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                            }
+                            Text(viewModel.finishedTitle)
+                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(isRenderingShareImage)
-                    }
-                }
-                .padding(.top, AppSpacing.md)
 
-                VStack(alignment: .leading, spacing: AppSpacing.md) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(viewModel.formattedDistance)
-                            .font(.system(size: 48, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-
-                        Spacer(minLength: 12)
+                        Spacer()
 
                         statusPill(
-                            title: viewModel.completedRunCounts ? "Saved" : "Not saved",
+                            title: viewModel.completedRunCounts ? "Saved" : "Discarded",
                             icon: viewModel.completedRunCounts ? "checkmark.circle.fill" : "minus.circle.fill",
                             tint: viewModel.completedRunCounts ? Color(red: 0.98, green: 0.42, blue: 0.18) : Color.white.opacity(0.84)
                         )
                     }
 
-                    Text("Total Distance")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.54))
-                        .tracking(1.8)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(viewModel.formattedDistance)
+                            .font(.system(size: 64, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+
+                        Text("Total Distance")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.50))
+                            .tracking(1.8)
+                    }
 
                     Text(viewModel.finishedSubtitle)
                         .font(AppTypography.body)
-                        .foregroundStyle(Color.white.opacity(0.78))
+                        .foregroundStyle(Color.white.opacity(0.76))
                         .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 10) {
+                        finishedStat(value: viewModel.formattedDuration, label: "Time")
+                        finishedStat(value: viewModel.formattedPace, label: "Pace")
+                        finishedStat(
+                            value: viewModel.completedRunCounts ? "+\(viewModel.earnedMinutes)m" : "Not saved",
+                            label: viewModel.completedRunCounts ? "Earned" : "Status"
+                        )
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(AppSpacing.xl)
-                .background(finishedWidgetBackground, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .padding(24)
+                .background(finishedHeroBackground, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
-
-                HStack(spacing: 12) {
-                    finishedStat(value: viewModel.formattedDuration, label: "Time")
-                    finishedStat(value: viewModel.formattedPace, label: "Pace")
-                    finishedStat(value: "\(viewModel.finishedCaloriesBurned)", label: "Calories")
-                }
-
-                HStack(spacing: 12) {
-                    insightCard(
-                        title: viewModel.completedRunCounts ? "Screen Time Earned" : "Run Status",
-                        value: viewModel.completedRunCounts ? "+\(viewModel.earnedMinutes) min" : "No activity",
-                        subtitle: viewModel.completedRunCounts ? "Unlocked from this run" : "Nothing was saved to history",
-                        icon: viewModel.completedRunCounts ? "clock.badge.checkmark" : "waveform.path.ecg",
-                        tint: viewModel.completedRunCounts ? Color(red: 0.98, green: 0.42, blue: 0.18) : Color.white.opacity(0.80)
-                    )
-
-                    insightCard(
-                        title: "Finish State",
-                        value: viewModel.completedRunCounts ? "Stored" : "Discarded",
-                        subtitle: viewModel.completedRunCounts ? "Available in recent runs" : "Start a new run when ready",
-                        icon: viewModel.completedRunCounts ? "archivebox.fill" : "xmark.bin",
-                        tint: viewModel.completedRunCounts ? Color(red: 0.42, green: 0.55, blue: 0.82) : Color.white.opacity(0.74)
-                    )
-                }
 
                 Spacer()
 
@@ -1328,6 +1288,24 @@ struct JoggingView: View {
 
     // MARK: - Finished View Helpers
 
+    private var finishedHeroBackground: LinearGradient {
+        LinearGradient(
+            colors: viewModel.completedRunCounts
+                ? [
+                    Color(red: 0.13, green: 0.13, blue: 0.15),
+                    Color(red: 0.08, green: 0.08, blue: 0.09),
+                    Color(red: 0.22, green: 0.09, blue: 0.10)
+                ]
+                : [
+                    Color(red: 0.10, green: 0.10, blue: 0.11),
+                    Color(red: 0.06, green: 0.06, blue: 0.07),
+                    Color(red: 0.12, green: 0.12, blue: 0.13)
+                ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     private var finishedWidgetBackground: LinearGradient {
         LinearGradient(
             colors: [
@@ -1342,7 +1320,7 @@ struct JoggingView: View {
     private func finishedStat(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -1374,50 +1352,6 @@ struct JoggingView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.white.opacity(0.06), in: Capsule())
-    }
-
-    private func insightCard(
-        title: String,
-        value: String,
-        subtitle: String,
-        icon: String,
-        tint: Color
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 40, height: 40)
-
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(tint)
-            }
-
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.white.opacity(0.52))
-                .tracking(1.4)
-
-            Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-
-            Text(subtitle)
-                .font(AppTypography.caption1)
-                .foregroundStyle(Color.white.opacity(0.60))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, minHeight: 182, alignment: .leading)
-        .padding(18)
-        .background(finishedWidgetBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
     }
 
     // MARK: - Share Image Generation
