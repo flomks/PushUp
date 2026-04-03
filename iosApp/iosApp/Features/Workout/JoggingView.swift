@@ -889,6 +889,21 @@ struct JoggingView: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
+        .contentShape(Capsule(style: .continuous))
+        .gesture(
+            DragGesture(minimumDistance: 18, coordinateSpace: .local)
+                .onEnded { value in
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    guard abs(horizontal) > abs(vertical), abs(horizontal) > 28 else { return }
+
+                    if horizontal < 0 {
+                        viewModel.nextTrack()
+                    } else {
+                        viewModel.previousTrack()
+                    }
+                }
+        )
     }
 
 // MARK: - Route Map
@@ -1746,28 +1761,30 @@ struct JoggingView: View {
 
     private var nowPlayingCard: some View {
         VStack(spacing: 20) {
-            // Album art placeholder / visualizer
+            // Visualizer / idle state
             ZStack {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: viewModel.spotifyIsPlaying
-                                ? [Color(red: 0.13, green: 0.81, blue: 0.41).opacity(0.3), Color(red: 0.06, green: 0.2, blue: 0.10)]
+                                ? [Color(red: 0.04, green: 0.12, blue: 0.06), Color(red: 0.02, green: 0.06, blue: 0.03)]
                                 : [Color.white.opacity(0.06), Color.white.opacity(0.03)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
                     )
-                    .frame(height: 200)
 
                 if viewModel.spotifyIsPlaying {
                     audioVisualizerBars
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 24)
                 } else {
                     Image(systemName: hasActivePlayback ? "pause.circle.fill" : "music.note")
                         .font(.system(size: 48, weight: .light))
                         .foregroundStyle(Color.white.opacity(0.2))
                 }
             }
+            .frame(height: 180)
 
             // Track info
             VStack(spacing: 6) {
@@ -1829,28 +1846,60 @@ struct JoggingView: View {
 
     // MARK: - Audio Visualizer
 
+    /// Simulated multi-band EQ visualizer.
+    /// Uses layered sine waves at different frequencies to mimic bass / mid / treble bands.
+    /// Runs entirely on the GPU via TimelineView — no audio capture needed.
     private var audioVisualizerBars: some View {
-        TimelineView(.animation(minimumInterval: 0.15, paused: !viewModel.spotifyIsPlaying)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 4) {
-                ForEach(0..<24, id: \.self) { i in
-                    let phase = sin(time * 3.5 + Double(i) * 0.6) * 0.5 + 0.5
-                    let height = 12 + phase * 50
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.13, green: 0.81, blue: 0.41),
-                                    Color(red: 0.13, green: 0.81, blue: 0.41).opacity(0.4)
-                                ],
-                                startPoint: .bottom,
-                                endPoint: .top
-                            )
+        let barCount = 32
+        let spotifyGreen = Color(red: 0.13, green: 0.81, blue: 0.41)
+
+        return TimelineView(.animation(minimumInterval: 0.06, paused: !viewModel.spotifyIsPlaying)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+
+            Canvas { context, size in
+                let barWidth: CGFloat = 4
+                let gap: CGFloat = (size.width - barWidth * CGFloat(barCount)) / CGFloat(barCount - 1)
+                let maxH = size.height
+
+                for i in 0..<barCount {
+                    let fi = Double(i)
+                    let center = fi / Double(barCount - 1)          // 0…1
+
+                    // Three overlapping frequency bands (bass = left, treble = right)
+                    let bass   = sin(t * 2.1 + fi * 0.25) * (1.0 - center) * 0.6
+                    let mid    = sin(t * 3.8 + fi * 0.55) * (1.0 - abs(center - 0.5) * 2.0) * 0.5
+                    let treble = sin(t * 6.2 + fi * 0.9)  * center * 0.4
+
+                    // Combine bands with a baseline + subtle noise
+                    let noise  = sin(t * 11.3 + fi * 2.7) * 0.08
+                    let raw    = 0.18 + abs(bass + mid + treble) + noise
+                    let norm   = min(max(raw, 0.06), 1.0)
+
+                    let barH   = maxH * norm
+                    let x      = CGFloat(i) * (barWidth + gap)
+                    let y      = maxH - barH
+
+                    let rect = CGRect(x: x, y: y, width: barWidth, height: barH)
+                    let path = Path(roundedRect: rect, cornerRadius: barWidth / 2)
+
+                    // Gradient per bar: bright green at bottom, faded at top
+                    let gradient = Gradient(colors: [
+                        spotifyGreen,
+                        spotifyGreen.opacity(0.7),
+                        spotifyGreen.opacity(0.25)
+                    ])
+                    context.fill(
+                        path,
+                        with: .linearGradient(
+                            gradient,
+                            startPoint: CGPoint(x: x, y: maxH),
+                            endPoint: CGPoint(x: x, y: y)
                         )
-                        .frame(width: 5, height: height)
+                    )
                 }
             }
-            .frame(height: 62)
+            .frame(height: 100)
+            .drawingGroup()         // render in a single Metal pass
         }
     }
 
