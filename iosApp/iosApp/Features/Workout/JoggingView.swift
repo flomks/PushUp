@@ -207,13 +207,24 @@ struct JoggingView: View {
         .frame(minHeight: 270)
     }
 
+    private var runningWidgetBackground: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color(red: 0.08, green: 0.08, blue: 0.09),
+                Color(red: 0.05, green: 0.05, blue: 0.06)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     private var runLaunchCard: some View {
         VStack(spacing: AppSpacing.md) {
             HStack(alignment: .top, spacing: AppSpacing.md) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                     Text("Start Run")
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(.white)
 
                     Text(
                         viewModel.hasLocationPermission
@@ -223,26 +234,26 @@ struct JoggingView: View {
                         : "Allow location first so distance, pace, route, and earned time can be tracked correctly."
                     )
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(Color.white.opacity(0.60))
                 }
 
                 Spacer(minLength: 12)
 
                 Text("+1 min / km")
                     .font(AppTypography.captionSemibold)
-                    .foregroundStyle(AppColors.info)
+                    .foregroundStyle(Color(red: 0.90, green: 0.78, blue: 0.36))
                     .padding(.horizontal, AppSpacing.sm)
                     .padding(.vertical, AppSpacing.xs)
-                .background(AppColors.info.opacity(0.10), in: Capsule())
+                .background(Color.white.opacity(0.08), in: Capsule())
             }
 
             HStack(spacing: AppSpacing.sm) {
                 Image(systemName: "dot.radiowaves.left.and.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppColors.info)
+                    .foregroundStyle(Color.white.opacity(0.68))
                 Text(viewModel.socialSelectionSummary)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(Color.white.opacity(0.60))
                 Spacer()
             }
             .padding(.horizontal, AppSpacing.xs)
@@ -256,10 +267,10 @@ struct JoggingView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Location access required")
                             .font(AppTypography.bodySemibold)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(.white)
                         Text("Without location, running metrics and route capture cannot start.")
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(Color.white.opacity(0.60))
                     }
 
                     Spacer()
@@ -328,46 +339,54 @@ struct JoggingView: View {
             }
         }
         .padding(AppSpacing.lg)
-        .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var runModeCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionEyebrow(
-                    title: "Run Setup",
-                    subtitle: "Decide first whether the next start is purely yours or tied to a crew context"
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            sectionEyebrow(
+                title: "Run Setup",
+                subtitle: "Decide first whether the next start is purely yours or tied to a crew context"
+            )
+
+            HStack(spacing: AppSpacing.sm) {
+                runModeOption(
+                    mode: .solo,
+                    title: "Solo Run",
+                    subtitle: "No live crew session is created. Pending invites stay untouched for later.",
+                    icon: "figure.run"
                 )
 
-                HStack(spacing: AppSpacing.sm) {
-                    runModeOption(
-                        mode: .solo,
-                        title: "Solo Run",
-                        subtitle: "No live crew session is created. Pending invites stay untouched for later.",
-                        icon: "figure.run"
-                    )
+                runModeOption(
+                    mode: .crew,
+                    title: "Crew Run",
+                    subtitle: "Use live runs, planned events, or invited runners as the social context.",
+                    icon: "person.3.fill"
+                )
+            }
 
-                    runModeOption(
-                        mode: .crew,
-                        title: "Crew Run",
-                        subtitle: "Use live runs, planned events, or invited runners as the social context.",
-                        icon: "person.3.fill"
-                    )
-                }
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: viewModel.launchMode == .solo ? "bolt.shield.fill" : "dot.radiowaves.left.and.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(viewModel.launchMode == .solo ? Color(red: 0.20, green: 0.82, blue: 0.49) : Color(red: 0.98, green: 0.42, blue: 0.18))
 
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: viewModel.launchMode == .solo ? "bolt.shield.fill" : "dot.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(viewModel.launchMode == .solo ? AppColors.success : AppColors.secondary)
+                Text(viewModel.socialSelectionSummary)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(Color.white.opacity(0.60))
 
-                    Text(viewModel.socialSelectionSummary)
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
-
-                    Spacer()
-                }
+                Spacer()
             }
         }
+        .padding(AppSpacing.lg)
+        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var futureRunsCard: some View {
@@ -413,90 +432,103 @@ struct JoggingView: View {
     }
 
     private var runningHighlightsCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                sectionEyebrow(title: "Weekly Flow", subtitle: "Your current running rhythm")
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            sectionEyebrow(title: "Weekly Flow", subtitle: "Your current running rhythm")
 
-                HStack(spacing: AppSpacing.sm) {
-                    statItem(
-                        value: formatDistance(viewModel.dashboard.weekDistanceMeters),
-                        label: "Distance",
-                        icon: "figure.run"
-                    )
-                    statItem(
-                        value: "\(viewModel.dashboard.weekRuns)",
-                        label: "Runs",
-                        icon: "timer"
-                    )
-                    statItem(
-                        value: "+\(viewModel.dashboard.weekEarnedMinutes)m",
-                        label: "Earned",
-                        icon: "bolt.fill"
-                    )
-                }
+            HStack(spacing: AppSpacing.sm) {
+                statItem(
+                    value: formatDistance(viewModel.dashboard.weekDistanceMeters),
+                    label: "Distance",
+                    icon: "figure.run"
+                )
+                statItem(
+                    value: "\(viewModel.dashboard.weekRuns)",
+                    label: "Runs",
+                    icon: "timer"
+                )
+                statItem(
+                    value: "+\(viewModel.dashboard.weekEarnedMinutes)m",
+                    label: "Earned",
+                    icon: "bolt.fill"
+                )
             }
         }
+        .padding(AppSpacing.lg)
+        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var runningPersonalBestCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionEyebrow(title: "Personal Bests", subtitle: "Benchmarks you can beat")
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            sectionEyebrow(title: "Personal Bests", subtitle: "Benchmarks you can beat")
 
-                summaryRow(
-                    icon: "flag.fill",
-                    label: "Best Distance",
-                    value: formatDistance(viewModel.dashboard.bestDistanceMeters)
-                )
-                summaryRow(
-                    icon: "clock.fill",
-                    label: "Longest Run",
-                    value: formatDurationSeconds(viewModel.dashboard.longestRunDurationSeconds)
-                )
-                summaryRow(
-                    icon: "speedometer",
-                    label: "Weekly Avg Pace",
-                    value: formatPace(viewModel.dashboard.averagePaceSecondsPerKm)
-                )
-            }
+            summaryRow(
+                icon: "flag.fill",
+                label: "Best Distance",
+                value: formatDistance(viewModel.dashboard.bestDistanceMeters)
+            )
+            summaryRow(
+                icon: "clock.fill",
+                label: "Longest Run",
+                value: formatDurationSeconds(viewModel.dashboard.longestRunDurationSeconds)
+            )
+            summaryRow(
+                icon: "speedometer",
+                label: "Weekly Avg Pace",
+                value: formatPace(viewModel.dashboard.averagePaceSecondsPerKm)
+            )
         }
+        .padding(AppSpacing.lg)
+        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var recentRunsCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionEyebrow(title: "Recent Runs", subtitle: "Your latest sessions")
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            sectionEyebrow(title: "Recent Runs", subtitle: "Your latest sessions")
 
-                if viewModel.dashboard.recentRuns.isEmpty {
-                    VStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "figure.run.circle")
-                            .font(.system(size: 34, weight: .light))
-                            .foregroundStyle(AppColors.textTertiary)
-                        Text("No runs yet")
-                            .font(AppTypography.subheadlineSemibold)
-                            .foregroundStyle(AppColors.textPrimary)
-                        Text("Start your first run to begin building your route history, pacing trends, and weekly volume.")
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                            .multilineTextAlignment(.center)
+            if viewModel.dashboard.recentRuns.isEmpty {
+                VStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "figure.run.circle")
+                        .font(.system(size: 34, weight: .light))
+                        .foregroundStyle(Color.white.opacity(0.24))
+                    Text("No runs yet")
+                        .font(AppTypography.subheadlineSemibold)
+                        .foregroundStyle(.white)
+                    Text("Start your first run to begin building your route history, pacing trends, and weekly volume.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(Color.white.opacity(0.60))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.xl)
+            } else {
+                ForEach(viewModel.dashboard.recentRuns) { run in
+                    Button {
+                        selectedRecentRun = run
+                    } label: {
+                        recentRunRow(run)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.xl)
-                } else {
-                    ForEach(viewModel.dashboard.recentRuns) { run in
-                        Button {
-                            selectedRecentRun = run
-                        } label: {
-                            recentRunRow(run)
-                        }
-                        .buttonStyle(.plain)
-                        if run.id != viewModel.dashboard.recentRuns.last?.id {
-                            Divider()
-                        }
+                    .buttonStyle(.plain)
+                    if run.id != viewModel.dashboard.recentRuns.last?.id {
+                        Divider()
+                            .overlay(Color.white.opacity(0.08))
                     }
                 }
             }
         }
+        .padding(AppSpacing.lg)
+        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     // MARK: - Active View
@@ -1231,28 +1263,18 @@ struct JoggingView: View {
 
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
             Text(label)
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.52))
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.sm)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppColors.backgroundPrimary.opacity(0.92),
-                    AppColors.backgroundPrimary.opacity(0.72)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+        .padding(.vertical, AppSpacing.md)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func heroMetricPill(title: String, value: String) -> some View {
@@ -1285,27 +1307,27 @@ struct JoggingView: View {
             HStack(spacing: AppSpacing.sm) {
                 ZStack {
                     Circle()
-                        .fill(AppColors.info.opacity(0.10))
+                        .fill(Color.white.opacity(0.08))
                         .frame(width: 38, height: 38)
 
                     Image(systemName: icon)
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AppColors.info)
+                        .foregroundStyle(Color.white.opacity(0.88))
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(AppTypography.bodySemibold)
-                        .foregroundStyle(AppColors.textPrimary)
+                        Text(title)
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(.white)
                     Text(subtitle)
                         .font(AppTypography.caption2)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(Color.white.opacity(0.52))
                 }
 
                 Spacer()
             }
             .padding(AppSpacing.md)
-            .background(AppColors.backgroundPrimary.opacity(0.65), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -1325,12 +1347,12 @@ struct JoggingView: View {
                 HStack {
                     ZStack {
                         Circle()
-                            .fill(isSelected ? Color.white.opacity(0.20) : AppColors.fill)
+                            .fill(isSelected ? Color.white.opacity(0.20) : Color.white.opacity(0.08))
                             .frame(width: 40, height: 40)
 
                         Image(systemName: icon)
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(isSelected ? .white : AppColors.textPrimary)
+                            .foregroundStyle(.white)
                     }
 
                     Spacer()
@@ -1344,11 +1366,11 @@ struct JoggingView: View {
 
                 Text(title)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(isSelected ? .white : AppColors.textPrimary)
+                    .foregroundStyle(.white)
 
                 Text(subtitle)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.80) : AppColors.textSecondary)
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.80) : Color.white.opacity(0.56))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
@@ -1366,8 +1388,8 @@ struct JoggingView: View {
                     } else {
                         LinearGradient(
                             colors: [
-                                AppColors.backgroundSecondary,
-                                AppColors.backgroundSecondary.opacity(0.92)
+                                Color.white.opacity(0.06),
+                                Color.white.opacity(0.04)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -1378,7 +1400,7 @@ struct JoggingView: View {
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(isSelected ? Color.clear : AppColors.separator.opacity(0.26), lineWidth: 1)
+                    .stroke(isSelected ? Color.clear : Color.white.opacity(0.10), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1453,10 +1475,10 @@ struct JoggingView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(AppTypography.headline)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(.white)
             Text(subtitle)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.52))
         }
     }
 
@@ -1475,7 +1497,7 @@ struct JoggingView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(Self.shortDateFormatter.string(from: run.date))
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(.white)
 
                 HStack(spacing: AppSpacing.xs) {
                     Text(formatDurationSeconds(run.durationSeconds))
@@ -1483,7 +1505,7 @@ struct JoggingView: View {
                     Text("+\(run.earnedMinutes)m")
                 }
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.52))
             }
 
             Spacer()
@@ -1491,16 +1513,16 @@ struct JoggingView: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(formatDistance(run.distanceMeters))
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(.white)
 
                 HStack(spacing: 6) {
                     Text(formatPace(run.avgPaceSecondsPerKm))
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(Color.white.opacity(0.52))
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(Color.white.opacity(0.24))
                 }
             }
         }
@@ -2191,18 +2213,18 @@ struct JoggingView: View {
         HStack {
             Image(systemName: icon)
                 .font(.system(size: 18))
-                .foregroundStyle(AppColors.info)
+                .foregroundStyle(Color(red: 0.95, green: 0.33, blue: 0.19))
                 .frame(width: 28)
 
             Text(label)
                 .font(AppTypography.body)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.52))
 
             Spacer()
 
             Text(value)
                 .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(.white)
                 .monospacedDigit()
         }
     }
@@ -2617,10 +2639,10 @@ private struct RecentRunDetailSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(AppTypography.headline)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(.white)
             Text(subtitle)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(Color.white.opacity(0.52))
         }
     }
 
