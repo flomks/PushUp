@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import Shared
 
 // MARK: - JoggingView
 
@@ -46,7 +47,7 @@ struct JoggingView: View {
                 finishedView
             }
         }
-        .alert("End Run?", isPresented: $showStopConfirmation) {
+        .alert(viewModel.stopConfirmationTitle, isPresented: $showStopConfirmation) {
             Button("Keep Running", role: .cancel) {
                 viewModel.cancelStop()
             }
@@ -54,7 +55,7 @@ struct JoggingView: View {
                 viewModel.confirmStop()
             }
         } message: {
-            Text("Are you sure you want to end your run?")
+            Text(viewModel.stopConfirmationMessage)
         }
         .onChange(of: viewModel.phase) { _, newPhase in
             if newPhase == .confirmingStop {
@@ -241,6 +242,19 @@ struct JoggingView: View {
                 Spacer()
             }
             .padding(.horizontal, AppSpacing.xs)
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text("Run Mode")
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(AppColors.textSecondary)
+
+                Picker("Run Mode", selection: $viewModel.launchMode) {
+                    ForEach(RunLaunchMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
 
             if !viewModel.hasLocationPermission {
                 HStack(spacing: AppSpacing.sm) {
@@ -1007,31 +1021,33 @@ struct JoggingView: View {
 
             VStack(spacing: 18) {
                 HStack {
-                    Text("Run Complete")
+                    Text(viewModel.finishedTitle)
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
 
                     Spacer()
 
-                    Button {
-                        prepareShareImage()
-                    } label: {
-                        Circle()
-                            .fill(Color.orange)
-                            .frame(width: 44, height: 44)
-                            .overlay {
-                                if isRenderingShareImage {
-                                    ProgressView()
-                                        .tint(.white)
-                                        .scaleEffect(0.7)
-                                } else {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 16, weight: .bold))
-                                        .foregroundStyle(.white)
+                    if viewModel.completedRunCounts {
+                        Button {
+                            prepareShareImage()
+                        } label: {
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 44, height: 44)
+                                .overlay {
+                                    if isRenderingShareImage {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .scaleEffect(0.7)
+                                    } else {
+                                        Image(systemName: "square.and.arrow.up")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .foregroundStyle(.white)
+                                    }
                                 }
-                            }
+                        }
+                        .disabled(isRenderingShareImage)
                     }
-                    .disabled(isRenderingShareImage)
                 }
                 .padding(.top, 16)
 
@@ -1061,25 +1077,25 @@ struct JoggingView: View {
                 HStack(spacing: 12) {
                     finishedStat(value: viewModel.formattedDuration, label: "TIME")
                     finishedStat(value: viewModel.formattedPace, label: "PACE")
-                    finishedStat(value: "\(viewModel.caloriesBurned)", label: "CAL")
+                    finishedStat(value: "\(viewModel.finishedCaloriesBurned)", label: "CAL")
                 }
 
                 HStack(spacing: 10) {
                     Circle()
-                        .fill(Color.orange.opacity(0.18))
+                        .fill((viewModel.completedRunCounts ? Color.orange : Color.white).opacity(0.18))
                         .frame(width: 42, height: 42)
                         .overlay(
-                            Image(systemName: "clock.badge.checkmark")
+                            Image(systemName: viewModel.completedRunCounts ? "clock.badge.checkmark" : "exclamationmark.circle")
                                 .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color.orange)
+                                .foregroundStyle(viewModel.completedRunCounts ? Color.orange : Color.white)
                         )
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("SCREEN TIME EARNED")
+                        Text(viewModel.completedRunCounts ? "SCREEN TIME EARNED" : "RUN STATUS")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(Color.white.opacity(0.56))
                             .tracking(1)
-                        Text("+\(viewModel.earnedMinutes) min")
+                        Text(viewModel.completedRunCounts ? "+\(viewModel.earnedMinutes) min" : "Not saved")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .monospacedDigit()
@@ -1091,20 +1107,28 @@ struct JoggingView: View {
                 .padding(.vertical, 12)
                 .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 16))
 
+                Text(viewModel.finishedSubtitle)
+                    .font(AppTypography.body)
+                    .foregroundStyle(Color.white.opacity(0.80))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+
                 Spacer()
 
                 HStack(spacing: 12) {
-                    Button {
-                        prepareShareImage()
-                    } label: {
-                        Text("Share")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+                    if viewModel.completedRunCounts {
+                        Button {
+                            prepareShareImage()
+                        } label: {
+                            Text("Share")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(Color.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
+                        }
+                        .disabled(isRenderingShareImage)
                     }
-                    .disabled(isRenderingShareImage)
 
                     Button {
                         dismiss()
@@ -2531,9 +2555,9 @@ private final class RecentRunDetailViewModel: ObservableObject {
     @Published private(set) var session: Shared.JoggingSession?
     @Published private(set) var routePoints: [Shared.RoutePoint] = []
     @Published private(set) var segments: [Shared.JoggingSegment] = []
-    @Published private(set) var liveSnapshot: LiveRunSessionSnapshotResult?
-    @Published private(set) var xpAwards: [RunXpAwardResult] = []
-    @Published private(set) var usersById: [String: RunUserSummaryResult] = [:]
+    @Published private(set) var liveSnapshot: RunCrewSnapshot?
+    @Published private(set) var xpAwards: [RunXpAwardSummary] = []
+    @Published private(set) var usersById: [String: RunUserSummary] = [:]
     @Published private(set) var socialErrorMessage: String?
 
     let run: RunningDashboardData.RecentRun
@@ -2614,7 +2638,7 @@ private final class RecentRunDetailViewModel: ObservableObject {
                 id: segment.id,
                 isPause: isPause,
                 title: isPause ? "Pause \(index + 1)" : "Run Block \(index + 1)",
-                subtitle: "\(Self.timeLabel(segment.startedAt)) to \(Self.timeLabel(segment.endedAt ?? segment.startedAt))",
+                subtitle: "\(Self.timeLabel(epochSeconds: segment.startedAt.epochSeconds)) to \(Self.timeLabel(epochSeconds: (segment.endedAt ?? segment.startedAt).epochSeconds))",
                 metric: RecentRunDetailSheet.formatDistance(distance),
                 trailingDetail: isPause ? "Paused" : RecentRunDetailSheet.formatPace(secondsPerKm),
                 durationSeconds: duration
@@ -2736,26 +2760,66 @@ private final class RecentRunDetailViewModel: ObservableObject {
         }
     }
 
-    private func fetchLiveSnapshot(sessionId: String) async -> LiveRunSessionSnapshotResult? {
+    private func fetchLiveSnapshot(sessionId: String) async -> RunCrewSnapshot? {
         await withCheckedContinuation { continuation in
             DataBridge.shared.fetchLiveRunSessionSnapshot(sessionId: sessionId) { snapshot in
-                continuation.resume(returning: snapshot)
+                let mapped = snapshot.map { value in
+                    RunCrewSnapshot(
+                        session: value.session.map {
+                            RunCrewSessionSummary(
+                                id: $0.id,
+                                leaderUserId: $0.leaderUserId,
+                                mode: $0.mode,
+                                state: $0.state,
+                                participantCount: Int($0.participantCount)
+                            )
+                        },
+                        participants: value.participants.map {
+                            RunCrewParticipantSummary(
+                                id: $0.id,
+                                userId: $0.userId,
+                                status: $0.status,
+                                isLeader: $0.isLeader
+                            )
+                        },
+                        presenceCount: Int(value.presenceCount)
+                    )
+                }
+                continuation.resume(returning: mapped)
             }
         }
     }
 
-    private func fetchAwards(sessionId: String) async -> [RunXpAwardResult] {
+    private func fetchAwards(sessionId: String) async -> [RunXpAwardSummary] {
         await withCheckedContinuation { continuation in
             DataBridge.shared.fetchRunXpAwardsForSession(sessionId: sessionId) { awards in
-                continuation.resume(returning: awards)
+                let mapped = awards.map {
+                    RunXpAwardSummary(
+                        id: $0.id,
+                        userId: $0.userId,
+                        baseXp: Int($0.baseXp),
+                        bonusType: $0.bonusType,
+                        bonusXp: Int($0.bonusXp),
+                        totalXpAwarded: Int($0.totalXpAwarded)
+                    )
+                }
+                continuation.resume(returning: mapped)
             }
         }
     }
 
-    private func fetchUsers(ids: [String]) async -> [RunUserSummaryResult] {
+    private func fetchUsers(ids: [String]) async -> [RunUserSummary] {
         await withCheckedContinuation { continuation in
             DataBridge.shared.fetchRunUsers(userIds: ids) { users in
-                continuation.resume(returning: users)
+                let mapped = users.map {
+                    RunUserSummary(
+                        id: $0.id,
+                        username: $0.username,
+                        displayName: $0.displayName,
+                        avatarUrl: $0.avatarUrl
+                    )
+                }
+                continuation.resume(returning: mapped)
             }
         }
     }
@@ -2778,8 +2842,8 @@ private final class RecentRunDetailViewModel: ObservableObject {
         String(describing: segment.type).lowercased().contains("pause")
     }
 
-    private static func timeLabel(_ instant: Kotlinx_datetimeInstant) -> String {
-        pointTimeFormatter.string(from: Date(timeIntervalSince1970: Double(instant.epochSeconds)))
+    private static func timeLabel(epochSeconds: Int64) -> String {
+        pointTimeFormatter.string(from: Date(timeIntervalSince1970: Double(epochSeconds)))
     }
 
     private static let pointTimeFormatter: DateFormatter = {
@@ -2910,6 +2974,43 @@ private struct RunCheckpoint: Identifiable {
     let coordinateLabel: String
     let timestampLabel: String
     let timestamp: Date
+}
+
+private struct RunCrewSnapshot {
+    let session: RunCrewSessionSummary?
+    let participants: [RunCrewParticipantSummary]
+    let presenceCount: Int
+}
+
+private struct RunCrewSessionSummary {
+    let id: String
+    let leaderUserId: String
+    let mode: String
+    let state: String
+    let participantCount: Int
+}
+
+private struct RunCrewParticipantSummary: Identifiable {
+    let id: String
+    let userId: String
+    let status: String
+    let isLeader: Bool
+}
+
+private struct RunXpAwardSummary: Identifiable {
+    let id: String
+    let userId: String
+    let baseXp: Int
+    let bonusType: String
+    let bonusXp: Int
+    let totalXpAwarded: Int
+}
+
+private struct RunUserSummary: Identifiable {
+    let id: String
+    let username: String?
+    let displayName: String
+    let avatarUrl: String?
 }
 
 // MARK: - Previews

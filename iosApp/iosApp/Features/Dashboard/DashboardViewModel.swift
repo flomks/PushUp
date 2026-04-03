@@ -290,7 +290,7 @@ final class DashboardViewModel: ObservableObject {
 
         // Only completed sessions
         let completedPushUps = pushUpSessions.filter { $0.endedAt != nil }
-        let completedJogging = joggingSessions.filter { $0.endedAt != nil }
+        let completedJogging = joggingSessions.filter { $0.endedAt != nil && $0.distanceMeters > 0 }
         hasEverWorkedOut = !completedPushUps.isEmpty || !completedJogging.isEmpty
 
         guard hasEverWorkedOut else {

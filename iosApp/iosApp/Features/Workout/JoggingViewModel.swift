@@ -582,6 +582,15 @@ struct RunTrack: Equatable {
     let vibe: String
 }
 
+struct RunCompletionSnapshot: Equatable {
+    var distanceMeters: Double
+    var durationSeconds: Int
+    var avgPaceSecondsPerKm: Int?
+    var caloriesBurned: Int
+    var earnedMinutes: Int
+    var countsAsRun: Bool
+}
+
 // MARK: - JoggingViewModel
 
 /// View model for the jogging workout screen.
@@ -610,6 +619,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var pauseDistanceMeters: Double = 0.0
     @Published private(set) var lastError: JoggingTrackingError?
     @Published private(set) var earnedMinutes: Int = 0
+    @Published private(set) var completedRunSnapshot: RunCompletionSnapshot?
     @Published private(set) var dashboard: RunningDashboardData = .empty
     @Published private(set) var runParticipants: [RunParticipant] = []
     @Published private(set) var inviteableFriends: [RunParticipant] = []
@@ -711,6 +721,14 @@ final class JoggingViewModel: ObservableObject {
 
     /// Confirms stopping the workout.
     func confirmStop() {
+        completedRunSnapshot = RunCompletionSnapshot(
+            distanceMeters: distanceMeters,
+            durationSeconds: max(0, Int(activeDuration)),
+            avgPaceSecondsPerKm: currentPaceSecondsPerKm,
+            caloriesBurned: caloriesBurned,
+            earnedMinutes: distanceMeters >= 100 ? max(1, Int(distanceMeters / 1000.0)) : 0,
+            countsAsRun: distanceMeters > 0
+        )
         if let sessionId = selectedLiveRunSessionId, let userId = currentUserId {
             DataBridge.shared.finishLiveRunSession(sessionId: sessionId, userId: userId) { _ in }
         }
@@ -725,8 +743,7 @@ final class JoggingViewModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
 
         // Calculate earned minutes
-        let distanceKm = distanceMeters / 1000.0
-        earnedMinutes = distanceMeters >= 100 ? max(1, Int(distanceKm)) : 0
+        earnedMinutes = completedRunSnapshot?.earnedMinutes ?? 0
 
         phase = .finished
     }
@@ -927,14 +944,23 @@ final class JoggingViewModel: ObservableObject {
     func selectActiveRun(_ sessionId: String) {
         selectedLiveRunSessionId = sessionId
         selectedUpcomingEventId = nil
+        launchMode = .crew
     }
 
     func selectUpcomingRun(_ eventId: String) {
         selectedUpcomingEventId = eventId
         selectedLiveRunSessionId = nil
+        launchMode = .crew
+    }
+
+    func setLaunchMode(_ mode: RunLaunchMode) {
+        launchMode = mode
     }
 
     var startActionTitle: String {
+        if launchMode == .solo {
+            return hasLocationPermission ? "Start Solo Run" : "Enable Location"
+        }
         if selectedLiveRunSessionId != nil {
             return "Join Run"
         }
@@ -948,6 +974,13 @@ final class JoggingViewModel: ObservableObject {
     }
 
     var socialSelectionSummary: String {
+        if launchMode == .solo {
+            let invitedCount = runParticipants.filter { $0.status == .invited }.count
+            if invitedCount > 0 {
+                return "Solo selected - \(invitedCount) pending invite\(invitedCount == 1 ? "" : "s") kept for later"
+            }
+            return "Solo run"
+        }
         if let activeRun = activeFriendRuns.first(where: { $0.id == selectedLiveRunSessionId }) {
             return activeRun.subtitle
         }
@@ -1078,6 +1111,9 @@ final class JoggingViewModel: ObservableObject {
             return
         }
 
+        completedRunSnapshot = nil
+        earnedMinutes = 0
+
         let resolvedUserId: String?
         if let currentUserId {
             resolvedUserId = currentUserId
@@ -1092,12 +1128,16 @@ final class JoggingViewModel: ObservableObject {
         }
 
         let linkedLiveSessionId: String?
-        if let existingSessionId = selectedLiveRunSessionId {
-            linkedLiveSessionId = await joinSelectedLiveRun(sessionId: existingSessionId, userId: userId)
-        } else if let upcomingEventId = selectedUpcomingEventId {
-            linkedLiveSessionId = await startLiveRun(userId: userId, linkedEventId: upcomingEventId)
-        } else if runParticipants.contains(where: { $0.status == .invited }) {
-            linkedLiveSessionId = await startLiveRun(userId: userId, linkedEventId: nil)
+        if launchMode == .crew {
+            if let existingSessionId = selectedLiveRunSessionId {
+                linkedLiveSessionId = await joinSelectedLiveRun(sessionId: existingSessionId, userId: userId)
+            } else if let upcomingEventId = selectedUpcomingEventId {
+                linkedLiveSessionId = await startLiveRun(userId: userId, linkedEventId: upcomingEventId)
+            } else if runParticipants.contains(where: { $0.status == .invited }) {
+                linkedLiveSessionId = await startLiveRun(userId: userId, linkedEventId: nil)
+            } else {
+                linkedLiveSessionId = nil
+            }
         } else {
             linkedLiveSessionId = nil
         }
@@ -1582,6 +1622,7 @@ final class JoggingViewModel: ObservableObject {
                     self.liveRunObservationJob?.cancel(cause: nil)
                     self.selectedLiveRunSessionId = nil
                     self.lastDetachedLiveRunSessionId = sessionId
+                    self.launchMode = .solo
                     self.activeRunLeaderName = nil
                     self.activeRunStateLabel = "Solo run"
                     self.runParticipants = self.defaultRunParticipants()
@@ -1611,6 +1652,7 @@ final class JoggingViewModel: ObservableObject {
 
         selectedLiveRunSessionId = joinedSessionId
         lastDetachedLiveRunSessionId = nil
+        launchMode = .crew
         beginObservingLiveRun(sessionId: joinedSessionId)
         startPresenceHeartbeat()
         startActiveSessionRefreshLoop(sessionId: joinedSessionId)
@@ -1622,16 +1664,17 @@ final class JoggingViewModel: ObservableObject {
 
     /// Distance formatted as "X.XX km" or "XXX m".
     var formattedDistance: String {
-        if distanceMeters >= 1000 {
-            return String(format: "%.2f km", distanceMeters / 1000.0)
+        let distanceValue = phase == .finished ? (completedRunSnapshot?.distanceMeters ?? distanceMeters) : distanceMeters
+        if distanceValue >= 1000 {
+            return String(format: "%.2f km", distanceValue / 1000.0)
         } else {
-            return String(format: "%.0f m", distanceMeters)
+            return String(format: "%.0f m", distanceValue)
         }
     }
 
     /// Duration formatted as "MM:SS" or "H:MM:SS".
     var formattedDuration: String {
-        let totalSeconds = max(0, Int(activeDuration))
+        let totalSeconds = max(0, phase == .finished ? (completedRunSnapshot?.durationSeconds ?? Int(activeDuration)) : Int(activeDuration))
         let hours = totalSeconds / 3600
         let minutes = (totalSeconds % 3600) / 60
         let seconds = totalSeconds % 60
@@ -1645,7 +1688,8 @@ final class JoggingViewModel: ObservableObject {
 
     /// Pace formatted as "M:SS /km" or "--:--".
     var formattedPace: String {
-        guard let pace = currentPaceSecondsPerKm, pace > 0 else {
+        let paceValue = phase == .finished ? (completedRunSnapshot?.avgPaceSecondsPerKm ?? currentPaceSecondsPerKm) : currentPaceSecondsPerKm
+        guard let pace = paceValue, pace > 0 else {
             return "--:-- /km"
         }
         let minutes = pace / 60
@@ -1657,6 +1701,35 @@ final class JoggingViewModel: ObservableObject {
     var formattedSpeed: String {
         let kmh = currentSpeed * 3.6
         return String(format: "%.1f km/h", kmh)
+    }
+
+    var stopConfirmationTitle: String {
+        distanceMeters > 0 ? "End Run?" : "End Run Without Saving?"
+    }
+
+    var stopConfirmationMessage: String {
+        if distanceMeters > 0 {
+            return "Are you sure you want to end your run?"
+        }
+        return "This session has 0 m distance and will not count as a run or be saved to your history."
+    }
+
+    var completedRunCounts: Bool {
+        completedRunSnapshot?.countsAsRun ?? true
+    }
+
+    var finishedTitle: String {
+        completedRunCounts ? "Run Complete" : "Run Not Counted"
+    }
+
+    var finishedSubtitle: String {
+        completedRunCounts
+            ? "This run was saved to your history and counted toward your activity."
+            : "No distance was tracked, so this session was discarded and not saved as a run."
+    }
+
+    var finishedCaloriesBurned: Int {
+        phase == .finished ? (completedRunSnapshot?.caloriesBurned ?? caloriesBurned) : caloriesBurned
     }
 
     /// Whether the user has location permission.
@@ -1675,7 +1748,7 @@ final class JoggingViewModel: ObservableObject {
 
         joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: user.id) { [weak self] sessions in
             guard let self else { return }
-            let completed = sessions.filter { $0.endedAt != nil }
+            let completed = sessions.filter { $0.endedAt != nil && $0.distanceMeters > 0 }
             self.dashboard = RunningDashboardData.build(from: completed)
         }
     }
@@ -1723,6 +1796,25 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.$lastError
             .receive(on: DispatchQueue.main)
             .assign(to: &$lastError)
+
+        trackingManager.$lastFinishedSummary
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] summary in
+                guard let self else { return }
+                let paceValue = summary.session.avgPaceSecondsPerKm?.intValue
+                let snapshot = RunCompletionSnapshot(
+                    distanceMeters: summary.session.distanceMeters,
+                    durationSeconds: Int(summary.session.durationSeconds),
+                    avgPaceSecondsPerKm: paceValue,
+                    caloriesBurned: Int(summary.session.caloriesBurned),
+                    earnedMinutes: Int(summary.earnedCredits / 60),
+                    countsAsRun: summary.countsAsRun
+                )
+                self.completedRunSnapshot = snapshot
+                self.earnedMinutes = snapshot.earnedMinutes
+            }
+            .store(in: &cancellables)
     }
 
     private static func formatUpcomingSubtitle(plannedStartAt: String, participantCount: Int) -> String {
@@ -1793,7 +1885,8 @@ struct RunningDashboardData {
     }
 
     static func build(from sessions: [Shared.JoggingSession]) -> RunningDashboardData {
-        guard !sessions.isEmpty else { return .empty }
+        let validSessions = sessions.filter { $0.endedAt != nil && $0.distanceMeters > 0 }
+        guard !validSessions.isEmpty else { return .empty }
 
         let calendar = Calendar.current
         let today = Date()
@@ -1805,7 +1898,7 @@ struct RunningDashboardData {
             to: calendar.startOfDay(for: today)
         ) ?? today
 
-        let weekSessions = sessions.filter { session in
+        let weekSessions = validSessions.filter { session in
             let date = Date(timeIntervalSince1970: Double(session.startedAt.epochSeconds))
             return date >= weekStart
         }
@@ -1814,10 +1907,10 @@ struct RunningDashboardData {
         let weekEarned = weekSessions.reduce(0) { $0 + Int($1.earnedTimeCreditSeconds / 60) }
         let paceValues = weekSessions.compactMap { $0.avgPaceSecondsPerKm?.intValue }.filter { $0 > 0 }
         let avgPace = paceValues.isEmpty ? nil : (paceValues.reduce(0, +) / paceValues.count)
-        let bestDistance = sessions.map(\.distanceMeters).max() ?? 0
-        let longestDuration = sessions.map { Int($0.durationSeconds) }.max() ?? 0
+        let bestDistance = validSessions.map(\.distanceMeters).max() ?? 0
+        let longestDuration = validSessions.map { Int($0.durationSeconds) }.max() ?? 0
 
-        let recent = sessions
+        let recent = validSessions
             .sorted(by: { $0.startedAt.epochSeconds > $1.startedAt.epochSeconds })
             .prefix(5)
             .map { session in

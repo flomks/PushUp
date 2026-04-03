@@ -23,6 +23,7 @@ data class JoggingSummary(
     val earnedCredits: Long,
     val earnedXp: Long = 0L,
     val updatedLevel: UserLevel? = null,
+    val countsAsRun: Boolean = true,
 ) {
     init {
         require(earnedCredits >= 0) {

@@ -643,7 +643,7 @@ final class FriendsViewModel: ObservableObject {
         }
 
         let filteredJogging = localJoggingSessions.filter { session in
-            guard session.endedAt != nil else { return false }
+            guard session.endedAt != nil, session.distanceMeters > 0 else { return false }
             return session.startedAt.epochSeconds >= cutoffEpochSeconds
         }
 

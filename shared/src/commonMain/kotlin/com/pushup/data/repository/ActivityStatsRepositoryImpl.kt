@@ -71,7 +71,7 @@ class ActivityStatsRepositoryImpl(
                 startedAt_ = toMs,
             ).executeAsList()
             val joggingSessions = joggingRows
-                .filter { row -> row.endedAt != null }
+                .filter { row -> row.endedAt != null && row.distanceMeters > 0.0 }
                 .map { session -> session.toDomain() }
 
             // Group workout sessions by date
@@ -141,7 +141,7 @@ class ActivityStatsRepositoryImpl(
             val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
                 .executeAsList()
             val joggingDates = joggingRows
-                .filter { it.endedAt != null }
+                .filter { it.endedAt != null && it.distanceMeters > 0.0 }
                 .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
                 .distinct()
 

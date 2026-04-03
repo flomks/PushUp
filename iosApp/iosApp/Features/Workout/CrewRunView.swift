@@ -103,6 +103,13 @@ struct CrewRunView: View {
                     .font(AppTypography.body)
                     .foregroundStyle(Color.white.opacity(0.86))
 
+                Picker("Run Mode", selection: $viewModel.launchMode) {
+                    ForEach(RunLaunchMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
                 HStack(spacing: AppSpacing.sm) {
                     crewMetric(title: "Lineup", value: "\(viewModel.runParticipants.count)")
                     crewMetric(title: "Live", value: "\(viewModel.activeFriendRuns.count)")
@@ -476,6 +483,18 @@ struct CrewRunView: View {
             }
 
             Spacer()
+
+            if participant.status == .invited,
+               viewModel.selectedLiveRunSessionId == nil,
+               viewModel.selectedUpcomingEventId == nil {
+                Button("Revoke") {
+                    viewModel.removeInvitedParticipant(participant.id)
+                }
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(AppColors.error)
+                .buttonStyle(.plain)
+                .padding(.trailing, AppSpacing.xs)
+            }
 
             statusChip(participant.status == .running ? "Running" : "Invited", tint: participant.status == .running ? AppColors.success : AppColors.warning)
         }

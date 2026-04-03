@@ -85,6 +85,7 @@ final class JoggingTrackingManager: ObservableObject {
 
     /// The most recent error.
     @Published private(set) var lastError: JoggingTrackingError?
+    @Published private(set) var lastFinishedSummary: Shared.JoggingSummary?
 
     /// All recorded locations for map display.
     @Published private(set) var routeLocations: [CLLocation] = []
@@ -335,6 +336,7 @@ final class JoggingTrackingManager: ObservableObject {
         currentSpeed = 0.0
         caloriesBurned = 0
         routeLocations = []
+        lastFinishedSummary = nil
         activeSessionId = nil
         activeLiveRunSessionId = nil
         routeDistanceMeters = 0
@@ -709,6 +711,7 @@ final class JoggingTrackingManager: ObservableObject {
             let summary = try await withKMPSuspend { handler in
                 self.finishJogging.invoke(sessionId: sessionId, completionHandler: handler)
             } as Shared.JoggingSummary
+            lastFinishedSummary = summary
             #if DEBUG
             print(
                 "[JoggingTrackingManager] Jogging session finished." +

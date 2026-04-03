@@ -458,7 +458,7 @@ final class HistoryViewModel: ObservableObject {
     /// Maps a KMP `JoggingSession` to the view-layer `JoggingSessionItem`.
     /// Only completed sessions (endedAt != nil) are shown in history.
     private static func mapJogging(kmpSession: Shared.JoggingSession) -> JoggingSessionItem? {
-        guard kmpSession.endedAt != nil else { return nil }
+        guard kmpSession.endedAt != nil, kmpSession.distanceMeters > 0 else { return nil }
 
         let startMs = kmpSession.startedAt.epochSeconds * 1_000 + Int64(kmpSession.startedAt.nanosecondsOfSecond) / 1_000_000
         let startDate = Date(timeIntervalSince1970: Double(startMs) / 1_000.0)

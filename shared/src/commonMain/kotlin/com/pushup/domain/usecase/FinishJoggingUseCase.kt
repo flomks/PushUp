@@ -95,6 +95,29 @@ class FinishJoggingUseCase(
             0L
         }
 
+        if (distanceMeters <= 0.0) {
+            sessionRepository.delete(sessionId)
+            return JoggingSummary(
+                session = session.copy(
+                    endedAt = now,
+                    durationSeconds = durationSeconds,
+                    avgPaceSecondsPerKm = avgPace,
+                    caloriesBurned = caloriesBurned,
+                    earnedTimeCreditSeconds = 0L,
+                    activeDurationSeconds = activeDuration,
+                    pauseDurationSeconds = pauseDuration,
+                    activeDistanceMeters = activeDistance,
+                    pauseDistanceMeters = pauseDistance,
+                    pauseCount = pauseCount,
+                ),
+                routePoints = emptyList(),
+                earnedCredits = 0L,
+                earnedXp = 0L,
+                updatedLevel = null,
+                countsAsRun = false,
+            )
+        }
+
         // Finish the session
         sessionRepository.finishSession(
             id = sessionId,
@@ -148,6 +171,7 @@ class FinishJoggingUseCase(
             earnedCredits = earnedCredits,
             earnedXp = earnedXp,
             updatedLevel = updatedLevel,
+            countsAsRun = true,
         )
     }
 }

@@ -174,7 +174,7 @@ final class StatsViewModel: ObservableObject {
 
         joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: user.id) { [weak self] sessions in
             guard let self else { return }
-            self.joggingSessions = sessions.filter { $0.endedAt != nil }
+            self.joggingSessions = sessions.filter { $0.endedAt != nil && $0.distanceMeters > 0 }
             self.rebuildAllStats()
             self.isLoading = false
             self.isRefreshing = false

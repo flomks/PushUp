@@ -257,7 +257,7 @@ class StatsRepositoryImpl(
             startedAt_ = toMs,
         ).executeAsList()
         val joggingSessions = joggingRows
-            .filter { row -> row.endedAt != null }
+            .filter { row -> row.endedAt != null && row.distanceMeters > 0.0 }
             .map { row -> row.toActivityStats() }
 
         return (workoutSessions + joggingSessions).sortedBy { it.date }
@@ -279,7 +279,7 @@ class StatsRepositoryImpl(
         val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)
             .executeAsList()
         val joggingSessions = joggingRows
-            .filter { row -> row.endedAt != null }
+            .filter { row -> row.endedAt != null && row.distanceMeters > 0.0 }
             .map { row -> row.toActivityStats() }
 
         return (workoutSessions + joggingSessions).sortedBy { it.date }
