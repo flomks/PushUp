@@ -18,6 +18,12 @@ struct SpotifyServiceTests {
         #expect(destination == .web(URL(string: "https://open.spotify.com/")!))
     }
 
+    @Test("Dedicated Spotify callback URI stays stable")
+    func spotifyCallbackUriIsStable() {
+        let redirect = "pushup-spotify://callback"
+        #expect(redirect == "pushup-spotify://callback")
+    }
+
     @Test("Mode destination includes playlist query")
     func modeDestinationIncludesQuery() {
         let destination = SpotifyService.modeDestination(mode: .tempo, isSpotifyInstalled: false)

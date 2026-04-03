@@ -42,3 +42,20 @@ node_modules/
 # Environment
 .env
 .env.local
+.envrc
+
+# Local tooling / AI assistants
+.claude/
+.venv/
+
+# Logs / temp files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+
+
+.gradle-user/
+.gradle/
+build/

@@ -50,7 +50,7 @@
 	     Leave empty to use external app/web handoff only.
 	     Set this to enable the in-app PKCE auth flow in SpotifyService. -->
 	<key>SpotifyClientID</key>
-	<string></string>
+	<string>9e955a0cbab84d938d7ca3b110dad3a8</string>
 
 	<!-- URL schemes for OAuth callbacks -->
 	<!-- Apple Sign-In uses the bundle ID as the URL scheme automatically -->
@@ -76,6 +76,17 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>pushup</string>
+			</array>
+		</dict>
+		<!-- Dedicated Spotify OAuth callback scheme.
+		     Register the exact redirect URI `pushup-spotify://callback`
+		     in the Spotify Developer Dashboard. -->
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.flomks.pushup.spotify</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pushup-spotify</string>
 			</array>
 		</dict>
 	</array>

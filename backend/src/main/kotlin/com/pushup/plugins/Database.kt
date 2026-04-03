@@ -432,7 +432,7 @@ object RunEvents : Table("run_events") {
 object LiveRunSessions : Table("live_run_sessions") {
     val id                = uuid("id")
     val sourceType        = text("source_type")
-    val linkedEventId     = uuid("linked_event_id").nullable().references(RunEvents.id)
+    val linkedEventId     = uuid("linked_event_id").references(RunEvents.id).nullable()
     val leaderUserId      = uuid("leader_user_id").references(Users.id)
     val visibility        = text("visibility")
     val mode              = text("mode")
@@ -457,7 +457,7 @@ object RunEventParticipants : Table("run_event_participants") {
     val userId      = uuid("user_id").references(Users.id)
     val role        = text("role")
     val status      = text("status")
-    val invitedBy   = uuid("invited_by").nullable().references(Users.id)
+    val invitedBy   = uuid("invited_by").references(Users.id).nullable()
     val invitedAt   = timestampWithTimeZone("invited_at").nullable()
     val respondedAt = timestampWithTimeZone("responded_at").nullable()
     val checkedInAt = timestampWithTimeZone("checked_in_at").nullable()
@@ -536,7 +536,7 @@ object RunXpAwards : Table("run_xp_awards") {
 object JoggingSessions : Table("jogging_sessions") {
     val id                   = uuid("id")
     val userId               = uuid("user_id").references(Users.id)
-    val liveRunSessionId     = uuid("live_run_session_id").nullable().references(LiveRunSessions.id)
+    val liveRunSessionId     = uuid("live_run_session_id").references(LiveRunSessions.id).nullable()
     val startedAt            = timestampWithTimeZone("started_at")
     val endedAt              = timestampWithTimeZone("ended_at").nullable()
     val distanceMeters       = float("distance_meters")

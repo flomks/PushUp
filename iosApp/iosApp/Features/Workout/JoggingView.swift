@@ -1387,6 +1387,30 @@ struct JoggingView: View {
                     Button(viewModel.spotifyConnectActionTitle) {
                         viewModel.connectSpotify()
                     }
+
+                    Button(viewModel.spotifySecondaryActionTitle) {
+                        viewModel.handleSpotifySecondaryAction()
+                    }
+
+                    if viewModel.spotifyConnected {
+                        Button("Refresh Spotify Status") {
+                            viewModel.refreshSpotifyDetails()
+                        }
+                    }
+
+                    Text(viewModel.spotifyStatusDetail)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+
+                    if let accountName = viewModel.spotifyAccountName {
+                        LabeledContent("Account", value: accountName)
+                            .font(AppTypography.caption1)
+                    }
+
+                    if let productTier = viewModel.spotifyProductTier {
+                        LabeledContent("Plan", value: productTier)
+                            .font(AppTypography.caption1)
+                    }
                 }
 
                 Section("Run mode") {
@@ -1412,6 +1436,9 @@ struct JoggingView: View {
                         Text(viewModel.currentTrack.vibe)
                             .font(AppTypography.captionSemibold)
                             .foregroundStyle(AppColors.info)
+                        Text(viewModel.spotifyPlaybackLabel)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
                     }
 
                     HStack(spacing: 12) {
