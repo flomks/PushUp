@@ -556,12 +556,20 @@ struct UpcomingRunOption: Identifiable, Equatable {
     let subtitle: String
     let participantCount: Int
     let status: String?
+    let visibility: String
     let plannedStartAt: Date
 }
 
 enum RunLaunchMode: String, CaseIterable, Identifiable {
     case solo = "Solo"
     case crew = "Crew"
+
+    var id: String { rawValue }
+}
+
+enum PlannedRunKind: String, CaseIterable, Identifiable {
+    case solo = "Solo Event"
+    case crew = "Crew Event"
 
     var id: String { rawValue }
 }
@@ -628,6 +636,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var isLoadingRunSocialData: Bool = false
     @Published private(set) var selectedLiveRunSessionId: String?
     @Published private(set) var selectedUpcomingEventId: String?
+    @Published var plannedRunKind: PlannedRunKind = .crew
     @Published var plannedRunTitle: String = "Crew Run"
     @Published var plannedRunDate: Date = JoggingViewModel.defaultPlannedRunDate()
     @Published private(set) var isCreatingPlannedRun: Bool = false
@@ -674,6 +683,7 @@ final class JoggingViewModel: ObservableObject {
     private var presenceHeartbeat: AnyCancellable?
     private var socialRefreshTimer: AnyCancellable?
     private var activeSessionRefreshTimer: AnyCancellable?
+    private var spotifyRefreshTimer: AnyCancellable?
     private var liveRunBannerResetTask: Task<Void, Never>?
     private var lastObservedLeaderUserId: String?
 
@@ -738,6 +748,7 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.stopTracking()
         stopPresenceHeartbeat()
         stopActiveSessionRefreshLoop()
+        stopSpotifyRefreshLoop()
         activeRunStateLabel = nil
         activeRunLeaderName = nil
         clearLiveRunBanner()
@@ -878,6 +889,15 @@ final class JoggingViewModel: ObservableObject {
         Task { await createPlannedRunFlow() }
     }
 
+    func setPlannedRunKind(_ kind: PlannedRunKind) {
+        plannedRunKind = kind
+
+        let trimmedTitle = plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedTitle.isEmpty || trimmedTitle == "Crew Run" || trimmedTitle == "Solo Run" {
+            plannedRunTitle = kind == .solo ? "Solo Run" : "Crew Run"
+        }
+    }
+
     func acceptUpcomingRun(_ eventId: String) {
         Task { await respondToUpcomingRun(eventId: eventId, accept: true) }
     }
@@ -953,11 +973,21 @@ final class JoggingViewModel: ObservableObject {
     func selectUpcomingRun(_ eventId: String) {
         selectedUpcomingEventId = eventId
         selectedLiveRunSessionId = nil
-        launchMode = .crew
+        if let run = upcomingRuns.first(where: { $0.id == eventId }) {
+            launchMode = run.visibility.uppercased() == "PRIVATE" ? .solo : .crew
+        } else {
+            launchMode = .crew
+        }
     }
 
     func setLaunchMode(_ mode: RunLaunchMode) {
         launchMode = mode
+    }
+
+    func startUpcomingRun(_ run: UpcomingRunOption) {
+        selectUpcomingRun(run.id)
+        launchMode = run.visibility.uppercased() == "PRIVATE" ? .solo : .crew
+        startWorkout()
     }
 
     var startActionTitle: String {
@@ -988,7 +1018,9 @@ final class JoggingViewModel: ObservableObject {
             return activeRun.subtitle
         }
         if let upcomingRun = upcomingRuns.first(where: { $0.id == selectedUpcomingEventId }) {
-            return upcomingRun.subtitle
+            return upcomingRun.visibility.uppercased() == "PRIVATE"
+                ? "Planned solo event - \(Self.upcomingDayTimeFormatter.string(from: upcomingRun.plannedStartAt))"
+                : upcomingRun.subtitle
         }
         let invitedCount = runParticipants.filter { $0.status == .invited }.count
         if invitedCount > 0 {
@@ -999,6 +1031,11 @@ final class JoggingViewModel: ObservableObject {
 
     var upcomingEventCountLabel: String {
         upcomingRuns.isEmpty ? "No events planned" : "\(upcomingRuns.count) future event\(upcomingRuns.count == 1 ? "" : "s")"
+    }
+
+    var selectedUpcomingRun: UpcomingRunOption? {
+        guard let selectedUpcomingEventId else { return nil }
+        return upcomingRuns.first(where: { $0.id == selectedUpcomingEventId })
     }
 
     var nextUpcomingRunSummary: String {
@@ -1022,6 +1059,15 @@ final class JoggingViewModel: ObservableObject {
     var canCreatePlannedRun: Bool {
         currentUserId != nil &&
         !plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var plannedRunKindSummary: String {
+        switch plannedRunKind {
+        case .solo:
+            return "Creates a private planned run just for you."
+        case .crew:
+            return "Creates a crew event that friends can join or accept."
+        }
     }
 
     var musicCardSubtitle: String {
@@ -1086,6 +1132,7 @@ final class JoggingViewModel: ObservableObject {
             spotifyNowPlayingTitle = nil
             spotifyNowPlayingArtist = nil
             spotifyIsPlaying = false
+            stopSpotifyRefreshLoop()
             plannedRunStatusMessage = "Spotify disconnected."
         } else {
             let opened = spotifyService.openConnectDestination()
@@ -1161,6 +1208,7 @@ final class JoggingViewModel: ObservableObject {
         phase = .active
         UIApplication.shared.isIdleTimerDisabled = true
         trackingManager.startTracking(liveRunSessionId: linkedLiveSessionId)
+        startSpotifyRefreshLoop()
 
         if let linkedLiveSessionId {
             beginObservingLiveRun(sessionId: linkedLiveSessionId)
@@ -1182,6 +1230,9 @@ final class JoggingViewModel: ObservableObject {
         case .connected:
             plannedRunStatusMessage = "Spotify connected for your next run."
             await refreshSpotifyDetailsIfNeeded()
+            if phase == .active {
+                startSpotifyRefreshLoop()
+            }
         case .openedExternal:
             plannedRunStatusMessage = spotifyAppInstalled
                 ? "Opened Spotify. Add SpotifyClientID to enable in-app auth."
@@ -1208,7 +1259,7 @@ final class JoggingViewModel: ObservableObject {
             return
         }
 
-        if !force, spotifyAccountName != nil, spotifyPlaybackLabel != "No playback detected" {
+        if !force, phase != .active, spotifyAccountName != nil, spotifyPlaybackLabel != "No playback detected" {
             return
         }
 
@@ -1279,6 +1330,7 @@ final class JoggingViewModel: ObservableObject {
                         ),
                         participantCount: Int($0.participantCount),
                         status: $0.currentUserStatus,
+                        visibility: $0.visibility,
                         plannedStartAt: ISO8601DateFormatter().date(from: $0.plannedStartAt) ?? Date()
                     )
                 }
@@ -1290,9 +1342,9 @@ final class JoggingViewModel: ObservableObject {
     private func createPlannedRunFlow() async {
         guard !isCreatingPlannedRun else { return }
         guard let userId = currentUserId else { return }
-        let inviteIds = runParticipants
-            .filter { $0.status == .invited }
-            .map(\.id)
+        let inviteIds = plannedRunKind == .crew
+            ? runParticipants.filter { $0.status == .invited }.map(\.id)
+            : []
 
         let trimmedTitle = plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else {
@@ -1310,7 +1362,7 @@ final class JoggingViewModel: ObservableObject {
                 organizerUserId: userId,
                 title: trimmedTitle,
                 mode: "BASE",
-                visibility: "FRIENDS",
+                visibility: plannedRunKind == .solo ? "PRIVATE" : (inviteIds.isEmpty ? "FRIENDS" : "INVITE_ONLY"),
                 plannedStartAt: isoFormatter.string(from: plannedRunDate),
                 invitedUserIds: inviteIds,
                 description: nil,
@@ -1325,7 +1377,8 @@ final class JoggingViewModel: ObservableObject {
                 if let event {
                     self.selectedUpcomingEventId = event.id
                     self.selectedLiveRunSessionId = nil
-                    self.plannedRunStatusMessage = "Planned run created."
+                    self.launchMode = self.plannedRunKind == .solo ? .solo : .crew
+                    self.plannedRunStatusMessage = self.plannedRunKind == .solo ? "Solo event created." : "Crew event created."
                     Task { await self.refreshRunOptions() }
                 } else {
                     self.plannedRunStatusMessage = "Failed to create planned run."
@@ -1483,6 +1536,22 @@ final class JoggingViewModel: ObservableObject {
                 guard let self else { return }
                 Task { await self.refreshRunOptions() }
             }
+    }
+
+    private func startSpotifyRefreshLoop() {
+        stopSpotifyRefreshLoop()
+        guard spotifyConnected else { return }
+        spotifyRefreshTimer = Timer.publish(every: 4, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self, self.phase == .active else { return }
+                Task { await self.refreshSpotifyDetailsIfNeeded(force: true) }
+            }
+    }
+
+    private func stopSpotifyRefreshLoop() {
+        spotifyRefreshTimer?.cancel()
+        spotifyRefreshTimer = nil
     }
 
     private func pushPresenceHeartbeat() {

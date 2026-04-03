@@ -18,7 +18,8 @@ struct JoggingView: View {
     @Environment(\.openURL) private var openURL
     @State private var showStopConfirmation = false
     @State private var showShareSheet = false
-    @State private var showCrewView = false
+    @State private var showCrewLobby = false
+    @State private var showPlannerView = false
     @State private var showMusicSheet = false
     @State private var selectedRecentRun: RunningDashboardData.RecentRun?
     @State private var isMapFocusMode = false
@@ -60,8 +61,11 @@ struct JoggingView: View {
                 showStopConfirmation = true
             }
         }
-        .fullScreenCover(isPresented: $showCrewView) {
-            CrewRunView(viewModel: viewModel)
+        .fullScreenCover(isPresented: $showCrewLobby) {
+            CrewRunView(viewModel: viewModel, screen: .lobby)
+        }
+        .fullScreenCover(isPresented: $showPlannerView) {
+            CrewRunView(viewModel: viewModel, screen: .planner)
         }
         .sheet(isPresented: $showMusicSheet) {
             musicSheet
@@ -80,8 +84,7 @@ struct JoggingView: View {
                     .padding(.top, AppSpacing.md)
 
                 runningHubHero
-                runModeCard
-                runLaunchCard
+                primaryActionsCard
                 futureRunsCard
                 runningHighlightsCard
                 runningPersonalBestCard
@@ -216,45 +219,12 @@ struct JoggingView: View {
         )
     }
 
-    private var runLaunchCard: some View {
+    private var primaryActionsCard: some View {
         VStack(spacing: AppSpacing.md) {
-            HStack(alignment: .top, spacing: AppSpacing.md) {
-                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                    Text("Start Run")
-                        .font(AppTypography.headline)
-                        .foregroundStyle(.white)
-
-                    Text(
-                        viewModel.hasLocationPermission
-                        ? (viewModel.launchMode == .solo
-                           ? "GPS is ready. Start clean and run solo without touching your pending crew setup."
-                           : "Your run will use the current crew context: join live, start planned, or launch with invited runners.")
-                        : "Allow location first so distance, pace, route, and earned time can be tracked correctly."
-                    )
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(Color.white.opacity(0.60))
-                }
-
-                Spacer(minLength: 12)
-
-                Text("+1 min / km")
-                    .font(AppTypography.captionSemibold)
-                    .foregroundStyle(Color(red: 0.90, green: 0.78, blue: 0.36))
-                    .padding(.horizontal, AppSpacing.sm)
-                    .padding(.vertical, AppSpacing.xs)
-                .background(Color.white.opacity(0.08), in: Capsule())
-            }
-
-            HStack(spacing: AppSpacing.sm) {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.68))
-                Text(viewModel.socialSelectionSummary)
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(Color.white.opacity(0.60))
-                Spacer()
-            }
-            .padding(.horizontal, AppSpacing.xs)
+            sectionEyebrow(
+                title: "Choose Your Run",
+                subtitle: "Start solo immediately, enter the crew lobby, or plan a run for later"
+            )
 
             if !viewModel.hasLocationPermission {
                 HStack(spacing: AppSpacing.sm) {
@@ -266,7 +236,7 @@ struct JoggingView: View {
                         Text("Location access required")
                             .font(AppTypography.bodySemibold)
                             .foregroundStyle(.white)
-                        Text("Without location, running metrics and route capture cannot start.")
+                        Text("Allow location first so route, distance, and pace can be tracked correctly.")
                             .font(AppTypography.caption1)
                             .foregroundStyle(Color.white.opacity(0.60))
                     }
@@ -277,52 +247,63 @@ struct JoggingView: View {
                 .background(AppColors.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
             }
 
-            Button {
-                if viewModel.hasLocationPermission {
-                    viewModel.startWorkout()
-                } else {
-                    viewModel.requestLocationPermission()
-                }
-            } label: {
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: viewModel.hasLocationPermission ? "play.fill" : "location.fill")
-                        .font(.system(size: 18, weight: .bold))
-                    Text(viewModel.startActionTitle)
-                        .font(AppTypography.title3)
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.lg)
-                .background(
-                    LinearGradient(
+            VStack(spacing: AppSpacing.sm) {
+                hubActionTile(
+                    title: "Solo Run",
+                    subtitle: viewModel.hasLocationPermission
+                        ? "Jump straight into the run HUD. You can still invite people later while running."
+                        : "Enable location, then start directly into the live running screen.",
+                    icon: "figure.run",
+                    accent: LinearGradient(
                         colors: [
-                            Color(red: 0.98, green: 0.42, blue: 0.18),
-                            Color(red: 0.91, green: 0.20, blue: 0.18)
+                            Color(red: 0.18, green: 0.76, blue: 0.42),
+                            Color(red: 0.08, green: 0.45, blue: 0.24)
                         ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                )
-                .shadow(color: Color(red: 0.95, green: 0.32, blue: 0.20).opacity(0.28), radius: 18, x: 0, y: 10)
-            }
-            .buttonStyle(.plain)
-
-            HStack(spacing: AppSpacing.sm) {
-                quickRunAction(
-                    title: "Crew",
-                    subtitle: viewModel.socialSelectionSummary,
-                    icon: "person.2.fill"
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 ) {
-                    showCrewView = true
+                    viewModel.setLaunchMode(.solo)
+                    if viewModel.hasLocationPermission {
+                        viewModel.startWorkout()
+                    } else {
+                        viewModel.requestLocationPermission()
+                    }
                 }
 
-                quickRunAction(
-                    title: "Plan",
-                    subtitle: viewModel.upcomingEventCountLabel,
-                    icon: "calendar.badge.plus"
-                ) {
-                    showCrewView = true
+                HStack(spacing: AppSpacing.sm) {
+                    hubActionTile(
+                        title: "Crew Run",
+                        subtitle: "Open the lobby to join live runs, line up runners, or attach yourself to a crew event.",
+                        icon: "person.3.fill",
+                        accent: LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.42, blue: 0.18),
+                                Color(red: 0.84, green: 0.21, blue: 0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    ) {
+                        viewModel.setLaunchMode(.crew)
+                        showCrewLobby = true
+                    }
+
+                    hubActionTile(
+                        title: "Plan Run",
+                        subtitle: viewModel.upcomingEventCountLabel,
+                        icon: "calendar.badge.plus",
+                        accent: LinearGradient(
+                            colors: [
+                                Color(red: 0.16, green: 0.32, blue: 0.58),
+                                Color(red: 0.10, green: 0.18, blue: 0.34)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    ) {
+                        showPlannerView = true
+                    }
                 }
             }
 
@@ -344,47 +325,50 @@ struct JoggingView: View {
         )
     }
 
-    private var runModeCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            sectionEyebrow(
-                title: "Run Setup",
-                subtitle: "Decide first whether the next start is purely yours or tied to a crew context"
-            )
+    private func hubActionTile(
+        title: String,
+        subtitle: String,
+        icon: String,
+        accent: LinearGradient,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                HStack(alignment: .top) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.16))
+                            .frame(width: 42, height: 42)
 
-            HStack(spacing: AppSpacing.sm) {
-                runModeOption(
-                    mode: .solo,
-                    title: "Solo Run",
-                    subtitle: "No live crew session is created. Pending invites stay untouched for later.",
-                    icon: "figure.run"
-                )
+                        Image(systemName: icon)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
 
-                runModeOption(
-                    mode: .crew,
-                    title: "Crew Run",
-                    subtitle: "Use live runs, planned events, or invited runners as the social context.",
-                    icon: "person.3.fill"
-                )
-            }
+                    Spacer()
 
-            HStack(spacing: AppSpacing.sm) {
-                Image(systemName: viewModel.launchMode == .solo ? "bolt.shield.fill" : "dot.radiowaves.left.and.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(viewModel.launchMode == .solo ? Color(red: 0.20, green: 0.82, blue: 0.49) : Color(red: 0.98, green: 0.42, blue: 0.18))
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.76))
+                }
 
-                Text(viewModel.socialSelectionSummary)
+                Text(title)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(subtitle)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(Color.white.opacity(0.60))
-
-                Spacer()
+                    .foregroundStyle(Color.white.opacity(0.82))
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, minHeight: 154, alignment: .leading)
+            .padding(AppSpacing.md)
+            .background(
+                accent,
+                in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            )
         }
-        .padding(AppSpacing.lg)
-        .background(runningWidgetBackground, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .buttonStyle(.plain)
     }
 
     private var futureRunsCard: some View {
@@ -402,7 +386,7 @@ struct JoggingView: View {
                 Spacer()
 
                 Button("View All") {
-                    showCrewView = true
+                    showPlannerView = true
                 }
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.42))
@@ -410,13 +394,19 @@ struct JoggingView: View {
             }
 
             if viewModel.upcomingRuns.isEmpty {
-                Text("No events on the calendar yet. Open the planner to schedule a crew run in the future.")
+                Text("No events on the calendar yet. Open the planner to schedule a solo or crew run in the future.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(Color.white.opacity(0.46))
             } else {
                 VStack(spacing: AppSpacing.sm) {
                     ForEach(Array(viewModel.upcomingRuns.sorted(by: { $0.plannedStartAt < $1.plannedStartAt }).prefix(3).enumerated()), id: \.element.id) { index, run in
-                        upcomingPreviewRow(run: run, showsConnector: index != min(viewModel.upcomingRuns.count, 3) - 1)
+                        Button {
+                            viewModel.selectUpcomingRun(run.id)
+                            showPlannerView = true
+                        } label: {
+                            upcomingPreviewRow(run: run, showsConnector: index != min(viewModel.upcomingRuns.count, 3) - 1)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -632,7 +622,7 @@ struct JoggingView: View {
                 }
 
                 Button {
-                    showCrewView = true
+                    showCrewLobby = true
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "person.2.fill")
@@ -815,88 +805,44 @@ struct JoggingView: View {
     }
 
     private var activeSpotifyNowPlayingCard: some View {
-        Button {
-            showMusicSheet = true
-        } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.13, green: 0.14, blue: 0.15),
-                                    Color(red: 0.08, green: 0.09, blue: 0.10)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 46, height: 46)
+        HStack(spacing: 12) {
+            Image(systemName: viewModel.spotifyConnected ? "waveform.circle.fill" : "music.note")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.72))
+                .frame(width: 18)
 
-                    Image(systemName: viewModel.spotifyConnected ? "waveform.circle.fill" : "link.circle.fill")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.88))
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(viewModel.spotifyNowPlayingTitle ?? "No active playback")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        Text(viewModel.spotifyConnected ? "Spotify" : "Audio")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .tracking(1.6)
-                            .foregroundStyle(Color.white.opacity(0.60))
-
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.32))
-                                .frame(width: 6, height: 6)
-
-                            Text(viewModel.spotifyIsPlaying ? "LIVE" : viewModel.spotifyProviderStatusLabel.uppercased())
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.72))
-                        }
-                    }
-
-                    Text(viewModel.spotifyNowPlayingTitle ?? viewModel.currentTrack.title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(viewModel.spotifyNowPlayingArtist ?? viewModel.currentTrack.artist)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.62))
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 8) {
-                    SpotifyLiveBarsView(
-                        isAnimating: viewModel.spotifyConnected && viewModel.spotifyIsPlaying,
-                        tint: AppColors.success
-                    )
-                    .frame(width: 42, height: 24)
-
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.white.opacity(0.38))
-                }
+                Text(viewModel.spotifyNowPlayingArtist ?? viewModel.jamStatusLabel)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.white.opacity(0.60))
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: min(UIScreen.main.bounds.width - 56, 334))
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.black.opacity(0.62))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                    )
+
+            Spacer(minLength: 8)
+
+            SpotifyLiveBarsView(
+                isAnimating: viewModel.spotifyConnected && viewModel.spotifyIsPlaying,
+                tint: AppColors.success
             )
-            .shadow(color: Color.black.opacity(0.28), radius: 18, y: 10)
+            .frame(width: 34, height: 18)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: min(UIScreen.main.bounds.width - 64, 320))
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.52))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
     }
 
 // MARK: - Route Map
@@ -1533,7 +1479,7 @@ struct JoggingView: View {
         if let status = run.status, !status.isEmpty {
             return status.replacingOccurrences(of: "_", with: " ").capitalized
         }
-        return "Crew run"
+        return run.visibility.uppercased() == "PRIVATE" ? "Solo event" : "Crew run"
     }
 
     private func sectionEyebrow(title: String, subtitle: String) -> some View {

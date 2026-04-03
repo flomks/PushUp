@@ -1,8 +1,14 @@
 import SwiftUI
 
+enum CrewRunScreen {
+    case lobby
+    case planner
+}
+
 struct CrewRunView: View {
 
     @ObservedObject var viewModel: JoggingViewModel
+    let screen: CrewRunScreen
     @Environment(\.dismiss) private var dismiss
     @State private var displayedMonth: Date = Calendar.current.startOfDay(for: Date())
     @State private var selectedDay: Date?
@@ -17,16 +23,24 @@ struct CrewRunView: View {
                     VStack(spacing: AppSpacing.md) {
                         headerCard
 
-                        if viewModel.selectedLiveRunSessionId != nil || viewModel.lastDetachedLiveRunSessionId != nil {
+                        if screen == .lobby,
+                           viewModel.selectedLiveRunSessionId != nil || viewModel.lastDetachedLiveRunSessionId != nil {
                             liveStatusCard
                         }
 
-                        participantsCard
-                        liveRunsCard
-                        plannedRunCard
-                        calendarCard
-                        upcomingRunsCard
-                        inviteFriendsCard
+                        if screen == .lobby {
+                            participantsCard
+                            liveRunsCard
+                            upcomingRunsCard
+                            inviteFriendsCard
+                        } else {
+                            if viewModel.selectedUpcomingRun != nil {
+                                selectedPlannedRunCard
+                            }
+                            plannedRunCard
+                            calendarCard
+                            upcomingRunsCard
+                        }
                     }
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .padding(.top, AppSpacing.md)
@@ -38,7 +52,7 @@ struct CrewRunView: View {
                     loadingOverlay
                 }
             }
-            .navigationTitle("Crew Run")
+            .navigationTitle(screen == .lobby ? "Crew Lobby" : "Plan Run")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -79,12 +93,12 @@ struct CrewRunView: View {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                        Text("CREW")
+                        Text(screen == .lobby ? "CREW" : "PLANNER")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(Color.white.opacity(0.72))
                             .tracking(2)
 
-                        Text("Manage your running group in one place.")
+                        Text(screen == .lobby ? "Get the crew lined up before the run." : "Plan future runs and manage upcoming events.")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(3)
@@ -99,21 +113,36 @@ struct CrewRunView: View {
                         .background(Color.white.opacity(0.14), in: Circle())
                 }
 
-                Text(viewModel.socialSelectionSummary)
+                Text(screen == .lobby ? viewModel.socialSelectionSummary : viewModel.nextUpcomingRunSummary)
                     .font(AppTypography.body)
                     .foregroundStyle(Color.white.opacity(0.86))
 
-                HStack(spacing: AppSpacing.sm) {
-                    crewModeButton(
-                        mode: .solo,
-                        title: "Solo",
-                        icon: "figure.run"
-                    )
-                    crewModeButton(
-                        mode: .crew,
-                        title: "Crew",
-                        icon: "person.3.fill"
-                    )
+                if screen == .lobby {
+                    HStack(spacing: AppSpacing.sm) {
+                        crewModeButton(
+                            mode: .solo,
+                            title: "Solo",
+                            icon: "figure.run"
+                        )
+                        crewModeButton(
+                            mode: .crew,
+                            title: "Crew",
+                            icon: "person.3.fill"
+                        )
+                    }
+                } else {
+                    HStack(spacing: AppSpacing.sm) {
+                        plannedKindButton(
+                            kind: .solo,
+                            title: "Solo Event",
+                            icon: "figure.run"
+                        )
+                        plannedKindButton(
+                            kind: .crew,
+                            title: "Crew Event",
+                            icon: "person.3.fill"
+                        )
+                    }
                 }
 
                 HStack(spacing: AppSpacing.sm) {
@@ -205,14 +234,14 @@ struct CrewRunView: View {
     private var plannedRunCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionHeader("Plan a Run", subtitle: "Create a proper event instead of an inline popup")
+                sectionHeader("Plan a Run", subtitle: "Create a dedicated solo or crew event that will appear in Upcoming and Calendar")
 
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text("Title")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(AppColors.textSecondary)
 
-                    TextField("Crew sunrise run", text: $viewModel.plannedRunTitle)
+                    TextField(viewModel.plannedRunKind == .solo ? "Solo sunrise run" : "Crew sunrise run", text: $viewModel.plannedRunTitle)
                         .textInputAutocapitalization(.words)
                         .padding(.horizontal, AppSpacing.md)
                         .frame(height: AppSpacing.buttonHeightPrimary)
@@ -238,7 +267,7 @@ struct CrewRunView: View {
                 }
 
                 actionButton(
-                    title: viewModel.isCreatingPlannedRun ? "Creating..." : "Create Planned Run",
+                    title: viewModel.isCreatingPlannedRun ? "Creating..." : (viewModel.plannedRunKind == .solo ? "Create Solo Event" : "Create Crew Event"),
                     tint: AppColors.secondary,
                     isLoading: viewModel.isCreatingPlannedRun,
                     disabled: !viewModel.canCreatePlannedRun || viewModel.isCreatingPlannedRun
@@ -246,9 +275,69 @@ struct CrewRunView: View {
                     viewModel.createPlannedRun()
                 }
 
-                Text(viewModel.plannedRunStatusMessage ?? "Create a run now and invite people later if needed.")
+                Text(viewModel.plannedRunStatusMessage ?? viewModel.plannedRunKindSummary)
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
+            }
+        }
+    }
+
+    private var selectedPlannedRunCard: some View {
+        let run = viewModel.selectedUpcomingRun
+
+        return Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionHeader("Selected Event", subtitle: "Manage this planned run before it starts")
+
+                if let run {
+                    VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                        Text(run.title)
+                            .font(AppTypography.title3)
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        Text(Self.upcomingDateFormatter.string(from: run.plannedStartAt))
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+
+                        HStack(spacing: AppSpacing.sm) {
+                            statusChip(run.visibility.uppercased() == "PRIVATE" ? "Solo Event" : "Crew Event", tint: run.visibility.uppercased() == "PRIVATE" ? AppColors.success : AppColors.secondary)
+                            statusChip((run.status?.replacingOccurrences(of: "_", with: " ").capitalized).flatMap { $0.isEmpty ? nil : $0 } ?? "Planned")
+                            statusChip("\(run.participantCount) joined", tint: AppColors.info)
+                        }
+                    }
+
+                    HStack(spacing: AppSpacing.sm) {
+                        actionButton(
+                            title: viewModel.upcomingRunPrimaryActionTitle(for: run),
+                            tint: AppColors.secondary,
+                            isLoading: viewModel.isUpdatingUpcomingRun,
+                            disabled: viewModel.isUpdatingUpcomingRun
+                        ) {
+                            viewModel.handleUpcomingRunPrimaryAction(run)
+                        }
+
+                        actionButton(
+                            title: "Start This Run",
+                            tint: AppColors.success,
+                            isLoading: false,
+                            disabled: false
+                        ) {
+                            viewModel.startUpcomingRun(run)
+                            dismiss()
+                        }
+                    }
+
+                    if run.status?.uppercased() == "INVITED" {
+                        Button("Decline Invite") {
+                            viewModel.declineUpcomingRun(run.id)
+                        }
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.error)
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    emptyState("Select an event from the calendar or upcoming list to manage it here.")
+                }
             }
         }
     }
@@ -298,7 +387,7 @@ struct CrewRunView: View {
     private var calendarCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
-                sectionHeader("Calendar", subtitle: "See when your planned crew runs actually happen")
+                sectionHeader("Calendar", subtitle: "See when your planned solo and crew runs actually happen")
 
                 HStack {
                     Button {
@@ -364,10 +453,10 @@ struct CrewRunView: View {
                                 initials: "EV",
                                 title: run.title,
                                 subtitle: run.subtitle,
-                                actionTitle: viewModel.upcomingRunPrimaryActionTitle(for: run),
+                                actionTitle: viewModel.selectedUpcomingEventId == run.id ? "Open" : "View",
                                 actionTint: AppColors.secondary
                             ) {
-                                viewModel.handleUpcomingRunPrimaryAction(run)
+                                viewModel.selectUpcomingRun(run.id)
                             }
                         }
                     }
@@ -505,6 +594,41 @@ struct CrewRunView: View {
         .buttonStyle(.plain)
     }
 
+    private func plannedKindButton(
+        kind: PlannedRunKind,
+        title: String,
+        icon: String
+    ) -> some View {
+        let isSelected = viewModel.plannedRunKind == kind
+
+        return Button {
+            viewModel.setPlannedRunKind(kind)
+        } label: {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                Text(title)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .background(
+                isSelected
+                    ? (kind == .solo ? Color(red: 0.13, green: 0.70, blue: 0.36) : Color(red: 0.95, green: 0.44, blue: 0.23))
+                    : Color.white.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func participantRow(_ participant: RunParticipant) -> some View {
         HStack(spacing: AppSpacing.sm) {
             avatar(participant.initials)
@@ -583,7 +707,7 @@ struct CrewRunView: View {
                         Image(systemName: "figure.run")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.40))
-                        Text((run.status?.replacingOccurrences(of: "_", with: " ").capitalized).flatMap { $0.isEmpty ? nil : $0 } ?? "Crew run")
+                        Text((run.status?.replacingOccurrences(of: "_", with: " ").capitalized).flatMap { $0.isEmpty ? nil : $0 } ?? (run.visibility.uppercased() == "PRIVATE" ? "Solo event" : "Crew run"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.60))
                     }
@@ -594,9 +718,9 @@ struct CrewRunView: View {
                     Spacer()
 
                     Button {
-                        viewModel.handleUpcomingRunPrimaryAction(run)
+                        viewModel.selectUpcomingRun(run.id)
                     } label: {
-                        Text(viewModel.upcomingRunPrimaryActionTitle(for: run))
+                        Text(viewModel.selectedUpcomingEventId == run.id ? "Open" : "View")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 12)
@@ -606,7 +730,7 @@ struct CrewRunView: View {
                     .buttonStyle(.plain)
                 }
 
-                if run.status?.uppercased() == "INVITED" {
+                    if run.status?.uppercased() == "INVITED" {
                     Button("Decline") {
                         viewModel.declineUpcomingRun(run.id)
                     }
