@@ -19,6 +19,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
+import kotlinx.datetime.Instant as KtxInstant
 
 /**
  * Service for unified activity statistics across all workout types.
@@ -159,6 +160,8 @@ class ActivityStatsService {
         from: Instant,
         to: Instant,
     ): Map<LocalDate, Pair<Int, Long>> {
+        val fromKtx = KtxInstant.fromEpochMilliseconds(from.toEpochMilli())
+        val toKtx = KtxInstant.fromEpochMilliseconds(to.toEpochMilli())
         val sessionCount = JoggingSessions.id.count()
         val creditsSum = JoggingSessions.earnedTimeCredits.sum()
 
@@ -166,8 +169,8 @@ class ActivityStatsService {
             .select(JoggingSessions.startedAtDay, sessionCount, creditsSum)
             .where {
                 (JoggingSessions.userId eq userId) and
-                    (JoggingSessions.startedAt greaterEq from) and
-                    (JoggingSessions.startedAt less to) and
+                    (JoggingSessions.startedAt greaterEq fromKtx) and
+                    (JoggingSessions.startedAt less toKtx) and
                     JoggingSessions.endedAt.isNotNull()
             }
             .groupBy(JoggingSessions.startedAtDay)

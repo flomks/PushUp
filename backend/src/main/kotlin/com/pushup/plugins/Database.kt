@@ -399,6 +399,132 @@ object FriendCodes : Table("friend_codes") {
 }
 
 // ---------------------------------------------------------------------------
+// Social running tables -- mirror the public.run_events / live_run_sessions
+// foundation created by migration 019.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the public.run_events table in Supabase.
+ * Stores planned social running events.
+ */
+object RunEvents : Table("run_events") {
+    val id               = uuid("id")
+    val createdBy        = uuid("created_by").references(Users.id)
+    val title            = text("title")
+    val description      = text("description").nullable()
+    val mode             = text("mode")
+    val visibility       = text("visibility")
+    val plannedStartAt   = timestampWithTimeZone("planned_start_at")
+    val plannedEndAt     = timestampWithTimeZone("planned_end_at").nullable()
+    val checkInOpensAt   = timestampWithTimeZone("check_in_opens_at")
+    val status           = text("status")
+    val locationName     = text("location_name").nullable()
+    val createdAt        = timestampWithTimeZone("created_at")
+    val updatedAt        = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.live_run_sessions table in Supabase.
+ * Tracks active or cooling-down social run sessions.
+ */
+object LiveRunSessions : Table("live_run_sessions") {
+    val id                = uuid("id")
+    val sourceType        = text("source_type")
+    val linkedEventId     = uuid("linked_event_id").nullable().references(RunEvents.id)
+    val leaderUserId      = uuid("leader_user_id").references(Users.id)
+    val visibility        = text("visibility")
+    val mode              = text("mode")
+    val state             = text("state")
+    val startedAt         = timestampWithTimeZone("started_at")
+    val cooldownStartedAt = timestampWithTimeZone("cooldown_started_at").nullable()
+    val endedAt           = timestampWithTimeZone("ended_at").nullable()
+    val lastActivityAt    = timestampWithTimeZone("last_activity_at")
+    val maxEndsAt         = timestampWithTimeZone("max_ends_at")
+    val createdAt         = timestampWithTimeZone("created_at")
+    val updatedAt         = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.run_event_participants table in Supabase.
+ */
+object RunEventParticipants : Table("run_event_participants") {
+    val id          = uuid("id")
+    val eventId     = uuid("event_id").references(RunEvents.id)
+    val userId      = uuid("user_id").references(Users.id)
+    val role        = text("role")
+    val status      = text("status")
+    val invitedBy   = uuid("invited_by").nullable().references(Users.id)
+    val invitedAt   = timestampWithTimeZone("invited_at").nullable()
+    val respondedAt = timestampWithTimeZone("responded_at").nullable()
+    val checkedInAt = timestampWithTimeZone("checked_in_at").nullable()
+    val createdAt   = timestampWithTimeZone("created_at")
+    val updatedAt   = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.live_run_participants table in Supabase.
+ */
+object LiveRunParticipants : Table("live_run_participants") {
+    val id             = uuid("id")
+    val sessionId      = uuid("session_id").references(LiveRunSessions.id)
+    val userId         = uuid("user_id").references(Users.id)
+    val status         = text("status")
+    val joinedAt       = timestampWithTimeZone("joined_at")
+    val becameActiveAt = timestampWithTimeZone("became_active_at").nullable()
+    val finishedAt     = timestampWithTimeZone("finished_at").nullable()
+    val leftAt         = timestampWithTimeZone("left_at").nullable()
+    val isLeader       = bool("is_leader")
+    val createdAt      = timestampWithTimeZone("created_at")
+    val updatedAt      = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.live_run_presence table in Supabase.
+ */
+object LiveRunPresence : Table("live_run_presence") {
+    val id                       = uuid("id")
+    val sessionId                = uuid("session_id").references(LiveRunSessions.id)
+    val userId                   = uuid("user_id").references(Users.id)
+    val presenceState            = text("presence_state")
+    val lastSeenAt               = timestampWithTimeZone("last_seen_at")
+    val currentDistanceMeters    = float("current_distance_meters")
+    val currentDurationSeconds   = integer("current_duration_seconds")
+    val currentPaceSecondsPerKm  = integer("current_pace_seconds_per_km").nullable()
+    val currentLatitude          = double("current_latitude").nullable()
+    val currentLongitude         = double("current_longitude").nullable()
+    val updatedAt                = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * Mirrors the public.run_xp_awards table in Supabase.
+ */
+object RunXpAwards : Table("run_xp_awards") {
+    val id               = uuid("id")
+    val userId           = uuid("user_id").references(Users.id)
+    val sessionId        = uuid("session_id").references(LiveRunSessions.id)
+    val baseXp           = long("base_xp")
+    val bonusType        = text("bonus_type")
+    val bonusMultiplier  = decimal("bonus_multiplier", 4, 2)
+    val bonusXp          = long("bonus_xp")
+    val totalXpAwarded   = long("total_xp_awarded")
+    val awardedAt        = timestampWithTimeZone("awarded_at")
+    val createdAt        = timestampWithTimeZone("created_at")
+    val updatedAt        = timestampWithTimeZone("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+// ---------------------------------------------------------------------------
 // Jogging tables -- mirror the public.jogging_sessions and public.route_points
 // PostgreSQL tables created by migration 015.
 // ---------------------------------------------------------------------------
@@ -563,12 +689,18 @@ fun Application.configureDatabase(): Boolean {
             UserLevels,
             ExerciseLevels,
             Notifications,
+            RunEvents,
+            LiveRunSessions,
+            RunEventParticipants,
+            LiveRunParticipants,
+            LiveRunPresence,
+            RunXpAwards,
             JoggingSessions,
             RoutePoints,
             JoggingSegments,
         )
     }
-    log.info("Schema check complete (device_tokens, user_levels, exercise_levels, notifications, jogging_sessions, route_points, jogging_segments tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, exercise_levels, notifications, social running, jogging_sessions, route_points, jogging_segments tables ensured)")
 
     return true
 }
