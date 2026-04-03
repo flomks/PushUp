@@ -15,11 +15,11 @@ import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
-import kotlinx.datetime.Instant as KtxInstant
 
 /**
  * Service for unified activity statistics across all workout types.
@@ -160,8 +160,8 @@ class ActivityStatsService {
         from: Instant,
         to: Instant,
     ): Map<LocalDate, Pair<Int, Long>> {
-        val fromKtx = KtxInstant.fromEpochMilliseconds(from.toEpochMilli())
-        val toKtx = KtxInstant.fromEpochMilliseconds(to.toEpochMilli())
+        val fromOffset = OffsetDateTime.ofInstant(from, ZoneOffset.UTC)
+        val toOffset = OffsetDateTime.ofInstant(to, ZoneOffset.UTC)
         val sessionCount = JoggingSessions.id.count()
         val creditsSum = JoggingSessions.earnedTimeCredits.sum()
 
@@ -169,8 +169,8 @@ class ActivityStatsService {
             .select(JoggingSessions.startedAtDay, sessionCount, creditsSum)
             .where {
                 (JoggingSessions.userId eq userId) and
-                    (JoggingSessions.startedAt greaterEq fromKtx) and
-                    (JoggingSessions.startedAt less toKtx) and
+                    (JoggingSessions.startedAt greaterEq fromOffset) and
+                    (JoggingSessions.startedAt less toOffset) and
                     JoggingSessions.endedAt.isNotNull()
             }
             .groupBy(JoggingSessions.startedAtDay)

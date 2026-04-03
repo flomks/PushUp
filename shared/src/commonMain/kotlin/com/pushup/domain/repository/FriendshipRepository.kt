@@ -1,6 +1,8 @@
 package com.pushup.domain.repository
 
 import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendLevelDetails
+import com.pushup.domain.model.FriendMonthlyActivity
 import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
@@ -90,4 +92,8 @@ interface FriendshipRepository {
      * @throws com.pushup.data.api.ApiException on network or server errors.
      */
     suspend fun getFriendStats(friendId: String, period: String): FriendActivityStats
+
+    suspend fun getFriendMonthlyActivity(friendId: String, month: Int, year: Int): FriendMonthlyActivity
+
+    suspend fun getFriendLevelDetails(friendId: String): FriendLevelDetails
 }

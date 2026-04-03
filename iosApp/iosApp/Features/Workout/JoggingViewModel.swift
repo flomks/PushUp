@@ -556,6 +556,7 @@ struct UpcomingRunOption: Identifiable, Equatable {
     let subtitle: String
     let participantCount: Int
     let status: String?
+    let plannedStartAt: Date
 }
 
 enum RunAudioMode: String, CaseIterable, Identifiable {
@@ -921,6 +922,28 @@ final class JoggingViewModel: ObservableObject {
         return "Solo run"
     }
 
+    var upcomingEventCountLabel: String {
+        upcomingRuns.isEmpty ? "No events planned" : "\(upcomingRuns.count) future event\(upcomingRuns.count == 1 ? "" : "s")"
+    }
+
+    var nextUpcomingRunSummary: String {
+        guard let next = upcomingRuns.sorted(by: { $0.plannedStartAt < $1.plannedStartAt }).first else {
+            return "Plan a run with friends and it will show up here."
+        }
+        return "\(Self.upcomingDayTimeFormatter.string(from: next.plannedStartAt)) - \(next.title)"
+    }
+
+    var calendarHighlightedDates: Set<Date> {
+        Set(upcomingRuns.map { Calendar.current.startOfDay(for: $0.plannedStartAt) })
+    }
+
+    func upcomingRuns(on day: Date) -> [UpcomingRunOption] {
+        let calendar = Calendar.current
+        return upcomingRuns
+            .filter { calendar.isDate($0.plannedStartAt, inSameDayAs: day) }
+            .sorted { $0.plannedStartAt < $1.plannedStartAt }
+    }
+
     var canCreatePlannedRun: Bool {
         currentUserId != nil &&
         !plannedRunTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -1148,7 +1171,8 @@ final class JoggingViewModel: ObservableObject {
                             participantCount: Int($0.participantCount)
                         ),
                         participantCount: Int($0.participantCount),
-                        status: $0.currentUserStatus
+                        status: $0.currentUserStatus,
+                        plannedStartAt: ISO8601DateFormatter().date(from: $0.plannedStartAt) ?? Date()
                     )
                 }
                 continuation.resume()
@@ -1669,6 +1693,13 @@ final class JoggingViewModel: ObservableObject {
         formatter.dateFormat = "EEE, MMM d • HH:mm"
         return "\(formatter.string(from: date)) - \(participantCount) runners"
     }
+
+    private static let upcomingDayTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d • HH:mm"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
 
     private static func defaultPlannedRunDate() -> Date {
         let calendar = Calendar.current

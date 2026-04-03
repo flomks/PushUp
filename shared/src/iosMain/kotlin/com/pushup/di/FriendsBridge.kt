@@ -1,6 +1,8 @@
 package com.pushup.di
 
 import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendLevelDetails
+import com.pushup.domain.model.FriendMonthlyActivity
 import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.Friendship
@@ -171,6 +173,40 @@ object FriendsBridge : KoinComponent {
                 withContext(Dispatchers.Main) { onResult(stats) }
             } catch (e: Exception) {
                 val msg = "Could not load stats: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
+            }
+        }
+    }
+
+    fun getFriendMonthlyActivity(
+        friendId: String,
+        month: Int,
+        year: Int,
+        onResult: (FriendMonthlyActivity) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val summary = get<FriendshipRepository>().getFriendMonthlyActivity(friendId, month, year)
+                withContext(Dispatchers.Main) { onResult(summary) }
+            } catch (e: Exception) {
+                val msg = "Could not load activity heatmap: ${e.message ?: e::class.simpleName ?: "unknown error"}"
+                withContext(Dispatchers.Main) { onError(msg) }
+            }
+        }
+    }
+
+    fun getFriendLevelDetails(
+        friendId: String,
+        onResult: (FriendLevelDetails) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val details = get<FriendshipRepository>().getFriendLevelDetails(friendId)
+                withContext(Dispatchers.Main) { onResult(details) }
+            } catch (e: Exception) {
+                val msg = "Could not load level details: ${e.message ?: e::class.simpleName ?: "unknown error"}"
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }

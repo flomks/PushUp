@@ -1,11 +1,18 @@
 package com.pushup.service
 
 import com.pushup.dto.DateRangeDTO
+import com.pushup.dto.FriendActivityDayDTO
 import com.pushup.dto.FriendActivityStatsDTO
+import com.pushup.dto.FriendExerciseLevelDTO
+import com.pushup.dto.FriendLevelDetailsDTO
+import com.pushup.dto.FriendMonthlyActivityDTO
 import com.pushup.dto.StatsPeriod
+import com.pushup.plugins.ExerciseLevels
 import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
+import com.pushup.plugins.JoggingSessions
 import com.pushup.plugins.UserLevels
+import com.pushup.plugins.WorkoutSessions
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -13,10 +20,12 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.avg
 import org.jetbrains.exposed.sql.count
+import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import java.time.OffsetDateTime
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -45,6 +54,18 @@ sealed class FriendActivityStatsResult {
 
     /** The target user does not exist in the database. */
     object FriendNotFound : FriendActivityStatsResult()
+}
+
+sealed class FriendMonthlyActivityResult {
+    data class Success(val summary: FriendMonthlyActivityDTO) : FriendMonthlyActivityResult()
+    object NotFriends : FriendMonthlyActivityResult()
+    object FriendNotFound : FriendMonthlyActivityResult()
+}
+
+sealed class FriendLevelDetailsResult {
+    data class Success(val details: FriendLevelDetailsDTO) : FriendLevelDetailsResult()
+    object NotFriends : FriendLevelDetailsResult()
+    object FriendNotFound : FriendLevelDetailsResult()
 }
 
 /**
@@ -78,26 +99,10 @@ open class FriendActivityStatsService {
         period: StatsPeriod,
         today: LocalDate = LocalDate.now(ZoneOffset.UTC),
     ): FriendActivityStatsResult = newSuspendedTransaction {
-
-        // ------------------------------------------------------------------
-        // 1. Verify an ACCEPTED friendship exists in either direction
-        // ------------------------------------------------------------------
-        val friendshipExists = Friendships.selectAll()
-            .where {
-                (Friendships.status eq FriendshipStatus.ACCEPTED) and (
-                    (
-                        (Friendships.requesterId eq callerId) and
-                        (Friendships.receiverId  eq friendId)
-                    ) or (
-                        (Friendships.requesterId eq friendId) and
-                        (Friendships.receiverId  eq callerId)
-                    )
-                )
-            }
-            .count() > 0
-
-        if (!friendshipExists) {
-            return@newSuspendedTransaction FriendActivityStatsResult.NotFriends
+        when (friendGuard(callerId, friendId)) {
+            FriendGuardResult.NotFriends -> return@newSuspendedTransaction FriendActivityStatsResult.NotFriends
+            FriendGuardResult.FriendNotFound -> return@newSuspendedTransaction FriendActivityStatsResult.FriendNotFound
+            FriendGuardResult.Ok -> Unit
         }
 
         // ------------------------------------------------------------------
@@ -110,10 +115,7 @@ open class FriendActivityStatsService {
         val toInstant: Instant   = to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
 
         // ------------------------------------------------------------------
-        // 3. Aggregate workout stats for the friend in the date range
-        //
-        // Reuse the same aggregate expression instances as StatsService to
-        // avoid any Exposed ResultRow ambiguity.
+        // 3. Aggregate stats for the friend in the date range
         // ------------------------------------------------------------------
         val pushUpSum    = WorkoutSessions.pushUpCount.sum()
         val creditsSum   = WorkoutSessions.earnedTimeCredits.sum()
@@ -130,10 +132,33 @@ open class FriendActivityStatsService {
             }
             .firstOrNull()
 
-        val pushups  = row?.get(pushUpSum)?.toInt()  ?: 0
-        val credits  = row?.get(creditsSum)?.toLong() ?: 0L
-        val sessions = row?.get(sessionCount)?.toInt() ?: 0
-        val quality  = row?.get(qualityAvg)?.toDouble()
+        val pushups        = row?.get(pushUpSum)?.toInt() ?: 0
+        val workoutCredits = row?.get(creditsSum)?.toLong() ?: 0L
+        val workoutSessions = row?.get(sessionCount)?.toInt() ?: 0
+        val quality        = row?.get(qualityAvg)?.toDouble()
+
+        val joggingCount = JoggingSessions.id.count()
+        val joggingCreditsSum = JoggingSessions.earnedTimeCredits.sum()
+        val distanceSum = JoggingSessions.distanceMeters.sum()
+
+        val joggingRow = JoggingSessions
+            .select(joggingCount, joggingCreditsSum, distanceSum)
+            .where {
+                (JoggingSessions.userId eq friendId) and
+                    (JoggingSessions.startedAt greaterEq OffsetDateTime.ofInstant(fromInstant, ZoneOffset.UTC)) and
+                    (JoggingSessions.startedAt less OffsetDateTime.ofInstant(toInstant, ZoneOffset.UTC)) and
+                    JoggingSessions.endedAt.isNotNull()
+            }
+            .firstOrNull()
+
+        val joggingSessions = joggingRow?.get(joggingCount)?.toInt() ?: 0
+        val joggingCredits = joggingRow?.get(joggingCreditsSum)?.toLong() ?: 0L
+        val joggingDistanceMeters = joggingRow?.get(distanceSum)?.toDouble() ?: 0.0
+
+        val activityPoints = calculateWorkoutActivityPoints(pushups, quality) +
+            calculateJoggingActivityPoints(joggingDistanceMeters)
+        val totalSessions = workoutSessions + joggingSessions
+        val totalEarnedSeconds = workoutCredits + joggingCredits
 
         // ------------------------------------------------------------------
         // 4. Compute the friend's current workout streak
@@ -196,13 +221,115 @@ open class FriendActivityStatsService {
                     from = from.format(ISO_DATE),
                     to   = to.format(ISO_DATE),
                 ),
+                activityPoints     = activityPoints,
                 pushupCount        = pushups,
-                totalSessions      = sessions,
-                totalEarnedSeconds = credits,
+                totalSessions      = totalSessions,
+                totalEarnedSeconds = totalEarnedSeconds,
                 averageQuality     = quality,
                 currentStreak      = currentStreak,
                 friendLevel        = friendLevel,
             ),
+        )
+    }
+
+    open suspend fun getMonthlyActivity(
+        callerId: UUID,
+        friendId: UUID,
+        month: Int,
+        year: Int,
+    ): FriendMonthlyActivityResult = newSuspendedTransaction {
+        when (friendGuard(callerId, friendId)) {
+            FriendGuardResult.NotFriends -> return@newSuspendedTransaction FriendMonthlyActivityResult.NotFriends
+            FriendGuardResult.FriendNotFound -> return@newSuspendedTransaction FriendMonthlyActivityResult.FriendNotFound
+            FriendGuardResult.Ok -> Unit
+        }
+
+        val firstDay = LocalDate.of(year, month, 1)
+        val lastDay = firstDay.with(TemporalAdjusters.lastDayOfMonth())
+        val from = firstDay.atStartOfDay().toInstant(ZoneOffset.UTC)
+        val to = lastDay.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC)
+
+        val workoutByDay = fetchWorkoutDailyAggregates(friendId, from, to)
+        val joggingByDay = fetchJoggingDailyAggregates(friendId, from, to)
+
+        val allDates = generateSequence(firstDay) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(lastDay) }
+            .toList()
+
+        val days = allDates.map { date ->
+            val workout = workoutByDay[date]
+            val jogging = joggingByDay[date]
+            val pushupCount = workout?.pushupCount ?: 0
+            val averageQuality = workout?.averageQuality
+            val joggingDistanceMeters = jogging?.distanceMeters ?: 0.0
+
+            FriendActivityDayDTO(
+                date = date.format(ISO_DATE),
+                activityPoints = calculateWorkoutActivityPoints(pushupCount, averageQuality) +
+                    calculateJoggingActivityPoints(joggingDistanceMeters),
+                totalSessions = (workout?.totalSessions ?: 0) + (jogging?.totalSessions ?: 0),
+                totalEarnedSeconds = (workout?.totalEarnedSeconds ?: 0L) + (jogging?.totalEarnedSeconds ?: 0L),
+            )
+        }
+
+        FriendMonthlyActivityResult.Success(
+            FriendMonthlyActivityDTO(
+                friendId = friendId.toString(),
+                month = month,
+                year = year,
+                days = days,
+                activeDays = days.count { it.totalSessions > 0 },
+                totalSessions = days.sumOf { it.totalSessions },
+                totalActivityPoints = days.sumOf { it.activityPoints },
+                totalEarnedSeconds = days.sumOf { it.totalEarnedSeconds },
+            )
+        )
+    }
+
+    open suspend fun getLevelDetails(
+        callerId: UUID,
+        friendId: UUID,
+    ): FriendLevelDetailsResult = newSuspendedTransaction {
+        when (friendGuard(callerId, friendId)) {
+            FriendGuardResult.NotFriends -> return@newSuspendedTransaction FriendLevelDetailsResult.NotFriends
+            FriendGuardResult.FriendNotFound -> return@newSuspendedTransaction FriendLevelDetailsResult.FriendNotFound
+            FriendGuardResult.Ok -> Unit
+        }
+
+        val totalXp = UserLevels
+            .select(UserLevels.totalXp)
+            .where { UserLevels.userId eq friendId }
+            .firstOrNull()
+            ?.get(UserLevels.totalXp) ?: 0L
+
+        val levelDetails = buildLevelDetails(totalXp)
+        val exerciseLevels = ExerciseLevels
+            .selectAll()
+            .where { ExerciseLevels.userId eq friendId }
+            .map { row ->
+                val exerciseXp = row[ExerciseLevels.totalXp]
+                val details = buildLevelDetails(exerciseXp)
+                FriendExerciseLevelDTO(
+                    exerciseTypeId = row[ExerciseLevels.exerciseType],
+                    level = details.level,
+                    totalXp = exerciseXp,
+                    xpIntoLevel = details.xpIntoLevel,
+                    xpRequiredForNextLevel = details.xpRequiredForNextLevel,
+                    levelProgress = details.levelProgress,
+                )
+            }
+            .sortedBy { it.exerciseTypeId }
+
+        FriendLevelDetailsResult.Success(
+            FriendLevelDetailsDTO(
+                friendId = friendId.toString(),
+                level = levelDetails.level,
+                totalXp = totalXp,
+                xpIntoLevel = levelDetails.xpIntoLevel,
+                xpRequiredForNextLevel = levelDetails.xpRequiredForNextLevel,
+                levelProgress = levelDetails.levelProgress,
+                exerciseLevels = exerciseLevels,
+            )
         )
     }
 
@@ -286,6 +413,136 @@ open class FriendActivityStatsService {
         return level
     }
 
+    private fun buildLevelDetails(totalXp: Long): FriendLevelProgress {
+        var level = 1
+        var consumedXp = 0L
+        while (true) {
+            val needed = xpRequiredForLevel(level)
+            if (consumedXp + needed > totalXp) {
+                val xpIntoLevel = totalXp - consumedXp
+                return FriendLevelProgress(
+                    level = level,
+                    xpIntoLevel = xpIntoLevel,
+                    xpRequiredForNextLevel = needed,
+                    levelProgress = if (needed > 0) xpIntoLevel.toDouble() / needed.toDouble() else 0.0,
+                )
+            }
+            consumedXp += needed
+            level++
+        }
+    }
+
+    private fun xpRequiredForLevel(level: Int): Long =
+        floor(100.0 * level.toDouble().pow(1.5)).toLong()
+
+    private fun calculateWorkoutActivityPoints(pushups: Int, quality: Double?): Int {
+        val multiplier = when {
+            quality == null -> 1.0
+            quality > 0.8 -> 1.5
+            quality >= 0.5 -> 1.0
+            else -> 0.7
+        }
+        return (pushups * 10.0 * multiplier).toInt()
+    }
+
+    private fun calculateJoggingActivityPoints(distanceMeters: Double): Int {
+        val distanceUnits = (distanceMeters / 100.0).toInt()
+        return distanceUnits * 10
+    }
+
+    private fun friendGuard(callerId: UUID, friendId: UUID): FriendGuardResult {
+        val friendExists = UserLevels
+            .select(UserLevels.userId)
+            .where { UserLevels.userId eq friendId }
+            .limit(1)
+            .count() > 0 || WorkoutSessions
+            .select(WorkoutSessions.userId)
+            .where { WorkoutSessions.userId eq friendId }
+            .limit(1)
+            .count() > 0 || JoggingSessions
+            .select(JoggingSessions.userId)
+            .where { JoggingSessions.userId eq friendId }
+            .limit(1)
+            .count() > 0 || Friendships
+            .select(Friendships.requesterId)
+            .where { (Friendships.requesterId eq friendId) or (Friendships.receiverId eq friendId) }
+            .limit(1)
+            .count() > 0
+
+        if (!friendExists) return FriendGuardResult.FriendNotFound
+
+        val friendshipExists = Friendships.selectAll()
+            .where {
+                (Friendships.status eq FriendshipStatus.ACCEPTED) and (
+                    ((Friendships.requesterId eq callerId) and (Friendships.receiverId eq friendId)) or
+                        ((Friendships.requesterId eq friendId) and (Friendships.receiverId eq callerId))
+                    )
+            }
+            .count() > 0
+
+        return if (friendshipExists) FriendGuardResult.Ok else FriendGuardResult.NotFriends
+    }
+
+    private fun fetchWorkoutDailyAggregates(
+        userId: UUID,
+        from: Instant,
+        to: Instant,
+    ): Map<LocalDate, WorkoutDailyAggregate> {
+        val pushUpSum = WorkoutSessions.pushUpCount.sum()
+        val creditsSum = WorkoutSessions.earnedTimeCredits.sum()
+        val qualityAvg = WorkoutSessions.quality.avg()
+        val sessionCount = WorkoutSessions.id.count()
+
+        return WorkoutSessions
+            .select(WorkoutSessions.startedAtDay, pushUpSum, creditsSum, qualityAvg, sessionCount)
+            .where {
+                (WorkoutSessions.userId eq userId) and
+                    (WorkoutSessions.startedAt greaterEq from) and
+                    (WorkoutSessions.startedAt less to) and
+                    WorkoutSessions.endedAt.isNotNull()
+            }
+            .groupBy(WorkoutSessions.startedAtDay)
+            .associate { row ->
+                val date = row[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
+                date to WorkoutDailyAggregate(
+                    pushupCount = row[pushUpSum]?.toInt() ?: 0,
+                    totalSessions = row[sessionCount].toInt(),
+                    totalEarnedSeconds = (row[creditsSum] ?: 0).toLong(),
+                    averageQuality = row[qualityAvg]?.toDouble(),
+                )
+            }
+    }
+
+    private fun fetchJoggingDailyAggregates(
+        userId: UUID,
+        from: Instant,
+        to: Instant,
+    ): Map<LocalDate, JoggingDailyAggregate> {
+        val sessionCount = JoggingSessions.id.count()
+        val creditsSum = JoggingSessions.earnedTimeCredits.sum()
+        val distanceSum = JoggingSessions.distanceMeters.sum()
+        val fromOffset = OffsetDateTime.ofInstant(from, ZoneOffset.UTC)
+        val toOffset = OffsetDateTime.ofInstant(to, ZoneOffset.UTC)
+
+        return JoggingSessions
+            .select(JoggingSessions.startedAtDay, sessionCount, creditsSum, distanceSum)
+            .where {
+                (JoggingSessions.userId eq userId) and
+                    (JoggingSessions.startedAt greaterEq fromOffset) and
+                    (JoggingSessions.startedAt less toOffset) and
+                    JoggingSessions.endedAt.isNotNull()
+            }
+            .groupBy(JoggingSessions.startedAtDay)
+            .associate { row ->
+                val date = row[JoggingSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate()
+                date to JoggingDailyAggregate(
+                    totalSessions = row[sessionCount].toInt(),
+                    totalEarnedSeconds = (row[creditsSum] ?: 0).toLong(),
+                    distanceMeters = row[distanceSum]?.toDouble() ?: 0.0,
+                )
+            }
+    }
+
     // -----------------------------------------------------------------------
     // Companion / constants
     // -----------------------------------------------------------------------
@@ -294,3 +551,29 @@ open class FriendActivityStatsService {
         private val ISO_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     }
 }
+
+private enum class FriendGuardResult {
+    Ok,
+    NotFriends,
+    FriendNotFound,
+}
+
+private data class WorkoutDailyAggregate(
+    val pushupCount: Int,
+    val totalSessions: Int,
+    val totalEarnedSeconds: Long,
+    val averageQuality: Double?,
+)
+
+private data class JoggingDailyAggregate(
+    val totalSessions: Int,
+    val totalEarnedSeconds: Long,
+    val distanceMeters: Double,
+)
+
+private data class FriendLevelProgress(
+    val level: Int,
+    val xpIntoLevel: Long,
+    val xpRequiredForNextLevel: Long,
+    val levelProgress: Double,
+)

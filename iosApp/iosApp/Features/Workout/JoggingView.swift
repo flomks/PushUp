@@ -78,6 +78,7 @@ struct JoggingView: View {
 
                 runningHubHero
                 runLaunchCard
+                futureRunsCard
                 runningHighlightsCard
                 runningPersonalBestCard
                 recentRunsCard
@@ -299,6 +300,16 @@ struct JoggingView: View {
                 }
 
                 quickRunAction(
+                    title: "Plan",
+                    subtitle: viewModel.upcomingEventCountLabel,
+                    icon: "calendar.badge.plus"
+                ) {
+                    showCrewView = true
+                }
+            }
+
+            HStack(spacing: AppSpacing.sm) {
+                quickRunAction(
                     title: "Music",
                     subtitle: viewModel.musicCardSubtitle,
                     icon: "music.note"
@@ -309,6 +320,72 @@ struct JoggingView: View {
         }
         .padding(AppSpacing.lg)
         .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+    }
+
+    private var futureRunsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionEyebrow(title: "Run Calendar", subtitle: "Future events you joined or planned")
+
+                HStack(alignment: .top, spacing: AppSpacing.md) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(viewModel.upcomingEventCountLabel)
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+                        Text(viewModel.nextUpcomingRunSummary)
+                            .font(AppTypography.caption1)
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Button("Open Planner") {
+                        showCrewView = true
+                    }
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(AppColors.secondary, in: Capsule())
+                    .buttonStyle(.plain)
+                }
+
+                if viewModel.upcomingRuns.isEmpty {
+                    Text("No events on the calendar yet. Open the planner to schedule a crew run in the future.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                } else {
+                    VStack(spacing: AppSpacing.sm) {
+                        ForEach(Array(viewModel.upcomingRuns.sorted(by: { $0.plannedStartAt < $1.plannedStartAt }).prefix(3))) { run in
+                            HStack(spacing: AppSpacing.sm) {
+                                VStack(spacing: 2) {
+                                    Text(Self.calendarMonthFormatter.string(from: run.plannedStartAt).uppercased())
+                                        .font(AppTypography.caption2)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                    Text("\(Calendar.current.component(.day, from: run.plannedStartAt))")
+                                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                                        .foregroundStyle(AppColors.textPrimary)
+                                }
+                                .frame(width: 52)
+                                .padding(.vertical, AppSpacing.xs)
+                                .background(AppColors.backgroundPrimary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(run.title)
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text(run.subtitle)
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private var runningHighlightsCard: some View {
@@ -1373,114 +1450,555 @@ struct JoggingView: View {
 
     private var musicSheet: some View {
         NavigationStack {
-            List {
-                Section("Provider") {
-                    HStack {
-                        Label("Spotify", systemImage: "waveform")
-                            .font(AppTypography.bodySemibold)
-                        Spacer()
-                        Text(viewModel.spotifyProviderStatusLabel)
-                            .font(AppTypography.captionSemibold)
-                            .foregroundStyle(viewModel.spotifyConnected ? AppColors.success : AppColors.textSecondary)
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.05, green: 0.08, blue: 0.06),
+                        Color(red: 0.08, green: 0.12, blue: 0.09),
+                        AppColors.backgroundPrimary
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: AppSpacing.lg) {
+                        spotifyHeroCard
+                        spotifyPlaybackCard
+                        spotifyModeStudioCard
+                        spotifyJamCard
                     }
-
-                    Button(viewModel.spotifyConnectActionTitle) {
-                        viewModel.connectSpotify()
-                    }
-
-                    Button(viewModel.spotifySecondaryActionTitle) {
-                        viewModel.handleSpotifySecondaryAction()
-                    }
-
-                    if viewModel.spotifyConnected {
-                        Button("Refresh Spotify Status") {
-                            viewModel.refreshSpotifyDetails()
-                        }
-                    }
-
-                    Text(viewModel.spotifyStatusDetail)
-                        .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
-
-                    if let accountName = viewModel.spotifyAccountName {
-                        LabeledContent("Account", value: accountName)
-                            .font(AppTypography.caption1)
-                    }
-
-                    if let productTier = viewModel.spotifyProductTier {
-                        LabeledContent("Plan", value: productTier)
-                            .font(AppTypography.caption1)
-                    }
-                }
-
-                Section("Run mode") {
-                    Picker("Mode", selection: $viewModel.selectedAudioMode) {
-                        ForEach(RunAudioMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Button("Cycle Mode Preset") {
-                        viewModel.cycleAudioMode()
-                    }
-                }
-
-                Section("Now playing") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(viewModel.currentTrack.title)
-                            .font(AppTypography.bodySemibold)
-                        Text(viewModel.currentTrack.artist)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                        Text(viewModel.currentTrack.vibe)
-                            .font(AppTypography.captionSemibold)
-                            .foregroundStyle(AppColors.info)
-                        Text(viewModel.spotifyPlaybackLabel)
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
-
-                    HStack(spacing: 12) {
-                        Button(viewModel.musicPrimaryActionTitle) {
-                            if !viewModel.spotifyConnected {
-                                viewModel.connectSpotify()
-                            } else if viewModel.jamActive {
-                                viewModel.isCurrentUserInJam ? viewModel.leaveJam() : viewModel.joinJam()
-                            } else if viewModel.selectedLiveRunSessionId != nil {
-                                viewModel.startJam()
-                            } else {
-                                viewModel.nextTrack()
-                            }
-                        }
-
-                        Button("Next Track") {
-                            viewModel.nextTrack()
-                        }
-                    }
-                }
-
-                Section("Run jam") {
-                    Text(viewModel.jamStatusLabel)
-                        .font(AppTypography.bodySemibold)
-                    if viewModel.jamActive {
-                        Text("Hosted by \(viewModel.jamHostDisplayName)")
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    } else {
-                        Text("Start a jam when you want the crew to move on the same soundtrack.")
-                            .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
-                    }
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.top, AppSpacing.md)
+                    .padding(.bottom, AppSpacing.screenVerticalBottom)
                 }
             }
             .navigationTitle("Run Audio")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { showMusicSheet = false }
                 }
             }
+        }
+    }
+
+    private var spotifyHeroCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack(alignment: .top, spacing: AppSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.13, green: 0.81, blue: 0.41),
+                                    Color(red: 0.05, green: 0.42, blue: 0.18)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 64, height: 64)
+
+                    Image(systemName: "waveform.circle.fill")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Spotify Run Control")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+
+                    Text(viewModel.spotifyConnected
+                         ? "Connected audio, live playback status, and run-jam controls in one surface."
+                         : "Connect Spotify once and turn your running screen into a live audio cockpit.")
+                        .font(AppTypography.callout)
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: AppSpacing.xs) {
+                spotifyStatusChip(
+                    title: viewModel.spotifyProviderStatusLabel,
+                    icon: viewModel.spotifyConnected ? "checkmark.seal.fill" : "bolt.horizontal.circle.fill",
+                    tint: viewModel.spotifyConnected ? AppColors.success : Color.white.opacity(0.9)
+                )
+                spotifyStatusChip(
+                    title: viewModel.spotifyAppInstalled ? "App ready" : "Web handoff",
+                    icon: viewModel.spotifyAppInstalled ? "iphone.gen3.circle.fill" : "safari.fill",
+                    tint: viewModel.spotifyAppInstalled ? AppColors.info : Color.white.opacity(0.9)
+                )
+                if let tier = viewModel.spotifyProductTier {
+                    spotifyStatusChip(
+                        title: tier,
+                        icon: "sparkles.rectangle.stack.fill",
+                        tint: Color.white.opacity(0.92)
+                    )
+                }
+            }
+
+            HStack(spacing: AppSpacing.sm) {
+                spotifyActionButton(
+                    title: viewModel.spotifyConnectActionTitle,
+                    subtitle: viewModel.spotifyConnected ? "Refresh your auth session" : "PKCE login with redirect",
+                    icon: viewModel.spotifyConnected ? "arrow.clockwise.circle.fill" : "link.circle.fill",
+                    prominent: true
+                ) {
+                    viewModel.connectSpotify()
+                }
+
+                spotifyActionButton(
+                    title: viewModel.spotifySecondaryActionTitle,
+                    subtitle: viewModel.spotifyConnected ? "Remove this device session" : "Open Spotify directly",
+                    icon: viewModel.spotifyConnected ? "xmark.circle.fill" : "arrow.up.forward.app.fill",
+                    prominent: false
+                ) {
+                    viewModel.handleSpotifySecondaryAction()
+                }
+            }
+
+            if viewModel.spotifyConnected {
+                HStack(spacing: AppSpacing.sm) {
+                    spotifyMiniStat(
+                        title: "Account",
+                        value: viewModel.spotifyAccountName ?? "Spotify User",
+                        icon: "person.crop.circle.fill"
+                    )
+                    spotifyMiniStat(
+                        title: "Status",
+                        value: viewModel.spotifyStatusDetail,
+                        icon: "dot.radiowaves.left.and.right"
+                    )
+                }
+
+                Button {
+                    viewModel.refreshSpotifyDetails()
+                } label: {
+                    HStack(spacing: AppSpacing.xs) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Refresh Spotify Status")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.white.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(viewModel.spotifyStatusDetail)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(Color.white.opacity(0.64))
+            }
+        }
+        .padding(AppSpacing.lg)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.10, green: 0.16, blue: 0.12),
+                    Color(red: 0.06, green: 0.11, blue: 0.09)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.22), radius: 18, y: 10)
+    }
+
+    private var spotifyPlaybackCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Now Playing")
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.textSecondary)
+                        .textCase(.uppercase)
+
+                    Text(viewModel.currentTrack.title)
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppColors.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+
+                    Text(viewModel.currentTrack.artist)
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+
+                Spacer()
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AppColors.secondary.opacity(0.92),
+                                    Color(red: 0.93, green: 0.28, blue: 0.18)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 92, height: 92)
+
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            Text(viewModel.currentTrack.vibe.uppercased())
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .tracking(1.4)
+                .foregroundStyle(AppColors.info)
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(viewModel.spotifyPlaybackLabel)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                HStack(spacing: 6) {
+                    ForEach(0..<18, id: \.self) { index in
+                        Capsule()
+                            .fill(index.isMultiple(of: 3) ? AppColors.success : AppColors.info.opacity(0.72))
+                            .frame(width: 6, height: [14, 24, 18, 28, 12, 20][index % 6])
+                    }
+                }
+            }
+
+            HStack(spacing: AppSpacing.sm) {
+                spotifySurfaceButton(
+                    title: viewModel.musicPrimaryActionTitle,
+                    icon: viewModel.spotifyConnected ? "play.circle.fill" : "link.badge.plus"
+                ) {
+                    if !viewModel.spotifyConnected {
+                        viewModel.connectSpotify()
+                    } else if viewModel.jamActive {
+                        viewModel.isCurrentUserInJam ? viewModel.leaveJam() : viewModel.joinJam()
+                    } else if viewModel.selectedLiveRunSessionId != nil {
+                        viewModel.startJam()
+                    } else {
+                        viewModel.nextTrack()
+                    }
+                }
+
+                spotifySurfaceButton(
+                    title: "Next Track",
+                    icon: "forward.end.fill"
+                ) {
+                    viewModel.nextTrack()
+                }
+            }
+        }
+        .padding(AppSpacing.lg)
+        .background(AppColors.backgroundSecondary.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 16, y: 8)
+    }
+
+    private var spotifyModeStudioCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Run Mode")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text("Pick the audio mood you want the next handoff to open.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+
+                Spacer()
+
+                Button {
+                    viewModel.cycleAudioMode()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "shuffle")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Cycle")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(AppColors.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AppColors.fill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.sm) {
+                ForEach(RunAudioMode.allCases) { mode in
+                    Button {
+                        viewModel.selectedAudioMode = mode
+                    } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: spotifyIcon(for: mode))
+                                    .font(.system(size: 15, weight: .bold))
+                                Spacer()
+                                if viewModel.selectedAudioMode == mode {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                }
+                            }
+                            .foregroundStyle(viewModel.selectedAudioMode == mode ? .white : AppColors.textPrimary)
+
+                            Text(mode.rawValue)
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundStyle(viewModel.selectedAudioMode == mode ? .white : AppColors.textPrimary)
+
+                            Text(spotifyModeSubtitle(for: mode))
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(viewModel.selectedAudioMode == mode ? Color.white.opacity(0.74) : AppColors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
+                        .padding(AppSpacing.md)
+                        .background(
+                            Group {
+                                if viewModel.selectedAudioMode == mode {
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.13, green: 0.81, blue: 0.41),
+                                            Color(red: 0.06, green: 0.46, blue: 0.19)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                } else {
+                                    LinearGradient(
+                                        colors: [
+                                            AppColors.backgroundSecondary,
+                                            AppColors.backgroundSecondary.opacity(0.86)
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                }
+                            }
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(viewModel.selectedAudioMode == mode ? Color.clear : AppColors.separator.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(AppSpacing.lg)
+        .background(AppColors.backgroundSecondary.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+        )
+    }
+
+    private var spotifyJamCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Run Jam")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(AppColors.textPrimary)
+                    Text(viewModel.jamStatusLabel)
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.textPrimary)
+                }
+
+                Spacer()
+
+                ZStack {
+                    Circle()
+                        .fill(AppColors.secondary.opacity(0.12))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: viewModel.jamActive ? "person.2.wave.2.fill" : "speaker.wave.3.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(AppColors.secondary)
+                }
+            }
+
+            Text(viewModel.jamActive
+                 ? "Hosted by \(viewModel.jamHostDisplayName). Everyone can move on the same soundtrack while the session stays live."
+                 : "Start a jam when the run turns social. Crew members can join the same soundtrack without leaving the workout flow.")
+                .font(AppTypography.caption1)
+                .foregroundStyle(AppColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: AppSpacing.sm) {
+                spotifyMiniStat(
+                    title: "Listeners",
+                    value: "\(viewModel.jamListenerCount)",
+                    icon: "person.2.fill"
+                )
+                spotifyMiniStat(
+                    title: "Host",
+                    value: viewModel.jamActive ? viewModel.jamHostDisplayName : "Not live",
+                    icon: "dot.radiowaves.up.forward"
+                )
+            }
+        }
+        .padding(AppSpacing.lg)
+        .background(AppColors.backgroundSecondary.opacity(0.96), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.34), lineWidth: 1)
+        )
+    }
+
+    private func spotifyStatusChip(title: String, icon: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .tracking(0.8)
+                .lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.10), in: Capsule())
+    }
+
+    private func spotifyActionButton(
+        title: String,
+        subtitle: String,
+        icon: String,
+        prominent: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .bold))
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .bold))
+                }
+                .foregroundStyle(prominent ? Color(red: 0.06, green: 0.13, blue: 0.08) : .white)
+
+                Text(title)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(prominent ? Color(red: 0.06, green: 0.13, blue: 0.08) : .white)
+
+                Text(subtitle)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(prominent ? Color(red: 0.06, green: 0.13, blue: 0.08).opacity(0.72) : Color.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+            .padding(AppSpacing.md)
+            .background(
+                Group {
+                    if prominent {
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.17, green: 0.92, blue: 0.46),
+                                Color(red: 0.10, green: 0.74, blue: 0.34)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    } else {
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.16),
+                                Color.white.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func spotifyMiniStat(title: String, value: String, icon: String) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AppColors.fill.opacity(0.9))
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AppColors.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(1)
+                    .foregroundStyle(AppColors.textSecondary)
+                Text(value)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.sm)
+        .background(AppColors.backgroundPrimary.opacity(0.72), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func spotifySurfaceButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                Text(title)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(AppColors.textPrimary)
+            .padding(.vertical, 14)
+            .background(AppColors.fill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func spotifyIcon(for mode: RunAudioMode) -> String {
+        switch mode {
+        case .base: return "figure.run"
+        case .tempo: return "metronome.fill"
+        case .longRun: return "road.lanes"
+        case .race: return "bolt.fill"
+        case .recovery: return "wind"
+        }
+    }
+
+    private func spotifyModeSubtitle(for mode: RunAudioMode) -> String {
+        switch mode {
+        case .base: return "Balanced picks for everyday runs and warm starts."
+        case .tempo: return "Higher energy handoff for pace work and fast efforts."
+        case .longRun: return "Stable energy for long aerobic blocks and long Sundays."
+        case .race: return "Aggressive handoff when the run needs sharp intent."
+        case .recovery: return "Soft landing after hard intervals or cooldown blocks."
         }
     }
 
@@ -1534,6 +2052,13 @@ struct JoggingView: View {
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+
+    private static let calendarMonthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM"
         formatter.locale = Locale(identifier: "en_US")
         return formatter
     }()

@@ -1,6 +1,10 @@
 package com.pushup.data.api.dto
 
 import com.pushup.domain.model.Friend
+import com.pushup.domain.model.FriendActivityDay
+import com.pushup.domain.model.FriendExerciseLevel
+import com.pushup.domain.model.FriendLevelDetails
+import com.pushup.domain.model.FriendMonthlyActivity
 import com.pushup.domain.model.FriendActivityStats
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
@@ -138,12 +142,54 @@ data class FriendActivityStatsDTO(
     @SerialName("friendId")           val friendId: String,
     @SerialName("period")             val period: String,
     @SerialName("dateRange")          val dateRange: FriendStatsDateRangeDTO,
+    @SerialName("activityPoints")     val activityPoints: Int = 0,
     @SerialName("pushupCount")        val pushupCount: Int,
     @SerialName("totalSessions")      val totalSessions: Int,
     @SerialName("totalEarnedSeconds") val totalEarnedSeconds: Long,
     @SerialName("averageQuality")     val averageQuality: Double? = null,
     @SerialName("currentStreak")      val currentStreak: Int = 0,
     @SerialName("friendLevel")        val friendLevel: Int = 1,
+)
+
+@Serializable
+data class FriendActivityDayDTO(
+    val date: String,
+    @SerialName("activityPoints")     val activityPoints: Int,
+    @SerialName("totalSessions")      val totalSessions: Int,
+    @SerialName("totalEarnedSeconds") val totalEarnedSeconds: Long,
+)
+
+@Serializable
+data class FriendMonthlyActivityDTO(
+    @SerialName("friendId")           val friendId: String,
+    val month: Int,
+    val year: Int,
+    val days: List<FriendActivityDayDTO>,
+    @SerialName("activeDays")         val activeDays: Int,
+    @SerialName("totalSessions")      val totalSessions: Int,
+    @SerialName("totalActivityPoints") val totalActivityPoints: Int,
+    @SerialName("totalEarnedSeconds") val totalEarnedSeconds: Long,
+)
+
+@Serializable
+data class FriendExerciseLevelDTO(
+    @SerialName("exerciseTypeId") val exerciseTypeId: String,
+    val level: Int,
+    @SerialName("totalXp") val totalXp: Long,
+    @SerialName("xpIntoLevel") val xpIntoLevel: Long,
+    @SerialName("xpRequiredForNextLevel") val xpRequiredForNextLevel: Long,
+    @SerialName("levelProgress") val levelProgress: Double,
+)
+
+@Serializable
+data class FriendLevelDetailsDTO(
+    @SerialName("friendId") val friendId: String,
+    val level: Int,
+    @SerialName("totalXp") val totalXp: Long,
+    @SerialName("xpIntoLevel") val xpIntoLevel: Long,
+    @SerialName("xpRequiredForNextLevel") val xpRequiredForNextLevel: Long,
+    @SerialName("levelProgress") val levelProgress: Double,
+    @SerialName("exerciseLevels") val exerciseLevels: List<FriendExerciseLevelDTO>,
 )
 
 // ---------------------------------------------------------------------------
@@ -155,12 +201,50 @@ fun FriendActivityStatsDTO.toDomain(): FriendActivityStats = FriendActivityStats
     period             = period,
     dateFrom           = dateRange.from,
     dateTo             = dateRange.to,
+    activityPoints     = activityPoints,
     pushupCount        = pushupCount,
     totalSessions      = totalSessions,
     totalEarnedSeconds = totalEarnedSeconds,
     averageQuality     = averageQuality,
     currentStreak      = currentStreak,
     friendLevel        = friendLevel,
+)
+
+fun FriendMonthlyActivityDTO.toDomain(): FriendMonthlyActivity = FriendMonthlyActivity(
+    friendId = friendId,
+    month = month,
+    year = year,
+    days = days.map { it.toDomain() },
+    activeDays = activeDays,
+    totalSessions = totalSessions,
+    totalActivityPoints = totalActivityPoints,
+    totalEarnedSeconds = totalEarnedSeconds,
+)
+
+fun FriendActivityDayDTO.toDomain(): FriendActivityDay = FriendActivityDay(
+    date = date,
+    activityPoints = activityPoints,
+    totalSessions = totalSessions,
+    totalEarnedSeconds = totalEarnedSeconds,
+)
+
+fun FriendLevelDetailsDTO.toDomain(): FriendLevelDetails = FriendLevelDetails(
+    friendId = friendId,
+    level = level,
+    totalXp = totalXp,
+    xpIntoLevel = xpIntoLevel,
+    xpRequiredForNextLevel = xpRequiredForNextLevel,
+    levelProgress = levelProgress,
+    exerciseLevels = exerciseLevels.map { it.toDomain() },
+)
+
+fun FriendExerciseLevelDTO.toDomain(): FriendExerciseLevel = FriendExerciseLevel(
+    exerciseTypeId = exerciseTypeId,
+    level = level,
+    totalXp = totalXp,
+    xpIntoLevel = xpIntoLevel,
+    xpRequiredForNextLevel = xpRequiredForNextLevel,
+    levelProgress = levelProgress,
 )
 
 fun FriendProfileDTO.toDomain(): Friend = Friend(

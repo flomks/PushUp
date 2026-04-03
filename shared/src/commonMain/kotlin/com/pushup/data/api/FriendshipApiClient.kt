@@ -1,6 +1,8 @@
 package com.pushup.data.api
 
 import com.pushup.data.api.dto.FriendActivityStatsDTO
+import com.pushup.data.api.dto.FriendLevelDetailsDTO
+import com.pushup.data.api.dto.FriendMonthlyActivityDTO
 import com.pushup.data.api.dto.FriendProfileDTO
 import com.pushup.data.api.dto.FriendshipResponseDTO
 import com.pushup.data.api.dto.FriendsListResponseDTO
@@ -11,6 +13,8 @@ import com.pushup.data.api.dto.UserSearchResponseDTO
 import com.pushup.data.api.dto.toDomain
 import com.pushup.domain.model.Friend
 import com.pushup.domain.model.FriendActivityStats
+import com.pushup.domain.model.FriendLevelDetails
+import com.pushup.domain.model.FriendMonthlyActivity
 import com.pushup.domain.model.Friendship
 import com.pushup.domain.model.FriendRequest
 import com.pushup.domain.model.UserSearchResult
@@ -163,6 +167,36 @@ class FriendshipApiClient(
                 url.parameters.append("period", period)
             }.also { it.expectSuccess() }
                 .body<FriendActivityStatsDTO>()
+                .toDomain()
+        }
+    }
+
+    suspend fun getFriendMonthlyActivity(friendId: String, month: Int, year: Int): FriendMonthlyActivity {
+        require(UUID_REGEX.matches(friendId)) {
+            "friendId must be a valid UUID, got: $friendId"
+        }
+        return retrying {
+            val token = tokenProvider()
+            httpClient.get("$backendBaseUrl/api/friends/$friendId/heatmap") {
+                bearerAuth(token)
+                url.parameters.append("month", month.toString())
+                url.parameters.append("year", year.toString())
+            }.also { it.expectSuccess() }
+                .body<FriendMonthlyActivityDTO>()
+                .toDomain()
+        }
+    }
+
+    suspend fun getFriendLevelDetails(friendId: String): FriendLevelDetails {
+        require(UUID_REGEX.matches(friendId)) {
+            "friendId must be a valid UUID, got: $friendId"
+        }
+        return retrying {
+            val token = tokenProvider()
+            httpClient.get("$backendBaseUrl/api/friends/$friendId/levels") {
+                bearerAuth(token)
+            }.also { it.expectSuccess() }
+                .body<FriendLevelDetailsDTO>()
                 .toDomain()
         }
     }

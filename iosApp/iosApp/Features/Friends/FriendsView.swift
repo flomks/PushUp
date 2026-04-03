@@ -119,6 +119,8 @@ private struct FriendHubView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: AppSpacing.lg) {
+                hubHero
+                quickActionsCard
 
                 // 1. Leaderboard -- only shown once we know the user has friends.
                 //    Deliberately NOT shown while isLoadingFriends to avoid the
@@ -140,6 +142,141 @@ private struct FriendHubView: View {
         }
     }
 
+    private func heroMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+            Text(title)
+                .font(AppTypography.caption1)
+                .foregroundStyle(Color.white.opacity(0.74))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+    }
+
+    private func quickAction(
+        title: String,
+        subtitle: String,
+        icon: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppColors.primary)
+                    .frame(width: 38, height: 38)
+                    .background(AppColors.primary.opacity(0.10), in: Circle())
+
+                Text(title)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+
+                Text(subtitle)
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(AppColors.textSecondary)
+                    .multilineTextAlignment(.leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(AppSpacing.md)
+            .background(AppColors.backgroundTertiary.opacity(0.55), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var hubHero: some View {
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge + 4)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.08, green: 0.20, blue: 0.32),
+                            Color(red: 0.12, green: 0.38, blue: 0.58),
+                            Color(red: 0.98, green: 0.43, blue: 0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(alignment: .topTrailing) {
+                    Circle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 170, height: 170)
+                        .offset(x: 44, y: -40)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                        .frame(width: 160, height: 160)
+                        .offset(x: 36, y: 52)
+                }
+
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                        Text("SOCIAL")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .tracking(2)
+
+                        Text("Your crew, your competition, your progress.")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(3)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.14))
+                            .frame(width: 60, height: 60)
+
+                        Image(systemName: "person.3.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+                Text("Track overall activity, inspect friend profiles, and keep the competitive layer aligned with the rest of the app.")
+                    .font(AppTypography.body)
+                    .foregroundStyle(Color.white.opacity(0.84))
+
+                HStack(spacing: AppSpacing.sm) {
+                    heroMetric(title: "Friends", value: "\(viewModel.friends.count)")
+                    heroMetric(title: "Requests", value: "\(viewModel.pendingRequestCount)")
+                    heroMetric(title: "Board", value: viewModel.leaderboardPeriod.shortLabel)
+                }
+            }
+            .padding(AppSpacing.xl)
+        }
+    }
+
+    private var quickActionsCard: some View {
+        Card {
+            HStack(spacing: AppSpacing.sm) {
+                quickAction(
+                    title: "Add Friend",
+                    subtitle: "Search or use code",
+                    icon: "person.badge.plus"
+                ) {
+                    showAddFriend = true
+                }
+
+                quickAction(
+                    title: "Requests",
+                    subtitle: viewModel.pendingRequestCount > 0 ? "\(viewModel.pendingRequestCount) pending" : "Inbox clear",
+                    icon: "bell.badge.fill"
+                ) {
+                    showRequests = true
+                }
+            }
+        }
+    }
+
     // MARK: - Leaderboard Section
 
     @ViewBuilder
@@ -147,8 +284,8 @@ private struct FriendHubView: View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             // Section header with period chips
             HStack {
-                Text("Leaderboard")
-                    .font(AppTypography.title3)
+                Text("Activity Board")
+                    .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
 
                 Spacer()
@@ -267,23 +404,23 @@ private struct FriendHubView: View {
 
             Spacer()
 
-            // Push-up count
+            // Activity score
             VStack(alignment: .trailing, spacing: 1) {
-                Text("\(entry.pushupCount)")
+                Text("\(entry.activityPoints)")
                     .font(AppTypography.headline)
                     .foregroundStyle(entry.isCurrentUser ? AppColors.primary : AppColors.textPrimary)
-                Text("push-ups")
+                Text("activity")
                     .font(AppTypography.caption2)
                     .foregroundStyle(AppColors.textSecondary)
             }
         }
         .padding(.horizontal, AppSpacing.md)
-        .padding(.vertical, AppSpacing.xs)
+        .padding(.vertical, AppSpacing.sm)
         .background(
             entry.isCurrentUser
                 ? AppColors.primary.opacity(0.08)
                 : AppColors.backgroundSecondary,
-            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
         )
 
         if entry.isCurrentUser {
@@ -339,10 +476,10 @@ private struct FriendHubView: View {
                 Image(systemName: "trophy")
                     .font(.system(size: 36, weight: .light))
                     .foregroundStyle(AppColors.textTertiary)
-                Text("No leaderboard yet")
+                Text("No activity board yet")
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textPrimary)
-                Text("Add friends to compete and see who does the most push-ups.")
+                Text("Add friends to compare overall activity, consistency, and momentum.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -371,7 +508,7 @@ private struct FriendHubView: View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             HStack {
                 Text("Friends")
-                    .font(AppTypography.title3)
+                    .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
 
                 if !viewModel.friends.isEmpty {
@@ -454,7 +591,7 @@ private struct FriendHubView: View {
                 Text("No friends yet")
                     .font(AppTypography.headline)
                     .foregroundStyle(AppColors.textPrimary)
-                Text("Find people you know and challenge them to a push-up competition.")
+                Text("Build your circle, compare activity, and inspect how each friend is progressing.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -554,8 +691,8 @@ private struct PodiumView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
 
-            // Push-up count
-            Text("\(entry.pushupCount)")
+            // Activity score
+            Text("\(entry.activityPoints)")
                 .font(isFirst ? AppTypography.subheadlineSemibold : AppTypography.captionSemibold)
                 .foregroundStyle(rankColor)
 
@@ -634,8 +771,10 @@ private struct FriendHubRow<Destination: View>: View {
                         .font(AppTypography.bodySemibold)
                         .foregroundStyle(AppColors.textPrimary)
 
-                    // Level + streak badges on a single row
                     HStack(spacing: AppSpacing.xxs) {
+                        if let rank = friend.leaderboardRank {
+                            rankBadge(rank)
+                        }
                         if let level = friend.currentLevel {
                             levelBadge(level)
                         }
@@ -665,7 +804,14 @@ private struct FriendHubRow<Destination: View>: View {
             }
             .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.sm)
-            .background(AppColors.backgroundSecondary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .background(
+                LinearGradient(
+                    colors: [AppColors.backgroundSecondary, AppColors.backgroundSecondary.opacity(0.92)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
+            )
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -686,6 +832,19 @@ private struct FriendHubRow<Destination: View>: View {
     }
 
     // MARK: - Badge helpers
+
+    private func rankBadge(_ rank: Int) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "chart.bar.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text("#\(rank)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(AppColors.info)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(AppColors.info.opacity(0.12), in: Capsule())
+    }
 
     private func levelBadge(_ level: Int) -> some View {
         HStack(spacing: 2) {
@@ -1257,10 +1416,10 @@ private extension FriendStatsPeriod {
     // Demonstrate dense ranking: Alice and Bob are tied at rank 2 (both 185),
     // Charlie is rank 3 (next distinct count).
     vm.leaderboard = [
-        LeaderboardEntry(id: "me",  displayLabel: "You",         usernameLabel: nil,      pushupCount: 210, totalSessions: 14, totalEarnedSeconds: 1260, isCurrentUser: true,  rank: 1),
-        LeaderboardEntry(id: "u1",  displayLabel: "Alice Smith", usernameLabel: "@alice", pushupCount: 185, totalSessions: 12, totalEarnedSeconds: 1110, isCurrentUser: false, rank: 2),
-        LeaderboardEntry(id: "u2",  displayLabel: "Bob Jones",   usernameLabel: "@bob",   pushupCount: 185, totalSessions: 9,  totalEarnedSeconds: 852,  isCurrentUser: false, rank: 2),
-        LeaderboardEntry(id: "u3",  displayLabel: "Charlie",     usernameLabel: nil,      pushupCount: 98,  totalSessions: 6,  totalEarnedSeconds: 588,  isCurrentUser: false, rank: 3)
+        LeaderboardEntry(id: "me",  displayLabel: "You",         usernameLabel: nil,      activityPoints: 2100, totalSessions: 14, totalEarnedSeconds: 1260, isCurrentUser: true,  rank: 1),
+        LeaderboardEntry(id: "u1",  displayLabel: "Alice Smith", usernameLabel: "@alice", activityPoints: 1850, totalSessions: 12, totalEarnedSeconds: 1110, isCurrentUser: false, rank: 2),
+        LeaderboardEntry(id: "u2",  displayLabel: "Bob Jones",   usernameLabel: "@bob",   activityPoints: 1850, totalSessions: 9,  totalEarnedSeconds: 852,  isCurrentUser: false, rank: 2),
+        LeaderboardEntry(id: "u3",  displayLabel: "Charlie",     usernameLabel: nil,      activityPoints: 980,  totalSessions: 6,  totalEarnedSeconds: 588,  isCurrentUser: false, rank: 3)
     ]
     return FriendsView(viewModel: vm)
 }

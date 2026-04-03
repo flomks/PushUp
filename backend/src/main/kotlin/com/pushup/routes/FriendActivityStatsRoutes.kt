@@ -6,6 +6,8 @@ import com.pushup.plugins.JWT_AUTH
 import com.pushup.plugins.authenticatedUserId
 import com.pushup.service.FriendActivityStatsResult
 import com.pushup.service.FriendActivityStatsService
+import com.pushup.service.FriendLevelDetailsResult
+import com.pushup.service.FriendMonthlyActivityResult
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.log
 import io.ktor.server.auth.authenticate
@@ -165,6 +167,145 @@ fun Route.friendActivityStatsRoutes(
                         ErrorResponse(
                             error   = "internal_server_error",
                             message = "Failed to retrieve friend activity statistics",
+                        ),
+                    )
+                }
+            }
+
+            get("/{id}/heatmap") {
+                val callerId = call.authenticatedUserId()
+                if (callerId == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error = "unauthorized",
+                            message = "Invalid authentication credentials",
+                        ),
+                    )
+                    return@get
+                }
+
+                if (!databaseReady) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse(
+                            error = "service_unavailable",
+                            message = "Database connection is not configured",
+                        ),
+                    )
+                    return@get
+                }
+
+                val friendId = try {
+                    UUID.fromString(call.parameters["id"])
+                } catch (e: IllegalArgumentException) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse(
+                            error = "bad_request",
+                            message = "Path parameter 'id' must be a valid UUID",
+                        ),
+                    )
+                    return@get
+                }
+
+                val month = call.request.queryParameters["month"]?.toIntOrNull()
+                val year = call.request.queryParameters["year"]?.toIntOrNull()
+                if (month == null || month !in 1..12 || year == null || year !in 2000..2100) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse(
+                            error = "bad_request",
+                            message = "Query parameters 'month' (1-12) and 'year' (2000-2100) are required",
+                        ),
+                    )
+                    return@get
+                }
+
+                try {
+                    when (val result = friendActivityStatsService.getMonthlyActivity(callerId, friendId, month, year)) {
+                        is FriendMonthlyActivityResult.Success -> call.respond(HttpStatusCode.OK, result.summary)
+                        is FriendMonthlyActivityResult.NotFriends -> call.respond(
+                            HttpStatusCode.Forbidden,
+                            ErrorResponse("forbidden", "You are not friends with this user"),
+                        )
+                        is FriendMonthlyActivityResult.FriendNotFound -> call.respond(
+                            HttpStatusCode.NotFound,
+                            ErrorResponse("not_found", "User not found"),
+                        )
+                    }
+                } catch (e: Exception) {
+                    call.application.log.error(
+                        "Failed to retrieve activity heatmap for friend=$friendId caller=$callerId month=$month year=$year", e
+                    )
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error = "internal_server_error",
+                            message = "Failed to retrieve friend activity heatmap",
+                        ),
+                    )
+                }
+            }
+
+            get("/{id}/levels") {
+                val callerId = call.authenticatedUserId()
+                if (callerId == null) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ErrorResponse(
+                            error = "unauthorized",
+                            message = "Invalid authentication credentials",
+                        ),
+                    )
+                    return@get
+                }
+
+                if (!databaseReady) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ErrorResponse(
+                            error = "service_unavailable",
+                            message = "Database connection is not configured",
+                        ),
+                    )
+                    return@get
+                }
+
+                val friendId = try {
+                    UUID.fromString(call.parameters["id"])
+                } catch (e: IllegalArgumentException) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        ErrorResponse(
+                            error = "bad_request",
+                            message = "Path parameter 'id' must be a valid UUID",
+                        ),
+                    )
+                    return@get
+                }
+
+                try {
+                    when (val result = friendActivityStatsService.getLevelDetails(callerId, friendId)) {
+                        is FriendLevelDetailsResult.Success -> call.respond(HttpStatusCode.OK, result.details)
+                        is FriendLevelDetailsResult.NotFriends -> call.respond(
+                            HttpStatusCode.Forbidden,
+                            ErrorResponse("forbidden", "You are not friends with this user"),
+                        )
+                        is FriendLevelDetailsResult.FriendNotFound -> call.respond(
+                            HttpStatusCode.NotFound,
+                            ErrorResponse("not_found", "User not found"),
+                        )
+                    }
+                } catch (e: Exception) {
+                    call.application.log.error(
+                        "Failed to retrieve level details for friend=$friendId caller=$callerId", e
+                    )
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        ErrorResponse(
+                            error = "internal_server_error",
+                            message = "Failed to retrieve friend level details",
                         ),
                     )
                 }

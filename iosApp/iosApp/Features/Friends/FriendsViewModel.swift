@@ -82,13 +82,13 @@ struct LeaderboardEntry: Identifiable {
     let id: String
     let displayLabel: String
     let usernameLabel: String?
-    let pushupCount: Int
+    let activityPoints: Int
     let totalSessions: Int
     let totalEarnedSeconds: Int64
     /// `true` when this entry represents the currently logged-in user.
     let isCurrentUser: Bool
     /// Dense rank (1-based). Ties share the same rank; the next distinct
-    /// push-up count gets the next rank number (not the next position).
+    /// activity score gets the next rank number (not the next position).
     /// Example: [210, 185, 185, 98] → ranks [1, 2, 2, 3].
     var rank: Int = 1
 }
@@ -146,7 +146,7 @@ struct FriendStatsData: Equatable {
 /// - User search with debounce
 /// - Incoming friend requests (accept / decline)
 /// - Accepted friends list (remove)
-/// - Friends leaderboard (parallel stats fetch, sorted by push-up count)
+/// - Friends leaderboard (parallel stats fetch, sorted by activity score)
 /// - Individual friend stats detail (period-switchable)
 ///
 /// All `@Published` mutations happen on the main actor. `FriendsBridge`
@@ -200,8 +200,11 @@ final class FriendsViewModel: ObservableObject {
     private var currentUser: User? = nil
     /// All local workout sessions for the current user, kept in sync via DataBridge.
     private var localSessions: [Shared.WorkoutSession] = []
+    /// All local jogging sessions for the current user, kept in sync via DataBridge.
+    private var localJoggingSessions: [Shared.JoggingSession] = []
     /// KMP Flow observation job for local sessions (cancelled on deinit).
     private var sessionObservationJob: Kotlinx_coroutines_coreJob? = nil
+    private var joggingObservationJob: Kotlinx_coroutines_coreJob? = nil
 
     // MARK: Init / deinit
 
@@ -232,6 +235,7 @@ final class FriendsViewModel: ObservableObject {
     deinit {
         pushObservers.forEach { NotificationCenter.default.removeObserver($0) }
         sessionObservationJob?.cancel(cause: nil)
+        joggingObservationJob?.cancel(cause: nil)
     }
 
     // MARK: - Search
@@ -510,7 +514,7 @@ final class FriendsViewModel: ObservableObject {
     }
 
     /// Fetches stats for every friend in parallel using async/await + TaskGroup,
-    /// prepends the current user's own entry, then sorts by push-up count descending.
+    /// prepends the current user's own entry, then sorts by activity score descending.
     ///
     /// - Caps concurrent requests at the current friends count (no artificial limit
     ///   needed since the list is bounded by the API's 20-result search cap).
@@ -534,7 +538,7 @@ final class FriendsViewModel: ObservableObject {
                         return LeaderboardEntry(
                             id: friend.id, displayLabel: friend.displayLabel,
                             usernameLabel: friend.usernameLabel,
-                            pushupCount: 0, totalSessions: 0, totalEarnedSeconds: 0,
+                            activityPoints: 0, totalSessions: 0, totalEarnedSeconds: 0,
                             isCurrentUser: false
                         )
                     }
@@ -554,21 +558,21 @@ final class FriendsViewModel: ObservableObject {
             entries.append(own)
         }
 
-        // Sort: primary = pushupCount descending, secondary = displayLabel
+        // Sort: primary = activityPoints descending, secondary = displayLabel
         // ascending (alphabetical tie-break so the order is deterministic).
         entries.sort {
-            if $0.pushupCount != $1.pushupCount { return $0.pushupCount > $1.pushupCount }
+            if $0.activityPoints != $1.activityPoints { return $0.activityPoints > $1.activityPoints }
             return $0.displayLabel.localizedCompare($1.displayLabel) == .orderedAscending
         }
 
         // Assign dense ranks: ties share the same rank number; the next
-        // distinct push-up count gets the next rank (not the next position).
+        // distinct activity score gets the next rank (not the next position).
         // Example: [210, 185, 185, 98] → ranks [1, 2, 2, 3]
         var currentRank = 1
         for i in entries.indices {
             if i == 0 {
                 entries[i].rank = 1
-            } else if entries[i].pushupCount == entries[i - 1].pushupCount {
+            } else if entries[i].activityPoints == entries[i - 1].activityPoints {
                 // Same count as previous → same rank
                 entries[i].rank = entries[i - 1].rank
             } else {
@@ -600,6 +604,9 @@ final class FriendsViewModel: ObservableObject {
         currentUser = user
         sessionObservationJob = DataBridge.shared.observeSessions(userId: user.id) { [weak self] sessions in
             self?.localSessions = sessions
+        }
+        joggingObservationJob = DataBridge.shared.observeJoggingSessions(userId: user.id) { [weak self] sessions in
+            self?.localJoggingSessions = sessions
         }
     }
 
@@ -635,15 +642,34 @@ final class FriendsViewModel: ObservableObject {
             return session.startedAt.epochSeconds >= cutoffEpochSeconds
         }
 
-        let pushups = filtered.reduce(0) { $0 + Int($1.pushUpCount) }
-        let sessions = filtered.count
-        let earnedSeconds = filtered.reduce(Int64(0)) { $0 + $1.earnedTimeCreditSeconds }
+        let filteredJogging = localJoggingSessions.filter { session in
+            guard session.endedAt != nil else { return false }
+            return session.startedAt.epochSeconds >= cutoffEpochSeconds
+        }
+
+        let workoutPoints = filtered.reduce(0) { partial, session in
+            let quality = Double(session.quality)
+            let multiplier: Double
+            switch quality {
+            case let q where q > 0.8: multiplier = 1.5
+            case 0.5...: multiplier = 1.0
+            default: multiplier = 0.7
+            }
+            return partial + Int(Double(Int(session.pushUpCount) * 10) * multiplier)
+        }
+        let joggingPoints = filteredJogging.reduce(0) { partial, session in
+            partial + Int(session.distanceMeters / 100.0) * 10
+        }
+        let sessions = filtered.count + filteredJogging.count
+        let earnedSeconds =
+            filtered.reduce(Int64(0)) { $0 + $1.earnedTimeCreditSeconds } +
+            filteredJogging.reduce(Int64(0)) { $0 + $1.earnedTimeCreditSeconds }
 
         return LeaderboardEntry(
             id: user.id,
             displayLabel: displayName + " (You)",
             usernameLabel: nil,
-            pushupCount: pushups,
+            activityPoints: workoutPoints + joggingPoints,
             totalSessions: sessions,
             totalEarnedSeconds: earnedSeconds,
             isCurrentUser: true
@@ -661,7 +687,7 @@ final class FriendsViewModel: ObservableObject {
                         id: friend.id,
                         displayLabel: friend.displayLabel,
                         usernameLabel: friend.usernameLabel,
-                        pushupCount: Int(stats.pushupCount),
+                        activityPoints: Int(stats.activityPoints),
                         totalSessions: Int(stats.totalSessions),
                         totalEarnedSeconds: stats.totalEarnedSeconds,
                         isCurrentUser: false
@@ -674,7 +700,7 @@ final class FriendsViewModel: ObservableObject {
                         id: friend.id,
                         displayLabel: friend.displayLabel,
                         usernameLabel: friend.usernameLabel,
-                        pushupCount: 0,
+                        activityPoints: 0,
                         totalSessions: 0,
                         totalEarnedSeconds: 0,
                         isCurrentUser: false

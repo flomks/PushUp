@@ -4,6 +4,8 @@ struct CrewRunView: View {
 
     @ObservedObject var viewModel: JoggingViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var displayedMonth: Date = Calendar.current.startOfDay(for: Date())
+    @State private var selectedDay: Date?
 
     var body: some View {
         NavigationStack {
@@ -22,6 +24,7 @@ struct CrewRunView: View {
                         participantsCard
                         liveRunsCard
                         plannedRunCard
+                        calendarCard
                         upcomingRunsCard
                         inviteFriendsCard
                     }
@@ -44,6 +47,10 @@ struct CrewRunView: View {
             }
             .task {
                 await viewModel.loadRunSocialData()
+                syncCalendarSelection()
+            }
+            .onChange(of: viewModel.upcomingRuns) { _, _ in
+                syncCalendarSelection()
             }
         }
     }
@@ -277,6 +284,87 @@ struct CrewRunView: View {
         }
     }
 
+    private var calendarCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                sectionHeader("Calendar", subtitle: "See when your planned crew runs actually happen")
+
+                HStack {
+                    Button {
+                        shiftMonth(by: -1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppColors.textPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(AppColors.backgroundPrimary, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Text(monthTitle(for: displayedMonth))
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        shiftMonth(by: 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppColors.textPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(AppColors.backgroundPrimary, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+                    ForEach(Self.weekdaySymbols, id: \.self) { symbol in
+                        Text(symbol)
+                            .font(AppTypography.caption2)
+                            .foregroundStyle(AppColors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    ForEach(monthGridDays(), id: \.self) { date in
+                        if Calendar.current.isDate(date, equalTo: displayedMonth, toGranularity: .month) {
+                            calendarDayCell(date)
+                        } else {
+                            Color.clear
+                                .frame(height: 42)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    Text(selectedDay == nil ? "Selected day" : dayTitle(for: selectedDay!))
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(AppColors.textPrimary)
+
+                    let dayRuns = selectedDay.map { viewModel.upcomingRuns(on: $0) } ?? []
+                    if dayRuns.isEmpty {
+                        emptyState("No joined or planned runs on this day.")
+                    } else {
+                        ForEach(dayRuns) { run in
+                            optionRow(
+                                initials: "EV",
+                                title: run.title,
+                                subtitle: run.subtitle,
+                                actionTitle: viewModel.upcomingRunPrimaryActionTitle(for: run),
+                                actionTint: AppColors.secondary
+                            ) {
+                                viewModel.handleUpcomingRunPrimaryAction(run)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var inviteFriendsCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
@@ -481,4 +569,107 @@ struct CrewRunView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, AppSpacing.xs)
     }
+
+    private func shiftMonth(by delta: Int) {
+        displayedMonth = Calendar.current.date(byAdding: .month, value: delta, to: displayedMonth) ?? displayedMonth
+        syncCalendarSelection()
+    }
+
+    private func syncCalendarSelection() {
+        let calendar = Calendar.current
+        let monthRuns = viewModel.upcomingRuns
+            .filter { calendar.isDate($0.plannedStartAt, equalTo: displayedMonth, toGranularity: .month) }
+            .sorted { $0.plannedStartAt < $1.plannedStartAt }
+        if let current = selectedDay,
+           calendar.isDate(current, equalTo: displayedMonth, toGranularity: .month) {
+            return
+        }
+        selectedDay = monthRuns.first.map { calendar.startOfDay(for: $0.plannedStartAt) }
+            ?? calendar.date(from: calendar.dateComponents([.year, .month], from: displayedMonth))
+    }
+
+    private func monthGridDays() -> [Date] {
+        let calendar = Calendar.current
+        guard
+            let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
+            let firstWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start),
+            let lastDay = calendar.date(byAdding: .day, value: -1, to: monthInterval.end),
+            let lastWeekInterval = calendar.dateInterval(of: .weekOfMonth, for: lastDay)
+        else {
+            return []
+        }
+
+        var days: [Date] = []
+        var current = firstWeekInterval.start
+        while current < lastWeekInterval.end {
+            days.append(current)
+            current = calendar.date(byAdding: .day, value: 1, to: current) ?? lastWeekInterval.end
+        }
+        return days
+    }
+
+    private func calendarDayCell(_ date: Date) -> some View {
+        let calendar = Calendar.current
+        let normalized = calendar.startOfDay(for: date)
+        let isSelected = selectedDay.map { calendar.isDate($0, inSameDayAs: normalized) } ?? false
+        let hasEvent = viewModel.calendarHighlightedDates.contains(normalized)
+        let isToday = calendar.isDateInToday(normalized)
+
+        return Button {
+            selectedDay = normalized
+        } label: {
+            VStack(spacing: 4) {
+                Text("\(calendar.component(.day, from: normalized))")
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(isSelected ? Color.white : AppColors.textPrimary)
+
+                Circle()
+                    .fill(hasEvent ? (isSelected ? Color.white : AppColors.secondary) : Color.clear)
+                    .frame(width: 6, height: 6)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        isSelected
+                        ? AppColors.secondary
+                        : (isToday ? AppColors.info.opacity(0.10) : AppColors.backgroundPrimary)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isToday && !isSelected ? AppColors.info.opacity(0.35) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func monthTitle(for date: Date) -> String {
+        Self.monthTitleFormatter.string(from: date)
+    }
+
+    private func dayTitle(for date: Date) -> String {
+        Self.dayTitleFormatter.string(from: date)
+    }
+
+    private static let weekdaySymbols: [String] = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.shortStandaloneWeekdaySymbols
+    }()
+
+    private static let monthTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+
+    private static let dayTitleFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
 }
