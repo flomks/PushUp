@@ -28,6 +28,7 @@ struct JoggingView: View {
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var isFollowingRunner = false
     @State private var isCurrentMarkerPulsing = false
+    @State private var musicWidgetSwipeOffset: CGFloat = 0
 #if DEBUG
     /// Temporary: simulates 0→1000 m for ring + DIST only; remove when no longer needed.
 #endif
@@ -889,6 +890,7 @@ struct JoggingView: View {
                 )
         )
         .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
+        .offset(x: musicWidgetSwipeOffset)
         .contentShape(Capsule(style: .continuous))
         .gesture(
             DragGesture(minimumDistance: 18, coordinateSpace: .local)
@@ -898,12 +900,25 @@ struct JoggingView: View {
                     guard abs(horizontal) > abs(vertical), abs(horizontal) > 28 else { return }
 
                     if horizontal < 0 {
+                        animateMusicWidgetSwipe(direction: -1)
                         viewModel.nextTrack()
                     } else {
+                        animateMusicWidgetSwipe(direction: 1)
                         viewModel.previousTrack()
                     }
                 }
         )
+    }
+
+    private func animateMusicWidgetSwipe(direction: CGFloat) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            musicWidgetSwipeOffset = 18 * direction
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                musicWidgetSwipeOffset = 0
+            }
+        }
     }
 
 // MARK: - Route Map
