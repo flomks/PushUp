@@ -17,9 +17,11 @@ import com.pushup.domain.repository.DailyCreditSnapshotRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.PushUpRecordRepository
 import com.pushup.domain.repository.RoutePointRepository
+import com.pushup.domain.repository.RunXpAwardRepository
 import com.pushup.domain.repository.TimeCreditRepository
 import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
+import com.pushup.db.PushUpDatabase
 import com.pushup.domain.usecase.CreateRunEventUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
@@ -136,6 +138,20 @@ object DataBridge : KoinComponent {
         userId = participant.userId,
         status = participant.status.name,
         isLeader = participant.isLeader,
+    )
+
+    private fun toRunXpAwardResult(
+        award: com.pushup.domain.model.RunXpAward,
+    ): RunXpAwardResult = RunXpAwardResult(
+        id = award.id,
+        userId = award.userId,
+        sessionId = award.sessionId,
+        baseXp = award.baseXp,
+        bonusType = award.bonusType.name,
+        bonusMultiplier = award.bonusMultiplier,
+        bonusXp = award.bonusXp,
+        totalXpAwarded = award.totalXpAwarded,
+        awardedAt = award.awardedAt.toString(),
     )
 
     // =========================================================================
@@ -516,6 +532,62 @@ object DataBridge : KoinComponent {
             try {
                 val segments = get<GetJoggingSegmentsUseCase>().invoke(sessionId)
                 withContext(Dispatchers.Main) { onResult(segments) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    fun fetchJoggingSession(
+        sessionId: String,
+        onResult: (JoggingSession?) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val session = get<JoggingSessionRepository>().getById(sessionId)
+                withContext(Dispatchers.Main) { onResult(session) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun fetchRunXpAwardsForSession(
+        sessionId: String,
+        onResult: (List<RunXpAwardResult>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val awards = get<RunXpAwardRepository>()
+                    .getBySessionId(sessionId)
+                    .map(::toRunXpAwardResult)
+                withContext(Dispatchers.Main) { onResult(awards) }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { onResult(emptyList()) }
+            }
+        }
+    }
+
+    fun fetchRunUsers(
+        userIds: List<String>,
+        onResult: (List<RunUserSummaryResult>) -> Unit,
+    ) {
+        scope.launch {
+            try {
+                val queries = get<PushUpDatabase>().databaseQueries
+                val users = userIds
+                    .distinct()
+                    .mapNotNull { userId ->
+                        queries.selectUserById(userId).executeAsOneOrNull()?.let { user ->
+                            RunUserSummaryResult(
+                                id = user.id,
+                                username = user.username,
+                                displayName = user.displayName,
+                                avatarUrl = user.avatarUrl,
+                            )
+                        }
+                    }
+                withContext(Dispatchers.Main) { onResult(users) }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(emptyList()) }
             }
@@ -941,4 +1013,23 @@ data class LiveRunSessionSnapshotResult(
     val session: LiveRunSessionResult?,
     val participants: List<LiveRunParticipantResult>,
     val presenceCount: Int,
+)
+
+data class RunXpAwardResult(
+    val id: String,
+    val userId: String,
+    val sessionId: String,
+    val baseXp: Long,
+    val bonusType: String,
+    val bonusMultiplier: Double,
+    val bonusXp: Long,
+    val totalXpAwarded: Long,
+    val awardedAt: String,
+)
+
+data class RunUserSummaryResult(
+    val id: String,
+    val username: String?,
+    val displayName: String,
+    val avatarUrl: String?,
 )

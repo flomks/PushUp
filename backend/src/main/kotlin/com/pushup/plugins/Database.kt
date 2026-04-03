@@ -637,6 +637,13 @@ object JoggingSegments : Table("jogging_segments") {
 fun Application.configureDatabase(): Boolean {
     val databaseUrl = System.getenv("DATABASE_URL")
     val isDev = System.getenv("KTOR_ENV") != "production"
+    val maxPoolSize = System.getenv("DB_MAX_POOL_SIZE")?.toIntOrNull()?.coerceAtLeast(1) ?: 3
+    val minIdle = System.getenv("DB_MIN_IDLE")?.toIntOrNull()?.coerceIn(0, maxPoolSize) ?: 0
+    val connectionTimeoutMs = System.getenv("DB_CONNECTION_TIMEOUT_MS")?.toLongOrNull()?.coerceAtLeast(1_000) ?: 5_000L
+    val idleTimeoutMs = System.getenv("DB_IDLE_TIMEOUT_MS")?.toLongOrNull()?.coerceAtLeast(10_000) ?: 60_000L
+    val maxLifetimeMs = System.getenv("DB_MAX_LIFETIME_MS")?.toLongOrNull()?.coerceAtLeast(30_000) ?: 240_000L
+    val keepaliveTimeMs = System.getenv("DB_KEEPALIVE_TIME_MS")?.toLongOrNull()?.coerceAtLeast(30_000) ?: 120_000L
+    val validationTimeoutMs = System.getenv("DB_VALIDATION_TIMEOUT_MS")?.toLongOrNull()?.coerceAtLeast(1_000) ?: 3_000L
 
     if (databaseUrl.isNullOrBlank()) {
         if (!isDev) {
@@ -654,11 +661,13 @@ fun Application.configureDatabase(): Boolean {
     val hikariConfig = HikariConfig().apply {
         jdbcUrl              = databaseUrl
         driverClassName      = "org.postgresql.Driver"
-        maximumPoolSize      = 10
-        minimumIdle          = 2
-        idleTimeout          = 300_000    // 5 minutes
-        connectionTimeout    = 5_000      // 5 seconds (fail fast instead of blocking 30s)
-        maxLifetime          = 1_800_000  // 30 minutes
+        maximumPoolSize      = maxPoolSize
+        minimumIdle          = minIdle
+        idleTimeout          = idleTimeoutMs
+        connectionTimeout    = connectionTimeoutMs
+        validationTimeout    = validationTimeoutMs
+        maxLifetime          = maxLifetimeMs
+        keepaliveTime        = keepaliveTimeMs
         isAutoCommit         = false
         transactionIsolation = "TRANSACTION_READ_COMMITTED"
         // Validate connections before handing them to the application.
@@ -672,7 +681,13 @@ fun Application.configureDatabase(): Boolean {
     val dataSource = HikariDataSource(hikariConfig)
     Database.connect(dataSource)
 
-    log.info("Database connection pool ready (pool size: ${hikariConfig.maximumPoolSize})")
+    log.info(
+        "Database connection pool ready (maxPoolSize={}, minIdle={}, maxLifetimeMs={}, keepaliveTimeMs={})",
+        hikariConfig.maximumPoolSize,
+        hikariConfig.minimumIdle,
+        hikariConfig.maxLifetime,
+        hikariConfig.keepaliveTime,
+    )
 
     // Ensure all application tables exist. SchemaUtils.createMissingTablesAndColumns
     // is idempotent -- it only creates tables/columns that are absent and never

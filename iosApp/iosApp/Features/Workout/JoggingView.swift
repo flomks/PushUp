@@ -19,6 +19,7 @@ struct JoggingView: View {
     @State private var showShareSheet = false
     @State private var showCrewView = false
     @State private var showMusicSheet = false
+    @State private var selectedRecentRun: RunningDashboardData.RecentRun?
     @State private var isMapFocusMode = false
     @State private var shareImage: UIImage?
     @State private var isRenderingShareImage = false
@@ -65,6 +66,9 @@ struct JoggingView: View {
         }
         .sheet(isPresented: $showMusicSheet) {
             musicSheet
+        }
+        .sheet(item: $selectedRecentRun) { run in
+            RecentRunDetailSheet(run: run)
         }
     }
 
@@ -460,7 +464,12 @@ struct JoggingView: View {
                     .padding(.vertical, AppSpacing.xl)
                 } else {
                     ForEach(viewModel.dashboard.recentRuns) { run in
-                        recentRunRow(run)
+                        Button {
+                            selectedRecentRun = run
+                        } label: {
+                            recentRunRow(run)
+                        }
+                        .buttonStyle(.plain)
                         if run.id != viewModel.dashboard.recentRuns.last?.id {
                             Divider()
                         }
@@ -1315,9 +1324,15 @@ struct JoggingView: View {
                     .font(AppTypography.bodySemibold)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text(formatPace(run.avgPaceSecondsPerKm))
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                HStack(spacing: 6) {
+                    Text(formatPace(run.avgPaceSecondsPerKm))
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AppColors.textTertiary)
+                }
             }
         }
         .padding(.vertical, 2)
@@ -2062,6 +2077,839 @@ struct JoggingView: View {
         formatter.locale = Locale(identifier: "en_US")
         return formatter
     }()
+}
+
+private struct RecentRunDetailSheet: View {
+    let run: RunningDashboardData.RecentRun
+
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel: RecentRunDetailViewModel
+
+    init(run: RunningDashboardData.RecentRun) {
+        self.run = run
+        _viewModel = StateObject(wrappedValue: RecentRunDetailViewModel(run: run))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: AppSpacing.lg) {
+                    heroCard
+                    routeCard
+                    segmentCard
+                    checkpointCard
+                    crewCard
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.md)
+                .padding(.bottom, AppSpacing.screenVerticalBottom)
+            }
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.96, green: 0.97, blue: 0.99),
+                        AppColors.backgroundPrimary
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            )
+            .navigationTitle("Run Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                await viewModel.loadIfNeeded()
+            }
+        }
+    }
+
+    private var heroCard: some View {
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.08, green: 0.13, blue: 0.26),
+                            Color(red: 0.16, green: 0.39, blue: 0.65),
+                            Color(red: 0.98, green: 0.44, blue: 0.22)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(alignment: .topTrailing) {
+                    Circle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 170, height: 170)
+                        .offset(x: 40, y: -40)
+                }
+
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("RECENT RUN")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.white.opacity(0.68))
+                            .tracking(1.6)
+
+                        Text(Self.headerDateFormatter.string(from: run.date))
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+
+                        Text(viewModel.sessionHeadline)
+                            .font(AppTypography.callout)
+                            .foregroundStyle(Color.white.opacity(0.80))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    VStack(alignment: .trailing, spacing: 8) {
+                        detailStatusChip(viewModel.isCrewRun ? "Crew Linked" : "Solo")
+                        detailStatusChip(viewModel.syncLabel)
+                    }
+                }
+
+                HStack(spacing: AppSpacing.sm) {
+                    detailMetricPill(title: "Distance", value: Self.formatDistance(run.distanceMeters))
+                    detailMetricPill(title: "Duration", value: Self.formatDuration(run.durationSeconds))
+                    detailMetricPill(title: "Pace", value: Self.formatPace(run.avgPaceSecondsPerKm))
+                }
+
+                HStack(spacing: AppSpacing.sm) {
+                    detailMetricPill(title: "Earned", value: "+\(run.earnedMinutes)m")
+                    detailMetricPill(title: "Calories", value: "\(viewModel.caloriesBurned)")
+                    detailMetricPill(title: "Points", value: "\(viewModel.routePoints.count)")
+                }
+            }
+            .padding(AppSpacing.xl)
+        }
+        .overlay {
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+            }
+        }
+    }
+
+    private var routeCard: some View {
+        Card(padding: 0, hasShadow: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    detailSectionHeader("Route", subtitle: "GPS line, elevation markers, and coverage")
+                    Spacer()
+                }
+                .padding(.horizontal, AppSpacing.cardPadding)
+                .padding(.top, AppSpacing.cardPadding)
+
+                RecentRunRouteMap(routePoints: viewModel.routePoints)
+                    .frame(height: 250)
+                    .padding(AppSpacing.sm)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.sm) {
+                    detailStatTile(title: "Active", value: Self.formatDuration(viewModel.activeDurationSeconds), icon: "figure.run", tint: AppColors.success)
+                    detailStatTile(title: "Paused", value: Self.formatDuration(viewModel.pauseDurationSeconds), icon: "pause.fill", tint: AppColors.warning)
+                    detailStatTile(title: "Active Dist.", value: Self.formatDistance(viewModel.activeDistanceMeters), icon: "location.north.line.fill", tint: AppColors.info)
+                    detailStatTile(title: "Pause Dist.", value: Self.formatDistance(viewModel.pauseDistanceMeters), icon: "moon.zzz.fill", tint: AppColors.secondary)
+                }
+                .padding(.horizontal, AppSpacing.cardPadding)
+                .padding(.bottom, AppSpacing.cardPadding)
+            }
+        }
+    }
+
+    private var segmentCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                detailSectionHeader("Segments", subtitle: "Every running and pause block captured for this run")
+
+                if viewModel.segments.isEmpty {
+                    Text("No segmented run data is available for this session yet.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                } else {
+                    ForEach(Array(viewModel.segmentRows.enumerated()), id: \.element.id) { index, segment in
+                        HStack(alignment: .top, spacing: AppSpacing.sm) {
+                            ZStack {
+                                Circle()
+                                    .fill(segment.isPause ? AppColors.warning.opacity(0.12) : AppColors.success.opacity(0.12))
+                                    .frame(width: 42, height: 42)
+
+                                Image(systemName: segment.isPause ? "pause.fill" : "figure.run")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(segment.isPause ? AppColors.warning : AppColors.success)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(segment.title)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(segment.subtitle)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text(segment.metric)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(segment.trailingDetail)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+
+                        if index != viewModel.segmentRows.indices.last {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var checkpointCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                detailSectionHeader("Checkpoints", subtitle: "Key route points pulled from the recorded GPS timeline")
+
+                if viewModel.checkpoints.isEmpty {
+                    Text("No route checkpoints were generated because this run has too few GPS points.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                } else {
+                    ForEach(viewModel.checkpoints) { checkpoint in
+                        HStack(spacing: AppSpacing.sm) {
+                            VStack(spacing: 2) {
+                                Text(checkpoint.badge)
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 5)
+                                    .background(checkpoint.tint, in: Capsule())
+                            }
+                            .frame(width: 64)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(checkpoint.title)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(checkpoint.subtitle)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text(checkpoint.coordinateLabel)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AppColors.textPrimary)
+                                Text(checkpoint.timestampLabel)
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var crewCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                detailSectionHeader("Crew Layer", subtitle: "Social session, members, and awarded run XP")
+
+                if let errorMessage = viewModel.socialErrorMessage {
+                    Text(errorMessage)
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(AppColors.textSecondary)
+                }
+
+                if let snapshot = viewModel.liveSnapshot, let session = snapshot.session {
+                    HStack(spacing: AppSpacing.sm) {
+                        detailStatTile(title: "Mode", value: session.mode.capitalized, icon: "bolt.heart.fill", tint: AppColors.secondary)
+                        detailStatTile(title: "Presence", value: "\(snapshot.presenceCount)", icon: "dot.radiowaves.left.and.right", tint: AppColors.info)
+                        detailStatTile(title: "Members", value: "\(snapshot.participants.count)", icon: "person.3.fill", tint: AppColors.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                        Text("Members")
+                            .font(AppTypography.bodySemibold)
+                            .foregroundStyle(AppColors.textPrimary)
+
+                        ForEach(snapshot.participants, id: \.id) { participant in
+                            HStack(spacing: AppSpacing.sm) {
+                                Circle()
+                                    .fill(participant.isLeader ? AppColors.secondary.opacity(0.18) : AppColors.fill)
+                                    .frame(width: 38, height: 38)
+                                    .overlay(
+                                        Text(viewModel.initials(for: participant.userId))
+                                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                                            .foregroundStyle(participant.isLeader ? AppColors.secondary : AppColors.textPrimary)
+                                    )
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(viewModel.displayName(for: participant.userId))
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text(participant.status.capitalized.replacingOccurrences(of: "_", with: " "))
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+
+                                Spacer()
+
+                                if participant.isLeader {
+                                    Text("Leader")
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .foregroundStyle(AppColors.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(AppColors.secondary.opacity(0.10), in: Capsule())
+                                }
+                            }
+                        }
+                    }
+
+                    if !viewModel.xpAwards.isEmpty {
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                            Text("Run XP Awards")
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+
+                            ForEach(viewModel.xpAwards, id: \.id) { award in
+                                HStack(spacing: AppSpacing.sm) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(viewModel.displayName(for: award.userId))
+                                            .font(AppTypography.bodySemibold)
+                                            .foregroundStyle(AppColors.textPrimary)
+                                        Text(award.bonusType.capitalized)
+                                            .font(AppTypography.caption1)
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+
+                                    Spacer()
+
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("+\(award.totalXpAwarded) XP")
+                                            .font(AppTypography.bodySemibold)
+                                            .foregroundStyle(AppColors.secondary)
+                                        Text("Base \(award.baseXp) • Bonus \(award.bonusXp)")
+                                            .font(AppTypography.caption1)
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    HStack(spacing: AppSpacing.sm) {
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.fill)
+                                .frame(width: 44, height: 44)
+
+                            Image(systemName: "person.2.slash.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Solo session")
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("This run was not linked to a crew session, so there are no live members or social XP rows to show.")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func detailSectionHeader(_ title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(AppTypography.headline)
+                .foregroundStyle(AppColors.textPrimary)
+            Text(subtitle)
+                .font(AppTypography.caption1)
+                .foregroundStyle(AppColors.textSecondary)
+        }
+    }
+
+    private func detailMetricPill(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.white.opacity(0.62))
+                .tracking(1.1)
+
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+    }
+
+    private func detailStatusChip(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .tracking(1.0)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.12), in: Capsule())
+    }
+
+    private func detailStatTile(title: String, value: String, icon: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(AppColors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(title)
+                .font(AppTypography.caption1)
+                .foregroundStyle(AppColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.md)
+        .background(AppColors.backgroundPrimary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+    }
+
+    private static let headerDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMM d"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+
+    fileprivate static func formatDistance(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.2f km", meters / 1000.0)
+        }
+        return String(format: "%.0f m", meters)
+    }
+
+    fileprivate static func formatDuration(_ seconds: Int) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
+    }
+
+    fileprivate static func formatPace(_ secondsPerKm: Int?) -> String {
+        guard let secondsPerKm, secondsPerKm > 0 else { return "--:-- /km" }
+        let m = secondsPerKm / 60
+        let s = secondsPerKm % 60
+        return String(format: "%d:%02d /km", m, s)
+    }
+}
+
+@MainActor
+private final class RecentRunDetailViewModel: ObservableObject {
+    @Published private(set) var isLoading = false
+    @Published private(set) var session: Shared.JoggingSession?
+    @Published private(set) var routePoints: [Shared.RoutePoint] = []
+    @Published private(set) var segments: [Shared.JoggingSegment] = []
+    @Published private(set) var liveSnapshot: LiveRunSessionSnapshotResult?
+    @Published private(set) var xpAwards: [RunXpAwardResult] = []
+    @Published private(set) var usersById: [String: RunUserSummaryResult] = [:]
+    @Published private(set) var socialErrorMessage: String?
+
+    let run: RunningDashboardData.RecentRun
+    private var didLoad = false
+
+    init(run: RunningDashboardData.RecentRun) {
+        self.run = run
+    }
+
+    var caloriesBurned: Int {
+        session.map { Int($0.caloriesBurned) } ?? 0
+    }
+
+    var activeDurationSeconds: Int {
+        if let session, Int(session.activeDurationSeconds) > 0 {
+            return Int(session.activeDurationSeconds)
+        }
+        return segments
+            .filter { !Self.isPauseSegment($0) }
+            .reduce(0) { $0 + Int($1.durationSeconds) }
+    }
+
+    var pauseDurationSeconds: Int {
+        if let session, Int(session.pauseDurationSeconds) > 0 {
+            return Int(session.pauseDurationSeconds)
+        }
+        return segments
+            .filter(Self.isPauseSegment)
+            .reduce(0) { $0 + Int($1.durationSeconds) }
+    }
+
+    var activeDistanceMeters: Double {
+        if let session, session.activeDistanceMeters > 0 {
+            return session.activeDistanceMeters
+        }
+        return segments
+            .filter { !Self.isPauseSegment($0) }
+            .reduce(0.0) { $0 + $1.distanceMeters }
+    }
+
+    var pauseDistanceMeters: Double {
+        if let session, session.pauseDistanceMeters > 0 {
+            return session.pauseDistanceMeters
+        }
+        return segments
+            .filter(Self.isPauseSegment)
+            .reduce(0.0) { $0 + $1.distanceMeters }
+    }
+
+    var isCrewRun: Bool {
+        session?.liveRunSessionId != nil
+    }
+
+    var syncLabel: String {
+        guard let session else { return "Local" }
+        return String(describing: session.syncStatus)
+            .replacingOccurrences(of: "_", with: " ")
+            .capitalized
+    }
+
+    var sessionHeadline: String {
+        if let session, session.liveRunSessionId != nil {
+            return "This run stayed linked to a crew session, so route, segments, members, and social XP can all be inspected together."
+        }
+        return "Detailed breakdown of route coverage, pause blocks, and the exact timeline captured during this session."
+    }
+
+    var segmentRows: [RunSegmentRow] {
+        segments.enumerated().map { index, segment in
+            let isPause = Self.isPauseSegment(segment)
+            let duration = Int(segment.durationSeconds)
+            let distance = segment.distanceMeters
+            let secondsPerKm = (!isPause && duration > 0 && distance > 0)
+                ? Int((Double(duration) / distance) * 1000.0)
+                : nil
+
+            return RunSegmentRow(
+                id: segment.id,
+                isPause: isPause,
+                title: isPause ? "Pause \(index + 1)" : "Run Block \(index + 1)",
+                subtitle: "\(Self.timeLabel(segment.startedAt)) to \(Self.timeLabel(segment.endedAt ?? segment.startedAt))",
+                metric: RecentRunDetailSheet.formatDistance(distance),
+                trailingDetail: isPause ? "Paused" : RecentRunDetailSheet.formatPace(secondsPerKm),
+                durationSeconds: duration
+            )
+        }
+    }
+
+    var checkpoints: [RunCheckpoint] {
+        guard !routePoints.isEmpty else { return [] }
+        var items: [RunCheckpoint] = []
+
+        if let first = routePoints.first {
+            items.append(checkpoint(from: first, title: "Start", badge: "START", tint: AppColors.success))
+        }
+
+        let milestones = [1000.0, 3000.0, 5000.0, 10000.0]
+        for milestone in milestones {
+            if let point = routePoints.first(where: { $0.distanceFromStart >= milestone }) {
+                items.append(
+                    checkpoint(
+                        from: point,
+                        title: "\(Int(milestone / 1000.0)) km mark",
+                        badge: "\(Int(milestone / 1000.0))K",
+                        tint: AppColors.info
+                    )
+                )
+            }
+        }
+
+        if let last = routePoints.last, last.id != routePoints.first?.id {
+            items.append(checkpoint(from: last, title: "Finish", badge: "END", tint: AppColors.secondary))
+        }
+
+        var seen = Set<String>()
+        return items.filter { seen.insert($0.id).inserted }
+    }
+
+    func loadIfNeeded() async {
+        guard !didLoad else { return }
+        didLoad = true
+        await load()
+    }
+
+    func displayName(for userId: String) -> String {
+        usersById[userId]?.displayName ?? "Runner"
+    }
+
+    func initials(for userId: String) -> String {
+        let source = displayName(for: userId).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty else { return "R" }
+        let parts = source.split(separator: " ")
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        }
+        return String(source.prefix(2)).uppercased()
+    }
+
+    private func load() async {
+        isLoading = true
+        socialErrorMessage = nil
+
+        async let sessionTask = fetchSession()
+        async let routeTask = fetchRoutePoints()
+        async let segmentTask = fetchSegments()
+
+        let resolvedSession = await sessionTask
+        session = resolvedSession
+        routePoints = await routeTask
+        segments = await segmentTask
+
+        if let liveRunSessionId = resolvedSession?.liveRunSessionId {
+            async let snapshotTask = fetchLiveSnapshot(sessionId: liveRunSessionId)
+            async let awardsTask = fetchAwards(sessionId: liveRunSessionId)
+            let snapshot = await snapshotTask
+            let awards = await awardsTask
+            liveSnapshot = snapshot
+            xpAwards = awards
+
+            let userIds = Set(
+                (snapshot?.participants.map(\.userId) ?? []) +
+                awards.map(\.userId) +
+                [snapshot?.session?.leaderUserId].compactMap { $0 }
+            )
+
+            if !userIds.isEmpty {
+                let users = await fetchUsers(ids: Array(userIds))
+                usersById = Dictionary(uniqueKeysWithValues: users.map { ($0.id, $0) })
+            }
+
+            if snapshot == nil && awards.isEmpty {
+                socialErrorMessage = "No finished crew snapshot was available locally for this run."
+            }
+        }
+
+        isLoading = false
+    }
+
+    private func fetchSession() async -> Shared.JoggingSession? {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchJoggingSession(sessionId: run.id) { session in
+                continuation.resume(returning: session)
+            }
+        }
+    }
+
+    private func fetchRoutePoints() async -> [Shared.RoutePoint] {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchRoutePointsForSession(sessionId: run.id) { points in
+                continuation.resume(returning: points)
+            }
+        }
+    }
+
+    private func fetchSegments() async -> [Shared.JoggingSegment] {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchJoggingSegmentsForSession(sessionId: run.id) { segments in
+                continuation.resume(returning: segments)
+            }
+        }
+    }
+
+    private func fetchLiveSnapshot(sessionId: String) async -> LiveRunSessionSnapshotResult? {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchLiveRunSessionSnapshot(sessionId: sessionId) { snapshot in
+                continuation.resume(returning: snapshot)
+            }
+        }
+    }
+
+    private func fetchAwards(sessionId: String) async -> [RunXpAwardResult] {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchRunXpAwardsForSession(sessionId: sessionId) { awards in
+                continuation.resume(returning: awards)
+            }
+        }
+    }
+
+    private func fetchUsers(ids: [String]) async -> [RunUserSummaryResult] {
+        await withCheckedContinuation { continuation in
+            DataBridge.shared.fetchRunUsers(userIds: ids) { users in
+                continuation.resume(returning: users)
+            }
+        }
+    }
+
+    private func checkpoint(from point: Shared.RoutePoint, title: String, badge: String, tint: Color) -> RunCheckpoint {
+        let timestamp = Date(timeIntervalSince1970: Double(point.timestamp.epochSeconds))
+        return RunCheckpoint(
+            id: point.id,
+            title: title,
+            subtitle: RecentRunDetailSheet.formatDistance(point.distanceFromStart),
+            badge: badge,
+            tint: tint,
+            coordinateLabel: String(format: "%.4f, %.4f", point.latitude, point.longitude),
+            timestampLabel: Self.pointTimeFormatter.string(from: timestamp),
+            timestamp: timestamp
+        )
+    }
+
+    private static func isPauseSegment(_ segment: Shared.JoggingSegment) -> Bool {
+        String(describing: segment.type).lowercased().contains("pause")
+    }
+
+    private static func timeLabel(_ instant: Kotlinx_datetimeInstant) -> String {
+        pointTimeFormatter.string(from: Date(timeIntervalSince1970: Double(instant.epochSeconds)))
+    }
+
+    private static let pointTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
+}
+
+private struct RecentRunRouteMap: View {
+    let routePoints: [Shared.RoutePoint]
+    @State private var mapPosition: MapCameraPosition = .automatic
+
+    private var coordinates: [CLLocationCoordinate2D] {
+        RouteSmoothing.smoothCoordinates(
+            routePoints.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            if coordinates.isEmpty {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(AppColors.backgroundPrimary)
+                    .overlay {
+                        VStack(spacing: AppSpacing.sm) {
+                            Image(systemName: "map")
+                                .font(.system(size: 28, weight: .light))
+                                .foregroundStyle(AppColors.textTertiary)
+                            Text("No route recorded")
+                                .font(AppTypography.bodySemibold)
+                                .foregroundStyle(AppColors.textPrimary)
+                            Text("This session does not have enough GPS breadcrumbs for a route preview.")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(AppColors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(AppSpacing.lg)
+                    }
+            } else {
+                Map(position: $mapPosition) {
+                    if let start = coordinates.first {
+                        Annotation("Start", coordinate: start) {
+                            Circle()
+                                .fill(AppColors.success)
+                                .frame(width: 14, height: 14)
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                        }
+                    }
+
+                    if coordinates.count >= 2 {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [AppColors.info, AppColors.secondary],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                lineWidth: 5
+                            )
+                    }
+
+                    if let end = coordinates.last {
+                        Annotation("End", coordinate: end) {
+                            Circle()
+                                .fill(AppColors.secondary)
+                                .frame(width: 14, height: 14)
+                                .overlay(Circle().stroke(.white, lineWidth: 2))
+                        }
+                    }
+                }
+                .mapStyle(.standard(elevation: .flat))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .onAppear {
+                    mapPosition = .region(mapRegion(for: coordinates))
+                }
+            }
+        }
+    }
+
+    private func mapRegion(for coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        guard let first = coordinates.first else {
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            )
+        }
+
+        var minLat = first.latitude
+        var maxLat = first.latitude
+        var minLon = first.longitude
+        var maxLon = first.longitude
+
+        for coordinate in coordinates {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(
+                latitudeDelta: max((maxLat - minLat) * 1.35, 0.004),
+                longitudeDelta: max((maxLon - minLon) * 1.35, 0.004)
+            )
+        )
+    }
+}
+
+private struct RunSegmentRow: Identifiable {
+    let id: String
+    let isPause: Bool
+    let title: String
+    let subtitle: String
+    let metric: String
+    let trailingDetail: String
+    let durationSeconds: Int
+}
+
+private struct RunCheckpoint: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let badge: String
+    let tint: Color
+    let coordinateLabel: String
+    let timestampLabel: String
+    let timestamp: Date
 }
 
 // MARK: - Previews

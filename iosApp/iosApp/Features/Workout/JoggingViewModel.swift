@@ -559,6 +559,13 @@ struct UpcomingRunOption: Identifiable, Equatable {
     let plannedStartAt: Date
 }
 
+enum RunLaunchMode: String, CaseIterable, Identifiable {
+    case solo = "Solo"
+    case crew = "Crew"
+
+    var id: String { rawValue }
+}
+
 enum RunAudioMode: String, CaseIterable, Identifiable {
     case recovery = "Recovery"
     case base = "Base"
@@ -623,6 +630,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var activeRunStateLabel: String?
     @Published private(set) var liveRunBannerMessage: String?
     @Published private(set) var lastDetachedLiveRunSessionId: String?
+    @Published var launchMode: RunLaunchMode = .solo
     @Published var selectedAudioMode: RunAudioMode = .base
     @Published private(set) var spotifyConnected: Bool = false
     @Published private(set) var spotifyAppInstalled: Bool = false
@@ -812,7 +820,38 @@ final class JoggingViewModel: ObservableObject {
         if !runParticipants.contains(where: { $0.id == invited.id }) {
             runParticipants.append(invited)
         }
-        plannedRunStatusMessage = nil
+        launchMode = .crew
+        plannedRunStatusMessage = "Added \(invited.displayName) to your crew."
+    }
+
+    func removeInvitedParticipant(_ participantId: String) {
+        guard selectedLiveRunSessionId == nil, selectedUpcomingEventId == nil else {
+            plannedRunStatusMessage = "Revoke pending invites before joining or selecting a crew run."
+            return
+        }
+        guard let index = runParticipants.firstIndex(where: { $0.id == participantId && $0.status == .invited }) else { return }
+
+        let participant = runParticipants.remove(at: index)
+        if !inviteableFriends.contains(where: { $0.id == participant.id }) {
+            inviteableFriends.append(
+                RunParticipant(
+                    id: participant.id,
+                    displayName: participant.displayName,
+                    username: participant.username,
+                    status: .invited
+                )
+            )
+            inviteableFriends.sort {
+                $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            }
+        }
+
+        if !runParticipants.contains(where: { $0.status == .invited }),
+           selectedLiveRunSessionId == nil,
+           selectedUpcomingEventId == nil {
+            launchMode = .solo
+        }
+        plannedRunStatusMessage = "Invite for \(participant.displayName) revoked."
     }
 
     func createPlannedRun() {
