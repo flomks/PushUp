@@ -19,6 +19,8 @@ import com.pushup.domain.model.RunMode
 import com.pushup.domain.model.RunParticipantRole
 import com.pushup.domain.model.RunParticipantStatus
 import com.pushup.domain.model.RunVisibility
+import com.pushup.domain.model.AvatarVisibility
+import com.pushup.domain.model.User
 import com.pushup.domain.repository.RunEventRepository
 import com.pushup.domain.usecase.sync.NetworkMonitor
 import kotlinx.coroutines.CoroutineDispatcher
@@ -159,6 +161,7 @@ class RunEventRepositoryImpl(
         participants: List<RunEventParticipant>,
     ) {
         database.transaction {
+            ensureLocalUsersExist(event, participants)
             queries.insertRunEvent(
                 id = event.id,
                 createdBy = event.createdBy,
@@ -208,6 +211,51 @@ class RunEventRepositoryImpl(
             }
         }
     }
+
+    private fun ensureLocalUsersExist(
+        event: RunEvent,
+        participants: List<RunEventParticipant>,
+    ) {
+        val now = clock.now()
+        val requiredUserIds = buildSet {
+            add(event.createdBy)
+            participants.forEach { participant ->
+                add(participant.userId)
+                participant.invitedBy?.let(::add)
+            }
+        }
+
+        requiredUserIds.forEach { userId ->
+            val existing = queries.selectUserById(userId).executeAsOneOrNull()
+            if (existing == null) {
+                val stub = localStubUser(userId = userId, now = now)
+                queries.upsertUser(
+                    id = stub.id,
+                    email = stub.email,
+                    username = stub.username,
+                    displayName = stub.displayName,
+                    avatarUrl = stub.avatarUrl,
+                    avatarVisibility = stub.avatarVisibility.toDbValue(),
+                    createdAt = stub.createdAt.toEpochMilliseconds(),
+                    syncedAt = stub.lastSyncedAt.toEpochMilliseconds(),
+                )
+            }
+        }
+    }
+
+    private fun localStubUser(
+        userId: String,
+        now: Instant,
+    ): User = User(
+        id = userId,
+        email = "unknown+$userId@local.pushup",
+        username = null,
+        displayName = "Runner",
+        avatarUrl = null,
+        avatarVisibility = AvatarVisibility.EVERYONE,
+        createdAt = now,
+        lastSyncedAt = now,
+    )
 }
 
 private fun RunEvent.toCreateRequest(): CreateRunEventRequest = CreateRunEventRequest(
