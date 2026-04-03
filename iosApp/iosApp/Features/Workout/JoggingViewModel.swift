@@ -119,6 +119,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var lastDetachedLiveRunSessionId: String?
     @Published var selectedAudioMode: RunAudioMode = .base
     @Published private(set) var spotifyConnected: Bool = false
+    @Published private(set) var spotifyAppInstalled: Bool = false
     @Published private(set) var jamActive: Bool = false
     @Published private(set) var jamListenerCount: Int = 1
     @Published private(set) var jamHostDisplayName: String = "You"
@@ -132,6 +133,7 @@ final class JoggingViewModel: ObservableObject {
     // MARK: - Private
 
     let trackingManager: JoggingTrackingManager
+    private let spotifyService: SpotifyService
     private var cancellables = Set<AnyCancellable>()
     private var joggingObservationJob: Kotlinx_coroutines_coreJob?
     private var liveRunObservationJob: Kotlinx_coroutines_coreJob?
@@ -148,9 +150,14 @@ final class JoggingViewModel: ObservableObject {
 
     /// Creates a view model with the given tracking manager.
     /// Must be called from the main actor since JoggingTrackingManager is @MainActor-isolated.
-    init(trackingManager: JoggingTrackingManager) {
+    init(
+        trackingManager: JoggingTrackingManager,
+        spotifyService: SpotifyService = .shared
+    ) {
         self.trackingManager = trackingManager
+        self.spotifyService = spotifyService
         applyTrackPresetForMode()
+        refreshSpotifyState()
         observeTrackingManager()
         startSocialRefreshLoop()
         Task { await startDashboardObserving() }
@@ -160,7 +167,10 @@ final class JoggingViewModel: ObservableObject {
     /// Convenience initialiser that creates a default tracking manager.
     /// Must be called from the main actor.
     convenience init() {
-        self.init(trackingManager: JoggingTrackingManager())
+        self.init(
+            trackingManager: JoggingTrackingManager(),
+            spotifyService: .shared
+        )
     }
 
     // MARK: - Public API
@@ -319,8 +329,7 @@ final class JoggingViewModel: ObservableObject {
     }
 
     func connectSpotify() {
-        spotifyConnected = true
-        plannedRunStatusMessage = "Spotify ready for your next run."
+        Task { await connectSpotifyFlow() }
     }
 
     func cycleAudioMode() {
@@ -332,20 +341,22 @@ final class JoggingViewModel: ObservableObject {
     }
 
     func startJam() {
-        spotifyConnected = true
+        let opened = spotifyService.openModePreset(selectedAudioMode)
+        refreshSpotifyState()
         jamActive = true
         isCurrentUserInJam = true
         jamListenerCount = max(runParticipants.filter { $0.status == .running }.count, 1)
         jamHostDisplayName = currentUserDisplayName
-        showLiveRunBanner("Run Jam started on Spotify.")
+        showLiveRunBanner(opened ? "Run Jam started on Spotify." : "Run Jam started. Spotify handoff failed.")
     }
 
     func joinJam() {
-        spotifyConnected = true
+        let opened = spotifyService.openTrack(currentTrack)
+        refreshSpotifyState()
         jamActive = true
         isCurrentUserInJam = true
         jamListenerCount = max(jamListenerCount, max(runParticipants.filter { $0.status == .running }.count, 1))
-        showLiveRunBanner("You joined the Run Jam.")
+        showLiveRunBanner(opened ? "You joined the Run Jam." : "You joined the Run Jam without Spotify handoff.")
     }
 
     func leaveJam() {
@@ -359,6 +370,8 @@ final class JoggingViewModel: ObservableObject {
 
     func nextTrack() {
         applyTrackPresetForMode(advance: true)
+        _ = spotifyService.openTrack(currentTrack)
+        refreshSpotifyState()
     }
 
     func selectActiveRun(_ sessionId: String) {
@@ -406,7 +419,7 @@ final class JoggingViewModel: ObservableObject {
 
     var musicCardSubtitle: String {
         if !spotifyConnected {
-            return "Connect Spotify"
+            return "Open Spotify"
         }
         if jamActive {
             return isCurrentUserInJam ? "Jam live with \(jamListenerCount) runners" : "Jam active - join now"
@@ -420,7 +433,8 @@ final class JoggingViewModel: ObservableObject {
                 ? "Jam live • \(jamListenerCount) listening"
                 : "Jam active • hosted by \(jamHostDisplayName)"
         }
-        return spotifyConnected ? "Solo audio" : "Spotify disconnected"
+        if spotifyConnected { return "Spotify connected" }
+        return spotifyAppInstalled ? "Spotify app installed" : "Spotify web handoff"
     }
 
     var musicPrimaryActionTitle: String {
@@ -429,6 +443,15 @@ final class JoggingViewModel: ObservableObject {
             return isCurrentUserInJam ? "Leave Jam" : "Join Jam"
         }
         return selectedLiveRunSessionId != nil ? "Start Jam" : "Play Solo"
+    }
+
+    var spotifyProviderStatusLabel: String {
+        if spotifyConnected { return "Connected" }
+        return spotifyAppInstalled ? "App installed" : "Web fallback"
+    }
+
+    var spotifyConnectActionTitle: String {
+        spotifyConnected ? "Reconnect Spotify" : "Connect Spotify"
     }
 
     func upcomingRunPrimaryActionTitle(for run: UpcomingRunOption) -> String {
@@ -497,6 +520,26 @@ final class JoggingViewModel: ObservableObject {
             beginObservingLiveRun(sessionId: linkedLiveSessionId)
             startPresenceHeartbeat()
             startActiveSessionRefreshLoop(sessionId: linkedLiveSessionId)
+        }
+    }
+
+    private func refreshSpotifyState() {
+        spotifyConnected = spotifyService.hasValidSession()
+        spotifyAppInstalled = spotifyService.isSpotifyAppInstalled()
+    }
+
+    private func connectSpotifyFlow() async {
+        let result = await spotifyService.connect()
+        refreshSpotifyState()
+        switch result {
+        case .connected:
+            plannedRunStatusMessage = "Spotify connected for your next run."
+        case .openedExternal:
+            plannedRunStatusMessage = spotifyAppInstalled
+                ? "Opened Spotify. Add SpotifyClientID to enable in-app auth."
+                : "Opened Spotify on the web. Add SpotifyClientID to enable in-app auth."
+        case .unavailable(let message):
+            plannedRunStatusMessage = message
         }
     }
 

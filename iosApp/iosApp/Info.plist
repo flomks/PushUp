@@ -46,6 +46,12 @@
 	<key>GIDClientID</key>
 	<string>932071108818-rooftfsunvngflbn61geqkdtpf0vk3gv.apps.googleusercontent.com</string>
 
+	<!-- Spotify OAuth client ID.
+	     Leave empty to use external app/web handoff only.
+	     Set this to enable the in-app PKCE auth flow in SpotifyService. -->
+	<key>SpotifyClientID</key>
+	<string></string>
+
 	<!-- URL schemes for OAuth callbacks -->
 	<!-- Apple Sign-In uses the bundle ID as the URL scheme automatically -->
 	<!-- Google Sign-In redirect: reversed iOS client ID -->
@@ -72,6 +78,12 @@
 				<string>pushup</string>
 			</array>
 		</dict>
+	</array>
+
+	<!-- Allow canOpenURL checks for the Spotify app before opening deep links. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>spotify</string>
 	</array>
 
 	<!-- Background Modes: location updates for jogging GPS tracking.
