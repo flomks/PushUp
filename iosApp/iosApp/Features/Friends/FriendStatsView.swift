@@ -143,11 +143,19 @@ struct FriendStatsView: View {
     }
 
     private var overviewGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.sm) {
-            metricCard(title: "Activity Score", value: detailViewModel.stats.map { "\($0.activityPoints)" } ?? "--", icon: "bolt.fill", tint: AppColors.primary)
-            metricCard(title: "Sessions", value: detailViewModel.stats.map { "\($0.totalSessions)" } ?? "--", icon: "figure.mixed.cardio", tint: AppColors.info)
-            metricCard(title: "Earned Time", value: detailViewModel.stats.map { formatDuration(seconds: $0.totalEarnedSeconds) } ?? "--", icon: "clock.fill", tint: AppColors.secondary)
-            metricCard(title: "Form Quality", value: detailViewModel.stats.flatMap { $0.averageQuality }.map { "\(Int(($0 * 100).rounded()))%" } ?? "--", icon: "checkmark.seal.fill", tint: detailViewModel.stats.flatMap { $0.averageQuality }.map(AppColors.formScoreColor) ?? AppColors.textSecondary)
+        let stats = detailViewModel.stats
+        let averageQuality = stats?.averageQuality
+        let activityScoreValue = stats.map { "\($0.activityPoints)" } ?? "--"
+        let sessionsValue = stats.map { "\($0.totalSessions)" } ?? "--"
+        let earnedTimeValue = stats.map { formatDuration(seconds: $0.totalEarnedSeconds) } ?? "--"
+        let formQualityValue = averageQuality.map { "\(Int(($0 * 100).rounded()))%" } ?? "--"
+        let formQualityTint = averageQuality.map(AppColors.formScoreColor) ?? AppColors.textSecondary
+
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: AppSpacing.sm) {
+            metricCard(title: "Activity Score", value: activityScoreValue, icon: "bolt.fill", tint: AppColors.primary)
+            metricCard(title: "Sessions", value: sessionsValue, icon: "figure.mixed.cardio", tint: AppColors.info)
+            metricCard(title: "Earned Time", value: earnedTimeValue, icon: "clock.fill", tint: AppColors.secondary)
+            metricCard(title: "Form Quality", value: formQualityValue, icon: "checkmark.seal.fill", tint: formQualityTint)
         }
     }
 
