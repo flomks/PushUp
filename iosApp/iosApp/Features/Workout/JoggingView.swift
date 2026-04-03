@@ -2120,13 +2120,11 @@ struct JoggingView: View {
 
             // Current track / loading
             if viewModel.isLoadingModeQueue {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .tint(spotifyGreen)
-                    Text("Finding tracks...")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.5))
-                }
+                MotionLoadingRow(
+                    title: "Finding tracks...",
+                    subtitle: "Building a fresh queue for \(viewModel.selectedAudioMode.rawValue)",
+                    tint: spotifyGreen
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

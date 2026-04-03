@@ -132,6 +132,9 @@ final class JoggingTrackingManager: ObservableObject {
     /// Rolling window of (timestamp, speed m/s) observations for sustained-speed detection.
     private var recentSpeedObservations: [(timestamp: Date, speed: Double)] = []
 
+    private let speedValueStaleAfterSeconds: TimeInterval = 2.5
+    private let stationarySpeedThresholdMetersPerSecond: Double = 0.18
+
     // MARK: - Init
 
     init(
@@ -203,7 +206,7 @@ final class JoggingTrackingManager: ObservableObject {
             .sink { [weak self] locations in
                 guard let self else { return }
                 self.routeLocations = locations
-                self.currentSpeed = self.effectiveSpeedMetersPerSecond(latest: locations.last)
+                self.currentSpeed = self.displaySpeedMetersPerSecond(latest: locations.last, now: Date())
                 self.consumeLocations(locations)
 
                 // Record route point for the latest location
@@ -365,6 +368,9 @@ final class JoggingTrackingManager: ObservableObject {
                 self.sessionDuration = now.timeIntervalSince(start)
                 self.pauseDuration = self.currentPauseDuration(at: now)
                 self.activeDuration = max(0, self.sessionDuration - self.pauseDuration)
+
+                // Keep speed responsive even when GPS updates pause or drift values linger.
+                self.currentSpeed = self.displaySpeedMetersPerSecond(latest: self.routeLocations.last, now: now)
 
                 // Update pace
                 if self.activeDistanceMeters >= 100, self.activeDuration > 0 {
@@ -614,6 +620,18 @@ final class JoggingTrackingManager: ObservableObject {
         guard dt > 0.2 else { return 0 }
         let d = b.distance(from: a)
         return d / dt
+    }
+
+    private func displaySpeedMetersPerSecond(latest: CLLocation?, now: Date) -> Double {
+        guard isTracking, !isPaused, let latest else { return 0 }
+
+        let age = now.timeIntervalSince(latest.timestamp)
+        guard age <= speedValueStaleAfterSeconds else { return 0 }
+
+        let rawSpeed = effectiveSpeedMetersPerSecond(latest: latest)
+        guard rawSpeed.isFinite, rawSpeed >= stationarySpeedThresholdMetersPerSecond else { return 0 }
+
+        return rawSpeed
     }
 
     private func currentPauseDuration(at now: Date) -> TimeInterval {

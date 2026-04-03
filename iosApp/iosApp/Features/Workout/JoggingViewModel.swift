@@ -164,6 +164,15 @@ struct RunModeAudioParams {
     }
 }
 
+private struct RunAudioSearchProfile {
+    let anchorQueries: [String]
+    let moodQueries: [String]
+    let positiveKeywords: [String]
+    let secondaryKeywords: [String]
+    let negativeKeywords: [String]
+    let prefersHighEnergyEdits: Bool
+}
+
 @MainActor
 final class SpotifyService: NSObject {
 
@@ -297,6 +306,7 @@ final class SpotifyService: NSObject {
         let topTracks = try await fetchTopTracks(limit: 10)
         let artistBias = Array(Set(topTracks.flatMap(\.artists).map(\.name))).shuffled()
         let searchQueries = buildSearchQueries(for: params.mode, artistBias: artistBias, params: params)
+        let profile = params.mode.searchProfile
 
         let batches = try await withThrowingTaskGroup(of: [SpotifyTrackResponse].self) { group in
             for query in Array(searchQueries.prefix(4)) {
@@ -326,8 +336,20 @@ final class SpotifyService: NSObject {
                 )
             }
 
-        let deduplicated = Array(Dictionary(grouping: collected, by: \.uri).compactMap { $0.value.first }).shuffled()
-        guard !deduplicated.isEmpty else {
+        let deduplicated = Array(Dictionary(grouping: collected, by: \.uri).compactMap { $0.value.first })
+        let ranked = deduplicated
+            .map { track in (track: track, score: score(track: track, profile: profile)) }
+            .filter { $0.score > 0 }
+            .sorted {
+                if $0.score == $1.score {
+                    return $0.track.title < $1.track.title
+                }
+                return $0.score > $1.score
+            }
+            .map(\.track)
+
+        let finalTracks = ranked.isEmpty ? deduplicated.shuffled() : ranked
+        guard !finalTracks.isEmpty else {
             throw NSError(
                 domain: "SpotifyService",
                 code: 26,
@@ -335,7 +357,7 @@ final class SpotifyService: NSObject {
             )
         }
 
-        return Array(deduplicated.prefix(limit))
+        return Array(finalTracks.prefix(limit))
     }
 
     /// Starts playback of a specific track URI on the user's active device.
@@ -723,16 +745,47 @@ final class SpotifyService: NSObject {
     }
 
     private func buildSearchQueries(for mode: RunAudioMode, artistBias: [String], params: RunModeAudioParams) -> [String] {
+        let profile = mode.searchProfile
         let genreQueries = params.genreSeeds.prefix(2).map { "\"\($0)\" \(mode.searchQuery)" }
-        let artistQueries = artistBias.prefix(2).flatMap { artist in
-            mode.searchQueries.prefix(2).map { query in "\(query) artist:\"\(artist)\"" }
+        let artistQueries = artistBias.prefix(1).flatMap { artist in
+            profile.anchorQueries.prefix(1).map { query in "\(query) artist:\"\(artist)\"" }
         }
         let bpmQueries = [
             "\"\(Int(params.targetTempo.rounded())) bpm\" running",
             "\"\(Int(params.targetTempo.rounded())) bpm\" workout"
         ]
+        let moodQueries = profile.moodQueries.map { "\($0) run" }
 
-        return Array((mode.searchQueries + genreQueries + artistQueries + bpmQueries).uniqued().prefix(8))
+        return Array((profile.anchorQueries + moodQueries + genreQueries + artistQueries + bpmQueries).uniqued().prefix(8))
+    }
+
+    private func score(track: SpotifyRecommendedRunTrack, profile: RunAudioSearchProfile) -> Int {
+        let haystack = "\(track.title) \(track.artist)".lowercased()
+        var score = 0
+
+        for keyword in profile.positiveKeywords {
+            if haystack.contains(keyword) {
+                score += 4
+            }
+        }
+
+        for keyword in profile.secondaryKeywords {
+            if haystack.contains(keyword) {
+                score += 2
+            }
+        }
+
+        for keyword in profile.negativeKeywords {
+            if haystack.contains(keyword) {
+                score -= 5
+            }
+        }
+
+        if haystack.contains("remix") || haystack.contains("edit") {
+            score += profile.prefersHighEnergyEdits ? 2 : -1
+        }
+
+        return score
     }
 
     private func currentSpotifyMarket() -> String {
@@ -1026,6 +1079,7 @@ final class JoggingViewModel: ObservableObject {
     private var socialRefreshTimer: AnyCancellable?
     private var activeSessionRefreshTimer: AnyCancellable?
     private var spotifyRefreshTimer: AnyCancellable?
+    private var spotifyPlaybackVersion: Int = 0
     private var liveRunBannerResetTask: Task<Void, Never>?
     private var lastObservedLeaderUserId: String?
 
@@ -1041,6 +1095,9 @@ final class JoggingViewModel: ObservableObject {
         self.spotifyService = spotifyService
         applyTrackPresetForMode()
         refreshSpotifyState()
+        if spotifyConnected {
+            startSpotifyRefreshLoop()
+        }
         observeTrackingManager()
         startSocialRefreshLoop()
         Task { await startDashboardObserving() }
@@ -1090,7 +1147,6 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.stopTracking()
         stopPresenceHeartbeat()
         stopActiveSessionRefreshLoop()
-        stopSpotifyRefreshLoop()
         activeRunStateLabel = nil
         activeRunLeaderName = nil
         clearLiveRunBanner()
@@ -1312,8 +1368,9 @@ final class JoggingViewModel: ObservableObject {
 
     func nextTrack() {
         guard spotifyConnected else {
+            let version = beginSpotifyPlaybackMutation()
             advancePresetTrack(step: 1)
-            applyOptimisticNowPlaying(from: currentTrack)
+            applyOptimisticNowPlaying(from: currentTrack, version: version)
             _ = spotifyService.openTrack(currentTrack)
             return
         }
@@ -1330,13 +1387,15 @@ final class JoggingViewModel: ObservableObject {
                 }
             } else {
                 // No queue, just skip via API
+                let version = beginSpotifyPlaybackMutation()
                 let previousTitle = spotifyNowPlayingTitle
                 let previousArtist = spotifyNowPlayingArtist
                 do {
                     try await spotifyService.skipToNext()
                     await refreshPlaybackAfterTransportChange(
                         previousTitle: previousTitle,
-                        previousArtist: previousArtist
+                        previousArtist: previousArtist,
+                        version: version
                     )
                 } catch { }
             }
@@ -1345,8 +1404,9 @@ final class JoggingViewModel: ObservableObject {
 
     func previousTrack() {
         guard spotifyConnected else {
+            let version = beginSpotifyPlaybackMutation()
             advancePresetTrack(step: -1)
-            applyOptimisticNowPlaying(from: currentTrack)
+            applyOptimisticNowPlaying(from: currentTrack, version: version)
             _ = spotifyService.openTrack(currentTrack)
             return
         }
@@ -1355,13 +1415,15 @@ final class JoggingViewModel: ObservableObject {
                 modeQueueIndex -= 1
                 await playModeQueueTrack(at: modeQueueIndex)
             } else {
+                let version = beginSpotifyPlaybackMutation()
                 let previousTitle = spotifyNowPlayingTitle
                 let previousArtist = spotifyNowPlayingArtist
                 do {
                     try await spotifyService.skipToPrevious()
                     await refreshPlaybackAfterTransportChange(
                         previousTitle: previousTitle,
-                        previousArtist: previousArtist
+                        previousArtist: previousArtist,
+                        version: version
                     )
                 } catch { }
             }
@@ -1510,7 +1572,7 @@ final class JoggingViewModel: ObservableObject {
         if jamActive {
             return isCurrentUserInJam ? "Jam live with \(jamListenerCount) runners" : "Jam active - join now"
         }
-        return spotifyNowPlayingTitle ?? "No playback"
+        return spotifyPlaybackLabel
     }
 
     var jamStatusLabel: String {
@@ -1627,6 +1689,11 @@ final class JoggingViewModel: ObservableObject {
         spotifyConnected = spotifyService.hasValidSession()
         spotifyAppInstalled = spotifyService.isSpotifyAppInstalled()
         spotifyStatusDetail = spotifyService.sessionStatusDescription
+        if spotifyConnected {
+            startSpotifyRefreshLoop()
+        } else {
+            stopSpotifyRefreshLoop()
+        }
     }
 
     private func connectSpotifyFlow() async {
@@ -1637,9 +1704,6 @@ final class JoggingViewModel: ObservableObject {
             plannedRunStatusMessage = "Spotify connected for your next run."
             spotifyGeneratorStatusMessage = "Spotify connected. Generate a fresh run queue."
             await refreshSpotifyDetailsIfNeeded()
-            if phase == .active {
-                startSpotifyRefreshLoop()
-            }
         case .openedExternal:
             plannedRunStatusMessage = spotifyAppInstalled
                 ? "Opened Spotify. Add SpotifyClientID to enable in-app auth."
@@ -1656,6 +1720,7 @@ final class JoggingViewModel: ObservableObject {
     }
 
     private func refreshSpotifyDetailsIfNeeded(force: Bool = false) async {
+        let version = spotifyPlaybackVersion
         guard spotifyConnected else {
             if force {
                 spotifyAccountName = nil
@@ -1676,15 +1741,11 @@ final class JoggingViewModel: ObservableObject {
             async let profile = spotifyService.fetchProfile()
             async let playback = spotifyService.fetchPlaybackState()
             let (resolvedProfile, resolvedPlayback) = try await (profile, playback)
+            guard version == spotifyPlaybackVersion else { return }
             spotifyAccountName = resolvedProfile.displayName
             spotifyProductTier = resolvedProfile.product
             if let resolvedPlayback {
-                spotifyNowPlayingTitle = resolvedPlayback.trackTitle
-                spotifyNowPlayingArtist = resolvedPlayback.artistName
-                spotifyIsPlaying = resolvedPlayback.isPlaying
-                spotifyPlaybackLabel = resolvedPlayback.isPlaying
-                    ? "\(resolvedPlayback.trackTitle) - \(resolvedPlayback.artistName)"
-                    : "Paused: \(resolvedPlayback.trackTitle) - \(resolvedPlayback.artistName)"
+                applyPlaybackSnapshot(resolvedPlayback, version: version)
                 if let deviceName = resolvedPlayback.deviceName, !deviceName.isEmpty {
                     spotifyStatusDetail = "\(spotifyService.sessionStatusDescription) on \(deviceName)"
                 } else {
@@ -1953,7 +2014,7 @@ final class JoggingViewModel: ObservableObject {
         spotifyRefreshTimer = Timer.publish(every: 4, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                guard let self, self.phase == .active else { return }
+                guard let self else { return }
                 Task { await self.refreshSpotifyDetailsIfNeeded(force: true) }
             }
     }
@@ -2070,7 +2131,13 @@ final class JoggingViewModel: ObservableObject {
         }
     }
 
-    private func applyOptimisticNowPlaying(from track: RunTrack) {
+    private func beginSpotifyPlaybackMutation() -> Int {
+        spotifyPlaybackVersion += 1
+        return spotifyPlaybackVersion
+    }
+
+    private func applyOptimisticNowPlaying(from track: RunTrack, version: Int) {
+        guard version == spotifyPlaybackVersion else { return }
         spotifyNowPlayingTitle = track.title
         spotifyNowPlayingArtist = track.artist
         spotifyIsPlaying = true
@@ -2079,10 +2146,12 @@ final class JoggingViewModel: ObservableObject {
 
     private func refreshPlaybackAfterTransportChange(
         previousTitle: String?,
-        previousArtist: String?
+        previousArtist: String?,
+        version: Int
     ) async {
         let attempts = 8
         for attempt in 0..<attempts {
+            guard version == spotifyPlaybackVersion else { return }
             if attempt > 0 {
                 try? await Task.sleep(nanoseconds: 120_000_000)
             }
@@ -2091,12 +2160,7 @@ final class JoggingViewModel: ObservableObject {
                 if let playback = try await spotifyService.fetchPlaybackState() {
                     let trackChanged = playback.trackTitle != previousTitle || playback.artistName != previousArtist
                     if trackChanged || attempt == attempts - 1 {
-                        spotifyNowPlayingTitle = playback.trackTitle
-                        spotifyNowPlayingArtist = playback.artistName
-                        spotifyIsPlaying = playback.isPlaying
-                        spotifyPlaybackLabel = playback.isPlaying
-                            ? "\(playback.trackTitle) - \(playback.artistName)"
-                            : "Paused: \(playback.trackTitle) - \(playback.artistName)"
+                        applyPlaybackSnapshot(playback, version: version)
                         if let deviceName = playback.deviceName, !deviceName.isEmpty {
                             spotifyStatusDetail = "\(spotifyService.sessionStatusDescription) on \(deviceName)"
                         } else {
@@ -2111,6 +2175,16 @@ final class JoggingViewModel: ObservableObject {
         }
 
         await refreshSpotifyDetailsIfNeeded(force: true)
+    }
+
+    private func applyPlaybackSnapshot(_ playback: SpotifyPlaybackSnapshot, version: Int) {
+        guard version == spotifyPlaybackVersion else { return }
+        spotifyNowPlayingTitle = playback.trackTitle
+        spotifyNowPlayingArtist = playback.artistName
+        spotifyIsPlaying = playback.isPlaying
+        spotifyPlaybackLabel = playback.isPlaying
+            ? "\(playback.trackTitle) - \(playback.artistName)"
+            : "Paused: \(playback.trackTitle) - \(playback.artistName)"
     }
 
     private func rememberGeneratedTracks(_ tracks: [SpotifyRecommendedRunTrack]) {
@@ -2164,11 +2238,12 @@ final class JoggingViewModel: ObservableObject {
 
     private func playModeQueueTrack(at index: Int) async {
         guard index < modeQueue.count else { return }
+        let version = beginSpotifyPlaybackMutation()
         let track = modeQueue[index]
         let params = RunModeAudioParams.params(for: selectedAudioMode)
         let bpmLabel = "\(Int(params.targetTempo)) BPM • \(selectedAudioMode.rawValue)"
         currentTrack = RunTrack(title: track.title, artist: track.artist, vibe: bpmLabel)
-        applyOptimisticNowPlaying(from: currentTrack)
+        applyOptimisticNowPlaying(from: currentTrack, version: version)
 
         do {
             try await spotifyService.playTrack(uri: track.uri)
