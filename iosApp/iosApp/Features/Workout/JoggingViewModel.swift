@@ -83,16 +83,20 @@ private struct SpotifyPlaybackResponse: Decodable {
 }
 
 private struct SpotifyTrackResponse: Decodable {
+    let id: String?
     let name: String
     let uri: String?
     let artists: [SpotifyArtistResponse]
+    let isPlayable: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case name, uri, artists
+        case id, name, uri, artists
+        case isPlayable = "is_playable"
     }
 }
 
 private struct SpotifyArtistResponse: Decodable {
+    let id: String?
     let name: String
 }
 
@@ -114,19 +118,15 @@ private struct SpotifyAvailableDevicesResponse: Decodable {
     let devices: [SpotifyDeviceResponse]
 }
 
-private struct SpotifySearchResponse: Decodable {
-    let tracks: SpotifySearchTracksPage
-}
-
-private struct SpotifySearchTracksPage: Decodable {
-    let items: [SpotifyTrackResponse]
+private struct SpotifyRecommendationsResponse: Decodable {
+    let tracks: [SpotifyTrackResponse]
 }
 
 private struct SpotifyTopTracksResponse: Decodable {
     let items: [SpotifyTrackResponse]
 }
 
-/// A real Spotify track fetched from the Spotify search API.
+/// A real Spotify track fetched from the Spotify recommendations API.
 struct SpotifyRecommendedRunTrack: Identifiable, Equatable {
     let id: String          // Spotify URI
     let title: String
@@ -275,7 +275,7 @@ final class SpotifyService: NSObject {
         )
     }
 
-    // MARK: - Search Based Generator
+    // MARK: - Recommendations Generator
 
     /// Fetches the user's top tracks so search queries can be biased toward familiar artists.
     private func fetchTopTracks(limit: Int = 5) async throws -> [SpotifyTrackResponse] {
@@ -288,49 +288,43 @@ final class SpotifyService: NSObject {
         return payload.items
     }
 
-    /// Generates tracks for the selected run mode using Spotify search.
+    /// Generates tracks for the selected run mode using Spotify recommendations.
     func fetchRecommendations(params: RunModeAudioParams, limit: Int = 20) async throws -> [SpotifyRecommendedRunTrack] {
         let topTracks = try await fetchTopTracks(limit: 10)
-        let artistBias = Array(Set(topTracks.flatMap(\.artists).map(\.name))).shuffled()
-        let searchQueries = buildSearchQueries(for: params.mode, artistBias: artistBias)
+        let trackSeeds = Array(topTracks.compactMap(\.id).shuffled().prefix(2))
+        let artistSeeds = Array(Set(topTracks.flatMap(\.artists).compactMap(\.id)).shuffled().prefix(2))
+        let genreSeed = params.genreSeeds.randomElement().map { [$0] } ?? []
 
-        var collected = [SpotifyRecommendedRunTrack]()
-        var seenURIs = Set<String>()
-        var lastError: Error?
-
-        for query in searchQueries {
-            do {
-                let offset = Int.random(in: 0...15)
-                let tracks = try await searchTracks(query: query, limit: 10, offset: offset)
-                for track in tracks.shuffled() {
-                    guard let uri = track.uri, !uri.isEmpty, !seenURIs.contains(uri) else { continue }
-                    seenURIs.insert(uri)
-                    collected.append(
-                        SpotifyRecommendedRunTrack(
-                            id: uri,
-                            title: track.name,
-                            artist: track.artists.map(\.name).joined(separator: ", "),
-                            uri: uri
-                        )
-                    )
-                    if collected.count >= limit {
-                        return collected
-                    }
-                }
-            } catch {
-                lastError = error
-            }
-        }
-
-        if !collected.isEmpty {
-            return collected
-        }
-
-        throw lastError ?? NSError(
-            domain: "SpotifyService",
-            code: 26,
-            userInfo: [NSLocalizedDescriptionKey: "Spotify search returned no matching tracks for this run mode."]
+        let queryItems = recommendationQueryItems(
+            params: params,
+            limit: limit,
+            trackSeeds: trackSeeds,
+            artistSeeds: artistSeeds,
+            genreSeeds: genreSeed
         )
+
+        let payload = try await fetchRecommendations(queryItems: queryItems)
+        let collected = payload.tracks.compactMap { track -> SpotifyRecommendedRunTrack? in
+            guard let uri = track.uri, !uri.isEmpty else { return nil }
+            if track.isPlayable == false { return nil }
+            return SpotifyRecommendedRunTrack(
+                id: uri,
+                title: track.name,
+                artist: track.artists.map(\.name).joined(separator: ", "),
+                uri: uri
+            )
+        }
+
+        let deduplicated = Array(Dictionary(grouping: collected, by: \.uri).compactMap { $0.value.first }).shuffled()
+        guard !deduplicated.isEmpty else {
+            throw NSError(
+                domain: "SpotifyService",
+                code: 26,
+                userInfo: [NSLocalizedDescriptionKey: "Spotify recommendations returned no playable tracks for this run mode."]
+            )
+        }
+
+        return deduplicated
     }
 
     /// Starts playback of a specific track URI on the user's active device.
@@ -699,29 +693,48 @@ final class SpotifyService: NSObject {
         return Data(body.utf8)
     }
 
-    private func searchTracks(query: String, limit: Int, offset: Int) async throws -> [SpotifyTrackResponse] {
+    private func fetchRecommendations(queryItems: [URLQueryItem]) async throws -> SpotifyRecommendationsResponse {
         var components = URLComponents()
-        components.path = "/v1/search"
-        components.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "type", value: "track"),
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "offset", value: String(offset))
-        ]
+        components.path = "/v1/recommendations"
+        components.queryItems = queryItems
 
-        let request = try await authorizedRequest(path: components.string ?? "/v1/search")
+        let request = try await authorizedRequest(path: components.string ?? "/v1/recommendations")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
-        let payload = try JSONDecoder().decode(SpotifySearchResponse.self, from: data)
-        return payload.tracks.items
+        return try JSONDecoder().decode(SpotifyRecommendationsResponse.self, from: data)
     }
 
-    private func buildSearchQueries(for mode: RunAudioMode, artistBias: [String]) -> [String] {
-        let artistTerms = artistBias.prefix(2).map { "artist:\"\($0)\"" }
-        let biasedQueries = mode.searchQueries.prefix(2).flatMap { query in
-            artistTerms.map { artist in "\(query) \(artist)" }
+    private func recommendationQueryItems(
+        params: RunModeAudioParams,
+        limit: Int,
+        trackSeeds: [String],
+        artistSeeds: [String],
+        genreSeeds: [String]
+    ) -> [URLQueryItem] {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+
+        if !trackSeeds.isEmpty {
+            items.append(URLQueryItem(name: "seed_tracks", value: trackSeeds.joined(separator: ",")))
         }
-        return Array((mode.searchQueries + biasedQueries + ["workout", "running", "cardio"]).uniqued().prefix(8))
+        if !artistSeeds.isEmpty {
+            items.append(URLQueryItem(name: "seed_artists", value: artistSeeds.joined(separator: ",")))
+        }
+        if !genreSeeds.isEmpty {
+            items.append(URLQueryItem(name: "seed_genres", value: genreSeeds.joined(separator: ",")))
+        }
+
+        items.append(URLQueryItem(name: "market", value: currentSpotifyMarket()))
+        items.append(URLQueryItem(name: "target_tempo", value: String(Int(params.targetTempo.rounded()))))
+        items.append(URLQueryItem(name: "min_tempo", value: String(Int(params.minTempo.rounded()))))
+        items.append(URLQueryItem(name: "max_tempo", value: String(Int(params.maxTempo.rounded()))))
+        items.append(URLQueryItem(name: "target_energy", value: String(params.targetEnergy)))
+        items.append(URLQueryItem(name: "target_valence", value: String(params.targetValence)))
+
+        return items
+    }
+
+    private func currentSpotifyMarket() -> String {
+        Locale.current.regionCode ?? "US"
     }
 
     private static let scopes = [
@@ -2235,14 +2248,14 @@ final class JoggingViewModel: ObservableObject {
     }
 
     var stopConfirmationTitle: String {
-        distanceMeters > 0 ? "End Run?" : "End Run Without Saving?"
+        distanceMeters > 0 ? "End Run?" : "Discard Empty Run?"
     }
 
     var stopConfirmationMessage: String {
         if distanceMeters > 0 {
             return "Are you sure you want to end your run?"
         }
-        return "This session has 0 m distance and will not count as a run or be saved to your history."
+        return "No activity was recorded for this run. If you end it now, the session will not be saved to your history."
     }
 
     var completedRunCounts: Bool {

@@ -29,6 +29,8 @@ struct JoggingView: View {
     @State private var isFollowingRunner = false
     @State private var isCurrentMarkerPulsing = false
     @State private var musicWidgetSwipeOffset: CGFloat = 0
+    @State private var spotifyRefreshButtonRotation: Double = 0
+    @State private var isSpotifyRefreshButtonPressed = false
 #if DEBUG
     /// Temporary: simulates 0→1000 m for ring + DIST only; remove when no longer needed.
 #endif
@@ -921,6 +923,20 @@ struct JoggingView: View {
         }
     }
 
+    private func animateSpotifyRefreshButton() {
+        withAnimation(.easeOut(duration: 0.10)) {
+            isSpotifyRefreshButtonPressed = true
+        }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+            spotifyRefreshButtonRotation -= 180
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            withAnimation(.easeOut(duration: 0.14)) {
+                isSpotifyRefreshButtonPressed = false
+            }
+        }
+    }
+
 // MARK: - Route Map
 
     private var displayRouteCoordinates: [CLLocationCoordinate2D] {
@@ -1691,7 +1707,7 @@ struct JoggingView: View {
                     .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 18) {
                         spotifyConnectionHeader
                         nowPlayingCard
                         playbackControls
@@ -1711,11 +1727,20 @@ struct JoggingView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
+                        animateSpotifyRefreshButton()
                         viewModel.refreshSpotifyDetails()
                     } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color.white.opacity(0.82))
+                        ZStack {
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(isSpotifyRefreshButtonPressed ? 0.14 : 0.08))
+                                .frame(width: 34, height: 28)
+
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.white.opacity(0.86))
+                                .rotationEffect(.degrees(spotifyRefreshButtonRotation))
+                                .scaleEffect(isSpotifyRefreshButtonPressed ? 0.92 : 1.0)
+                        }
                     }
                     .buttonStyle(.plain)
                 }
