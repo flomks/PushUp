@@ -3267,6 +3267,10 @@ private final class RecentRunDetailViewModel: ObservableObject {
         pointTimeFormatter.string(from: Date(timeIntervalSince1970: Double(epochSeconds)))
     }
 
+    private static func formatDistance(_ meters: Double) -> String {
+        RecentRunDetailSheet.formatDistance(meters)
+    }
+
     private static let pointTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
