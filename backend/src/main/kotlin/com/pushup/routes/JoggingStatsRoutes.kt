@@ -1,6 +1,7 @@
 package com.pushup.routes
 
 import com.pushup.models.ErrorResponse
+import com.pushup.plugins.JWT_AUTH
 import com.pushup.service.JoggingStatsService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.auth.authenticate
@@ -23,7 +24,7 @@ import java.util.UUID
  * - GET /api/jogging/sessions/{id}/route -- Route points for a specific session
  */
 fun Route.joggingStatsRoutes(service: JoggingStatsService) {
-    authenticate("supabase-jwt") {
+    authenticate(JWT_AUTH) {
         route("/api/jogging") {
 
             // GET /api/jogging/stats/total
