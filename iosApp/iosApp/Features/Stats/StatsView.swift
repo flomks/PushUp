@@ -267,9 +267,16 @@ struct StatsView: View {
                 showExportSheet = true
             } label: {
                 Image(systemName: AppIcon.squareAndArrowUp.rawValue)
-                    .font(.system(size: AppSpacing.iconSizeSmall, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppColors.primary)
+                    .frame(width: 38, height: 38)
+                    .background(Color.white.opacity(0.06), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
             }
+            .buttonStyle(ScaleButtonStyle())
             .accessibilityLabel("Export Stats")
         }
     }

@@ -3,93 +3,129 @@ import Testing
 
 @testable import iosApp
 
-// MARK: - DashboardWidgetLayoutCodingTests
+// MARK: - DashboardItemCodingTests
 
-@Suite("DashboardWidgetLayoutCoding")
-struct DashboardWidgetLayoutCodingTests {
+@Suite("DashboardItemCoding")
+struct DashboardItemCodingTests {
 
-    @Test("parse JSON array preserves order and deduplicates")
-    func parseDedupes() {
+    @Test("parse flat JSON array of widget strings")
+    func parseFlatArray() {
         let json = #"["timeCredit","nope","timeCredit","dailyStats"]"#
-        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: json)
-        #expect(w == [.timeCredit, .dailyStats])
+        let items = DashboardItemCoding.items(fromJsonUtf8: json)
+        #expect(items.count == 2)
+        if case .widget(let k1) = items[0] { #expect(k1 == .timeCredit) }
+        if case .widget(let k2) = items[1] { #expect(k2 == .dailyStats) }
     }
 
-    @Test("parse invalid JSON falls back to default order")
+    @Test("parse invalid JSON falls back to default items")
     func parseInvalidFallback() {
-        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: "not-json")
-        #expect(w == DashboardWidgetKind.defaultOrder)
+        let items = DashboardItemCoding.items(fromJsonUtf8: "not-json")
+        #expect(items == DashboardItemCoding.defaultItems)
     }
 
-    @Test("encode then decode round-trip")
-    func encodeRoundTrip() {
-        let original = [DashboardWidgetKind.weeklyChart, DashboardWidgetKind.timeCredit]
-        let str = DashboardWidgetLayoutCoding.jsonString(from: original)
-        #expect(str != nil)
-        let back = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: str!)
-        #expect(back == original)
+    @Test("parse grid object inside array")
+    func parseGrid() {
+        let json = #"["timeCredit",{"grid":"1x2","slots":["pushUpsThisWeek","streakCurrent"]},"dailyStats"]"#
+        let items = DashboardItemCoding.items(fromJsonUtf8: json)
+        #expect(items.count == 3)
+        if case .widget(let k1) = items[0] { #expect(k1 == .timeCredit) }
+        if case .grid(_, let size, let slots) = items[1] {
+            #expect(size == .oneByTwo)
+            #expect(slots == [.pushUpsThisWeek, .streakCurrent])
+        } else {
+            Issue.record("Expected grid item at index 1")
+        }
+        if case .widget(let k3) = items[2] { #expect(k3 == .dailyStats) }
     }
 
-    @Test("new dashboard widget kinds round-trip JSON")
-    func newKindsRoundTrip() {
-        let original: [DashboardWidgetKind] = [
-            .pushUpsThisWeek, .runDistanceWeek, .streakCurrent, .shortcutStats, .creditEarnedToday,
+    @Test("parse 2x2 grid with null slots")
+    func parse2x2GridWithNulls() {
+        let json = #"[{"grid":"2x2","slots":["pushUpsThisWeek",null,"streakCurrent",null]}]"#
+        let items = DashboardItemCoding.items(fromJsonUtf8: json)
+        #expect(items.count == 1)
+        if case .grid(_, let size, let slots) = items[0] {
+            #expect(size == .twoByTwo)
+            #expect(slots.count == 4)
+            #expect(slots[0] == .pushUpsThisWeek)
+            #expect(slots[1] == nil)
+            #expect(slots[2] == .streakCurrent)
+            #expect(slots[3] == nil)
+        } else {
+            Issue.record("Expected grid item")
+        }
+    }
+
+    @Test("encode then decode round-trip with grids")
+    func encodeRoundTripGrid() {
+        let original: [DashboardItem] = [
+            .widget(.weeklyChart),
+            .grid(id: UUID(), size: .oneByTwo, slots: [.pushUpsThisWeek, .streakCurrent]),
+            .widget(.timeCredit),
         ]
-        let str = DashboardWidgetLayoutCoding.jsonString(from: original)
+        let str = DashboardItemCoding.jsonString(from: original)
         #expect(str != nil)
-        let back = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: str!)
-        #expect(back == original)
+        let back = DashboardItemCoding.items(fromJsonUtf8: str!)
+        #expect(back.count == 3)
+        if case .widget(let k) = back[0] { #expect(k == .weeklyChart) }
+        if case .grid(_, let size, let slots) = back[1] {
+            #expect(size == .oneByTwo)
+            #expect(slots == [.pushUpsThisWeek, .streakCurrent])
+        }
+        if case .widget(let k) = back[2] { #expect(k == .timeCredit) }
     }
 
-    @Test("default order stays the original six core widgets")
-    func defaultOrderIsCoreOnly() {
-        #expect(DashboardWidgetKind.defaultOrder.count == 6)
-        #expect(DashboardWidgetKind.defaultOrder.contains(.timeCredit))
-        #expect(DashboardWidgetKind.defaultOrder.contains(.workoutQuickAction))
-        #expect(DashboardWidgetKind.allCases.count > DashboardWidgetKind.defaultOrder.count)
-    }
-
-    @Test("empty JSON array stays empty (shows empty dashboard UI)")
+    @Test("empty JSON array stays empty")
     func parseEmptyArray() {
-        let w = DashboardWidgetLayoutCoding.widgets(fromJsonUtf8: "[]")
-        #expect(w.isEmpty)
-        let encoded = DashboardWidgetLayoutCoding.jsonString(from: [])
+        let items = DashboardItemCoding.items(fromJsonUtf8: "[]")
+        #expect(items.isEmpty)
+        let encoded = DashboardItemCoding.jsonString(from: [])
         #expect(encoded == "[]")
     }
 
-    @Test("legacy UserDefaults Data decodes like JSON Data")
-    func legacyData() {
-        let data = try! JSONEncoder().encode(["screenTime", "workoutQuickAction"])
-        let w = DashboardWidgetLayoutCoding.widgets(fromLegacyDefaultsData: data)
-        #expect(w == [.screenTime, .workoutQuickAction])
+    @Test("default items match default widget order")
+    func defaultItems() {
+        #expect(DashboardItemCoding.defaultItems.count == DashboardWidgetKind.defaultOrder.count)
+    }
+
+    @Test("grid deduplicates widgets already used standalone")
+    func gridDeduplicatesWithStandalone() {
+        let json = #"["pushUpsThisWeek",{"grid":"1x2","slots":["pushUpsThisWeek","streakCurrent"]}]"#
+        let items = DashboardItemCoding.items(fromJsonUtf8: json)
+        #expect(items.count == 2)
+        if case .grid(_, _, let slots) = items[1] {
+            // pushUpsThisWeek already used as standalone, so grid slot should be nil
+            #expect(slots[0] == nil)
+            #expect(slots[1] == .streakCurrent)
+        }
     }
 }
 
-// MARK: - DashboardLayoutStore static load (guest / tests)
+// MARK: - DashboardWidgetKind grid eligibility
 
-@Suite("DashboardLayoutStore.load legacy")
-struct DashboardLayoutStoreLoadTests {
+@Suite("DashboardWidgetKind.isGridEligible")
+struct DashboardWidgetKindGridTests {
 
-    private func isolatedDefaults() -> (UserDefaults, String, String) {
-        let suite = "test.DashboardLayoutLegacy.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suite) else {
-            preconditionFailure("UserDefaults(suiteName:) returned nil")
-        }
-        defaults.removePersistentDomain(forName: suite)
-        let key = "legacy.widgets"
-        return (defaults, key, suite)
+    @Test("core widgets are not grid-eligible")
+    func coreNotEligible() {
+        #expect(!DashboardWidgetKind.timeCredit.isGridEligible)
+        #expect(!DashboardWidgetKind.screenTime.isGridEligible)
+        #expect(!DashboardWidgetKind.dailyStats.isGridEligible)
+        #expect(!DashboardWidgetKind.weeklyChart.isGridEligible)
+        #expect(!DashboardWidgetKind.activitySummary.isGridEligible)
+        #expect(!DashboardWidgetKind.workoutQuickAction.isGridEligible)
     }
 
-    @Test("load reads encoded widget order from UserDefaults data")
-    @MainActor
-    func loadFromDefaultsData() {
-        let (defaults, key, suite) = isolatedDefaults()
-        defer { defaults.removePersistentDomain(forName: suite) }
+    @Test("mini-stat widgets are grid-eligible")
+    func miniStatsEligible() {
+        #expect(DashboardWidgetKind.pushUpsThisWeek.isGridEligible)
+        #expect(DashboardWidgetKind.streakCurrent.isGridEligible)
+        #expect(DashboardWidgetKind.runDistanceWeek.isGridEligible)
+        #expect(DashboardWidgetKind.creditEarnedToday.isGridEligible)
+    }
 
-        let data = try! JSONEncoder().encode(["dailyStats", "weeklyChart"])
-        defaults.set(data, forKey: key)
-
-        let loaded = DashboardLayoutStore.load(from: defaults, key: key)
-        #expect(loaded == [.dailyStats, .weeklyChart])
+    @Test("shortcut widgets are grid-eligible")
+    func shortcutsEligible() {
+        #expect(DashboardWidgetKind.shortcutStats.isGridEligible)
+        #expect(DashboardWidgetKind.shortcutProfile.isGridEligible)
     }
 }

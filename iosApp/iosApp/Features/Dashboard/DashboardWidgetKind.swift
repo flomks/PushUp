@@ -102,6 +102,18 @@ enum DashboardWidgetKind: String, CaseIterable, Hashable {
         }
     }
 
+    /// Whether this widget can be placed inside a dashboard grid cell.
+    /// Only compact / stat widgets qualify — content-heavy widgets need full width.
+    var isGridEligible: Bool {
+        switch self {
+        case .timeCredit, .screenTime, .dailyStats, .weeklyChart,
+             .activitySummary, .workoutQuickAction:
+            return false
+        default:
+            return true
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .timeCredit: return "clock.arrow.circlepath"

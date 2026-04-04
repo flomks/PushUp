@@ -11,6 +11,8 @@ import SwiftUI
 ///
 /// Widgets can be reordered, removed, and added. Layout is stored in
 /// `UserSettings` (local SQLite + Supabase `user_settings`), like other account settings.
+///
+/// Grids (1×2 and 2×2) allow placing compact stat widgets side by side.
 struct DashboardView: View {
 
     @ObservedObject var viewModel: DashboardViewModel
@@ -25,6 +27,7 @@ struct DashboardView: View {
     @State private var showAddWidgetSheet = false
     @State private var isDraggingWidget = false
     @State private var dashboardScrollView: UIScrollView? = nil
+    @State private var gridSlotSelection: GridSlotSelection?
 
     private var showError: Binding<Bool> {
         Binding(
@@ -84,6 +87,13 @@ struct DashboardView: View {
         .sheet(isPresented: $showAddWidgetSheet) {
             DashboardAddWidgetsSheet(layoutStore: layoutStore)
         }
+        .sheet(item: $gridSlotSelection) { selection in
+            GridSlotPickerSheet(
+                layoutStore: layoutStore,
+                gridId: selection.gridId,
+                slotIndex: selection.slotIndex
+            )
+        }
         .alert("Error", isPresented: showError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -102,19 +112,19 @@ struct DashboardView: View {
             VStack(spacing: 0) {
                 Color.clear.frame(height: AppSpacing.sm)
 
-                if layoutStore.orderedWidgets.isEmpty {
+                if layoutStore.orderedItems.isEmpty {
                     emptyDashboardCard
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, AppSpacing.md)
                         .padding(.bottom, AppSpacing.md)
                 } else {
                     ReorderableWidgetList(
-                        widgets: $layoutStore.orderedWidgets,
+                        items: $layoutStore.orderedItems,
                         isDragging: $isDraggingWidget,
                         isEditing: editMode.isEditing,
                         onPersist: { layoutStore.schedulePersistAfterReorder() },
                         onDelete: { index in
-                            layoutStore.remove(atOffsets: IndexSet(integer: index))
+                            layoutStore.removeItem(at: index)
                             DashboardHaptics.mediumImpact()
                         },
                         onEdgeScroll: { delta in
@@ -127,25 +137,16 @@ struct DashboardView: View {
                             return newY - oldY
                         },
                         listGlobalOriginY: {
-                            // Screen Y of the ReorderableWidgetList's VStack origin.
-                            // sv.convert(.zero, to: nil).y already gives the screen Y
-                            // of content point (0,0) — it accounts for contentOffset
-                            // internally. Adding the spacer offset (AppSpacing.sm) gives
-                            // the VStack's actual origin on screen.
                             guard let sv = dashboardScrollView else { return 0 }
                             return sv.convert(CGPoint(x: 0, y: AppSpacing.sm), to: nil).y
                         }
-                    ) { kind in
-                        widgetView(for: kind)
+                    ) { item in
+                        itemView(for: item)
                     }
                 }
 
                 Color.clear.frame(height: AppSpacing.screenVerticalBottom)
             }
-            // Must be inside the ScrollView content so FinderView sits inside the UIScrollView
-            // hierarchy – walking up via superview then finds the UIScrollView.
-            // Placing it as .background on the ScrollView itself makes FinderView a sibling of
-            // the UIScrollView, so the superview walk never reaches it and dashboardScrollView stays nil.
             .background(
                 UIScrollViewAccessor { sv in dashboardScrollView = sv }
                     .frame(width: 0, height: 0)
@@ -191,7 +192,31 @@ struct DashboardView: View {
         .padding(.horizontal, AppSpacing.screenHorizontal)
     }
 
-    // MARK: - Widgets
+    // MARK: - Item View Dispatch
+
+    @ViewBuilder
+    private func itemView(for item: DashboardItem) -> some View {
+        switch item {
+        case .widget(let kind):
+            widgetView(for: kind)
+        case .grid(_, let size, let slots):
+            DashboardGridWidget(
+                size: size,
+                slots: slots,
+                isEditing: editMode.isEditing,
+                onAddToSlot: { slotIndex in
+                    gridSlotSelection = GridSlotSelection(gridId: item.id, slotIndex: slotIndex)
+                },
+                onRemoveFromSlot: { slotIndex in
+                    layoutStore.clearGridSlot(gridId: item.id, slotIndex: slotIndex)
+                }
+            ) { kind in
+                gridCellView(for: kind)
+            }
+        }
+    }
+
+    // MARK: - Widgets (full-size)
 
     @ViewBuilder
     private func widgetView(for kind: DashboardWidgetKind) -> some View {
@@ -376,6 +401,95 @@ struct DashboardView: View {
             DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .friends, selectedTab: $selectedTab)
         case .shortcutSettings:
             DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .settings, selectedTab: $selectedTab)
+        }
+    }
+
+    // MARK: - Grid Cells (compact)
+
+    @ViewBuilder
+    private func gridCellView(for kind: DashboardWidgetKind) -> some View {
+        switch kind {
+        // Push-ups & strength
+        case .pushUpsThisWeek:
+            GridMiniStatCell(title: "Push-ups", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.pushUpsWeek)", subtitle: "This week")
+        case .pushUpsThisMonth:
+            GridMiniStatCell(title: "Push-ups", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.pushUpsMonth)", subtitle: "This month")
+        case .pushUpsAllTime:
+            GridMiniStatCell(title: "Push-ups", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.pushUpsAllTime)", subtitle: "All time")
+        case .pushUpSessionsWeek:
+            GridMiniStatCell(title: "Sessions", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.pushUpSessionsWeek)", subtitle: "Strength / week")
+        case .bestPushUpSession:
+            GridMiniStatCell(title: "Best session", systemImage: kind.systemImage,
+                             value: viewModel.widgetMetrics.bestPushUpSession > 0
+                                ? "\(viewModel.widgetMetrics.bestPushUpSession)" : "—",
+                             subtitle: "Reps record")
+        case .averageFormWeek:
+            GridMiniStatCell(title: "Avg form", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.percentString(viewModel.widgetMetrics.averageFormWeek),
+                             subtitle: "This week")
+        case .streakCurrent:
+            GridMiniStatCell(title: "Streak", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.streakCurrentDays)", subtitle: "Current days")
+        case .streakBest:
+            GridMiniStatCell(title: "Best streak", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.streakLongestDays)", subtitle: "Record days")
+
+        // Running
+        case .runDistanceToday:
+            GridMiniStatCell(title: "Run today", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceTodayMeters))
+        case .runDistanceWeek:
+            GridMiniStatCell(title: "Run week", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceWeekMeters))
+        case .runDistanceMonth:
+            GridMiniStatCell(title: "Run month", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceMonthMeters))
+        case .runDistanceAllTime:
+            GridMiniStatCell(title: "Run total", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.distanceLabel(meters: viewModel.widgetMetrics.runDistanceAllTimeMeters))
+        case .runSessionsWeek:
+            GridMiniStatCell(title: "Runs", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.runSessionsWeek)", subtitle: "This week")
+
+        // Time credit compact
+        case .creditEarnedToday:
+            GridMiniStatCell(title: "Earned", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.minutesFromSeconds(viewModel.dailyEarnedSeconds), subtitle: "Today")
+        case .creditSpentToday:
+            GridMiniStatCell(title: "Spent", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.minutesFromSeconds(viewModel.dailySpentSeconds), subtitle: "Today")
+        case .creditTotalEarned:
+            GridMiniStatCell(title: "Total earned", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.hoursMinutesFromSeconds(viewModel.totalEarnedSeconds))
+        case .creditLifetimeSpent:
+            GridMiniStatCell(title: "Total spent", systemImage: kind.systemImage,
+                             value: DashboardMetricFormatting.hoursMinutesFromSeconds(viewModel.totalSpentSeconds))
+
+        // Combined
+        case .activeMinutesWeek:
+            GridMiniStatCell(title: "Active", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.activeMinutesWeek) min", subtitle: "This week")
+        case .allSessionsWeek:
+            GridMiniStatCell(title: "Sessions", systemImage: kind.systemImage,
+                             value: "\(viewModel.widgetMetrics.totalSessionsWeek)", subtitle: "All types / week")
+
+        // Shortcuts
+        case .shortcutStats:
+            GridShortcutCell(title: kind.title, systemImage: kind.systemImage, tab: .stats, selectedTab: $selectedTab)
+        case .shortcutProfile:
+            GridShortcutCell(title: kind.title, systemImage: kind.systemImage, tab: .profile, selectedTab: $selectedTab)
+        case .shortcutFriends:
+            GridShortcutCell(title: kind.title, systemImage: kind.systemImage, tab: .friends, selectedTab: $selectedTab)
+        case .shortcutSettings:
+            GridShortcutCell(title: kind.title, systemImage: kind.systemImage, tab: .settings, selectedTab: $selectedTab)
+
+        // Full-size widgets should not appear in grids, but handle gracefully
+        default:
+            GridMiniStatCell(title: kind.title, systemImage: kind.systemImage, value: "—")
         }
     }
 
@@ -569,6 +683,14 @@ struct DashboardView: View {
     }
 }
 
+// MARK: - GridSlotSelection
+
+struct GridSlotSelection: Identifiable {
+    let gridId: String
+    let slotIndex: Int
+    var id: String { "\(gridId)-\(slotIndex)" }
+}
+
 // MARK: - Add Widgets Sheet
 
 private struct DashboardAddWidgetsSheet: View {
@@ -577,37 +699,37 @@ private struct DashboardAddWidgetsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var availableKinds: [DashboardWidgetKind] {
-        DashboardWidgetKind.allCases
-            .filter { !layoutStore.orderedWidgets.contains($0) }
+        let used = layoutStore.allUsedWidgetKinds
+        return DashboardWidgetKind.allCases
+            .filter { !used.contains($0) }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var allSlotsOccupied: Bool {
+        availableKinds.isEmpty
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if availableKinds.isEmpty {
-                    ContentUnavailableView(
-                        "All widgets on dashboard",
-                        systemImage: "square.grid.2x2",
-                        description: Text("Remove a widget from the dashboard to add it back here.")
-                    )
-                } else {
-                    List(availableKinds, id: \.self) { kind in
+            List {
+                // Grids section
+                Section {
+                    ForEach(DashboardGridSize.allCases, id: \.self) { size in
                         Button {
-                            layoutStore.add(kind)
+                            layoutStore.addGrid(size)
                             DashboardHaptics.success()
                             dismiss()
                         } label: {
                             HStack(spacing: AppSpacing.md) {
-                                Image(systemName: kind.systemImage)
+                                Image(systemName: size.systemImage)
                                     .font(.title2)
                                     .foregroundStyle(AppColors.primary)
                                     .frame(width: 36, alignment: .center)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(kind.title)
+                                    Text(size.title)
                                         .font(AppTypography.bodySemibold)
                                         .foregroundStyle(AppColors.textPrimary)
-                                    Text("Tap to add")
+                                    Text(size.subtitle)
                                         .font(AppTypography.caption1)
                                         .foregroundStyle(AppColors.textSecondary)
                                 }
@@ -622,9 +744,57 @@ private struct DashboardAddWidgetsSheet: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .listStyle(.insetGrouped)
+                } header: {
+                    Text("Grids")
+                }
+
+                // Widgets section
+                if !availableKinds.isEmpty {
+                    Section {
+                        ForEach(availableKinds, id: \.self) { kind in
+                            Button {
+                                layoutStore.addWidget(kind)
+                                DashboardHaptics.success()
+                                dismiss()
+                            } label: {
+                                HStack(spacing: AppSpacing.md) {
+                                    Image(systemName: kind.systemImage)
+                                        .font(.title2)
+                                        .foregroundStyle(AppColors.primary)
+                                        .frame(width: 36, alignment: .center)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(kind.title)
+                                            .font(AppTypography.bodySemibold)
+                                            .foregroundStyle(AppColors.textPrimary)
+                                        Text("Tap to add")
+                                            .font(AppTypography.caption1)
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title3)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(AppColors.primary)
+                                }
+                                .padding(.vertical, AppSpacing.xs)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } header: {
+                        Text("Widgets")
+                    }
+                } else {
+                    Section {
+                        ContentUnavailableView(
+                            "All widgets placed",
+                            systemImage: "checkmark.circle",
+                            description: Text("Remove a widget to add it back here.")
+                        )
+                    }
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Add widget")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -643,12 +813,85 @@ private struct DashboardAddWidgetsSheet: View {
     }
 }
 
+// MARK: - Grid Slot Picker Sheet
+
+private struct GridSlotPickerSheet: View {
+
+    @ObservedObject var layoutStore: DashboardLayoutStore
+    let gridId: String
+    let slotIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    private var availableKinds: [DashboardWidgetKind] {
+        let used = layoutStore.allUsedWidgetKinds
+        return DashboardWidgetKind.allCases
+            .filter { $0.isGridEligible && !used.contains($0) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if availableKinds.isEmpty {
+                    ContentUnavailableView(
+                        "No widgets available",
+                        systemImage: "square.grid.2x2",
+                        description: Text("All compact widgets are already placed. Remove one to free a slot.")
+                    )
+                } else {
+                    List(availableKinds, id: \.self) { kind in
+                        Button {
+                            layoutStore.setGridSlot(gridId: gridId, slotIndex: slotIndex, kind: kind)
+                            DashboardHaptics.success()
+                            dismiss()
+                        } label: {
+                            HStack(spacing: AppSpacing.md) {
+                                Image(systemName: kind.systemImage)
+                                    .font(.title2)
+                                    .foregroundStyle(AppColors.primary)
+                                    .frame(width: 36, alignment: .center)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(kind.title)
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text("Tap to place")
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title3)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(AppColors.primary)
+                            }
+                            .padding(.vertical, AppSpacing.xs)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
+            .navigationTitle("Choose widget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        DashboardHaptics.lightImpact()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+        .presentationBackground(.regularMaterial)
+    }
+}
+
 // MARK: - UIScrollViewAccessor
 
-/// A zero-size `UIViewRepresentable` that walks up the UIKit hierarchy to find the nearest
-/// `UIScrollView` and delivers it via a callback.
-/// Place it as `.background` on a SwiftUI `ScrollView` to obtain a reference for
-/// programmatic `setContentOffset` calls (used for drag-to-scroll auto-scrolling).
 private struct UIScrollViewAccessor: UIViewRepresentable {
     let onFound: (UIScrollView) -> Void
 

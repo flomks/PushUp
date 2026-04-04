@@ -244,9 +244,16 @@ struct MainTabView: View {
         ToolbarItem(placement: .topBarLeading) {
             Button { isSideMenuOpen = true } label: {
                 Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(AppColors.textPrimary)
+                    .frame(width: 38, height: 38)
+                    .background(Color.white.opacity(0.06), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
             }
+            .buttonStyle(ScaleButtonStyle())
             .accessibilityLabel("Open menu")
         }
     }

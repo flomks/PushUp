@@ -89,6 +89,91 @@ struct DashboardShortcutWidget: View {
     }
 }
 
+// MARK: - GridMiniStatCell
+
+/// Compact single-metric cell for use inside a `DashboardGridWidget`.
+/// Renders without the outer chrome (the grid container provides its own).
+struct GridMiniStatCell: View {
+
+    let title: String
+    let systemImage: String
+    let value: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+            Text(value)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+}
+
+// MARK: - GridShortcutCell
+
+/// Compact shortcut button for use inside a `DashboardGridWidget`.
+struct GridShortcutCell: View {
+
+    let title: String
+    let systemImage: String
+    let tab: Tab
+    @Binding var selectedTab: Tab
+
+    var body: some View {
+        Button {
+            DashboardHaptics.lightImpact()
+            selectedTab = tab
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, minHeight: 80)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+}
+
 // MARK: - Formatting (dashboard mini-widgets)
 
 enum DashboardMetricFormatting {

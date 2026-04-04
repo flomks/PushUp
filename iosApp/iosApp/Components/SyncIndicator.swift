@@ -11,7 +11,7 @@ import SwiftUI
 /// | `.syncing`  | Animated bars inside tinted cloud | Continuous motion    | No    |
 /// | `.success`  | Green cloud with check accent     | Scale pop + soft glow| No    |
 /// | `.error`    | Exclamation triangle (red)        | None                 | No    |
-/// | `.offline`  | Wi-Fi slash (gray)                | None                 | No    |
+/// | `.offline`  | Cloud with red shimmer            | Gentle light sweep   | No    |
 ///
 /// When `unsyncedCount > 0`, a red badge is overlaid on the icon showing the
 /// number of workouts waiting to be synced (e.g. "3").
@@ -137,12 +137,20 @@ struct SyncIndicator: View {
                 .foregroundStyle(AppColors.error)
 
         case .offline:
-            Image(icon: .wifiSlash)
-                .foregroundStyle(AppColors.textSecondary)
+            shimmerCloudIcon(
+                baseColors: [
+                    AppColors.error.opacity(0.88),
+                    AppColors.warning.opacity(0.42)
+                ],
+                shimmerColor: AppColors.error.opacity(0.9)
+            )
         }
     }
 
-    private func shimmerCloudIcon(baseColors: [Color]) -> some View {
+    private func shimmerCloudIcon(
+        baseColors: [Color],
+        shimmerColor: Color = .white
+    ) -> some View {
         ZStack {
             Image(icon: .cloudFill)
                 .symbolRenderingMode(.hierarchical)
@@ -155,6 +163,7 @@ struct SyncIndicator: View {
                 )
 
             ShimmerSweep()
+                .foregroundStyle(shimmerColor)
                 .mask {
                     Image(icon: .cloudFill)
                 }
@@ -266,9 +275,9 @@ private struct ShimmerSweep: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: Color.white.opacity(0.0), location: 0.34),
-                    .init(color: Color.white.opacity(0.62), location: 0.5),
-                    .init(color: Color.white.opacity(0.0), location: 0.66),
+                    .init(color: .primary.opacity(0.0), location: 0.34),
+                    .init(color: .primary.opacity(0.62), location: 0.5),
+                    .init(color: .primary.opacity(0.0), location: 0.66),
                     .init(color: .clear, location: 1.0)
                 ],
                 startPoint: UnitPoint(x: phase, y: 0.1),

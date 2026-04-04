@@ -104,18 +104,37 @@ struct JoggingView: View {
             Button {
                 dismiss()
             } label: {
-                HStack(spacing: AppSpacing.xs) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Training")
-                        .font(AppTypography.bodySemibold)
+                HStack(spacing: AppSpacing.sm) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.10))
+                            .frame(width: 32, height: 32)
+
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Back to")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.42))
+
+                        Text("Training")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                    }
                 }
-                .foregroundStyle(AppColors.textSecondary)
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.vertical, AppSpacing.sm)
-                .background(AppColors.backgroundSecondary, in: Capsule())
+                .padding(.leading, AppSpacing.xs)
+                .padding(.trailing, AppSpacing.md)
+                .padding(.vertical, AppSpacing.xs)
+                .background(Color.white.opacity(0.05), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ScaleButtonStyle())
 
             Spacer()
 

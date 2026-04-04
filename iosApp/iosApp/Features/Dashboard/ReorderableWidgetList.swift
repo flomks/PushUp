@@ -10,33 +10,21 @@ import SwiftUI
 /// the system drag-and-drop behaviour.
 struct ReorderableWidgetList<Content: View>: View {
 
-    @Binding var widgets: [DashboardWidgetKind]
+    @Binding var items: [DashboardItem]
     @Binding var isDragging: Bool
     let isEditing: Bool
     let onPersist: () -> Void
     let onDelete: (Int) -> Void
-    /// Called on every ~60 Hz tick while the finger is in an edge-scroll zone.
-    /// The parent is responsible for adjusting the scroll view's content offset by `delta` points.
-    /// Must return the **actual** delta applied (may be less than requested if at scroll bounds).
     var onEdgeScroll: ((CGFloat) -> CGFloat)? = nil
-    /// Returns the list's current global-screen-Y origin. Called once when drag starts
-    /// to compute edge-scroll zones without a continuously-running GeometryReader.
     var listGlobalOriginY: (() -> CGFloat)? = nil
-    @ViewBuilder let content: (DashboardWidgetKind) -> Content
+    @ViewBuilder let content: (DashboardItem) -> Content
 
-    @State private var draggedKind: DashboardWidgetKind?
+    @State private var draggedItem: DashboardItem?
     @State private var dragOffset: CGSize = .zero
     @State private var dragStartY: CGFloat = 0
-    /// Widget frames in the named coordinate space. Stored as a class so the
-    /// continuous preference updates from GeometryReaders don't trigger re-renders.
-    /// Only read from gesture callbacks (drag start / swap detection).
-    @State private var framesHolder = WidgetFramesHolder()
-    /// Snapshot when reorder lift begins; used to detect if the list order actually changed.
-    @State private var widgetOrderAtDragStart: [DashboardWidgetKind]?
-    /// After a successful reorder, block widget chrome for one run loop so touch-up does not trigger buttons / links.
+    @State private var framesHolder = ItemFramesHolder()
+    @State private var itemOrderAtDragStart: [DashboardItem]?
     @State private var blockWidgetChromeAfterOrderChange = false
-    /// Reference-type helper that owns the auto-scroll Timer and tracks cumulative scroll compensation.
-    /// Using a class (reference type) so Timer callbacks can mutate it and trigger view updates.
     @StateObject private var edgeScroller = EdgeScrollHelper()
 
     private let coordinateSpace = "reorderArea"
@@ -44,19 +32,17 @@ struct ReorderableWidgetList<Content: View>: View {
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
-                ForEach(Array(widgets.enumerated()), id: \.element) { index, kind in
-                    widgetRow(kind: kind, index: index)
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    widgetRow(item: item, index: index)
                 }
             }
             .coordinateSpace(name: coordinateSpace)
-            // Single preference observer at the VStack level – updates the class holder
-            // without triggering SwiftUI re-renders (framesHolder identity stays the same).
-            .onPreferenceChange(WidgetFramePreferenceKey.self) { newFrames in
+            .onPreferenceChange(ItemFramePreferenceKey.self) { newFrames in
                 framesHolder.frames = newFrames
             }
 
-            if draggedKind != nil {
-                content(draggedKind!)
+            if let dragged = draggedItem {
+                content(dragged)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, AppSpacing.screenHorizontal)
                     .padding(.bottom, AppSpacing.md)
@@ -68,28 +54,23 @@ struct ReorderableWidgetList<Content: View>: View {
                     .transition(.identity)
             }
         }
-        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.82), value: widgets)
+        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.82), value: items.map(\.id))
     }
 
     @ViewBuilder
-    private func widgetRow(kind: DashboardWidgetKind, index: Int) -> some View {
-        let isDragged = draggedKind == kind
+    private func widgetRow(item: DashboardItem, index: Int) -> some View {
+        let isDragged = draggedItem == item
         let chromeHitTesting = !isDragged && !blockWidgetChromeAfterOrderChange
 
-        content(kind)
+        content(item)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppSpacing.screenHorizontal)
             .padding(.bottom, AppSpacing.md)
             .opacity(isDragged ? 0.0 : 1.0)
-            // Invisible list slot must not receive touch-up (otherwise NavigationLink / taps fire on drop).
-            // After a real reorder, briefly drop hits so the same touch-up is not a tap on the widget.
             .allowsHitTesting(chromeHitTesting)
-            // .disabled() prevents button *actions* from firing even when a button's gesture already
-            // started tracking the touch before the drag began. allowsHitTesting(false) alone is not
-            // enough because it only blocks new touches, not ones already in flight.
             .disabled(!chromeHitTesting)
             .overlay(alignment: .topTrailing) {
-                if isEditing && draggedKind == nil {
+                if isEditing && draggedItem == nil {
                     deleteButton(index: index)
                 }
             }
@@ -97,12 +78,12 @@ struct ReorderableWidgetList<Content: View>: View {
                 GeometryReader { geo in
                     Color.clear
                         .preference(
-                            key: WidgetFramePreferenceKey.self,
-                            value: [kind: geo.frame(in: .named(coordinateSpace))]
+                            key: ItemFramePreferenceKey.self,
+                            value: [item.id: geo.frame(in: .named(coordinateSpace))]
                         )
                 }
             )
-            .simultaneousGesture(longPressDrag(kind: kind))
+            .simultaneousGesture(longPressDrag(item: item))
     }
 
     private func deleteButton(index: Int) -> some View {
@@ -120,53 +101,44 @@ struct ReorderableWidgetList<Content: View>: View {
 
     // MARK: - Gesture
 
-    private func longPressDrag(kind: DashboardWidgetKind) -> some Gesture {
+    private func longPressDrag(item: DashboardItem) -> some Gesture {
         LongPressGesture(minimumDuration: 0.25)
             .sequenced(before: DragGesture(coordinateSpace: .global))
             .onChanged { value in
                 switch value {
                 case .second(true, let drag):
                     if let drag {
-                        // First movement after long press – lift the widget.
-                        if draggedKind == nil {
-                            widgetOrderAtDragStart = widgets
-                            draggedKind = kind
+                        if draggedItem == nil {
+                            itemOrderAtDragStart = items
+                            draggedItem = item
                             isDragging = true
-                            dragStartY = framesHolder.frames[kind]?.minY ?? 0
+                            dragStartY = framesHolder.frames[item.id]?.minY ?? 0
                             dragOffset = .zero
                             edgeScroller.reset()
-                            // Record the finger's initial screen Y and the list's content
-                            // origin so we can convert between screen and local coordinates.
                             edgeScroller.fingerStartScreenY = drag.location.y
                             edgeScroller.contentOriginAtDragStart = listGlobalOriginY?() ?? 0
                             DashboardHaptics.mediumImpact()
                         }
 
-                        // drag.translation is in global coordinates now — use it directly.
                         dragOffset = drag.translation
 
-                        // The finger's actual screen position — drag.location.y is global.
                         let fingerScreenY = drag.location.y
                         edgeScroller.lastFingerScreenY = fingerScreenY
                         let delta = edgeScrollDelta(for: fingerScreenY)
 
-                        // Convert finger screen Y → local coordinate space for swap detection.
-                        // local Y = fingerScreenY - contentOriginAtDragStart + totalScrollApplied
                         let localY = fingerScreenY - edgeScroller.contentOriginAtDragStart + edgeScroller.compensation
-                        checkForSwap(draggedKind: kind, fingerLocalY: localY)
+                        checkForSwap(draggedItem: item, fingerLocalY: localY)
 
-                        // Scroll callback returns actual delta (clamped at scroll bounds).
                         edgeScroller.onScroll = { [onEdgeScroll] tick in
                             onEdgeScroll?(tick) ?? 0
                         }
-                        // Swap check from timer: finger is stationary but content moves.
                         let scrollerRef = edgeScroller
                         edgeScroller.onSwapCheck = {
                             let localYFromTimer = scrollerRef.lastFingerScreenY - scrollerRef.contentOriginAtDragStart + scrollerRef.compensation
-                            checkForSwap(draggedKind: kind, fingerLocalY: localYFromTimer)
+                            checkForSwap(draggedItem: item, fingerLocalY: localYFromTimer)
                         }
                         edgeScroller.update(velocity: delta)
-                    } else if draggedKind == nil {
+                    } else if draggedItem == nil {
                         DashboardHaptics.mediumImpact()
                     }
                 default:
@@ -174,13 +146,13 @@ struct ReorderableWidgetList<Content: View>: View {
                 }
             }
             .onEnded { _ in
-                guard draggedKind != nil else { return }
+                guard draggedItem != nil else { return }
 
-                let startOrder = widgetOrderAtDragStart
-                widgetOrderAtDragStart = nil
-                let orderChanged = startOrder.map { $0 != widgets } ?? false
+                let startOrder = itemOrderAtDragStart
+                itemOrderAtDragStart = nil
+                let orderChanged = startOrder.map { $0 != items } ?? false
 
-                draggedKind = nil
+                draggedItem = nil
                 isDragging = false
                 dragOffset = .zero
                 edgeScroller.reset()
@@ -198,8 +170,6 @@ struct ReorderableWidgetList<Content: View>: View {
 
     // MARK: - Edge Scroll
 
-    /// Returns the scroll delta (pts/tick at ~60 Hz) for the given screen Y position.
-    /// Negative = scroll up, positive = scroll down, zero = no scroll.
     private func edgeScrollDelta(for screenY: CGFloat) -> CGFloat {
         let safeTop = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -209,8 +179,6 @@ struct ReorderableWidgetList<Content: View>: View {
             .first?.windows.first?.safeAreaInsets.bottom ?? 34
         let screenHeight = UIScreen.main.bounds.height
 
-        // Only activate within 80pt of the safe-area edges — not the absolute screen edge.
-        // This prevents the zone from reaching the middle of the screen.
         let zone: CGFloat = 80
         let maxSpeed: CGFloat = 12
 
@@ -218,9 +186,7 @@ struct ReorderableWidgetList<Content: View>: View {
         let bottomThreshold = screenHeight - safeBottom - zone
 
         if screenY < topThreshold {
-            // How far into the zone (0 = edge of zone, 1 = at safe area edge)
             let t = max(0, min(1, (topThreshold - screenY) / zone))
-            // Ease-in curve so it starts gently
             return -maxSpeed * t * t
         }
         if screenY > bottomThreshold {
@@ -232,36 +198,32 @@ struct ReorderableWidgetList<Content: View>: View {
 
     // MARK: - Swap Logic
 
-    /// Swap decision uses the **hovered widget's** vertical center, not the dragged widget's.
-    private func checkForSwap(draggedKind: DashboardWidgetKind, fingerLocalY: CGFloat) {
-        guard let draggedIndex = widgets.firstIndex(of: draggedKind) else { return }
+    private func checkForSwap(draggedItem: DashboardItem, fingerLocalY: CGFloat) {
+        guard let draggedIndex = items.firstIndex(of: draggedItem) else { return }
 
-        let fingerY = fingerLocalY
-
-        for (targetKind, targetFrame) in framesHolder.frames {
-            guard targetKind != draggedKind,
-                  let targetIndex = widgets.firstIndex(of: targetKind)
+        for (index, targetItem) in items.enumerated() {
+            guard targetItem != draggedItem,
+                  let targetFrame = framesHolder.frames[targetItem.id]
             else { continue }
 
             let targetMidY = targetFrame.midY
+            let movingDown = index > draggedIndex
+            let movingUp = index < draggedIndex
 
-            let movingDown = targetIndex > draggedIndex
-            let movingUp = targetIndex < draggedIndex
-
-            if movingDown && fingerY > targetMidY {
-                var updated = widgets
+            if movingDown && fingerLocalY > targetMidY {
+                var updated = items
                 updated.remove(at: draggedIndex)
-                updated.insert(draggedKind, at: min(targetIndex, updated.count))
-                widgets = updated
+                updated.insert(draggedItem, at: min(index, updated.count))
+                items = updated
                 DashboardHaptics.lightImpact()
                 return
             }
 
-            if movingUp && fingerY < targetMidY {
-                var updated = widgets
+            if movingUp && fingerLocalY < targetMidY {
+                var updated = items
                 updated.remove(at: draggedIndex)
-                updated.insert(draggedKind, at: targetIndex)
-                widgets = updated
+                updated.insert(draggedItem, at: index)
+                items = updated
                 DashboardHaptics.lightImpact()
                 return
             }
@@ -269,37 +231,23 @@ struct ReorderableWidgetList<Content: View>: View {
     }
 }
 
-// MARK: - WidgetFramesHolder
+// MARK: - ItemFramesHolder
 
-/// Stores widget frames by reference so `onPreferenceChange` updates don't trigger
-/// SwiftUI re-renders. The @State wrapper sees the same object identity on every mutation.
-private final class WidgetFramesHolder {
-    var frames: [DashboardWidgetKind: CGRect] = [:]
+private final class ItemFramesHolder {
+    var frames: [String: CGRect] = [:]
 }
 
 // MARK: - EdgeScrollHelper
 
-/// ObservableObject wrapper owning a repeating Timer for auto-scroll.
-/// Stored in `@StateObject` so SwiftUI re-renders when `compensation` changes,
-/// keeping the ghost widget under the finger during programmatic scrolling.
 private final class EdgeScrollHelper: ObservableObject {
     private var timer: Timer?
     var velocity: CGFloat = 0
-    /// Returns actual delta applied (may be clamped at scroll bounds).
     var onScroll: ((CGFloat) -> CGFloat)?
-    /// Called each timer tick so swap detection works while the finger is stationary
-    /// but content scrolls underneath it.
     var onSwapCheck: (() -> Void)?
-    /// The finger's screen Y when the drag started.
     var fingerStartScreenY: CGFloat = 0
-    /// The list content's global Y origin when the drag started.
     var contentOriginAtDragStart: CGFloat = 0
-    /// The last known finger screen Y — updated from onChanged, read by timer for swap checks.
     var lastFingerScreenY: CGFloat = 0
 
-    /// Cumulative content-scroll applied via edge-scroll while dragging.
-    /// The ghost widget lives inside the scroll content, so each programmatic setContentOffset
-    /// shifts it on screen. This published value offsets the ghost back to stay under the finger.
     @Published var compensation: CGFloat = 0
 
     func update(velocity: CGFloat) {
@@ -314,13 +262,10 @@ private final class EdgeScrollHelper: ObservableObject {
     private func start() {
         let t = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             guard let self, self.velocity != 0 else { return }
-            // Only compensate for the actual scroll applied — if the scroll view is at
-            // bounds the actual delta is 0, so the ghost stays in place instead of flying off.
             let actualDelta = self.onScroll?(self.velocity) ?? 0
             if actualDelta != 0 {
                 self.compensation += actualDelta
             }
-            // Re-check swaps: the finger hasn't moved but content shifted underneath it.
             self.onSwapCheck?()
         }
         RunLoop.main.add(t, forMode: .common)
@@ -346,10 +291,9 @@ private final class EdgeScrollHelper: ObservableObject {
 
 // MARK: - Preference Keys
 
-private struct WidgetFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [DashboardWidgetKind: CGRect] = [:]
-    static func reduce(value: inout [DashboardWidgetKind: CGRect], nextValue: () -> [DashboardWidgetKind: CGRect]) {
+private struct ItemFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { _, new in new }
     }
 }
-

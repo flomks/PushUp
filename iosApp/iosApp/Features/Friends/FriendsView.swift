@@ -40,9 +40,16 @@ struct FriendsView: View {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: onOpenMenu) {
                             Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 17, weight: .medium))
+                                .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(AppColors.textPrimary)
+                                .frame(width: 38, height: 38)
+                                .background(Color.white.opacity(0.06), in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                )
                         }
+                        .buttonStyle(ScaleButtonStyle())
                         .accessibilityLabel("Open menu")
                     }
                 }
@@ -72,8 +79,14 @@ struct FriendsView: View {
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell.fill")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(AppColors.primary)
+                        .frame(width: 38, height: 38)
+                        .background(Color.white.opacity(0.06), in: Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
 
                     if viewModel.pendingRequestCount > 0 {
                         Text("\(viewModel.pendingRequestCount)")
@@ -85,8 +98,8 @@ struct FriendsView: View {
                             .offset(x: 8, y: -6)
                     }
                 }
-                .frame(width: 44, height: 44)
             }
+            .buttonStyle(ScaleButtonStyle())
             .accessibilityLabel(
                 viewModel.pendingRequestCount > 0
                     ? "\(viewModel.pendingRequestCount) pending requests"
@@ -98,10 +111,16 @@ struct FriendsView: View {
                 showAddFriend = true
             } label: {
                 Image(systemName: "person.badge.plus")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppColors.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 38, height: 38)
+                    .background(Color.white.opacity(0.06), in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    )
             }
+            .buttonStyle(ScaleButtonStyle())
             .accessibilityLabel("Add friend")
         }
     }
