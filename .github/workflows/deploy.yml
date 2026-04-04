@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 20
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
+      deploy-image: ${{ steps.image.outputs.deploy_image }}
 
     steps:
       - name: Checkout
@@ -61,6 +61,10 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Select deploy image tag
+        id: image
+        run: echo "deploy_image=${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
@@ -79,34 +83,55 @@ jobs:
     timeout-minutes: 10
     needs: build-and-push
 
+    env:
+      DEPLOY_IMAGE: ${{ needs.build-and-push.outputs.deploy-image }}
+
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
           host:     ${{ secrets.SERVER_HOST }}
+          port:     ${{ secrets.SERVER_PORT || 22 }}
           username: ${{ secrets.SERVER_USER }}
           key:      ${{ secrets.SERVER_SSH_KEY }}
+          envs: DEPLOY_IMAGE
           script: |
             set -euo pipefail
 
             cd /opt/pushup
+            IMAGE_NAME="ghcr.io/flomks/pushup-backend"
+            DEPLOY_IMAGE="${DEPLOY_IMAGE}"
+
+            print_runtime_diagnostics() {
+              echo "----- docker compose ps -----"
+              docker compose ps || true
+              echo "----- container state -----"
+              docker inspect pushup-backend --format '{{json .State}}' 2>/dev/null || true
+              echo "----- recent backend logs -----"
+              docker compose logs pushup-backend --tail=200 || true
+            }
 
             # ------------------------------------------------------------------
-            # 1. Vorheriges :latest als :rollback sichern (BEVOR prune laeuft)
+            # 1. Vorheriges :latest als :rollback sichern (BEVOR ein neuer Pull
+            #    oder spaeteres prune laeuft)
             # ------------------------------------------------------------------
-            if docker image inspect ghcr.io/flomks/pushup-backend:latest \
+            if docker image inspect "${IMAGE_NAME}:latest" \
                  > /dev/null 2>&1; then
-              docker tag ghcr.io/flomks/pushup-backend:latest \
-                         ghcr.io/flomks/pushup-backend:rollback
+              docker tag "${IMAGE_NAME}:latest" "${IMAGE_NAME}:rollback"
               echo "Rollback-Tag gesetzt."
             else
               echo "Kein vorheriges Image -- kein Rollback-Tag."
             fi
 
             # ------------------------------------------------------------------
-            # 2. Neues Image ziehen und Container neu starten
+            # 2. Exakt das frisch gebaute Image ziehen und als :latest aktivieren
             # ------------------------------------------------------------------
-            docker compose up -d --pull always pushup-backend
+            echo "Ziehe Deploy-Image: ${DEPLOY_IMAGE}"
+            docker pull "${DEPLOY_IMAGE}"
+            docker tag "${DEPLOY_IMAGE}" "${IMAGE_NAME}:latest"
+
+            echo "Starte neuen Container ..."
+            docker compose up -d --no-deps --pull never pushup-backend
 
             # ------------------------------------------------------------------
             # 3. Health-Check (20 Versuche x 5 s = 100 s)
@@ -118,11 +143,13 @@ jobs:
 
             HEALTHY=false
             for i in $(seq 1 20); do
+              CONTAINER_STATUS=$(docker inspect pushup-backend --format '{{.State.Status}}' 2>/dev/null || echo "missing")
+              HEALTH_STATUS=$(docker inspect pushup-backend --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo "missing")
               HTTP=$(curl --silent --output /dev/null \
                          --write-out "%{http_code}" \
                          --max-time 5 \
                          http://localhost:8080/health || echo "000")
-              echo "Health-Check Versuch ${i}/20 -- HTTP ${HTTP}"
+              echo "Health-Check Versuch ${i}/20 -- container=${CONTAINER_STATUS} docker-health=${HEALTH_STATUS} http=${HTTP}"
               if [ "${HTTP}" = "200" ]; then
                 HEALTHY=true
                 break
@@ -132,6 +159,7 @@ jobs:
 
             if [ "${HEALTHY}" = "true" ]; then
               echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
+              print_runtime_diagnostics
               # Erst NACH erfolgreichem Deploy alte Images aufraeumen
               # (nicht :rollback -- das wird beim naechsten Deploy ueberschrieben)
               docker image prune -f --filter "until=24h"
@@ -139,17 +167,22 @@ jobs:
             fi
 
             # ------------------------------------------------------------------
-            # 4. Health-Check fehlgeschlagen -- Rollback
+            # 4. Health-Check fehlgeschlagen -- Logs ausgeben und Rollback
             # ------------------------------------------------------------------
             echo "Health-Check fehlgeschlagen -- starte Rollback..."
-            if docker image inspect ghcr.io/flomks/pushup-backend:rollback \
+            print_runtime_diagnostics
+
+            if docker image inspect "${IMAGE_NAME}:rollback" \
                  > /dev/null 2>&1; then
-              docker tag ghcr.io/flomks/pushup-backend:rollback \
-                         ghcr.io/flomks/pushup-backend:latest
-              docker compose up -d --pull never pushup-backend
+              docker tag "${IMAGE_NAME}:rollback" "${IMAGE_NAME}:latest"
+              docker compose up -d --no-deps --pull never pushup-backend
+              sleep 10
+              echo "----- rollback diagnostics -----"
+              print_runtime_diagnostics
               echo "Rollback abgeschlossen -- vorherige Version laeuft wieder."
             else
               echo "Kein Rollback-Image vorhanden -- manueller Eingriff noetig."
+              print_runtime_diagnostics
               docker compose down
             fi
 

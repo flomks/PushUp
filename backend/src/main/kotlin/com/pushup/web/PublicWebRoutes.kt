@@ -64,61 +64,90 @@ fun Route.publicWebRoutes() {
 }
 
 private fun renderHomePage(): String = renderDocument(
-    title = "PushUp | Train hard. Earn time back.",
-    description = "PushUp verbindet Workouts, Freunde, Codes und spaeter oeffentliche Run-Share-Seiten in einer radikal modernen Web-Erfahrung.",
+    title = "PushUp | Social Fitness",
+    description = "PushUp verbindet Training, Freunde und spaeter sharebare Runs in einer klaren, dunklen und modernen Web-Erfahrung.",
 ) {
     """
     <main class="page-shell">
+      <section class="topbar">
+        <a class="brand" href="/">
+          <span class="brand-mark"></span>
+          <span>PushUp</span>
+        </a>
+        <div class="topbar-links">
+          <a href="/friend/AB3X7K2M">Friend Code</a>
+          <a href="/run/night-crew-berlin">Run Share</a>
+        </div>
+      </section>
+
       <section class="hero hero-home">
         <div class="hero-copy">
-          <div class="eyebrow">PushUp Web Platform</div>
-          <h1>Fitness, Social Graph und Shareable Runs auf einer Website, die nicht wie ein nachtraeglicher Anhang aussieht.</h1>
+          <div class="eyebrow">PushUp Web</div>
+          <h1>Training, Freunde und Runs in einer klaren dunklen Oberfläche.</h1>
           <p class="hero-text">
-            PushUp bekommt eine echte digitale Homebase: Friend-Code-Landingpages, markante Produktpraesenz,
-            Public Share Pages fuer Runs und eine Web-Oberflaeche, die auf Wachstum vorbereitet ist.
+            Die Website ist jetzt eine echte Homebase fuer PushUp:
+            hochwertiger Einstieg, sauberer Friend-Code-Flow und die Grundlage fuer spaeter oeffentliche Run-Seiten.
           </p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="/friend/AB3X7K2M">Friend Code Experience</a>
-            <a class="btn btn-secondary" href="/run/night-crew-berlin">Run Share Preview</a>
+            <a class="btn btn-primary" href="/friend/AB3X7K2M">Freund hinzufuegen</a>
+            <a class="btn btn-secondary" href="/run/night-crew-berlin">Run Preview ansehen</a>
           </div>
           <div class="hero-metrics">
             <div class="metric">
-              <span class="metric-value">01</span>
-              <span class="metric-label">Unified public website</span>
+              <span class="metric-value">Live</span>
+              <span class="metric-label">Friend-Code Landingpages</span>
             </div>
             <div class="metric">
-              <span class="metric-value">02</span>
-              <span class="metric-label">Friend-code landing flows</span>
+              <span class="metric-value">Next</span>
+              <span class="metric-label">Sharebare Runs und Recaps</span>
             </div>
             <div class="metric">
-              <span class="metric-value">03</span>
-              <span class="metric-label">Run sharing foundation</span>
+              <span class="metric-value">Ready</span>
+              <span class="metric-label">Public Profiles und Challenges</span>
             </div>
           </div>
         </div>
 
         <div class="hero-stage">
-          <div class="stage-card stage-card-main">
-            <div class="stage-kicker">Live Identity</div>
-            <h2>Ein Web-Layer, der sich wie Produkt anfuehlt, nicht wie Utility.</h2>
-            <p>
-              Klare Entry-Points fuer neue User, starke visuelle Sprache und eine Struktur, die spaeter mit echten
-              Share-Daten, Leaderboards und Public Profiles erweitert werden kann.
-            </p>
-          </div>
-          <div class="stage-card-grid">
-            <article class="mini-panel">
-              <span class="mini-label">Friend Codes</span>
-              <strong>Deep Links, Store Fallbacks, saubere Brand-Praesenz</strong>
-            </article>
-            <article class="mini-panel">
-              <span class="mini-label">Runs</span>
-              <strong>Sharebare Pages fuer Distanz, Pace, Route, Crew und Storytelling</strong>
-            </article>
-            <article class="mini-panel">
-              <span class="mini-label">Future Surface</span>
-              <strong>Events, Public Profiles, Challenge Pages und Rankings</strong>
-            </article>
+          <div class="panel spotlight-panel">
+            <div class="spotlight-grid">
+              <div>
+                <div class="panel-label">Product Surface</div>
+                <h2>Weniger Landingpage, mehr Produkt.</h2>
+              </div>
+              <div class="status-stack">
+                <div class="status-chip">Dark UI</div>
+                <div class="status-chip">Deep Link Ready</div>
+                <div class="status-chip">Run Sharing Ready</div>
+              </div>
+            </div>
+            <div class="preview-shell">
+              <div class="preview-header">
+                <span class="preview-dot"></span>
+                <span class="preview-dot"></span>
+                <span class="preview-dot"></span>
+              </div>
+              <div class="preview-grid">
+                <div class="preview-main">
+                  <div class="preview-kicker">Session Layer</div>
+                  <strong>Workout, Friend Graph und Running wachsen in dieselbe Experience.</strong>
+                </div>
+                <div class="preview-side">
+                  <div class="preview-stat">
+                    <span>Surface</span>
+                    <strong>Web + App</strong>
+                  </div>
+                  <div class="preview-stat">
+                    <span>Visuals</span>
+                    <strong>Black / Lime / Steel</strong>
+                  </div>
+                  <div class="preview-stat">
+                    <span>Phase</span>
+                    <strong>Public Web Foundation</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -126,38 +155,31 @@ private fun renderHomePage(): String = renderDocument(
       <section class="section-grid">
         <article class="feature-card">
           <div class="card-index">01</div>
-          <h3>Neue Startseite unter <code>/</code></h3>
-          <p>
-            Die Domain ist jetzt nicht mehr nur Ziel fuer Friend-Links, sondern eine vollwertige Produktseite mit klarer
-            Navigation in die wichtigsten Social-Flows.
-          </p>
+          <h3>Website als zentrale Flaeche</h3>
+          <p>Die Domain ist nicht mehr nur Zwischenstation fuer Links, sondern eine saubere Produktoberflaeche.</p>
         </article>
         <article class="feature-card">
           <div class="card-index">02</div>
-          <h3>Friend-Code-Seite komplett neu gedacht</h3>
-          <p>
-            Der Invite-Flow wirkt hochwertiger, emotionaler und deutlich naeher an einer modernen Consumer Brand.
-          </p>
+          <h3>Friend-Code-Flow mit mehr Qualitaet</h3>
+          <p>Einladung, Deep Link und Store-Fallback fuehlen sich jetzt bewusst gestaltet und app-nah an.</p>
         </article>
         <article class="feature-card">
           <div class="card-index">03</div>
-          <h3>Run-Share-Route vorbereitet</h3>
-          <p>
-            Unter <code>/run/&lt;shareId&gt;</code> steht eine hochwertige Preview-Struktur bereit, die spaeter nur noch an echte Daten angebunden werden muss.
-          </p>
+          <h3>Run-Share-Basis steht</h3>
+          <p>Die Webstruktur ist vorbereitet fuer Distanz, Pace, Karten, Crew und spaetere oeffentliche Recaps.</p>
         </article>
       </section>
 
       <section class="vision-panel">
         <div>
-          <div class="eyebrow">What comes next</div>
-          <h2>Die Architektur ist jetzt bereit fuer oeffentliche Trainingsmomente.</h2>
+          <div class="eyebrow">Roadmap</div>
+          <h2>Die naechste Stufe ist nicht mehr Utility, sondern oeffentliche Fitness-Identity.</h2>
         </div>
         <div class="vision-list">
-          <div class="vision-item">Sharebare Run Recaps mit Distanz, Pace, Hoehenmetern und Karten-Snippets</div>
-          <div class="vision-item">Event Pages fuer Crew Runs inklusive Teilnehmern und Status</div>
-          <div class="vision-item">Public Athlete Profiles mit XP, Streaks und Freundesnetzwerk</div>
-          <div class="vision-item">Landingpages fuer Challenges, Invite-Kampagnen und Referral Loops</div>
+          <div class="vision-item">Run Recaps mit Karte, Pace und Story</div>
+          <div class="vision-item">Crew-Seiten fuer gemeinsame Sessions</div>
+          <div class="vision-item">Public Athlete Profiles mit XP und Streaks</div>
+          <div class="vision-item">Challenge- und Referral-Landingpages</div>
         </div>
       </section>
     </main>
@@ -177,25 +199,35 @@ private fun renderFriendInvitePage(code: String): String {
     ) {
         """
         <main class="page-shell invite-shell">
+          <section class="topbar">
+            <a class="brand" href="/">
+              <span class="brand-mark"></span>
+              <span>PushUp</span>
+            </a>
+            <div class="topbar-links">
+              <a href="/">Website</a>
+              <a href="/run/night-crew-berlin">Run Share</a>
+            </div>
+          </section>
+
           <section class="hero hero-invite">
             <div class="invite-grid">
               <div class="invite-copy">
-                <div class="eyebrow">PushUp Friend Link</div>
-                <h1>Jemand will dich in seine PushUp-Crew holen.</h1>
+                <div class="eyebrow">Friend Invite</div>
+                <h1>Jemand hat dir einen PushUp Friend Code geschickt.</h1>
                 <p class="hero-text">
-                  Verbinde dich per Friend Code, starte gemeinsame Social Features und bereite die Basis fuer
-                  geteilte Runs, Live Sessions und spaetere Public Highlights.
+                  Oeffne den Code direkt in der App oder installiere PushUp und steig sauber in das soziale Setup ein.
                 </p>
 
                 <div class="invite-code-card">
                   <div class="invite-code-topline">Friend Code</div>
                   <div class="invite-code">$formattedCode</div>
-                  <div class="invite-code-meta">Deep link ready &#183; mobile optimized &#183; social onboarding</div>
+                  <div class="invite-code-meta">Deep link ready &#183; mobile optimized &#183; invite flow</div>
                 </div>
 
                 <div class="cta-row">
                   <a class="btn btn-primary" href="$appScheme">In PushUp oeffnen</a>
-                  <a class="btn btn-secondary" href="/">Zur Website</a>
+                  <a class="btn btn-secondary" href="/">Zur Startseite</a>
                 </div>
 
                 <div class="store-strip">
@@ -211,16 +243,15 @@ private fun renderFriendInvitePage(code: String): String {
               </div>
 
               <div class="invite-stage">
-                <div class="glass-panel">
-                  <div class="stack-label">Why this matters</div>
-                  <h2>Vom Invite direkt in ein spaeteres Social Fitness Netzwerk.</h2>
+                <div class="panel glass-panel">
+                  <div class="panel-label">Invite Surface</div>
+                  <h2>Klar, schnell, direkt auf den Punkt.</h2>
                   <p>
-                    Der Friend-Code-Flow fuehlt sich jetzt wie ein echter Einstiegspunkt ins Produkt an,
-                    nicht wie eine nackte Zwischen-Seite.
+                    Der Friend-Code-Flow ist jetzt aufgeraeumt, dunkler und naeher an einer echten App-Experience.
                   </p>
-                  <div class="bullet-panel">Modernes Brand-Layout mit starkem Hero, klaren CTA-Pfaden und visuellem Fokus auf den Code</div>
-                  <div class="bullet-panel">Optimiert fuer Mobile-Deep-Links und App-Store-Fallbacks</div>
-                  <div class="bullet-panel">Passend zur naechsten Phase: sharebare Runs, Crew Events, Public Activity Pages</div>
+                  <div class="bullet-panel">Starker Fokus auf den Code statt auf visuelle Ablenkung</div>
+                  <div class="bullet-panel">Direkter Einstieg per Deep Link plus sauberer Store-Fallback</div>
+                  <div class="bullet-panel">Visuelle Basis passend fuer spaetere Social- und Run-Shares</div>
                 </div>
               </div>
             </div>
@@ -239,13 +270,24 @@ private fun renderRunSharePreviewPage(shareId: String): String {
     ) {
         """
         <main class="page-shell">
+          <section class="topbar">
+            <a class="brand" href="/">
+              <span class="brand-mark"></span>
+              <span>PushUp</span>
+            </a>
+            <div class="topbar-links">
+              <a href="/">Website</a>
+              <a href="/friend/AB3X7K2M">Friend Code</a>
+            </div>
+          </section>
+
           <section class="hero hero-run">
             <div class="hero-copy">
-              <div class="eyebrow">Public Run Share</div>
-              <h1>Run pages koennen jetzt als eigenstaendige Erlebnis-Seiten gedacht werden.</h1>
+              <div class="eyebrow">Run Share</div>
+              <h1>Runs koennen als eigenstaendige Web-Seiten geteilt werden.</h1>
               <p class="hero-text">
-                Diese Route ist die vorbereitete Web-Flaeche fuer geteilte Runs. Heute als hochwertige Preview,
-                spaeter mit echten Daten aus Jogging Sessions, Playback Entries und Social Running.
+                Diese Route ist die Basis fuer spaetere oeffentliche Run-Recaps mit echten Session-Daten,
+                Karten, Splits, Crew-Kontext und einer deutlich staerkeren Share-Experience.
               </p>
               <div class="cta-row">
                 <a class="btn btn-primary" href="/">Zur Startseite</a>
@@ -253,7 +295,7 @@ private fun renderRunSharePreviewPage(shareId: String): String {
               </div>
             </div>
 
-            <div class="share-board">
+            <div class="panel share-board">
               <div class="share-chip">shareId: $safeId</div>
               <div class="share-stats">
                 <div><span>Distance</span><strong>12.4 km</strong></div>
@@ -292,21 +334,22 @@ private fun renderDocument(
         html, body { margin: 0; min-height: 100%; }
 
         :root {
-          --bg: #050816;
-          --bg-soft: #0c1330;
-          --panel: rgba(8, 16, 40, 0.66);
-          --panel-strong: rgba(10, 20, 48, 0.88);
-          --line: rgba(255, 255, 255, 0.11);
-          --text: #f4f7ff;
-          --muted: rgba(226, 232, 255, 0.72);
-          --muted-soft: rgba(226, 232, 255, 0.48);
-          --accent: #67e8f9;
-          --accent-2: #60a5fa;
-          --accent-3: #f97316;
-          --shadow: 0 32px 120px rgba(0, 0, 0, 0.42);
-          --radius-xl: 32px;
-          --radius-lg: 24px;
-          --radius-md: 18px;
+          --bg: #050505;
+          --bg-soft: #0b0b0b;
+          --panel: rgba(18, 18, 18, 0.92);
+          --panel-strong: rgba(12, 12, 12, 0.96);
+          --panel-soft: rgba(255, 255, 255, 0.03);
+          --line: rgba(255, 255, 255, 0.08);
+          --line-strong: rgba(255, 255, 255, 0.14);
+          --text: #f5f5f2;
+          --muted: rgba(245, 245, 242, 0.70);
+          --muted-soft: rgba(245, 245, 242, 0.46);
+          --accent: #d7ff64;
+          --accent-strong: #efffb4;
+          --shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+          --radius-xl: 30px;
+          --radius-lg: 22px;
+          --radius-md: 16px;
           --max: 1240px;
         }
 
@@ -314,10 +357,9 @@ private fun renderDocument(
           font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
           color: var(--text);
           background:
-            radial-gradient(circle at top left, rgba(103, 232, 249, 0.16), transparent 28%),
-            radial-gradient(circle at 85% 18%, rgba(249, 115, 22, 0.14), transparent 24%),
-            radial-gradient(circle at 50% 100%, rgba(96, 165, 250, 0.20), transparent 34%),
-            linear-gradient(160deg, #030611 0%, #071127 42%, #050816 100%);
+            radial-gradient(circle at top right, rgba(215, 255, 100, 0.12), transparent 18%),
+            radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.05), transparent 24%),
+            linear-gradient(180deg, #030303 0%, #080808 100%);
           background-attachment: fixed;
         }
 
@@ -326,12 +368,13 @@ private fun renderDocument(
           position: fixed;
           inset: 0;
           pointer-events: none;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
-          background-size: 36px 36px;
-          mask-image: radial-gradient(circle at center, black 45%, transparent 100%);
-          opacity: 0.32;
+          background:
+            linear-gradient(180deg, rgba(255,255,255,0.02), transparent 24%),
+            linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px),
+            linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px);
+          background-size: auto, 28px 28px, 28px 28px;
+          mask-image: radial-gradient(circle at center, black 42%, transparent 100%);
+          opacity: 0.38;
         }
 
         a { color: inherit; text-decoration: none; }
@@ -341,6 +384,44 @@ private fun renderDocument(
           border: 1px solid rgba(255,255,255,0.1);
           padding: 0.15rem 0.4rem;
           border-radius: 999px;
+        }
+
+        .topbar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 18px;
+          padding: 14px 18px;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          background: rgba(14, 14, 14, 0.84);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+        }
+
+        .brand {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 700;
+          letter-spacing: -0.03em;
+        }
+
+        .brand-mark {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: var(--accent);
+          box-shadow: 0 0 22px rgba(215, 255, 100, 0.45);
+        }
+
+        .topbar-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 14px;
+          color: var(--muted);
+          font-size: 0.95rem;
         }
 
         .page-shell {
@@ -355,8 +436,8 @@ private fun renderDocument(
           border: 1px solid var(--line);
           border-radius: var(--radius-xl);
           background:
-            linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
-            linear-gradient(145deg, rgba(96, 165, 250, 0.16), rgba(0, 0, 0, 0));
+            linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0)),
+            linear-gradient(135deg, rgba(215,255,100,0.06), rgba(255,255,255,0));
           box-shadow: var(--shadow);
           backdrop-filter: blur(18px);
           -webkit-backdrop-filter: blur(18px);
@@ -365,10 +446,10 @@ private fun renderDocument(
         .hero::after {
           content: "";
           position: absolute;
-          inset: auto -12% -28% auto;
-          width: 320px;
-          height: 320px;
-          background: radial-gradient(circle, rgba(103,232,249,0.18), transparent 70%);
+          inset: auto -10% -24% auto;
+          width: 280px;
+          height: 280px;
+          background: radial-gradient(circle, rgba(215,255,100,0.12), transparent 72%);
           filter: blur(8px);
         }
 
@@ -398,12 +479,11 @@ private fun renderDocument(
         }
 
         .eyebrow,
-        .stack-label,
-        .stage-kicker,
-        .mini-label,
+        .panel-label,
+        .preview-kicker,
         .invite-code-topline,
         .store-overline {
-          color: var(--accent);
+          color: var(--accent-strong);
           font-size: 0.78rem;
           font-weight: 700;
           letter-spacing: 0.14em;
@@ -435,7 +515,6 @@ private fun renderDocument(
         .hero-text,
         .feature-card p,
         .vision-item,
-        .stage-card p,
         .glass-panel p,
         .bullet-panel,
         .share-chip,
@@ -476,21 +555,20 @@ private fun renderDocument(
         }
 
         .btn-primary {
-          color: #04101f;
-          background: linear-gradient(135deg, var(--accent) 0%, #93c5fd 50%, #f0abfc 100%);
+          color: #0a0a07;
+          background: linear-gradient(180deg, var(--accent) 0%, #bedf5f 100%);
+          border-color: rgba(215,255,100,0.30);
         }
 
         .btn-secondary {
-          background: rgba(255,255,255,0.05);
+          background: rgba(255,255,255,0.03);
           color: var(--text);
         }
 
+        .panel,
         .hero-metrics .metric,
-        .mini-panel,
         .feature-card,
         .vision-panel,
-        .stage-card,
-        .glass-panel,
         .invite-code-card,
         .store-card,
         .share-board {
@@ -520,27 +598,98 @@ private fun renderDocument(
           line-height: 1.35;
         }
 
-        .stage-card-main,
+        .spotlight-panel,
         .glass-panel,
         .share-board {
           padding: 24px;
         }
 
-        .stage-card-grid {
-          margin-top: 14px;
+        .spotlight-grid {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 16px;
         }
 
-        .mini-panel {
-          flex: 1 1 180px;
+        .status-stack {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .status-chip {
+          padding: 0.55rem 0.9rem;
+          border-radius: 999px;
+          border: 1px solid var(--line);
+          color: var(--muted);
+          background: rgba(255,255,255,0.03);
+          font-size: 0.9rem;
+        }
+
+        .preview-shell {
+          margin-top: 22px;
+          border: 1px solid var(--line);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+          background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+        }
+
+        .preview-header {
+          display: flex;
+          gap: 8px;
+          padding: 14px 16px;
+          border-bottom: 1px solid var(--line);
+          background: rgba(255,255,255,0.02);
+        }
+
+        .preview-dot {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.18);
+        }
+
+        .preview-grid {
+          display: grid;
+          grid-template-columns: 1.2fr 0.8fr;
+          gap: 16px;
           padding: 18px;
         }
 
-        .mini-panel strong,
+        .preview-main,
+        .preview-stat {
+          padding: 18px;
+          border: 1px solid var(--line);
+          border-radius: var(--radius-md);
+          background: var(--panel-soft);
+        }
+
+        .preview-main strong,
         .store-card strong {
           display: block;
           margin-top: 10px;
           font-size: 1.02rem;
           line-height: 1.3;
+        }
+
+        .preview-side {
+          display: grid;
+          gap: 12px;
+        }
+
+        .preview-stat span {
+          display: block;
+          color: var(--muted-soft);
+          font-size: 0.82rem;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+        }
+
+        .preview-stat strong {
+          display: block;
+          margin-top: 8px;
+          font-size: 1rem;
         }
 
         .section-grid {
@@ -560,7 +709,7 @@ private fun renderDocument(
           height: 42px;
           margin-bottom: 18px;
           border-radius: 50%;
-          background: linear-gradient(135deg, rgba(103,232,249,0.18), rgba(249,115,22,0.18));
+          background: linear-gradient(135deg, rgba(215,255,100,0.22), rgba(255,255,255,0.08));
           color: var(--text);
           font-weight: 800;
         }
@@ -583,13 +732,13 @@ private fun renderDocument(
           padding: 16px 18px;
           border: 1px solid var(--line);
           border-radius: var(--radius-md);
-          background: rgba(255,255,255,0.03);
+          background: rgba(255,255,255,0.025);
         }
 
         .invite-code-card {
           padding: 22px;
           background:
-            linear-gradient(180deg, rgba(96,165,250,0.12), rgba(255,255,255,0.02)),
+            linear-gradient(180deg, rgba(215,255,100,0.08), rgba(255,255,255,0.02)),
             var(--panel);
         }
 
@@ -600,7 +749,7 @@ private fun renderDocument(
           font-weight: 800;
           letter-spacing: 0.18em;
           line-height: 1;
-          text-shadow: 0 0 32px rgba(103,232,249,0.24);
+          text-shadow: 0 0 24px rgba(215,255,100,0.12);
         }
 
         .invite-code-meta {
@@ -617,7 +766,7 @@ private fun renderDocument(
           margin-top: 14px;
           padding: 14px 16px;
           border-radius: var(--radius-md);
-          background: rgba(255,255,255,0.03);
+          background: rgba(255,255,255,0.025);
           border: 1px solid rgba(255,255,255,0.07);
         }
 
@@ -634,7 +783,7 @@ private fun renderDocument(
           flex: 1 1 160px;
           padding: 18px;
           border-radius: var(--radius-md);
-          background: rgba(255,255,255,0.03);
+          background: rgba(255,255,255,0.025);
           border: 1px solid rgba(255,255,255,0.08);
         }
 
@@ -653,7 +802,7 @@ private fun renderDocument(
           border-radius: var(--radius-lg);
           border: 1px solid rgba(255,255,255,0.08);
           background:
-            radial-gradient(circle at 30% 25%, rgba(103,232,249,0.10), transparent 28%),
+            radial-gradient(circle at 30% 25%, rgba(215,255,100,0.10), transparent 28%),
             linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
         }
 
@@ -661,8 +810,8 @@ private fun renderDocument(
           position: absolute;
           inset: auto;
           border-radius: 999px;
-          border: 3px solid rgba(103,232,249,0.7);
-          filter: drop-shadow(0 0 24px rgba(103,232,249,0.24));
+          border: 3px solid rgba(215,255,100,0.72);
+          filter: drop-shadow(0 0 22px rgba(215,255,100,0.18));
         }
 
         .route-line-a {
@@ -678,7 +827,7 @@ private fun renderDocument(
           height: 120px;
           right: 34px;
           top: 84px;
-          border-color: rgba(249,115,22,0.7);
+          border-color: rgba(255,255,255,0.55);
         }
 
         .route-line-c {
@@ -686,15 +835,24 @@ private fun renderDocument(
           height: 120px;
           left: 168px;
           bottom: 24px;
-          border-color: rgba(96,165,250,0.9);
+          border-color: rgba(215,255,100,0.42);
         }
 
         @media (max-width: 980px) {
           .hero-home,
           .hero-run,
           .invite-grid,
+          .preview-grid,
           .vision-panel {
             grid-template-columns: 1fr;
+          }
+
+          .spotlight-grid {
+            flex-direction: column;
+          }
+
+          .status-stack {
+            justify-content: flex-start;
           }
 
           h1 {
@@ -708,6 +866,16 @@ private fun renderDocument(
             width: min(calc(100% - 18px), var(--max));
             padding-top: 12px;
             padding-bottom: 28px;
+          }
+
+          .topbar {
+            border-radius: 24px;
+            padding: 14px;
+          }
+
+          .topbar-links {
+            width: 100%;
+            justify-content: space-between;
           }
 
           .hero-home,

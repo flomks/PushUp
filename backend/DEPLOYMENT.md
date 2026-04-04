@@ -44,6 +44,7 @@ cat > /opt/pushup/.env << 'EOF'
 KTOR_ENV=production
 PORT=8080
 HOST=0.0.0.0
+PUBLIC_BASE_URL=https://pushup.weareo.fun
 
 # Supabase Projekt-URL (fuer JWKS/RS256 -- neue Projekte 2025+)
 # Supabase Dashboard > Project Settings > API > Project URL
@@ -135,6 +136,11 @@ docker compose logs -f
 curl http://localhost:8080/health
 # Erwartete Antwort: {"status":"ok"}
 ```
+
+Bei fehlgeschlagenem Auto-Deploy gibt der Workflow jetzt vor dem Rollback
+automatisch `docker compose ps`, den Container-State und die letzten
+Backend-Logs aus. Damit ist die eigentliche Ursache direkt im GitHub-Action-Log
+sichtbar.
 
 ---
 
@@ -240,6 +246,7 @@ Alle Variablen stehen in `/opt/pushup/.env` auf dem Server.
 | Variable | Beschreibung | Wo finden |
 |----------|-------------|-----------|
 | `KTOR_ENV` | `production` | Fester Wert |
+| `PUBLIC_BASE_URL` | Oeffentliche Basis-URL fuer Web-Links im Startlog | Deine Domain |
 | `SUPABASE_URL` | Projekt-URL fuer JWKS-Endpoint (neue Projekte, RS256) | Supabase > Project Settings > API |
 | `SUPABASE_JWT_SECRET` | JWT Secret (nur Legacy-Projekte mit HS256) | Supabase > Settings > API > JWT Settings |
 | `JWT_ISSUER` | `https://<ref>.supabase.co/auth/v1` | Supabase Projekt-URL |
