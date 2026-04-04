@@ -12,7 +12,6 @@ import com.pushup.plugins.FriendshipStatus
 import com.pushup.plugins.Friendships
 import com.pushup.plugins.JoggingSessions
 import com.pushup.plugins.UserLevels
-import com.pushup.plugins.WorkoutSessions
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull

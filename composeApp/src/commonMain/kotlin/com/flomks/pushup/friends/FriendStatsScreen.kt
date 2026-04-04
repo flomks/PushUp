@@ -439,6 +439,7 @@ private fun FriendStatsScreenPreview() {
                         period             = "week",
                         dateFrom           = "2026-03-02",
                         dateTo             = "2026-03-08",
+                        activityPoints     = 142,
                         pushupCount        = 142,
                         totalSessions      = 7,
                         totalEarnedSeconds = 852,

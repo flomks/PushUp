@@ -558,7 +558,7 @@ struct DashboardView: View {
                 showAddWidgetSheet = true
             } label: {
                 Image(systemName: "plus")
-                    .font(.title3)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppColors.primary)
             }
             .buttonStyle(.plain)
