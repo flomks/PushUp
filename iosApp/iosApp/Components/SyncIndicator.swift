@@ -83,14 +83,20 @@ struct SyncIndicator: View {
                 .foregroundStyle(AppColors.textTertiary)
 
         case .syncing:
-            MotionLoadingIndicator(
-                tint: AppColors.primary,
-                lineCount: 4,
-                lineWidth: 3,
-                height: 14,
-                speed: 1.1
+            ZStack {
+                Image(icon: .cloudFill)
+                    .foregroundStyle(AppColors.primary.opacity(0.22))
+
+                MotionLoadingIndicator(
+                    tint: AppColors.primary,
+                    lineCount: 3,
+                    lineWidth: 2.2,
+                    height: 10,
+                    speed: 1.1
                 )
-                .frame(width: 20, height: 16)
+                .frame(width: 14, height: 10)
+                .offset(y: 1)
+            }
 
         case .success:
             Image(icon: .checkmarkCircleFill)
