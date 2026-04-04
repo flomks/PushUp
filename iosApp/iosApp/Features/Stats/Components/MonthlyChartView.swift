@@ -52,7 +52,7 @@ struct MonthlyChartView: View {
             HStack {
                 Label("Monthly Trend", icon: .chartBar)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Spacer()
 
@@ -70,9 +70,7 @@ struct MonthlyChartView: View {
             }
         }
         .padding(AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
     }
 
     // MARK: - Line Chart (Swift Charts)
@@ -119,7 +117,7 @@ struct MonthlyChartView: View {
             .annotation(position: .top, alignment: .center) {
                 Text("\(week.totalActivityPoints)")
                     .font(AppTypography.caption2)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .padding(.bottom, 2)
             }
         }
@@ -129,7 +127,7 @@ struct MonthlyChartView: View {
                     if let label = value.as(String.self) {
                         Text(label)
                             .font(AppTypography.caption2)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                 }
             }
@@ -137,18 +135,18 @@ struct MonthlyChartView: View {
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                    .foregroundStyle(AppColors.separator.opacity(0.5))
+                    .foregroundStyle(Color.white.opacity(0.10))
                 AxisValueLabel {
                     if let intVal = value.as(Int.self) {
                         Text("\(intVal)")
                             .font(AppTypography.caption2)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                 }
             }
         }
         .chartPlotStyle { plotArea in
-            plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
+            plotArea.background(Color.white.opacity(0.03))
         }
         .frame(height: 180)
         .animation(.spring(duration: 0.7, bounce: 0.1), value: weeks.map(\.totalActivityPoints))
@@ -159,7 +157,7 @@ struct MonthlyChartView: View {
     @ViewBuilder
     private var lineChartSkeleton: some View {
         RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-            .fill(AppColors.fill)
+            .fill(Color.white.opacity(0.10))
             .frame(height: 180)
             .overlay(
                 SkeletonLineOverlay()
@@ -189,7 +187,7 @@ struct MonthlyChartView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                     Text("vs. Last Month")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xxs) {
                         let prefix = comparison.isImprovement ? "+" : ""
@@ -201,7 +199,7 @@ struct MonthlyChartView: View {
 
                         Text(comparison.isImprovement ? "improvement" : "decrease")
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                 }
 
@@ -210,10 +208,10 @@ struct MonthlyChartView: View {
                 VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
                     Text("\(comparison.currentMonthActivityPoints)")
                         .font(AppTypography.displayMedium)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     Text("this month")
                         .font(AppTypography.caption2)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
             }
         }
@@ -285,7 +283,7 @@ private struct SkeletonLineOverlay: View {
                     path.addLine(to: point)
                 }
             }
-            .stroke(AppColors.fill, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            .stroke(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
             .opacity(isAnimating ? 0.4 : 0.8)
             .animation(
                 .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
@@ -305,20 +303,22 @@ private struct MonthlySkeletonCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 60, height: 12)
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 80, height: 28)
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 50, height: 10)
         }
         .padding(AppSpacing.statCardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
         .opacity(isAnimating ? 0.5 : 1.0)
         .animation(
             .easeInOut(duration: 0.9).repeatForever(autoreverses: true),

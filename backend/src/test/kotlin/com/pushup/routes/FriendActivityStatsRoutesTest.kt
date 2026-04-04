@@ -112,6 +112,7 @@ class FriendActivityStatsRoutesTest {
                 period             = period.name,
                 dateRange          = DateRangeDTO(from = "2026-03-02", to = "2026-03-08"),
                 pushupCount        = pushupCount,
+                activityPoints     = 128,
                 totalSessions      = 5,
                 totalEarnedSeconds = 252L,
                 averageQuality     = 0.87,

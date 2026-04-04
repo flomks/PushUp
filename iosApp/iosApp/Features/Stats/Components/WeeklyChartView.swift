@@ -49,7 +49,7 @@ struct WeeklyChartView: View {
             HStack {
                 Label("This Week", icon: .chartBar)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Spacer()
 
@@ -67,9 +67,7 @@ struct WeeklyChartView: View {
             }
         }
         .padding(AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
     }
 
     // MARK: - Bar Chart (Swift Charts)
@@ -88,7 +86,7 @@ struct WeeklyChartView: View {
                     Text("\(bar.activityPoints)")
                         .font(AppTypography.caption2)
                         .foregroundStyle(
-                            bar.isToday ? AppColors.primary : AppColors.textSecondary
+                            bar.isToday ? AppColors.primary : DashboardWidgetChrome.labelSecondary
                         )
                 }
             }
@@ -101,7 +99,7 @@ struct WeeklyChartView: View {
                         Text(label)
                             .font(AppTypography.caption2)
                             .fontWeight(isToday ? .bold : .regular)
-                            .foregroundStyle(isToday ? AppColors.primary : AppColors.textSecondary)
+                            .foregroundStyle(isToday ? AppColors.primary : DashboardWidgetChrome.labelSecondary)
                     }
                 }
             }
@@ -109,18 +107,18 @@ struct WeeklyChartView: View {
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                    .foregroundStyle(AppColors.separator.opacity(0.5))
+                    .foregroundStyle(Color.white.opacity(0.10))
                 AxisValueLabel {
                     if let intVal = value.as(Int.self) {
                         Text("\(intVal)")
                             .font(AppTypography.caption2)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                 }
             }
         }
         .chartPlotStyle { plotArea in
-            plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
+            plotArea.background(Color.white.opacity(0.03))
         }
         .frame(height: 180)
         .animation(.spring(duration: 0.6, bounce: 0.15), value: bars.map(\.activityPoints))
@@ -138,7 +136,7 @@ struct WeeklyChartView: View {
         } else if bar.activityPoints > 0 {
             return AnyShapeStyle(AppColors.primary.opacity(0.45))
         } else {
-            return AnyShapeStyle(AppColors.fill)
+            return AnyShapeStyle(Color.white.opacity(0.10))
         }
     }
 
@@ -208,7 +206,7 @@ private struct SkeletonWeeklyBar: View {
         VStack(spacing: AppSpacing.xxs) {
             Spacer()
             RoundedRectangle(cornerRadius: 6)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(height: 180 * heightFraction)
                 .opacity(isAnimating ? 0.5 : 1.0)
                 .animation(
@@ -216,7 +214,7 @@ private struct SkeletonWeeklyBar: View {
                     value: isAnimating
                 )
             RoundedRectangle(cornerRadius: 2)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 24, height: 10)
         }
         .frame(maxWidth: .infinity)
@@ -233,20 +231,22 @@ private struct SkeletonStatCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 60, height: 12)
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 80, height: 28)
             RoundedRectangle(cornerRadius: 4)
-                .fill(AppColors.fill)
+                .fill(Color.white.opacity(0.10))
                 .frame(width: 50, height: 10)
         }
         .padding(AppSpacing.statCardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 1)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
         .opacity(isAnimating ? 0.5 : 1.0)
         .animation(
             .easeInOut(duration: 0.9).repeatForever(autoreverses: true),

@@ -48,9 +48,7 @@ struct DailyCalendarView: View {
             legendRow
         }
         .padding(AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
     }
 
     // MARK: - Month Navigation Header
@@ -70,7 +68,7 @@ struct DailyCalendarView: View {
 
             Text(StatsViewModel.monthYearString(for: displayedMonth))
                 .font(AppTypography.headline)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Spacer()
 
@@ -98,7 +96,7 @@ struct DailyCalendarView: View {
             ForEach(Self.weekdayLabels, id: \.self) { label in
                 Text(label)
                     .font(AppTypography.caption2)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -160,7 +158,7 @@ struct DailyCalendarView: View {
     private var legendRow: some View {
         HStack(spacing: AppSpacing.md) {
             legendItem(color: AppColors.success.opacity(0.8), label: "Active day")
-            legendItem(color: AppColors.fill, label: "Rest day")
+            legendItem(color: Color.white.opacity(0.10), label: "Rest day")
             Spacer()
         }
     }
@@ -172,7 +170,7 @@ struct DailyCalendarView: View {
                 .frame(width: 14, height: 14)
             Text(label)
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 
@@ -259,13 +257,13 @@ private struct CalendarDayCell: View {
         if day.hasWorkout {
             return AppColors.success.opacity(intensityOpacity)
         }
-        return AppColors.fill.opacity(0.5)
+        return Color.white.opacity(0.08)
     }
 
     private var textColor: Color {
         if isToday { return AppColors.primary }
-        if day.hasWorkout { return AppColors.textPrimary }
-        return AppColors.textSecondary
+        if day.hasWorkout { return DashboardWidgetChrome.labelPrimary }
+        return DashboardWidgetChrome.labelSecondary
     }
 
     private var intensityOpacity: Double {
@@ -318,7 +316,7 @@ private struct SkeletonDayCell: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(AppColors.fill)
+            .fill(Color.white.opacity(0.10))
             .aspectRatio(1, contentMode: .fit)
             .opacity(isAnimating ? opacity * 0.6 : opacity)
             .animation(
@@ -345,11 +343,11 @@ struct DayDetailView: View {
                     VStack(spacing: AppSpacing.xxs) {
                         Text(StatsViewModel.shortDateString(for: day.date))
                             .font(AppTypography.title2)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                         Text("Activity Summary")
                             .font(AppTypography.subheadline)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     }
                     .padding(.top, AppSpacing.sm)
 
@@ -391,7 +389,7 @@ struct DayDetailView: View {
                 }
                 .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
-            .background(AppColors.backgroundPrimary.ignoresSafeArea())
+            .background(DashboardWidgetChrome.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

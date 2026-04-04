@@ -40,12 +40,12 @@ struct ScreenTimeStatsInlineView: View {
                 VStack(spacing: AppSpacing.xs) {
                     Text("Screen Time Not Set Up")
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                         .multilineTextAlignment(.center)
 
                     Text("Enable Screen Time in Settings to see your app usage statistics here.")
                         .font(AppTypography.body)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .multilineTextAlignment(.center)
                 }
 
@@ -110,7 +110,7 @@ struct ScreenTimeStatsInlineView: View {
                 HStack {
                     Label("App Usage", icon: .hourglassFill)
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     Spacer()
                     // Blocking status badge
                     if manager.isBlocking {
@@ -151,7 +151,7 @@ struct ScreenTimeStatsInlineView: View {
                             .foregroundStyle(AppColors.success)
                         Text("iOS Screen Time tracking active")
                             .font(AppTypography.caption2)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         Spacer()
                     }
                 }
@@ -167,7 +167,7 @@ struct ScreenTimeStatsInlineView: View {
                 .monospacedDigit()
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -181,7 +181,7 @@ struct ScreenTimeStatsInlineView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
                     Text("Daily Usage (minutes)")
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                     Chart(viewModel.chartData) { item in
                         BarMark(
@@ -202,11 +202,11 @@ struct ScreenTimeStatsInlineView: View {
                                 if let m = value.as(Int.self) {
                                     Text("\(m)")
                                         .font(AppTypography.caption2)
-                                        .foregroundStyle(AppColors.textSecondary)
+                                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                                 }
                             }
                             AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                                .foregroundStyle(AppColors.separator.opacity(0.5))
+                                .foregroundStyle(Color.white.opacity(0.10))
                         }
                     }
                     .chartXAxis {
@@ -215,7 +215,7 @@ struct ScreenTimeStatsInlineView: View {
                                 if let label = value.as(String.self) {
                                     Text(label)
                                         .font(AppTypography.caption2)
-                                        .foregroundStyle(AppColors.textSecondary)
+                                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                                 }
                             }
                         }
@@ -235,7 +235,7 @@ struct ScreenTimeStatsInlineView: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label)
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 
@@ -250,7 +250,7 @@ struct ScreenTimeStatsInlineView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(shortDate(record.date))
                                 .font(AppTypography.bodySemibold)
-                                .foregroundStyle(AppColors.textPrimary)
+                                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                             if record.creditExhausted {
                                 Text("Credit exhausted")
                                     .font(AppTypography.caption2)
@@ -260,7 +260,7 @@ struct ScreenTimeStatsInlineView: View {
                         Spacer()
                         Text(formatSeconds(record.totalSeconds))
                             .font(AppTypography.bodySemibold)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                             .monospacedDigit()
                         Image(icon: record.creditExhausted ? .xmarkShieldFill : .checkmarkShieldFill)
                             .font(.system(size: AppSpacing.iconSizeSmall))
@@ -281,7 +281,7 @@ struct ScreenTimeStatsInlineView: View {
                     .foregroundStyle(AppColors.info)
                 Text("No usage data for this period yet.")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 Spacer()
             }
         }
