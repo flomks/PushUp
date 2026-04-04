@@ -854,7 +854,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getDailyStats("user-1", LocalDate(2023, 11, 15))
 
         assertNotNull(result)
-        assertEquals(20, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(20, 0.8f), result.totalActivityXp)
         assertEquals(1, result.totalSessions)
     }
 
@@ -885,7 +885,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getWeeklyStats("user-1", LocalDate(2023, 11, 13))
 
         assertNotNull(result)
-        assertEquals(30, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(30, 0.9f), result.totalActivityXp)
         assertEquals(7, result.dailyBreakdown.size)
     }
 
@@ -907,7 +907,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getMonthlyStats("user-1", 11, 2023)
 
         assertNotNull(result)
-        assertEquals(25, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(25, 0.85f), result.totalActivityXp)
         assertEquals(11, result.month)
         assertEquals(2023, result.year)
     }
@@ -930,7 +930,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getTotalStats("user-1")
 
         assertNotNull(result)
-        assertEquals(40, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(40, 0.9f), result.totalActivityXp)
         assertEquals(1, result.totalSessions)
     }
 
@@ -953,7 +953,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getDailyStats("user-1", LocalDate(2023, 11, 15))
 
         assertNotNull(result)
-        assertEquals(15, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(15, 0.75f), result.totalActivityXp)
     }
 
     @Test
@@ -983,7 +983,7 @@ class CloudSyncRepositoryTests {
         val result = repo.getDailyStats("user-1", LocalDate(2023, 11, 15))
 
         assertNotNull(result)
-        assertEquals(10, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(10, 0.7f), result.totalActivityXp)
     }
 
     // =========================================================================

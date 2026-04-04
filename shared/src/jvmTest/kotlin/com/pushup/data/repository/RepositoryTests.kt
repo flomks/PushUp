@@ -47,6 +47,7 @@ import com.pushup.domain.model.User
 import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.model.LevelCalculator
 import com.pushup.domain.usecase.sync.AlwaysConnectedNetworkMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -884,14 +885,12 @@ class RepositoryTests {
 
         assertNotNull(result)
         assertEquals(LocalDate(2023, 11, 15), result.date)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(650L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(325f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(450L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -937,15 +936,13 @@ class RepositoryTests {
 
         assertNotNull(result)
         assertEquals(LocalDate(2023, 11, 13), result.weekStartDate)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(650L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(7, result.dailyBreakdown.size)
         assertEquals(2, result.activeDays)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(325f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(450L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -991,14 +988,12 @@ class RepositoryTests {
         assertNotNull(result)
         assertEquals(11, result.month)
         assertEquals(2023, result.year)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(650L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertTrue(result.weeklyBreakdown.isNotEmpty())
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(325f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(450L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -1048,15 +1043,13 @@ class RepositoryTests {
 
         assertNotNull(result)
         assertEquals("user-1", result.userId)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(650L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(100L, result.totalSpentSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(325f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(450L, result.bestSessionActivityXp)
         // Two consecutive days, last day is today => streak of 2
         assertEquals(2, result.currentStreakDays)
         assertEquals(2, result.longestStreakDays)
@@ -1342,7 +1335,7 @@ class RepositoryTests {
         assertNotNull(result)
         assertEquals(12, result.month)
         assertEquals(2023, result.year)
-        assertEquals(20, result.totalPushUps)
+        assertEquals(LevelCalculator.calculateXp(20, 0.8f), result.totalActivityXp)
     }
 
     @Test

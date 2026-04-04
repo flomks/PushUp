@@ -1013,13 +1013,11 @@ class UseCaseTests {
         val result = useCase("user-1", LocalDate(2023, 11, 15))
 
         assertNotNull(result)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(500L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(250f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(300L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -1056,15 +1054,13 @@ class UseCaseTests {
         val result = useCase("user-1", LocalDate(2023, 11, 13))
 
         assertNotNull(result)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(500L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(7, result.dailyBreakdown.size)
         assertEquals(2, result.activeDays)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(250f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(300L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -1101,14 +1097,12 @@ class UseCaseTests {
         val result = useCase("user-1", 11, 2023)
 
         assertNotNull(result)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(500L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertTrue(result.weeklyBreakdown.isNotEmpty())
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(250f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(300L, result.bestSessionActivityXp)
     }
 
     @Test
@@ -1165,15 +1159,13 @@ class UseCaseTests {
 
         assertNotNull(result)
         assertEquals("user-1", result.userId)
-        assertEquals(50, result.totalPushUps)
+        assertEquals(650L, result.totalActivityXp)
         assertEquals(2, result.totalSessions)
         assertEquals(300L, result.totalEarnedSeconds)
         assertEquals(100L, result.totalSpentSeconds)
         assertEquals(0.85f, result.averageQuality, 0.001f)
-        // averagePushUpsPerSession: (20 + 30) / 2 = 25
-        assertEquals(25f, result.averagePushUpsPerSession, 0.001f)
-        // bestSession: max(20, 30) = 30
-        assertEquals(30, result.bestSession)
+        assertEquals(325f, result.averageActivityXpPerSession, 0.001f)
+        assertEquals(450L, result.bestSessionActivityXp)
         // Two consecutive days, last day is today -> streak of 2
         assertEquals(2, result.currentStreakDays)
         assertEquals(2, result.longestStreakDays)
