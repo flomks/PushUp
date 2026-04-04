@@ -47,7 +47,7 @@ struct JoggingDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppColors.backgroundPrimary
+                DashboardWidgetChrome.pageBackground
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -70,6 +70,7 @@ struct JoggingDetailView: View {
                     .padding(.bottom, AppSpacing.screenVerticalBottom)
                 }
             }
+            .preferredColorScheme(.dark)
             .navigationTitle("\(session.shortDateString) - \(session.timeString)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -161,7 +162,7 @@ struct JoggingDetailView: View {
 
                     Text("Distance")
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
 
                 Divider()
@@ -227,11 +228,11 @@ struct JoggingDetailView: View {
 
             Text(value)
                 .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -240,7 +241,7 @@ struct JoggingDetailView: View {
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(AppColors.separator)
+            .fill(Color.white.opacity(0.10))
             .frame(width: 1, height: 48)
     }
 
@@ -250,9 +251,9 @@ struct JoggingDetailView: View {
     private var routeMapSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
 
-            Label("Route", icon: .figureRun)
-                .font(AppTypography.headline)
-                .foregroundStyle(AppColors.textPrimary)
+                    Label("Route", icon: .figureRun)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             if isLoadingRoute {
                 VStack(spacing: AppSpacing.sm) {
@@ -261,7 +262,7 @@ struct JoggingDetailView: View {
                         .tint(AppColors.primary)
                     Text("Loading route...")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 300)
@@ -274,22 +275,29 @@ struct JoggingDetailView: View {
 
                     Text("No GPS route data was recorded for this session.")
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 200)
-                .background(AppColors.backgroundSecondary)
-                .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
             } else {
                 Text("Tap on the route to see timestamps and speed at each point.")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 routeMap
                     .frame(height: 350)
                     .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-                    .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    )
 
                 // Legend
                 HStack(spacing: AppSpacing.md) {
@@ -393,7 +401,7 @@ struct JoggingDetailView: View {
                 HStack {
                     Label("Route Point", icon: .figureRun)
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                     Spacer()
 
@@ -436,11 +444,11 @@ struct JoggingDetailView: View {
         HStack {
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             Spacer()
             Text(value)
                 .font(AppTypography.captionSemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                 .monospacedDigit()
         }
     }
@@ -452,7 +460,7 @@ struct JoggingDetailView: View {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Label("Route Details", icon: .chartBar)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Divider()
 
@@ -480,7 +488,7 @@ struct JoggingDetailView: View {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Label("Pause Insights", icon: .clockArrowCirclepath)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Divider()
 
@@ -498,7 +506,7 @@ struct JoggingDetailView: View {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Label("Run Timeline", icon: .listBulletRectangle)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Divider()
 
@@ -511,10 +519,10 @@ struct JoggingDetailView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(segment.type == .pause ? "Pause" : "Run")
                                 .font(AppTypography.bodySemibold)
-                                .foregroundStyle(AppColors.textPrimary)
+                                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                             Text("\(Self.timeFormatter.string(from: segment.startedAt)) - \(Self.timeFormatter.string(from: segment.endedAt))")
                                 .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         }
 
                         Spacer()
@@ -522,10 +530,10 @@ struct JoggingDetailView: View {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(formatDuration(segment.durationSeconds))
                                 .font(AppTypography.captionSemibold)
-                                .foregroundStyle(AppColors.textPrimary)
+                                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                             Text(formatDistance(segment.distanceMeters))
                                 .font(AppTypography.caption1)
-                                .foregroundStyle(AppColors.textSecondary)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         }
                     }
                 }
@@ -543,7 +551,7 @@ struct JoggingDetailView: View {
                 .frame(width: 8, height: 8)
             Text(label)
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 

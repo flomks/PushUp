@@ -195,6 +195,9 @@ struct ScreenTimeStatsInlineView: View {
                         )
                         .cornerRadius(4)
                     }
+                    .chartPlotStyle { plotArea in
+                        plotArea.background(Color.clear)
+                    }
                     .frame(height: 140)
                     .chartYAxis {
                         AxisMarks(position: .leading) { value in

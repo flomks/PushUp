@@ -146,7 +146,7 @@ struct MonthlyChartView: View {
             }
         }
         .chartPlotStyle { plotArea in
-            plotArea.background(Color.white.opacity(0.03))
+            plotArea.background(Color.clear)
         }
         .frame(height: 180)
         .animation(.spring(duration: 0.7, bounce: 0.1), value: weeks.map(\.totalActivityPoints))

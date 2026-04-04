@@ -41,7 +41,7 @@ struct WorkoutDetailView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppColors.backgroundPrimary
+                DashboardWidgetChrome.pageBackground
                     .ignoresSafeArea()
 
                 ScrollView {
@@ -55,6 +55,7 @@ struct WorkoutDetailView: View {
                     .padding(.bottom, AppSpacing.screenVerticalBottom)
                 }
             }
+            .preferredColorScheme(.dark)
             .navigationTitle("\(session.shortDateString) - \(session.timeString)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -112,7 +113,7 @@ struct WorkoutDetailView: View {
 
                     Text("Push-Ups")
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
 
                 Divider()
@@ -160,11 +161,11 @@ struct WorkoutDetailView: View {
 
             Text(value)
                 .font(AppTypography.bodySemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Text(label)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -181,7 +182,7 @@ struct WorkoutDetailView: View {
 
             Text("Quality")
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -190,7 +191,7 @@ struct WorkoutDetailView: View {
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(AppColors.separator)
+            .fill(Color.white.opacity(0.10))
             .frame(width: 1, height: 48)
     }
 
@@ -206,7 +207,7 @@ struct WorkoutDetailView: View {
                     .tint(AppColors.primary)
                 Text("Loading records...")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, AppSpacing.xl)
@@ -215,7 +216,7 @@ struct WorkoutDetailView: View {
 
                 Label("Form Score Over Time", icon: .chartBar)
                     .font(AppTypography.headline)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Chart(records) { record in
                     // Area fill under the line
@@ -252,12 +253,12 @@ struct WorkoutDetailView: View {
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 5)) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                            .foregroundStyle(AppColors.separator.opacity(0.5))
+                            .foregroundStyle(Color.white.opacity(0.10))
                         AxisValueLabel {
                             if let seconds = value.as(Double.self) {
                                 Text(Self.formatTimeOffset(seconds))
                                     .font(AppTypography.caption2)
-                                    .foregroundStyle(AppColors.textSecondary)
+                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                             }
                         }
                     }
@@ -265,19 +266,19 @@ struct WorkoutDetailView: View {
                 .chartYAxis {
                     AxisMarks(position: .leading, values: [0.0, 0.25, 0.5, 0.75, 1.0]) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                            .foregroundStyle(AppColors.separator.opacity(0.5))
+                            .foregroundStyle(Color.white.opacity(0.10))
                         AxisValueLabel {
                             if let score = value.as(Double.self) {
                                 Text("\(Int(score * 100))%")
                                     .font(AppTypography.caption2)
-                                    .foregroundStyle(AppColors.textSecondary)
+                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                             }
                         }
                     }
                 }
                 .chartYScale(domain: 0...1)
                 .chartPlotStyle { plotArea in
-                    plotArea.background(AppColors.backgroundPrimary.opacity(0.3))
+                    plotArea.background(Color.clear)
                 }
                 .frame(height: 180)
                 .animation(.spring(duration: 0.6, bounce: 0.1), value: records.count)
@@ -291,9 +292,7 @@ struct WorkoutDetailView: View {
                 .padding(.top, AppSpacing.xxs)
             }
             .padding(AppSpacing.md)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
             .accessibilityIdentifier("detail_form_score_chart")
         } else {
             // No records available -- show a summary instead
@@ -305,14 +304,17 @@ struct WorkoutDetailView: View {
 
                 Text("No detailed rep data available for this session.")
                     .font(AppTypography.subheadline)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, AppSpacing.xl)
             .padding(.horizontal, AppSpacing.md)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
         }
     }
 
@@ -324,7 +326,7 @@ struct WorkoutDetailView: View {
                 .frame(width: 8, height: 8)
             Text(label)
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 
@@ -346,7 +348,7 @@ struct WorkoutDetailView: View {
                 HStack {
                     Label("Push-Up Records", icon: .figureStrengthTraining)
                         .font(AppTypography.headline)
-                        .foregroundStyle(AppColors.textPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                     Spacer()
 
@@ -373,9 +375,7 @@ struct WorkoutDetailView: View {
                 }
             }
             .padding(AppSpacing.md)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
             .accessibilityIdentifier("detail_records_list")
         }
     }
@@ -384,21 +384,21 @@ struct WorkoutDetailView: View {
         HStack {
             Text("Rep")
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 .frame(width: 36, alignment: .leading)
 
             Spacer()
 
             Text("Time")
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 .frame(width: 48, alignment: .center)
 
             Spacer()
 
             Text("Quality")
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 .frame(width: 80, alignment: .trailing)
         }
         .padding(.horizontal, AppSpacing.xxs)
@@ -410,7 +410,7 @@ struct WorkoutDetailView: View {
             // Rep number
             Text("#\(record.repNumber)")
                 .font(AppTypography.captionSemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                 .frame(width: 36, alignment: .leading)
 
             Spacer()
@@ -418,7 +418,7 @@ struct WorkoutDetailView: View {
             // Time offset
             Text(Self.formatTimeOffset(record.timeOffset))
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 .monospacedDigit()
                 .frame(width: 48, alignment: .center)
 
@@ -430,7 +430,7 @@ struct WorkoutDetailView: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(AppColors.fill)
+                            .fill(Color.white.opacity(0.10))
                             .frame(height: 6)
 
                         RoundedRectangle(cornerRadius: 2)

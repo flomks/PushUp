@@ -118,7 +118,7 @@ struct WeeklyChartView: View {
             }
         }
         .chartPlotStyle { plotArea in
-            plotArea.background(Color.white.opacity(0.03))
+            plotArea.background(Color.clear)
         }
         .frame(height: 180)
         .animation(.spring(duration: 0.6, bounce: 0.15), value: bars.map(\.activityPoints))

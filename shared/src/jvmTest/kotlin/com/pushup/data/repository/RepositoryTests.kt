@@ -2,8 +2,37 @@ package com.pushup.data.repository
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.pushup.data.api.CloudSyncApi
+import com.pushup.data.api.dto.CreateJoggingPlaybackEntryRequest
+import com.pushup.data.api.dto.CreateJoggingSessionRequest
+import com.pushup.data.api.dto.CreateLiveRunParticipantRequest
+import com.pushup.data.api.dto.CreateLiveRunSessionRequest
+import com.pushup.data.api.dto.CreateRoutePointRequest
+import com.pushup.data.api.dto.CreateRunEventParticipantRequest
+import com.pushup.data.api.dto.CreateRunEventRequest
+import com.pushup.data.api.dto.CreateWorkoutSessionRequest
+import com.pushup.data.api.dto.LiveJoggingStatusDTO
+import com.pushup.data.api.dto.LiveRunParticipantDTO
+import com.pushup.data.api.dto.LiveRunPresenceDTO
+import com.pushup.data.api.dto.LiveRunSessionDTO
 import com.pushup.data.api.dto.RunEventParticipantDTO
+import com.pushup.data.api.dto.RunEventDTO
+import com.pushup.data.api.dto.SetUsernameRequest
+import com.pushup.data.api.dto.UpdateJoggingSessionRequest
+import com.pushup.data.api.dto.UpdateLiveRunParticipantRequest
+import com.pushup.data.api.dto.UpdateLiveRunSessionRequest
+import com.pushup.data.api.dto.UpdateRunEventParticipantRequest
+import com.pushup.data.api.dto.UpdateRunEventRequest
+import com.pushup.data.api.dto.UpdateTimeCreditRequest
+import com.pushup.data.api.dto.UpdateUserProfileRequest
+import com.pushup.data.api.dto.UpdateWorkoutSessionRequest
+import com.pushup.data.api.dto.UpsertLiveJoggingStatusRequest
+import com.pushup.data.api.dto.UpsertLiveRunPresenceRequest
+import com.pushup.data.api.dto.UpsertUserLevelRequest
+import com.pushup.data.api.dto.UsernameCheckResponse
+import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.model.JoggingSession
+import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.PushUpRecord
 import com.pushup.domain.model.RunEvent
 import com.pushup.domain.model.RunEventParticipant
@@ -15,6 +44,7 @@ import com.pushup.domain.model.RunVisibility
 import com.pushup.domain.model.SyncStatus
 import com.pushup.domain.model.TimeCredit
 import com.pushup.domain.model.User
+import com.pushup.domain.model.UserLevel
 import com.pushup.domain.model.UserSettings
 import com.pushup.domain.model.WorkoutSession
 import com.pushup.domain.usecase.sync.AlwaysConnectedNetworkMonitor
@@ -46,6 +76,118 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RepositoryTests {
+
+    private open class StubCloudSyncApi : CloudSyncApi {
+        override suspend fun getWorkoutSessions(): List<WorkoutSession> = emptyList()
+
+        override suspend fun getWorkoutSession(id: String): WorkoutSession =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun createWorkoutSession(request: CreateWorkoutSessionRequest): WorkoutSession =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun updateWorkoutSession(
+            id: String,
+            request: UpdateWorkoutSessionRequest,
+        ): WorkoutSession = throw UnsupportedOperationException("unused in test")
+
+        override suspend fun getTimeCredit(userId: String): TimeCredit? = null
+
+        override suspend fun updateTimeCredit(
+            userId: String,
+            request: UpdateTimeCreditRequest,
+        ): TimeCredit = throw UnsupportedOperationException("unused in test")
+
+        override suspend fun getUserProfile(userId: String): UserProfileDTO? = null
+
+        override suspend fun updateUserProfile(
+            userId: String,
+            request: UpdateUserProfileRequest,
+        ): UserProfileDTO = throw UnsupportedOperationException("unused in test")
+
+        override suspend fun getUserLevel(userId: String): UserLevel? = null
+
+        override suspend fun upsertUserLevel(
+            userId: String,
+            request: UpsertUserLevelRequest,
+        ): UserLevel = throw UnsupportedOperationException("unused in test")
+
+        override suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun setUsername(request: SetUsernameRequest): String =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun getJoggingSessions(): List<JoggingSession> = emptyList()
+
+        override suspend fun getJoggingSession(id: String): JoggingSession =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession =
+            throw UnsupportedOperationException("unused in test")
+
+        override suspend fun updateJoggingSession(
+            id: String,
+            request: UpdateJoggingSessionRequest,
+        ): JoggingSession = throw UnsupportedOperationException("unused in test")
+
+        override suspend fun getRoutePoints(sessionId: String): List<RoutePoint> = emptyList()
+
+        override suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint> = emptyList()
+
+        override suspend fun upsertLiveJoggingStatus(request: UpsertLiveJoggingStatusRequest) = Unit
+
+        override suspend fun deleteLiveJoggingStatus(userId: String) = Unit
+
+        override suspend fun getLiveJoggingStatuses(userIds: List<String>): List<LiveJoggingStatusDTO> = emptyList()
+
+        override suspend fun getRunEvents(): List<RunEventDTO> = emptyList()
+
+        override suspend fun getRunEvent(id: String): RunEventDTO? = null
+
+        override suspend fun createRunEvent(request: CreateRunEventRequest): RunEventDTO? = null
+
+        override suspend fun updateRunEvent(id: String, request: UpdateRunEventRequest): RunEventDTO? = null
+
+        override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> = emptyList()
+
+        override suspend fun createRunEventParticipants(
+            requests: List<CreateRunEventParticipantRequest>,
+        ): List<RunEventParticipantDTO> = emptyList()
+
+        override suspend fun updateRunEventParticipant(
+            eventId: String,
+            userId: String,
+            request: UpdateRunEventParticipantRequest,
+        ): RunEventParticipantDTO? = null
+
+        override suspend fun getLiveRunSessions(): List<LiveRunSessionDTO> = emptyList()
+
+        override suspend fun getLiveRunSession(id: String): LiveRunSessionDTO? = null
+
+        override suspend fun createLiveRunSession(request: CreateLiveRunSessionRequest): LiveRunSessionDTO? = null
+
+        override suspend fun updateLiveRunSession(
+            id: String,
+            request: UpdateLiveRunSessionRequest,
+        ): LiveRunSessionDTO? = null
+
+        override suspend fun getLiveRunParticipants(sessionId: String): List<LiveRunParticipantDTO> = emptyList()
+
+        override suspend fun createLiveRunParticipants(
+            requests: List<CreateLiveRunParticipantRequest>,
+        ): List<LiveRunParticipantDTO> = emptyList()
+
+        override suspend fun updateLiveRunParticipant(
+            sessionId: String,
+            userId: String,
+            request: UpdateLiveRunParticipantRequest,
+        ): LiveRunParticipantDTO? = null
+
+        override suspend fun getLiveRunPresence(sessionId: String): List<LiveRunPresenceDTO> = emptyList()
+
+        override suspend fun upsertLiveRunPresence(request: UpsertLiveRunPresenceRequest): LiveRunPresenceDTO? = null
+    }
 
     private lateinit var database: PushUpDatabase
     private val testDispatcher = StandardTestDispatcher()
@@ -1242,7 +1384,7 @@ class RepositoryTests {
             database = database,
             dispatcher = testDispatcher,
             clock = fixedClock,
-            cloudSyncApi = object : CloudSyncApi {
+            cloudSyncApi = object : StubCloudSyncApi() {
                 override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> =
                     listOf(
                         RunEventParticipantDTO(

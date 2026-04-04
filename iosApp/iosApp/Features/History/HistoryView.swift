@@ -48,7 +48,7 @@ struct HistoryView: View {
 
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimary
+            DashboardWidgetChrome.pageBackground
                 .ignoresSafeArea()
 
             if viewModel.isLoading && !viewModel.hasAnyData {
@@ -57,6 +57,7 @@ struct HistoryView: View {
                 mainContent
             }
         }
+        .preferredColorScheme(.dark)
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { toolbarContent }
@@ -102,7 +103,7 @@ struct HistoryView: View {
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.top, AppSpacing.xs)
                 .padding(.bottom, AppSpacing.sm)
-                .background(AppColors.backgroundPrimary)
+                .background(DashboardWidgetChrome.pageBackground)
 
             // List content
             listContent
@@ -137,7 +138,7 @@ struct HistoryView: View {
 
                 TextField("Search by date (e.g. March 8)", text: $viewModel.searchText)
                     .font(AppTypography.body)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .accessibilityIdentifier("history_search_field")
@@ -157,11 +158,10 @@ struct HistoryView: View {
             }
             .padding(.horizontal, AppSpacing.sm)
             .padding(.vertical, AppSpacing.xs)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
             .overlay(
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                    .strokeBorder(AppColors.separator, lineWidth: 0.5)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
             )
         }
     }
@@ -212,7 +212,7 @@ struct HistoryView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(AppColors.backgroundPrimary)
+            .background(DashboardWidgetChrome.pageBackground)
             .refreshable {
                 await viewModel.refresh()
             }
@@ -226,13 +226,13 @@ struct HistoryView: View {
         HStack {
             Text(title)
                 .font(AppTypography.subheadlineSemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Spacer()
         }
         .padding(.vertical, AppSpacing.xs)
         .padding(.horizontal, AppSpacing.xxs)
-        .background(AppColors.backgroundPrimary)
+        .background(DashboardWidgetChrome.pageBackground)
         .textCase(nil)
     }
 
@@ -281,7 +281,7 @@ struct HistoryView: View {
 
             Text("Loading History...")
                 .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .accessibilityIdentifier("history_loading")
     }

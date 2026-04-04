@@ -52,9 +52,11 @@ private struct PushUpListItem: View {
         }
         .padding(.vertical, AppSpacing.sm)
         .padding(.horizontal, AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
@@ -76,11 +78,11 @@ private struct PushUpListItem: View {
             HStack(spacing: AppSpacing.xxs) {
                 Image(icon: .clock)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Text(session.timeString)
                     .font(AppTypography.captionSemibold)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             }
 
             Spacer()
@@ -113,13 +115,13 @@ private struct PushUpListItem: View {
         VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
             Text("\(session.pushUpCount)")
                 .font(AppTypography.displayMedium)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
             Text("Push-Ups")
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
             Image(icon: .chevronRight)
                 .font(.system(size: 11, weight: .semibold))
@@ -138,11 +140,15 @@ private struct PushUpListItem: View {
 
             Text(text)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .padding(.horizontal, AppSpacing.xs)
         .padding(.vertical, 3)
-        .background(tint.opacity(0.10), in: Capsule())
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
     }
 
     private var accessibilityDescription: String {
@@ -178,9 +184,11 @@ private struct JoggingListItem: View {
         }
         .padding(.vertical, AppSpacing.sm)
         .padding(.horizontal, AppSpacing.md)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
@@ -202,11 +210,11 @@ private struct JoggingListItem: View {
             HStack(spacing: AppSpacing.xxs) {
                 Image(icon: .clock)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Text(session.timeString)
                     .font(AppTypography.captionSemibold)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
             }
 
             Spacer()
@@ -253,13 +261,13 @@ private struct JoggingListItem: View {
         VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
             Text(session.distanceString)
                 .font(AppTypography.displayMedium)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
             Text("Distance")
                 .font(AppTypography.caption2)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
             Image(icon: .chevronRight)
                 .font(.system(size: 11, weight: .semibold))
@@ -278,11 +286,15 @@ private struct JoggingListItem: View {
 
             Text(text)
                 .font(AppTypography.caption1)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .padding(.horizontal, AppSpacing.xs)
         .padding(.vertical, 3)
-        .background(tint.opacity(0.10), in: Capsule())
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
     }
 
     private var accessibilityDescription: String {
