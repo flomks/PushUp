@@ -56,6 +56,7 @@ struct FriendsView: View {
                 toolbarItems
             }
         }
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showAddFriend) {
             AddFriendSheet(viewModel: viewModel)
         }
@@ -155,7 +156,7 @@ private struct FriendHubView: View {
             .padding(.top, AppSpacing.sm)
             .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
-        .background(AppColors.backgroundPrimary)
+        .background(DashboardWidgetChrome.pageBackground)
         .refreshable {
             await viewModel.refresh()
         }
@@ -192,16 +193,16 @@ private struct FriendHubView: View {
 
                 Text(title)
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                 Text(subtitle)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .multilineTextAlignment(.leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(AppSpacing.md)
-            .background(AppColors.backgroundTertiary.opacity(0.55), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
         }
         .buttonStyle(.plain)
     }
@@ -338,12 +339,16 @@ private struct FriendHubView: View {
             Text(period.shortLabel)
                 .font(AppTypography.caption2)
                 .fontWeight(.semibold)
-                .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.textSecondary)
+                .foregroundStyle(isSelected ? AppColors.textOnPrimary : DashboardWidgetChrome.labelSecondary)
                 .padding(.horizontal, AppSpacing.xs)
                 .padding(.vertical, AppSpacing.xxs)
                 .background(
-                    isSelected ? AppColors.primary : AppColors.backgroundTertiary,
+                    isSelected ? AppColors.primary : Color.white.opacity(0.08),
                     in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(isSelected ? 0.0 : 0.10), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -435,11 +440,10 @@ private struct FriendHubView: View {
         }
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.sm)
-        .background(
-            entry.isCurrentUser
-                ? AppColors.primary.opacity(0.08)
-                : AppColors.backgroundSecondary,
-            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
+        .background(Color.white.opacity(entry.isCurrentUser ? 0.08 : 0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
+                .stroke(entry.isCurrentUser ? AppColors.primary.opacity(0.32) : Color.white.opacity(0.10), lineWidth: 1)
         )
 
         if entry.isCurrentUser {
@@ -466,7 +470,7 @@ private struct FriendHubView: View {
         VStack(spacing: AppSpacing.xs) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-                    .fill(AppColors.backgroundSecondary)
+                    .fill(Color.white.opacity(0.05))
                     .frame(height: 60)
                     .shimmer()
             }
@@ -534,10 +538,10 @@ private struct FriendHubView: View {
                     Text("\(viewModel.friends.count)")
                         .font(AppTypography.caption2)
                         .fontWeight(.bold)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(AppColors.backgroundTertiary, in: Capsule())
+                        .background(Color.white.opacity(0.08), in: Capsule())
                 }
 
                 Spacer()
@@ -578,7 +582,7 @@ private struct FriendHubView: View {
         VStack(spacing: AppSpacing.xs) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-                    .fill(AppColors.backgroundSecondary)
+                    .fill(Color.white.opacity(0.05))
                     .frame(height: 64)
                     .shimmer()
             }
@@ -823,13 +827,10 @@ private struct FriendHubRow<Destination: View>: View {
             }
             .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.sm)
-            .background(
-                LinearGradient(
-                    colors: [AppColors.backgroundSecondary, AppColors.backgroundSecondary.opacity(0.92)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -984,13 +985,17 @@ struct AddFriendSheet: View {
                         Text(tab.label)
                             .font(AppTypography.captionSemibold)
                     }
-                    .foregroundStyle(selectedTab == tab ? AppColors.textOnPrimary : AppColors.textSecondary)
+                    .foregroundStyle(selectedTab == tab ? AppColors.textOnPrimary : DashboardWidgetChrome.labelSecondary)
                     .padding(.horizontal, AppSpacing.sm)
                     .padding(.vertical, AppSpacing.xs)
                     .frame(maxWidth: .infinity)
                     .background(
-                        selectedTab == tab ? AppColors.primary : AppColors.backgroundTertiary,
+                        selectedTab == tab ? AppColors.primary : Color.white.opacity(0.08),
                         in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(selectedTab == tab ? 0.0 : 0.10), lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -1033,7 +1038,11 @@ struct AddFriendSheet: View {
             }
         }
         .padding(AppSpacing.sm)
-        .background(AppColors.backgroundTertiary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -1066,9 +1075,10 @@ struct AddFriendSheet: View {
                             onSend: { viewModel.sendFriendRequest(to: user.id) }
                         )
                         .padding(.horizontal, AppSpacing.md)
-                        .background(
-                            AppColors.backgroundSecondary,
-                            in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                                .stroke(Color.white.opacity(0.10), lineWidth: 1)
                         )
                     }
                 }
@@ -1264,9 +1274,10 @@ struct RequestsSheet: View {
                     )
                     .padding(.horizontal, AppSpacing.md)
                     .padding(.vertical, AppSpacing.sm)
-                    .background(
-                        AppColors.backgroundSecondary,
-                        in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
+                            .stroke(Color.white.opacity(0.10), lineWidth: 1)
                     )
                 }
             }

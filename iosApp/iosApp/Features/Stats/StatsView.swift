@@ -47,11 +47,12 @@ struct StatsView: View {
 
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimary
+            DashboardWidgetChrome.pageBackground
                 .ignoresSafeArea()
 
             mainContent
         }
+        .preferredColorScheme(.dark)
         .navigationTitle("Stats")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { toolbarContent }
@@ -92,7 +93,7 @@ struct StatsView: View {
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.top, AppSpacing.xs)
                 .padding(.bottom, AppSpacing.sm)
-                .background(AppColors.backgroundPrimary)
+                .background(DashboardWidgetChrome.pageBackground)
 
             tabContent
         }
@@ -118,12 +119,16 @@ struct StatsView: View {
         } label: {
             Text(tab.label)
                 .font(AppTypography.captionSemibold)
-                .foregroundStyle(isSelected ? AppColors.textOnPrimary : AppColors.textPrimary)
+                .foregroundStyle(isSelected ? AppColors.textOnPrimary : DashboardWidgetChrome.labelSecondary)
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.vertical, AppSpacing.xxs + 2)
                 .background(
-                    isSelected ? AppColors.primary : AppColors.backgroundTertiary,
+                    isSelected ? AppColors.primary : Color.white.opacity(0.08),
                     in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(isSelected ? 0.0 : 0.10), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -189,7 +194,7 @@ struct StatsView: View {
 
                     Text("Tap an active day to see detailed activity stats.")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     Spacer()
                 }
@@ -289,11 +294,15 @@ struct StatsView: View {
 
             Text("\(days)")
                 .font(AppTypography.captionSemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
         }
         .padding(.horizontal, AppSpacing.xs)
         .padding(.vertical, AppSpacing.xxs)
-        .background(AppColors.secondary.opacity(0.12), in: Capsule())
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     // MARK: - Export Actions

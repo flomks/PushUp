@@ -35,11 +35,13 @@ struct Card<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .shadow(
-                color: hasShadow ? Color.black.opacity(0.06) : .clear,
-                radius: 8, x: 0, y: 2
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
             )
     }
 }
@@ -155,9 +157,14 @@ struct StatCard: View {
             }
         }
         .padding(AppSpacing.statCardPadding)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-        .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+        .background(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     @ViewBuilder

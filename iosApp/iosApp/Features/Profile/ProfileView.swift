@@ -45,7 +45,7 @@ struct ProfileView: View {
 
     var body: some View {
         ZStack {
-            AppColors.backgroundPrimary
+            DashboardWidgetChrome.pageBackground
                 .ignoresSafeArea()
 
             if viewModel.isLoading {
@@ -54,6 +54,7 @@ struct ProfileView: View {
                 scrollContent
             }
         }
+        .preferredColorScheme(.dark)
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.large)
         .task { await viewModel.loadData() }
@@ -221,11 +222,11 @@ struct ProfileView: View {
             HStack(spacing: AppSpacing.xs) {
                 Text("@")
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
 
                 TextField("your_username", text: $viewModel.usernameInput)
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     .focused($isUsernameFieldFocused)
                     .submitLabel(.done)
                     .autocorrectionDisabled()
@@ -250,8 +251,11 @@ struct ProfileView: View {
             }
             .padding(.horizontal, AppSpacing.sm)
             .frame(height: AppSpacing.buttonHeightSecondary)
-            .background(AppColors.backgroundTertiary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
 
             // Validation / availability message
             if let localError = viewModel.usernameValidationError, !viewModel.usernameInput.isEmpty {
@@ -330,7 +334,7 @@ struct ProfileView: View {
 
                 Text("Display Name")
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Spacer()
             }
@@ -338,7 +342,7 @@ struct ProfileView: View {
             HStack(spacing: AppSpacing.xs) {
                 TextField("Display Name", text: $viewModel.displayName)
                     .font(AppTypography.bodySemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     .focused($isNameFieldFocused)
                     .submitLabel(.done)
                     .onSubmit {
@@ -355,8 +359,11 @@ struct ProfileView: View {
             }
             .padding(.horizontal, AppSpacing.sm)
             .frame(height: AppSpacing.buttonHeightSecondary)
-            .background(AppColors.backgroundTertiary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusChip)
+                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+            )
 
             // Inline validation error
             if let error = viewModel.displayNameError {
@@ -434,7 +441,7 @@ struct ProfileView: View {
         } else if viewModel.isLoading {
             // Skeleton placeholder while loading
             RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-                .fill(AppColors.primary.opacity(0.12))
+                .fill(Color.white.opacity(0.06))
                 .frame(height: 160)
                 .redacted(reason: .placeholder)
         }
@@ -587,7 +594,7 @@ struct ProfileView: View {
         HStack(spacing: AppSpacing.sm) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-                    .fill(AppColors.backgroundSecondary)
+                    .fill(Color.white.opacity(0.05))
                     .frame(height: 80)
                     .redacted(reason: .placeholder)
             }
@@ -652,7 +659,7 @@ struct ProfileView: View {
             if viewModel.isDeletingAccount {
                 ZStack {
                     RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton)
-                        .fill(AppColors.backgroundSecondary.opacity(0.6))
+                        .fill(Color.black.opacity(0.45))
                     ProgressView()
                         .progressViewStyle(.circular)
                         .tint(AppColors.error)
@@ -671,7 +678,7 @@ struct ProfileView: View {
 
             Text(title)
                 .font(AppTypography.title3)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
         }
         .padding(.top, AppSpacing.xs)
         .accessibilityAddTraits(.isHeader)
@@ -687,13 +694,15 @@ struct ProfileView: View {
 
             Text(message)
                 .font(AppTypography.captionSemibold)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
         }
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.xs)
-        .background(AppColors.backgroundSecondary)
-        .clipShape(Capsule())
-        .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .background(Color.white.opacity(0.06), in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
     // MARK: - Initial Loading View
@@ -707,7 +716,7 @@ struct ProfileView: View {
 
             Text("Loading Profile...")
                 .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 
@@ -791,13 +800,13 @@ struct ProfileStatCell: View {
 
                 Text(value)
                     .font(AppTypography.title3)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
 
                 Text(label)
                     .font(AppTypography.caption2)
-                    .foregroundStyle(AppColors.textSecondary)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
             }
@@ -837,7 +846,7 @@ struct ExerciseLevelCell: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(displayName)
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                             .lineLimit(1)
 
                         Text("Lv. \(info.level)")
@@ -853,7 +862,7 @@ struct ExerciseLevelCell: View {
                 HStack {
                     Text("\(info.xpIntoLevel) / \(info.xpRequiredForNextLevel) XP")
                         .font(AppTypography.caption2)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     Spacer()
                 }

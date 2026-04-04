@@ -87,10 +87,10 @@ struct AvatarView: View {
 
     private var shimmerView: some View {
         Circle()
-            .fill(AppColors.backgroundSecondary)
+            .fill(Color.white.opacity(0.06))
             .overlay(
                 Circle()
-                    .fill(AppColors.textTertiary.opacity(0.15))
+                    .fill(Color.white.opacity(0.08))
             )
     }
 }

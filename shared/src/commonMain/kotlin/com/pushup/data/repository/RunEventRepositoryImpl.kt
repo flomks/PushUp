@@ -271,8 +271,11 @@ class RunEventRepositoryImpl(
         displayName = "Runner",
         avatarUrl = null,
         avatarVisibility = AvatarVisibility.EVERYONE,
-        createdAt = now,
-        lastSyncedAt = now,
+        // Stub users only exist to satisfy local FK relationships for social
+        // features. They must never outrank the authenticated profile in
+        // `selectCurrentUser()`, which currently orders by `createdAt DESC`.
+        createdAt = Instant.fromEpochMilliseconds(0),
+        lastSyncedAt = Instant.fromEpochMilliseconds(0),
     )
 }
 
