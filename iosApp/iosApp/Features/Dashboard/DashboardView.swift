@@ -557,9 +557,8 @@ struct DashboardView: View {
                 DashboardHaptics.lightImpact()
                 showAddWidgetSheet = true
             } label: {
-                Image(systemName: "plus.circle.fill")
+                Image(systemName: "plus")
                     .font(.title3)
-                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(AppColors.primary)
             }
             .buttonStyle(.plain)
