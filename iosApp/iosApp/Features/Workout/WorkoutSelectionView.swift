@@ -64,7 +64,8 @@ struct WorkoutSelectionView: View {
             .padding(.top, AppSpacing.sm)
             .padding(.bottom, AppSpacing.screenVerticalBottom)
         }
-        .background(AppColors.backgroundPrimary)
+        .background(DashboardWidgetChrome.pageBackground)
+        .preferredColorScheme(.dark)
         .navigationTitle("Workouts")
         .navigationBarTitleDisplayMode(.large)
         .fullScreenCover(isPresented: $showPushUpWorkout) {
@@ -84,11 +85,11 @@ struct WorkoutSelectionView: View {
         VStack(alignment: .leading, spacing: AppSpacing.xxs) {
             Text(title)
                 .font(AppTypography.title3)
-                .foregroundStyle(AppColors.textPrimary)
+                .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
             Text(subtitle)
                 .font(AppTypography.subheadline)
-                .foregroundStyle(AppColors.textSecondary)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, AppSpacing.xs)
@@ -124,7 +125,7 @@ struct WorkoutSelectionView: View {
                     HStack(spacing: AppSpacing.xs) {
                         Text(WorkoutType.pushUps.displayName)
                             .font(AppTypography.title3)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                         // "Camera" badge
                         Text("AI")
@@ -140,7 +141,7 @@ struct WorkoutSelectionView: View {
 
                     Text(WorkoutType.pushUps.subtitle)
                         .font(AppTypography.subheadline)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     // Earn rate
                     HStack(spacing: AppSpacing.xxs) {
@@ -150,7 +151,7 @@ struct WorkoutSelectionView: View {
 
                         Text(WorkoutType.pushUps.earnHint)
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.success)
+                            .foregroundStyle(WorkoutType.pushUps.accentColor)
                     }
                     .padding(.top, AppSpacing.xxs)
                 }
@@ -160,17 +161,16 @@ struct WorkoutSelectionView: View {
                 // Right: Chevron
                 Image(icon: .chevronRight)
                     .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
             }
-            .padding(AppSpacing.md)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.08), radius: 10, x: 0, y: 4)
+            .padding(DashboardWidgetChrome.padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
             .overlay(
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [AppColors.primary.opacity(0.3), AppColors.primary.opacity(0.1)],
+                            colors: [AppColors.primary.opacity(0.32), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -211,7 +211,7 @@ struct WorkoutSelectionView: View {
                     HStack(spacing: AppSpacing.xs) {
                         Text(WorkoutType.jogging.displayName)
                             .font(AppTypography.subheadlineSemibold)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                         // "GPS" badge
                         Text("GPS")
@@ -227,7 +227,7 @@ struct WorkoutSelectionView: View {
 
                     Text(WorkoutType.jogging.subtitle)
                         .font(AppTypography.caption1)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     // Earn rate
                     HStack(spacing: AppSpacing.xxs) {
@@ -237,7 +237,7 @@ struct WorkoutSelectionView: View {
 
                         Text(WorkoutType.jogging.earnHint)
                             .font(AppTypography.caption1)
-                            .foregroundStyle(AppColors.success)
+                            .foregroundStyle(WorkoutType.jogging.accentColor)
                     }
                 }
 
@@ -246,17 +246,16 @@ struct WorkoutSelectionView: View {
                 // Right: Chevron
                 Image(icon: .chevronRight)
                     .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
             }
-            .padding(AppSpacing.md)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+            .padding(DashboardWidgetChrome.padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
             .overlay(
                 RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [AppColors.info.opacity(0.3), AppColors.info.opacity(0.1)],
+                            colors: [AppColors.info.opacity(0.32), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -318,7 +317,7 @@ struct ExerciseCard: View {
                 // Name
                 Text(workoutType.displayName)
                     .font(AppTypography.subheadlineSemibold)
-                    .foregroundStyle(AppColors.textPrimary)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                     .lineLimit(1)
 
                 // Difficulty dots
@@ -332,16 +331,14 @@ struct ExerciseCard: View {
 
                     Text(workoutType.earnHint)
                         .font(AppTypography.caption2)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, AppSpacing.md)
             .padding(.horizontal, AppSpacing.sm)
-            .background(AppColors.backgroundSecondary)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
-            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
         }
         .buttonStyle(ScaleButtonStyle())
     }
@@ -364,7 +361,7 @@ struct DifficultyIndicator: View {
 
             Text(difficulty.displayName)
                 .font(AppTypography.caption2)
-                .foregroundStyle(difficulty.color)
+                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
 }
@@ -395,26 +392,25 @@ struct ComingSoonCard: View {
                 HStack(spacing: AppSpacing.xs) {
                     Text(workoutType.displayName)
                         .font(AppTypography.subheadlineSemibold)
-                        .foregroundStyle(AppColors.textSecondary)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                     Image(systemName: "lock.fill")
                         .font(.system(size: 12))
-                        .foregroundStyle(AppColors.textTertiary)
+                        .foregroundStyle(DashboardWidgetChrome.labelMuted)
                 }
 
                 Text(workoutType.subtitle)
                     .font(AppTypography.caption1)
-                    .foregroundStyle(AppColors.textTertiary)
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
             }
 
             Spacer()
         }
         .padding(AppSpacing.md)
-        .background(AppColors.backgroundSecondary.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
+        .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
         .overlay(
             RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard)
-                .strokeBorder(AppColors.separator.opacity(0.5), lineWidth: 1)
+                .strokeBorder(AppColors.separator.opacity(0.25), lineWidth: 1)
         )
     }
 }
@@ -434,7 +430,7 @@ struct TimerWorkoutPlaceholderView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppColors.backgroundPrimary
+                DashboardWidgetChrome.pageBackground
                     .ignoresSafeArea()
 
                 VStack(spacing: AppSpacing.xl) {
@@ -461,11 +457,11 @@ struct TimerWorkoutPlaceholderView: View {
                     VStack(spacing: AppSpacing.sm) {
                         Text(workoutType.displayName)
                             .font(AppTypography.title1)
-                            .foregroundStyle(AppColors.textPrimary)
+                            .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                         Text("Workout tracking for \(workoutType.displayName) is being built.")
                             .font(AppTypography.subheadline)
-                            .foregroundStyle(AppColors.textSecondary)
+                            .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, AppSpacing.xl)
 
@@ -485,29 +481,29 @@ struct TimerWorkoutPlaceholderView: View {
                     Spacer()
 
                     // Difficulty info
-                    Card {
-                        HStack {
-                            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                                Text("Difficulty")
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(AppColors.textSecondary)
+                    HStack {
+                        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                            Text("Difficulty")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
-                                DifficultyIndicator(difficulty: workoutType.difficulty)
-                            }
+                            DifficultyIndicator(difficulty: workoutType.difficulty)
+                        }
 
-                            Spacer()
+                        Spacer()
 
-                            VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
-                                Text("Earn Rate")
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(AppColors.textSecondary)
+                        VStack(alignment: .trailing, spacing: AppSpacing.xxs) {
+                            Text("Earn Rate")
+                                .font(AppTypography.caption1)
+                                .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
-                                Text(workoutType.earnHint)
-                                    .font(AppTypography.subheadlineSemibold)
-                                    .foregroundStyle(workoutType.accentColor)
-                            }
+                            Text(workoutType.earnHint)
+                                .font(AppTypography.subheadlineSemibold)
+                                .foregroundStyle(workoutType.accentColor)
                         }
                     }
+                    .padding(DashboardWidgetChrome.padding)
+                    .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
                     .padding(.horizontal, AppSpacing.md)
 
                     // Coming soon notice
@@ -518,11 +514,12 @@ struct TimerWorkoutPlaceholderView: View {
 
                         Text("Full tracking coming soon!")
                             .font(AppTypography.subheadline)
-                            .foregroundStyle(AppColors.textTertiary)
+                            .foregroundStyle(DashboardWidgetChrome.labelMuted)
                     }
                     .padding(.bottom, AppSpacing.xl)
                 }
             }
+            .preferredColorScheme(.dark)
             .navigationTitle(workoutType.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

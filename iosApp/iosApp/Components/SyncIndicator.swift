@@ -7,7 +7,7 @@ import SwiftUI
 /// **Visual states**
 /// | SyncState   | Icon                              | Animation            | Badge |
 /// |-------------|-----------------------------------|----------------------|-------|
-/// | `.idle`     | Cloud with subtle sync accent     | None                 | No    |
+/// | `.idle`     | Cloud with subtle shimmer         | Gentle light sweep   | No    |
 /// | `.syncing`  | Animated bars inside tinted cloud | Continuous motion    | No    |
 /// | `.success`  | Green cloud with check accent     | Scale pop + soft glow| No    |
 /// | `.error`    | Exclamation triangle (red)        | None                 | No    |
@@ -79,14 +79,11 @@ struct SyncIndicator: View {
     private var syncIcon: some View {
         switch syncService.syncState {
         case .idle:
-            cloudStatusIcon(
+            shimmerCloudIcon(
                 baseColors: [
-                    AppColors.textSecondary.opacity(0.9),
-                    AppColors.primary.opacity(0.55)
-                ],
-                accentBackground: AppColors.primary.opacity(0.18),
-                accentForeground: AppColors.primary,
-                accentIcon: .arrowClockwise
+                    AppColors.textSecondary.opacity(0.82),
+                    AppColors.primary.opacity(0.42)
+                ]
             )
 
         case .syncing:
@@ -142,6 +139,26 @@ struct SyncIndicator: View {
         case .offline:
             Image(icon: .wifiSlash)
                 .foregroundStyle(AppColors.textSecondary)
+        }
+    }
+
+    private func shimmerCloudIcon(baseColors: [Color]) -> some View {
+        ZStack {
+            Image(icon: .cloudFill)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: baseColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            ShimmerSweep()
+                .mask {
+                    Image(icon: .cloudFill)
+                }
+                .blendMode(.screen)
         }
     }
 
@@ -236,6 +253,30 @@ struct SyncIndicator: View {
         case .offline:
             return "Device is offline"
         }
+    }
+}
+
+private struct ShimmerSweep: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: false)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let cycle = time.truncatingRemainder(dividingBy: 2.6) / 2.6
+            let phase = CGFloat(cycle) * 2.2 - 1.1
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: Color.white.opacity(0.0), location: 0.34),
+                    .init(color: Color.white.opacity(0.62), location: 0.5),
+                    .init(color: Color.white.opacity(0.0), location: 0.66),
+                    .init(color: .clear, location: 1.0)
+                ],
+                startPoint: UnitPoint(x: phase, y: 0.1),
+                endPoint: UnitPoint(x: phase + 0.55, y: 0.9)
+            )
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
