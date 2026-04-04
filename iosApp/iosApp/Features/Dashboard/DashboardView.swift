@@ -739,13 +739,18 @@ private struct DashboardAddWidgetsSheet: View {
                                     .symbolRenderingMode(.hierarchical)
                                     .foregroundStyle(AppColors.primary)
                             }
-                            .padding(.vertical, AppSpacing.xs)
+                            .padding(DashboardWidgetChrome.padding)
                             .contentShape(Rectangle())
+                            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                 } header: {
                     Text("Grids")
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
 
                 // Widgets section
@@ -771,19 +776,24 @@ private struct DashboardAddWidgetsSheet: View {
                                             .foregroundStyle(AppColors.textSecondary)
                                     }
                                     Spacer(minLength: 0)
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title3)
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundStyle(AppColors.primary)
-                                }
-                                .padding(.vertical, AppSpacing.xs)
-                                .contentShape(Rectangle())
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title3)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(AppColors.primary)
                             }
-                            .buttonStyle(.plain)
+                            .padding(DashboardWidgetChrome.padding)
+                            .contentShape(Rectangle())
+                            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
                         }
-                    } header: {
-                        Text("Widgets")
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
+                } header: {
+                    Text("Widgets")
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                }
                 } else {
                     Section {
                         ContentUnavailableView(
@@ -791,25 +801,32 @@ private struct DashboardAddWidgetsSheet: View {
                             systemImage: "checkmark.circle",
                             description: Text("Remove a widget to add it back here.")
                         )
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary, DashboardWidgetChrome.labelSecondary)
                     }
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(DashboardWidgetChrome.pageBackground)
             .navigationTitle("Add widget")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {
                         DashboardHaptics.lightImpact()
                         dismiss()
                     }
+                    .foregroundStyle(AppColors.primary)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
-        .presentationBackground(.regularMaterial)
+        .presentationBackground(DashboardWidgetChrome.pageBackground)
     }
 }
 
@@ -838,6 +855,7 @@ private struct GridSlotPickerSheet: View {
                         systemImage: "square.grid.2x2",
                         description: Text("All compact widgets are already placed. Remove one to free a slot.")
                     )
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary, DashboardWidgetChrome.labelSecondary)
                 } else {
                     List(availableKinds, id: \.self) { kind in
                         Button {
@@ -864,29 +882,38 @@ private struct GridSlotPickerSheet: View {
                                     .symbolRenderingMode(.hierarchical)
                                     .foregroundStyle(AppColors.primary)
                             }
-                            .padding(.vertical, AppSpacing.xs)
+                            .padding(DashboardWidgetChrome.padding)
                             .contentShape(Rectangle())
+                            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusCard)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                     .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(DashboardWidgetChrome.pageBackground)
             .navigationTitle("Choose widget")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         DashboardHaptics.lightImpact()
                         dismiss()
                     }
+                    .foregroundStyle(AppColors.primary)
                 }
             }
         }
+        .preferredColorScheme(.dark)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
-        .presentationBackground(.regularMaterial)
+        .presentationBackground(DashboardWidgetChrome.pageBackground)
     }
 }
 
