@@ -565,12 +565,6 @@ struct DashboardView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Add widget")
 
-            if viewModel.isRefreshing {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(AppColors.primary)
-            }
-
             SyncIndicator()
         }
     }

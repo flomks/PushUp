@@ -275,7 +275,7 @@ final class DashboardViewModel: ObservableObject {
     func refresh() async {
         guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
-        try? await Task.sleep(for: .milliseconds(500))
+        await SyncService.shared.syncNow()
         isRefreshing = false
     }
 
