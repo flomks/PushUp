@@ -43,6 +43,12 @@ fun main() {
 
 fun Application.module() {
     val log = LoggerFactory.getLogger("com.pushup.Application")
+    val port = System.getenv("PORT")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 8080
+    val publicBaseUrl = System.getenv("PUBLIC_BASE_URL")
+        ?.trim()
+        ?.trimEnd('/')
+        ?.takeIf { it.isNotBlank() }
+        ?: "http://localhost:$port"
 
     log.info("Initialising plugins ...")
     configureSerialization()
@@ -64,5 +70,8 @@ fun Application.module() {
     log.info("  Database: {}", if (databaseReady) "CONNECTED" else "DISABLED (no DATABASE_URL)")
     log.info("  Auth:     {}", authMode)
     log.info("  Env:      {}", System.getenv("KTOR_ENV") ?: "development")
+    log.info("  Website:  {}{}", publicBaseUrl, "/")
+    log.info("  Friend:   {}/friend/AB3X7K2M", publicBaseUrl)
+    log.info("  Run:      {}/run/night-crew-berlin", publicBaseUrl)
     log.info("=".repeat(60))
 }

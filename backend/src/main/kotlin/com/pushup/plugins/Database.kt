@@ -689,33 +689,38 @@ fun Application.configureDatabase(): Boolean {
         hikariConfig.keepaliveTime,
     )
 
-    // Ensure all application tables exist. SchemaUtils.createMissingTablesAndColumns
-    // is idempotent -- it only creates tables/columns that are absent and never
-    // modifies existing ones. This is a safety net for tables that may not yet
-    // exist in the Supabase project (e.g. device_tokens, user_levels, notifications
-    // if the numbered migrations were not all applied).
+    // Ensure only the small set of backend-owned helper tables exists.
     //
-    // NOTE: This does NOT replace the Supabase migrations. RLS policies, triggers,
-    // indexes, and enum types are managed exclusively via the migration files.
-    // SchemaUtils only handles the raw table structure.
+    // IMPORTANT:
+    // Social-running and jogging tables are created and evolved via the Supabase
+    // SQL migrations because they have RLS policies, triggers, enum types, and
+    // other database-managed objects attached to them. Letting Exposed inspect and
+    // "fix" those tables can generate ALTER COLUMN statements that PostgreSQL
+    // rejects once policies depend on the affected columns.
+    //
+    // In production, the numbered SQL migrations are the source of truth for:
+    // - run_events
+    // - run_event_participants
+    // - live_run_sessions
+    // - live_run_participants
+    // - live_run_presence
+    // - run_xp_awards
+    // - jogging_sessions
+    // - route_points
+    // - jogging_segments
+    //
+    // Therefore we only run Exposed's safety-net schema creation for the
+    // lightweight tables that are safe to create without touching policy-bound
+    // production tables.
     transaction {
         SchemaUtils.createMissingTablesAndColumns(
             DeviceTokens,
             UserLevels,
             ExerciseLevels,
             Notifications,
-            RunEvents,
-            LiveRunSessions,
-            RunEventParticipants,
-            LiveRunParticipants,
-            LiveRunPresence,
-            RunXpAwards,
-            JoggingSessions,
-            RoutePoints,
-            JoggingSegments,
         )
     }
-    log.info("Schema check complete (device_tokens, user_levels, exercise_levels, notifications, social running, jogging_sessions, route_points, jogging_segments tables ensured)")
+    log.info("Schema check complete (device_tokens, user_levels, exercise_levels, notifications tables ensured; social-running tables stay migration-managed)")
 
     return true
 }
