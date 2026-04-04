@@ -27,8 +27,8 @@ class PublicWebRoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals(ContentType.Text.Html.contentType, response.contentType()?.contentType)
         val body = response.bodyAsText()
-        assertContains(body, "PushUp Web Platform")
-        assertContains(body, "Friend Code Experience")
+        assertContains(body, "PushUp Web")
+        assertContains(body, "Freund hinzufuegen")
         assertContains(body, "/run/night-crew-berlin")
     }
 
@@ -62,6 +62,6 @@ class PublicWebRoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
         assertContains(body, "shareId: crew-night_42")
-        assertContains(body, "Public Run Share")
+        assertContains(body, "Run Share")
     }
 }
