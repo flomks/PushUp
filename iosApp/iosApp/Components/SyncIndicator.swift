@@ -5,13 +5,13 @@ import SwiftUI
 /// Navigation bar button that displays the current sync status.
 ///
 /// **Visual states**
-/// | SyncState   | Icon                          | Animation       | Badge |
-/// |-------------|-------------------------------|-----------------|-------|
-/// | `.idle`     | Cloud icon (subtle)           | None            | No    |
-/// | `.syncing`  | Rotating arrows               | Continuous spin | No    |
-/// | `.success`  | Checkmark circle (green)      | Scale pop       | No    |
-/// | `.error`    | Exclamation triangle (red)    | None            | No    |
-/// | `.offline`  | Wi-Fi slash (gray)            | None            | No    |
+/// | SyncState   | Icon                              | Animation            | Badge |
+/// |-------------|-----------------------------------|----------------------|-------|
+/// | `.idle`     | Cloud with subtle sync accent     | None                 | No    |
+/// | `.syncing`  | Animated bars inside tinted cloud | Continuous motion    | No    |
+/// | `.success`  | Green cloud with check accent     | Scale pop + soft glow| No    |
+/// | `.error`    | Exclamation triangle (red)        | None                 | No    |
+/// | `.offline`  | Wi-Fi slash (gray)                | None                 | No    |
 ///
 /// When `unsyncedCount > 0`, a red badge is overlaid on the icon showing the
 /// number of workouts waiting to be synced (e.g. "3").
@@ -36,10 +36,10 @@ import SwiftUI
 struct SyncIndicator: View {
 
     @ObservedObject private var syncService    = SyncService.shared
-    @ObservedObject private var networkMonitor = NetworkMonitor.shared
 
     /// Controls the scale-pop animation for the success state.
     @State private var showSuccessScale: Bool = false
+    @State private var showSuccessGlow: Bool = false
 
     var body: some View {
         Button {
@@ -79,13 +79,29 @@ struct SyncIndicator: View {
     private var syncIcon: some View {
         switch syncService.syncState {
         case .idle:
-            Image(icon: .cloudFill)
-                .foregroundStyle(AppColors.textTertiary)
+            cloudStatusIcon(
+                baseColors: [
+                    AppColors.textSecondary.opacity(0.9),
+                    AppColors.primary.opacity(0.55)
+                ],
+                accentBackground: AppColors.primary.opacity(0.18),
+                accentForeground: AppColors.primary,
+                accentIcon: .arrowClockwise
+            )
 
         case .syncing:
             ZStack {
                 Image(icon: .cloudFill)
-                    .foregroundStyle(AppColors.primary.opacity(0.22))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppColors.primary.opacity(0.28),
+                                AppColors.primaryVariant.opacity(0.22)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
                 MotionLoadingIndicator(
                     tint: AppColors.primary,
@@ -99,13 +115,25 @@ struct SyncIndicator: View {
             }
 
         case .success:
-            Image(icon: .checkmarkCircleFill)
-                .foregroundStyle(AppColors.success)
+            cloudStatusIcon(
+                baseColors: [
+                    AppColors.success.opacity(0.92),
+                    AppColors.primaryVariant.opacity(0.55)
+                ],
+                accentBackground: AppColors.success,
+                accentForeground: .white,
+                accentIcon: .checkmark
+            )
                 .scaleEffect(showSuccessScale ? 1.2 : 1.0)
+                .shadow(
+                    color: AppColors.success.opacity(showSuccessGlow ? 0.45 : 0.18),
+                    radius: showSuccessGlow ? 10 : 4
+                )
                 .animation(
                     .spring(response: 0.3, dampingFraction: 0.5),
                     value: showSuccessScale
                 )
+                .animation(.easeOut(duration: 0.35), value: showSuccessGlow)
 
         case .error:
             Image(icon: .exclamationmarkTriangle)
@@ -114,6 +142,36 @@ struct SyncIndicator: View {
         case .offline:
             Image(icon: .wifiSlash)
                 .foregroundStyle(AppColors.textSecondary)
+        }
+    }
+
+    private func cloudStatusIcon(
+        baseColors: [Color],
+        accentBackground: Color,
+        accentForeground: Color,
+        accentIcon: AppIcon
+    ) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            Image(icon: .cloudFill)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: baseColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            ZStack {
+                Circle()
+                    .fill(accentBackground)
+
+                Image(icon: accentIcon)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(accentForeground)
+            }
+            .frame(width: 13, height: 13)
+            .offset(x: 2, y: 1)
         }
     }
 
@@ -141,16 +199,22 @@ struct SyncIndicator: View {
         switch state {
         case .syncing:
             showSuccessScale = false
+            showSuccessGlow = false
 
         case .success:
             showSuccessScale = true
+            showSuccessGlow = true
             // Reset scale after the spring animation settles (~0.5 s).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 showSuccessScale = false
             }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                showSuccessGlow = false
+            }
 
         case .idle, .error, .offline:
             showSuccessScale = false
+            showSuccessGlow = false
         }
     }
 
