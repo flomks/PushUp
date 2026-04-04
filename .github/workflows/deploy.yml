@@ -59,12 +59,12 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=sha-
+            type=sha,format=long,prefix=sha-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Select deploy image tag
         id: image
-        run: echo "deploy_image=${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+        run: echo "deploy_image=${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
