@@ -81,6 +81,7 @@ struct MainTabView: View {
     @StateObject private var statsViewModel = StatsViewModel()
     @State private var pendingFriendCode: String? = nil
     @State private var showFriendCodeSheet = false
+    @State private var openRunningRequestID: Int = 0
     @StateObject private var friendCodeViewModel = FriendCodeViewModel()
     @State private var isSideMenuOpen = false
     @GestureState private var swipeDragOffset: CGFloat = 0
@@ -167,6 +168,10 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             handleShieldWorkoutFlag()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openRunningFromDashboard)) { _ in
+            selectedTab = .workout
+            openRunningRequestID &+= 1
+        }
         .onOpenURL { url in
             handleDeepLink(url)
         }
@@ -207,7 +212,7 @@ struct MainTabView: View {
             .accessibilityIdentifier(Tab.dashboard.accessibilityIdentifier)
         case .workout:
             NavigationStack {
-                WorkoutSelectionView()
+                WorkoutSelectionView(openRunningRequestID: openRunningRequestID)
                     .safeAreaPadding(.top, 6)
                     .toolbar { sideMenuToolbarItem }
             }

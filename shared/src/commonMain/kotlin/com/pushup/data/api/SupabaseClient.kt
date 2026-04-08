@@ -585,29 +585,15 @@ class SupabaseClient(
     override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession =
         withRetry {
             val token = tokenProvider()
-            try {
-                httpClient.post("$restBase/jogging_sessions") {
-                    supabaseHeaders(token)
-                    header("Prefer", "return=representation")
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }.also { it.expectSuccess() }
-                    .body<List<JoggingSessionDTO>>()
-                    .first()
-                    .toDomain()
-            } catch (e: ApiException.BadRequest) {
-                if (!e.isJoggingSchemaCompatibilityIssue()) throw e
-                println("[SupabaseClient] Retrying jogging session create with legacy payload: ${e.serverMessage ?: e.message}")
-                httpClient.post("$restBase/jogging_sessions") {
-                    supabaseHeaders(token)
-                    header("Prefer", "return=representation")
-                    contentType(ContentType.Application.Json)
-                    setBody(request.toLegacyCreatePayload())
-                }.also { it.expectSuccess() }
-                    .body<List<JoggingSessionDTO>>()
-                    .first()
-                    .toDomain()
-            }
+            httpClient.post("$restBase/jogging_sessions") {
+                supabaseHeaders(token)
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }.also { it.expectSuccess() }
+                .body<List<JoggingSessionDTO>>()
+                .first()
+                .toDomain()
         }
 
     override suspend fun updateJoggingSession(
@@ -615,27 +601,14 @@ class SupabaseClient(
         request: UpdateJoggingSessionRequest,
     ): JoggingSession = withRetry {
         val token = tokenProvider()
-        val list = try {
-            httpClient.patch("$restBase/jogging_sessions") {
-                supabaseHeaders(token)
-                header("Prefer", "return=representation")
-                url.parameters.append("id", "eq.$id")
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }.also { it.expectSuccess() }
-                .body<List<JoggingSessionDTO>>()
-        } catch (e: ApiException.BadRequest) {
-            if (!e.isJoggingSchemaCompatibilityIssue()) throw e
-            println("[SupabaseClient] Retrying jogging session update with legacy payload id=$id: ${e.serverMessage ?: e.message}")
-            httpClient.patch("$restBase/jogging_sessions") {
-                supabaseHeaders(token)
-                header("Prefer", "return=representation")
-                url.parameters.append("id", "eq.$id")
-                contentType(ContentType.Application.Json)
-                setBody(request.toLegacyUpdatePayload())
-            }.also { it.expectSuccess() }
-                .body<List<JoggingSessionDTO>>()
-        }
+        val list = httpClient.patch("$restBase/jogging_sessions") {
+            supabaseHeaders(token)
+            header("Prefer", "return=representation")
+            url.parameters.append("id", "eq.$id")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.also { it.expectSuccess() }
+            .body<List<JoggingSessionDTO>>()
 
         list.firstOrNull()?.toDomain()
             ?: throw ApiException.NotFound(
@@ -669,7 +642,7 @@ class SupabaseClient(
             supabaseHeaders(token)
             header("Prefer", "return=representation,resolution=ignore-duplicates")
             contentType(ContentType.Application.Json)
-            setBody(requests)
+            setBody(requests.map { it.toPayloadMap() })
         }.also { it.expectSuccess() }
             .body<List<RoutePointDTO>>()
             .map { it.toDomain() }
@@ -704,7 +677,7 @@ class SupabaseClient(
                     supabaseHeaders(token)
                     header("Prefer", "return=minimal,resolution=ignore-duplicates")
                     contentType(ContentType.Application.Json)
-                    setBody(requests)
+                    setBody(requests.map { it.toPayloadMap() })
                 }.also { it.expectSuccess() }
             }
         }
@@ -737,7 +710,7 @@ class SupabaseClient(
                     supabaseHeaders(token)
                     header("Prefer", "return=minimal,resolution=ignore-duplicates")
                     contentType(ContentType.Application.Json)
-                    setBody(requests)
+                    setBody(requests.map { it.toPayloadMap() })
                 }.also { it.expectSuccess() }
             }
         }
@@ -1018,41 +991,45 @@ class SupabaseClient(
     }
 }
 
-private fun ApiException.BadRequest.isJoggingSchemaCompatibilityIssue(): Boolean {
-    val text = (serverMessage ?: message ?: "").lowercase()
-    return "active_duration_seconds" in text ||
-        "pause_duration_seconds" in text ||
-        "active_distance_meters" in text ||
-        "pause_distance_meters" in text ||
-        "pause_count" in text ||
-        "live_run_session_id" in text ||
-        "could not find the" in text ||
-        "schema cache" in text
-}
-
-private fun CreateJoggingSessionRequest.toLegacyCreatePayload(): Map<String, Any?> = linkedMapOf(
+private fun CreateRoutePointRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
     "id" to id,
-    "user_id" to userId,
+    "session_id" to sessionId,
+    "timestamp" to timestamp,
+    "created_at" to (createdAt ?: timestamp),
+    "latitude" to latitude,
+    "longitude" to longitude,
+    "altitude" to altitude,
+    "speed" to speed,
+    "horizontal_accuracy" to horizontalAccuracy,
+    "distance_from_start" to distanceFromStart,
+)
+
+private fun CreateJoggingSegmentRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
+    "id" to id,
+    "session_id" to sessionId,
+    "segment_type" to segmentType,
     "started_at" to startedAt,
     "ended_at" to endedAt,
     "created_at" to (createdAt ?: startedAt),
-    "updated_at" to (updatedAt ?: endedAt ?: startedAt),
     "distance_meters" to distanceMeters,
     "duration_seconds" to durationSeconds,
-    "avg_pace_seconds_per_km" to avgPaceSecondsPerKm,
-    "calories_burned" to caloriesBurned,
-    "earned_time_credits" to earnedTimeCredits,
 )
 
-private fun UpdateJoggingSessionRequest.toLegacyUpdatePayload(): Map<String, Any?> =
-    linkedMapOf<String, Any?>().apply {
-        endedAt?.let { put("ended_at", it) }
-        distanceMeters?.let { put("distance_meters", it) }
-        durationSeconds?.let { put("duration_seconds", it) }
-        avgPaceSecondsPerKm?.let { put("avg_pace_seconds_per_km", it) }
-        caloriesBurned?.let { put("calories_burned", it) }
-        earnedTimeCredits?.let { put("earned_time_credits", it) }
-    }
+private fun CreateJoggingPlaybackEntryRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
+    "id" to id,
+    "session_id" to sessionId,
+    "source" to source,
+    "track_title" to trackTitle,
+    "artist_name" to artistName,
+    "spotify_track_uri" to spotifyTrackUri,
+    "started_at" to startedAt,
+    "ended_at" to endedAt,
+    "created_at" to (createdAt ?: startedAt),
+    "start_distance_meters" to startDistanceMeters,
+    "end_distance_meters" to endDistanceMeters,
+    "start_active_duration_seconds" to startActiveDurationSeconds,
+    "end_active_duration_seconds" to endActiveDurationSeconds,
+)
 
 // =============================================================================
 // TimeCreditDTO -> domain mapper (file-private, not part of the public dto API)

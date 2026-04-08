@@ -9,7 +9,7 @@ import SwiftUI
 /// **No rounded corners** -- messaging apps render transparent PNG corners as white.
 /// The card uses a solid dark background that extends edge-to-edge.
 ///
-/// Designed at 400x533 pt, rendered at 3x = 1200x1600 px (sharp on all screens).
+/// Designed at 400x700 pt, rendered at 3x for a tall share image.
 struct JoggingShareCard: View {
 
     let mapSnapshot: UIImage?
@@ -22,28 +22,17 @@ struct JoggingShareCard: View {
 
     // Design tokens (self-contained, no dependency on AppColors for off-screen rendering)
     private let bg = Color(red: 0.04, green: 0.05, blue: 0.08)
-    private let panel = Color(red: 0.09, green: 0.10, blue: 0.15)
-    private let panelSoft = Color.white.opacity(0.05)
     private let accent = Color(red: 0.35, green: 0.77, blue: 1.0)
-    private let accentSoft = Color(red: 0.60, green: 0.90, blue: 1.0)
     private let green = Color(red: 0.33, green: 0.88, blue: 0.63)
-    private let subtle = Color.white.opacity(0.52)
-    private let muted = Color.white.opacity(0.72)
-    private let divider = Color.white.opacity(0.08)
+    private let subtle = Color.white.opacity(0.58)
+    private let muted = Color.white.opacity(0.78)
 
     var body: some View {
         ZStack {
             backgroundLayer
-
-            VStack(spacing: 14) {
-                headerStrip
-                heroSection
-                statGrid
-                footerStrip
-            }
-            .padding(18)
+            contentOverlay
         }
-        .frame(width: 400, height: 533)
+        .frame(width: 400, height: 700)
         .background(bg)
     }
 
@@ -51,66 +40,59 @@ struct JoggingShareCard: View {
 
     private var backgroundLayer: some View {
         ZStack {
+            mapSection
+
             LinearGradient(
                 colors: [
-                    Color(red: 0.03, green: 0.04, blue: 0.07),
-                    Color(red: 0.06, green: 0.07, blue: 0.11),
-                    Color(red: 0.03, green: 0.05, blue: 0.08),
+                    .clear,
+                    Color.black.opacity(0.10),
+                    Color.black.opacity(0.36),
+                    bg.opacity(0.96)
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .top,
+                endPoint: .bottom
             )
 
             RadialGradient(
-                colors: [accent.opacity(0.34), .clear],
+                colors: [accent.opacity(0.16), .clear],
                 center: .topTrailing,
-                startRadius: 20,
+                startRadius: 10,
                 endRadius: 220
             )
-            .offset(x: 40, y: -50)
-
-            RadialGradient(
-                colors: [green.opacity(0.18), .clear],
-                center: .bottomLeading,
-                startRadius: 30,
-                endRadius: 180
-            )
-            .offset(x: -30, y: 60)
-
-            VStack(spacing: 24) {
-                ForEach(0..<8, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color.white.opacity(0.025))
-                        .frame(height: 1)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 18)
+            .offset(x: 60, y: -80)
         }
     }
 
-    // MARK: - Header
+    private var contentOverlay: some View {
+        VStack(spacing: 0) {
+            topBar
+                .padding(.horizontal, 22)
+                .padding(.top, 20)
 
-    private var headerStrip: some View {
+            Spacer()
+
+            bottomContent
+                .padding(.horizontal, 22)
+                .padding(.bottom, 22)
+        }
+    }
+
+    // MARK: - Top
+
+    private var topBar: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [accentSoft, accent],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(accent)
                     .frame(width: 10, height: 10)
                 Text("RUN RECAP")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .tracking(1.2)
+                    .tracking(1.1)
                     .foregroundStyle(.white.opacity(0.92))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(panelSoft, in: Capsule())
+            .background(Color.black.opacity(0.22), in: Capsule())
 
             Spacer()
 
@@ -121,19 +103,19 @@ struct JoggingShareCard: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - Map
 
-    private var heroSection: some View {
-        ZStack(alignment: .bottomLeading) {
+    private var mapSection: some View {
+        ZStack {
             if let img = mapSnapshot {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .frame(width: 364, height: 236)
+                    .frame(width: 400, height: 700)
                     .clipped()
             } else {
                 Color(red: 0.05, green: 0.05, blue: 0.08)
-                    .frame(height: 236)
+                    .frame(width: 400, height: 700)
                     .overlay {
                         VStack(spacing: 10) {
                             Image(systemName: "figure.run")
@@ -145,176 +127,74 @@ struct JoggingShareCard: View {
                         }
                     }
             }
-
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.16), bg.opacity(0.96)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(distance)
-                        .font(.system(size: 42, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                        .monospacedDigit()
-                    Text("km")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(muted)
-                        .opacity(distance.contains("km") ? 0 : 1)
-                }
-
-                HStack(spacing: 8) {
-                    heroPill(icon: "speedometer", title: pace)
-                    heroPill(icon: "flame.fill", title: calories)
-                    heroPill(icon: "clock.badge.checkmark.fill", title: "+\(earnedMinutes)m")
-                }
-            }
-            .padding(18)
-        }
-        .frame(height: 236)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.28), radius: 30, y: 18)
-    }
-
-    private func heroPill(icon: String, title: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .monospacedDigit()
-        }
-        .foregroundStyle(.white.opacity(0.94))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.black.opacity(0.26), in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Stats
-
-    private var statGrid: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                statCard(title: "Duration", value: duration, icon: "timer")
-                statCard(title: "Avg pace", value: pace, icon: "gauge.with.dots.needle.50percent")
-            }
-
-            HStack(spacing: 12) {
-                statCard(title: "Calories", value: calories, icon: "flame")
-                creditCard
-            }
         }
     }
 
-    private func statCard(title: String, value: String, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
+    // MARK: - Bottom Content
+
+    private var bottomContent: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(distance)
+                    .font(.system(size: 58, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Text("Outdoor run")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(muted)
+            }
+
+            HStack(alignment: .top, spacing: 28) {
+                inlineStat(label: "Duration", value: duration)
+                inlineStat(label: "Pace", value: pace)
+                inlineStat(label: "Calories", value: calories)
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(accent)
-                Text(title.uppercased())
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .tracking(0.9)
+                    .foregroundStyle(green)
+                Text("+\(earnedMinutes) min screen time earned")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(green)
+            }
+
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "figure.run.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(accent)
+                    Text("PushUp")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.86))
+                }
+
+                Spacer()
+
+                Text("move to unlock")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(subtle)
             }
-
-            Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
         }
-        .frame(maxWidth: .infinity, minHeight: 94, alignment: .leading)
-        .padding(16)
-        .background(panel, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
-        )
     }
 
-    private var creditCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("SCREEN TIME")
+    private func inlineStat(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label.uppercased())
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .tracking(0.9)
                 .foregroundStyle(subtle)
 
-            HStack(alignment: .center, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(green.opacity(0.18))
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(green)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("+\(earnedMinutes) min")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("earned in PushUp")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(green)
-                }
-            }
+            Text(value)
+                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
-        .frame(maxWidth: .infinity, minHeight: 94, alignment: .leading)
-        .padding(16)
-        .background(
-            LinearGradient(
-                colors: [green.opacity(0.14), panel],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(green.opacity(0.20), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Footer
-
-    private var footerStrip: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "figure.run.circle.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(accent)
-                Text("PushUp")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.88))
-            }
-
-            Rectangle()
-                .fill(divider)
-                .frame(width: 1, height: 16)
-
-            Text("run | recover | earn")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(subtle)
-
-            Spacer()
-
-            Text("pushup")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .tracking(1.1)
-                .foregroundStyle(.white.opacity(0.30))
-        }
-        .padding(.horizontal, 4)
     }
 
     // MARK: - Helpers
@@ -338,7 +218,7 @@ enum JoggingMapSnapshotGenerator {
     /// This produces a sharp, non-pixelated map image.
     static func generateSnapshot(
         coordinates: [CLLocationCoordinate2D],
-        pointSize: CGSize = CGSize(width: 400, height: 300)
+        pointSize: CGSize = CGSize(width: 400, height: 700)
     ) async -> UIImage? {
         guard !coordinates.isEmpty else { return nil }
 

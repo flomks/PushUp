@@ -179,26 +179,16 @@ class SyncJoggingUseCase(
     private suspend fun uploadSegments(sessionId: String) {
         val segments = segmentRepository.getBySessionId(sessionId)
         val requests = segments.map { it.toCreateRequest() }
-        try {
-            supabaseClient.replaceJoggingSegments(sessionId, requests)
-            println("[SyncJoggingUseCase] Uploaded ${requests.size} segment(s) for session id=$sessionId")
-        } catch (e: ApiException) {
-            if (!e.isOptionalJoggingDataUnsupported()) throw e
-            println("[SyncJoggingUseCase] Skipping segment upload for legacy cloud schema session id=$sessionId: ${e.toLogMessage()}")
-        }
+        supabaseClient.replaceJoggingSegments(sessionId, requests)
+        println("[SyncJoggingUseCase] Uploaded ${requests.size} segment(s) for session id=$sessionId")
     }
 
     private suspend fun uploadPlaybackEntries(sessionId: String) {
         val repository = playbackRepository ?: return
         val entries = repository.getBySessionId(sessionId)
         val requests = entries.map { it.toCreateRequest() }
-        try {
-            supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
-            println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
-        } catch (e: ApiException) {
-            if (!e.isOptionalJoggingDataUnsupported()) throw e
-            println("[SyncJoggingUseCase] Skipping playback upload for legacy cloud schema session id=$sessionId: ${e.toLogMessage()}")
-        }
+        supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
+        println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
     }
 
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
@@ -329,14 +319,6 @@ class SyncJoggingUseCase(
         return "live_run_session_id" in message ||
             "jogging_sessions_live_run_session_id_fkey" in message ||
             ("foreign key" in message && "live_run" in message)
-    }
-
-    private fun ApiException.isOptionalJoggingDataUnsupported(): Boolean {
-        val message = toLogMessage().lowercase()
-        return "jogging_segments" in message ||
-            "jogging_playback_entries" in message ||
-            "could not find the table" in message ||
-            "schema cache" in message
     }
 
     private fun ApiException.toLogMessage(): String =

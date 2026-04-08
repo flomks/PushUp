@@ -25,6 +25,8 @@ import SwiftUI
 /// grid. Jogging is shown as "coming soon" with a lock overlay.
 struct WorkoutSelectionView: View {
 
+    let openRunningRequestID: Int
+
     // MARK: - State
 
     /// The selected workout type for navigation.
@@ -38,6 +40,7 @@ struct WorkoutSelectionView: View {
 
     /// Controls whether a timer-based workout view is presented.
     @State private var showTimerWorkout = false
+    @State private var lastHandledOpenRunningRequestID = 0
 
     // MARK: - Body
 
@@ -77,9 +80,18 @@ struct WorkoutSelectionView: View {
         .sheet(item: $selectedWorkout) { workout in
             TimerWorkoutPlaceholderView(workoutType: workout)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openRunningFromDashboard)) { _ in
-            showJoggingWorkout = true
+        .onAppear {
+            handleOpenRunningRequestIfNeeded()
         }
+        .onChange(of: openRunningRequestID) { _, _ in
+            handleOpenRunningRequestIfNeeded()
+        }
+    }
+
+    private func handleOpenRunningRequestIfNeeded() {
+        guard openRunningRequestID > 0, openRunningRequestID != lastHandledOpenRunningRequestID else { return }
+        lastHandledOpenRunningRequestID = openRunningRequestID
+        showJoggingWorkout = true
     }
 
     // MARK: - Section Header
@@ -546,13 +558,13 @@ struct TimerWorkoutPlaceholderView: View {
 #if DEBUG
 #Preview("Workout Selection") {
     NavigationStack {
-        WorkoutSelectionView()
+        WorkoutSelectionView(openRunningRequestID: 0)
     }
 }
 
 #Preview("Workout Selection - Dark") {
     NavigationStack {
-        WorkoutSelectionView()
+        WorkoutSelectionView(openRunningRequestID: 0)
     }
     .preferredColorScheme(.dark)
 }
