@@ -113,6 +113,7 @@ struct DashboardWidgetKindGridTests {
         #expect(!DashboardWidgetKind.weeklyChart.isGridEligible)
         #expect(!DashboardWidgetKind.activitySummary.isGridEligible)
         #expect(!DashboardWidgetKind.workoutQuickAction.isGridEligible)
+        #expect(!DashboardWidgetKind.upcomingRuns.isGridEligible)
     }
 
     @Test("mini-stat widgets are grid-eligible")

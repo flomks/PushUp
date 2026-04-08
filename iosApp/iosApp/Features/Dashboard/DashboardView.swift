@@ -250,6 +250,8 @@ struct DashboardView: View {
             }
         case .workoutQuickAction:
             workoutStartButton
+        case .upcomingRuns:
+            upcomingRunsWidget
 
         case .pushUpsThisWeek:
             DashboardMiniStatWidget(
@@ -401,6 +403,8 @@ struct DashboardView: View {
             DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .friends, selectedTab: $selectedTab)
         case .shortcutSettings:
             DashboardShortcutWidget(title: kind.title, systemImage: kind.systemImage, tab: .settings, selectedTab: $selectedTab)
+        default:
+            EmptyView()
         }
     }
 
@@ -494,6 +498,83 @@ struct DashboardView: View {
     }
 
     // MARK: - Last Session Section
+
+    private var upcomingRunsWidget: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack {
+                Label("Upcoming Runs", systemImage: "calendar.badge.clock")
+                    .font(AppTypography.headline)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+
+                Spacer()
+
+                Button("Open Workout") {
+                    selectedTab = .workout
+                }
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(AppColors.primary)
+                .buttonStyle(.plain)
+            }
+
+            if viewModel.upcomingRuns.isEmpty {
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("No planned runs yet.")
+                        .font(AppTypography.bodySemibold)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                    Text("Schedule a solo or crew run from the workout screen.")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                }
+            } else {
+                VStack(spacing: AppSpacing.sm) {
+                    ForEach(Array(viewModel.upcomingRuns.prefix(3))) { run in
+                        upcomingRunRow(run)
+                    }
+                }
+            }
+        }
+        .padding(DashboardWidgetChrome.padding)
+        .dashboardWidgetChrome()
+    }
+
+    private func upcomingRunRow(_ run: DashboardUpcomingRun) -> some View {
+        HStack(alignment: .center, spacing: AppSpacing.md) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(run.title)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                    .lineLimit(1)
+
+                Text(Self.dashboardUpcomingRunDateFormatter.string(from: run.plannedStartAt))
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                Text(upcomingRunStatusLabel(run))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(run.participantCount)")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                Text(run.participantCount == 1 ? "runner" : "runners")
+                    .font(AppTypography.caption2)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func upcomingRunStatusLabel(_ run: DashboardUpcomingRun) -> String {
+        if let status = run.currentUserStatus?.replacingOccurrences(of: "_", with: " ").capitalized,
+           !status.isEmpty {
+            return status
+        }
+        return run.visibility.uppercased() == "PRIVATE" ? "Solo Event" : "Crew Event"
+    }
 
     @ViewBuilder
     private var lastSessionSection: some View {
@@ -681,6 +762,15 @@ struct DashboardView: View {
             SyncIndicator()
         }
     }
+}
+
+private extension DashboardView {
+    static let dashboardUpcomingRunDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d • HH:mm"
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter
+    }()
 }
 
 // MARK: - GridSlotSelection
