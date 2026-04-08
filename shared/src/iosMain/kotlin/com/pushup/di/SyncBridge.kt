@@ -56,11 +56,26 @@ object SyncBridge : KoinComponent {
                     ?: "not-run",
             )
             append(" timeCredit=")
-            append(result.timeCredit?.javaClass?.simpleName ?: "not-run")
+            append(
+                when (result.timeCredit) {
+                    null -> "not-run"
+                    is com.pushup.domain.usecase.sync.SyncTimeCreditResult.Synced -> "synced"
+                    is com.pushup.domain.usecase.sync.SyncTimeCreditResult.NoLocalData -> "no-local-data"
+                    is com.pushup.domain.usecase.sync.SyncTimeCreditResult.AlreadySynced -> "already-synced"
+                    is com.pushup.domain.usecase.sync.SyncTimeCreditResult.PulledFromRemote -> "pulled-from-remote"
+                    is com.pushup.domain.usecase.sync.SyncTimeCreditResult.Failed -> "failed"
+                },
+            )
             append(" level=")
-            append(result.level?.javaClass?.simpleName ?: "not-run")
+            append(
+                result.level?.let { "localXp=${it.local.totalXp},remoteXp=${it.remote.totalXp},winner=${it.winner}" }
+                    ?: "not-run",
+            )
             append(" exerciseLevels=")
-            append(result.exerciseLevels?.javaClass?.simpleName ?: "not-run")
+            append(
+                result.exerciseLevels?.let { "synced=${it.synced},failed=${it.failed}" }
+                    ?: "not-run",
+            )
             append(" fromCloud=")
             append(result.fromCloud?.let { "downloaded=${it.sessionsDownloaded},updated=${it.sessionsInsertedOrUpdated}" } ?: "not-run")
         }
