@@ -35,13 +35,23 @@ object SyncBridge : KoinComponent {
 
     private fun collectErrors(result: SyncResult.Completed): String =
         listOfNotNull(
+            result.workouts?.takeIf { it.failed > 0 }?.let { "Workout sync failed for ${it.failed} session(s)" },
+            result.jogging?.takeIf { it.failed > 0 }?.let { "Jogging sync failed for ${it.failed} session(s)" },
+            result.timeCredit.takeFailureMessage(),
+            result.level.takeFailureMessage(),
+            result.exerciseLevels.takeFailureMessage(),
+            result.fromCloud?.takeIf { !it.isFullSuccess }?.let {
+                "Cloud pull partial failure: sessionsFailed=${it.sessionsFailed}"
+            },
             result.workoutsError?.message,
             result.joggingError?.message,
             result.timeCreditError?.message,
             result.levelError?.message,
             result.exerciseLevelsError?.message,
             result.fromCloudError?.message,
-        ).joinToString("; ")
+        ).filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("; ")
 
     private fun summarize(result: SyncResult.Completed): String =
         buildString {
@@ -210,3 +220,21 @@ object SyncBridge : KoinComponent {
         }
     }
 }
+
+private fun com.pushup.domain.usecase.sync.SyncTimeCreditResult?.takeFailureMessage(): String? =
+    when (this) {
+        is com.pushup.domain.usecase.sync.SyncTimeCreditResult.Failed -> cause.message ?: "Time credit sync failed"
+        else -> null
+    }
+
+private fun com.pushup.domain.usecase.sync.SyncLevelResult?.takeFailureMessage(): String? =
+    when (this) {
+        is com.pushup.domain.usecase.sync.SyncLevelResult.Failed -> cause.message ?: "Level sync failed"
+        else -> null
+    }
+
+private fun com.pushup.domain.usecase.sync.SyncExerciseLevelsResult?.takeFailureMessage(): String? =
+    when (this) {
+        is com.pushup.domain.usecase.sync.SyncExerciseLevelsResult.Failed -> cause.message ?: "Exercise level sync failed"
+        else -> null
+    }

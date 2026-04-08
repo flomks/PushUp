@@ -527,10 +527,14 @@ struct DashboardView: View {
                     } label: {
                         Text("Running")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.white.opacity(0.82))
+                            .foregroundStyle(Color.white.opacity(0.78))
                             .padding(.horizontal, 9)
                             .padding(.vertical, 5)
-                            .background(AppColors.secondary.opacity(0.72), in: Capsule())
+                            .background(Color.white.opacity(0.05), in: Capsule())
+                            .overlay(
+                                Capsule()
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
                 }

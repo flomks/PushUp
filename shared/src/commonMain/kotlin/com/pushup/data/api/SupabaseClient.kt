@@ -1035,6 +1035,8 @@ private fun CreateJoggingSessionRequest.toLegacyCreatePayload(): Map<String, Any
     "user_id" to userId,
     "started_at" to startedAt,
     "ended_at" to endedAt,
+    "created_at" to (createdAt ?: startedAt),
+    "updated_at" to (updatedAt ?: endedAt ?: startedAt),
     "distance_meters" to distanceMeters,
     "duration_seconds" to durationSeconds,
     "avg_pace_seconds_per_km" to avgPaceSecondsPerKm,
