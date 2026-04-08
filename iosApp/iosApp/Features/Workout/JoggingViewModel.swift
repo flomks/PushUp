@@ -1047,7 +1047,19 @@ struct RunTrack: Equatable {
     let title: String
     let artist: String
     let vibe: String
-    let spotifyURI: String? = nil
+    let spotifyURI: String?
+
+    init(
+        title: String,
+        artist: String,
+        vibe: String,
+        spotifyURI: String? = nil
+    ) {
+        self.title = title
+        self.artist = artist
+        self.vibe = vibe
+        self.spotifyURI = spotifyURI
+    }
 }
 
 struct RunCompletionSnapshot: Equatable {
