@@ -29,6 +29,10 @@ object SyncBridge : KoinComponent {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private fun log(message: String) {
+        println("[SyncBridge] $message")
+    }
+
     private fun collectErrors(result: SyncResult.Completed): String =
         listOfNotNull(
             result.workoutsError?.message,
@@ -38,6 +42,28 @@ object SyncBridge : KoinComponent {
             result.exerciseLevelsError?.message,
             result.fromCloudError?.message,
         ).joinToString("; ")
+
+    private fun summarize(result: SyncResult.Completed): String =
+        buildString {
+            append("workouts=")
+            append(
+                result.workouts?.let { "synced=${it.synced},skipped=${it.skipped},failed=${it.failed}" }
+                    ?: "not-run",
+            )
+            append(" jogging=")
+            append(
+                result.jogging?.let { "synced=${it.synced},skipped=${it.skipped},failed=${it.failed}" }
+                    ?: "not-run",
+            )
+            append(" timeCredit=")
+            append(result.timeCredit?.javaClass?.simpleName ?: "not-run")
+            append(" level=")
+            append(result.level?.javaClass?.simpleName ?: "not-run")
+            append(" exerciseLevels=")
+            append(result.exerciseLevels?.javaClass?.simpleName ?: "not-run")
+            append(" fromCloud=")
+            append(result.fromCloud?.let { "downloaded=${it.sessionsDownloaded},updated=${it.sessionsInsertedOrUpdated}" } ?: "not-run")
+        }
 
     // =========================================================================
     // Full sync (upload pending + pull from cloud)
@@ -58,15 +84,22 @@ object SyncBridge : KoinComponent {
     ) {
         scope.launch {
             try {
+                log("syncAll requested from iOS")
                 val result = get<SyncManager>().syncAll()
                 when (result) {
-                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onError(result.reason) }
+                    is SyncResult.Skipped -> {
+                        log("syncAll skipped: ${result.reason}")
+                        withContext(Dispatchers.Main) { onError(result.reason) }
+                    }
                     is SyncResult.Completed -> {
+                        val errors = collectErrors(result)
+                        log("syncAll completed: ${summarize(result)} errors=${if (errors.isBlank()) "<none>" else errors}")
                         withContext(Dispatchers.Main) { onSuccess(collectErrors(result)) }
                     }
                 }
             } catch (e: Exception) {
                 val msg = e.message ?: "Sync failed"
+                log("syncAll crashed: $msg")
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }
@@ -91,13 +124,21 @@ object SyncBridge : KoinComponent {
     ) {
         scope.launch {
             try {
+                log("syncFromCloud requested from iOS")
                 val result = get<SyncManager>().syncFromCloud()
                 when (result) {
-                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onSuccess() }
-                    is SyncResult.Completed -> withContext(Dispatchers.Main) { onSuccess() }
+                    is SyncResult.Skipped -> {
+                        log("syncFromCloud skipped: ${result.reason}")
+                        withContext(Dispatchers.Main) { onSuccess() }
+                    }
+                    is SyncResult.Completed -> {
+                        log("syncFromCloud completed: ${summarize(result)} errors=${collectErrors(result)}")
+                        withContext(Dispatchers.Main) { onSuccess() }
+                    }
                 }
             } catch (e: Exception) {
                 val msg = e.message ?: "Cloud sync failed"
+                log("syncFromCloud crashed: $msg")
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }
@@ -119,12 +160,15 @@ object SyncBridge : KoinComponent {
     ) {
         scope.launch {
             try {
+                log("syncAfterWorkout requested from iOS")
                 when (val result = get<SyncManager>().syncAfterWorkout()) {
                     is SyncResult.Skipped -> {
+                        log("syncAfterWorkout skipped: ${result.reason}")
                         withContext(Dispatchers.Main) { onError(result.reason) }
                     }
                     is SyncResult.Completed -> {
                         val errors = collectErrors(result)
+                        log("syncAfterWorkout completed: ${summarize(result)} errors=${if (errors.isBlank()) "<none>" else errors}")
                         if (errors.isBlank()) {
                             withContext(Dispatchers.Main) { onSuccess() }
                         } else {
@@ -134,6 +178,7 @@ object SyncBridge : KoinComponent {
                 }
             } catch (e: Exception) {
                 val msg = e.message ?: "Post-workout sync failed"
+                log("syncAfterWorkout crashed: $msg")
                 withContext(Dispatchers.Main) { onError(msg) }
             }
         }

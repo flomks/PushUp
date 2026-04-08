@@ -77,6 +77,9 @@ struct WorkoutSelectionView: View {
         .sheet(item: $selectedWorkout) { workout in
             TimerWorkoutPlaceholderView(workoutType: workout)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openRunningFromDashboard)) { _ in
+            showJoggingWorkout = true
+        }
     }
 
     // MARK: - Section Header
@@ -364,6 +367,10 @@ struct DifficultyIndicator: View {
                 .foregroundStyle(DashboardWidgetChrome.labelSecondary)
         }
     }
+}
+
+extension Notification.Name {
+    static let openRunningFromDashboard = Notification.Name("openRunningFromDashboard")
 }
 
 // MARK: - ComingSoonCard

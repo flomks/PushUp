@@ -509,7 +509,7 @@ struct DashboardView: View {
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.42))
 
-                    Text("Upcoming")
+                    Text("Upcoming Runs")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -523,13 +523,14 @@ struct DashboardView: View {
 
                     Button {
                         selectedTab = .workout
+                        NotificationCenter.default.post(name: .openRunningFromDashboard, object: nil)
                     } label: {
-                        Text("Open Workout")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .background(AppColors.secondary, in: Capsule())
+                        Text("Running")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.82))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(AppColors.secondary.opacity(0.72), in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -540,7 +541,7 @@ struct DashboardView: View {
                     Text("No planned runs yet.")
                         .font(AppTypography.bodySemibold)
                         .foregroundStyle(.white)
-                    Text("Schedule a solo or crew run from the workout screen.")
+                    Text("Schedule a solo or crew run from the running screen.")
                         .font(AppTypography.caption1)
                         .foregroundStyle(Color.white.opacity(0.46))
                 }
@@ -608,18 +609,6 @@ struct DashboardView: View {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.40))
                         Text(upcomingRunStatusLabel(run))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.60))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.05), in: Capsule())
-
-                    HStack(spacing: 6) {
-                        Image(systemName: participantIconName(for: run.participantCount))
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.40))
-                        Text(run.participantCount == 1 ? "1 runner" : "\(run.participantCount) runners")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.60))
                     }

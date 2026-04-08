@@ -56,11 +56,15 @@ class SyncJoggingUseCase(
     suspend operator fun invoke(userId: String): SyncJoggingResult {
         require(userId.isNotBlank()) { "userId must not be blank" }
 
+        println("[SyncJoggingUseCase] Starting jogging sync for userId=$userId")
+
         if (!networkMonitor.isConnected()) {
+            println("[SyncJoggingUseCase] Aborting jogging sync: no network connection")
             throw SyncException.NoNetwork("Cannot sync jogging sessions: no internet connection")
         }
 
         val unsynced = sessionRepository.getUnsyncedSessions(userId)
+        println("[SyncJoggingUseCase] Found ${unsynced.size} unsynced jogging session(s)")
         if (unsynced.isEmpty()) {
             return SyncJoggingResult(synced = 0, skipped = 0, failed = 0)
         }
@@ -71,9 +75,15 @@ class SyncJoggingUseCase(
 
         for (session in unsynced) {
             if (session.endedAt == null) {
+                println("[SyncJoggingUseCase] Skipping in-progress jogging session id=${session.id}")
                 skipped++
                 continue
             }
+            println(
+                "[SyncJoggingUseCase] Uploading session id=${session.id} " +
+                    "liveRunSessionId=${session.liveRunSessionId} " +
+                    "distanceMeters=${session.distanceMeters} durationSeconds=${session.durationSeconds}",
+            )
             when (uploadWithRetry(session)) {
                 UploadOutcome.SYNCED  -> synced++
                 UploadOutcome.SKIPPED -> skipped++
@@ -81,6 +91,7 @@ class SyncJoggingUseCase(
             }
         }
 
+        println("[SyncJoggingUseCase] Finished jogging sync: synced=$synced skipped=$skipped failed=$failed")
         return SyncJoggingResult(synced = synced, skipped = skipped, failed = failed)
     }
 
@@ -98,17 +109,21 @@ class SyncJoggingUseCase(
                 throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) {
+                    println("[SyncJoggingUseCase] Non-transient API error for session id=${session.id}: ${e.message}")
                     markFailed(session.id)
                     return UploadOutcome.FAILED
                 }
                 lastException = e
+                println("[SyncJoggingUseCase] Transient API error for session id=${session.id}, retry=${attempt + 1}/${maxRetries}: ${e.message}")
                 delay(baseDelayMs * (1L shl attempt))
             } catch (e: Exception) {
                 lastException = e
+                println("[SyncJoggingUseCase] Unexpected error for session id=${session.id}, retry=${attempt + 1}/${maxRetries}: ${e.message}")
                 delay(baseDelayMs * (1L shl attempt))
             }
         }
 
+        println("[SyncJoggingUseCase] Exhausted retries for session id=${session.id}: ${lastException?.message}")
         markFailed(session.id)
         return UploadOutcome.FAILED
     }
@@ -130,11 +145,17 @@ class SyncJoggingUseCase(
     private suspend fun createSessionWithFallback(session: JoggingSession): JoggingSession {
         return try {
             supabaseClient.createJoggingSession(session.toCreateRequest())
+            println("[SyncJoggingUseCase] Created jogging session in cloud id=${session.id}")
             session
         } catch (e: ApiException) {
             if (!e.isMissingLiveRunReference() || session.liveRunSessionId == null) throw e
+            println(
+                "[SyncJoggingUseCase] Missing live_run_session reference for session id=${session.id}. " +
+                    "Retrying without liveRunSessionId=${session.liveRunSessionId}",
+            )
             val normalized = persistWithoutLiveRunReference(session)
             supabaseClient.createJoggingSession(normalized.toCreateRequest())
+            println("[SyncJoggingUseCase] Created jogging session in cloud after fallback id=${session.id}")
             normalized
         }
     }
@@ -152,12 +173,14 @@ class SyncJoggingUseCase(
 
         val requests = routePoints.map { it.toCreateRequest() }
         supabaseClient.createRoutePoints(requests)
+        println("[SyncJoggingUseCase] Uploaded ${requests.size} route point(s) for session id=$sessionId")
     }
 
     private suspend fun uploadSegments(sessionId: String) {
         val segments = segmentRepository.getBySessionId(sessionId)
         val requests = segments.map { it.toCreateRequest() }
         supabaseClient.replaceJoggingSegments(sessionId, requests)
+        println("[SyncJoggingUseCase] Uploaded ${requests.size} segment(s) for session id=$sessionId")
     }
 
     private suspend fun uploadPlaybackEntries(sessionId: String) {
@@ -165,6 +188,7 @@ class SyncJoggingUseCase(
         val entries = repository.getBySessionId(sessionId)
         val requests = entries.map { it.toCreateRequest() }
         supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
+        println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
     }
 
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
@@ -172,6 +196,7 @@ class SyncJoggingUseCase(
             val remote = supabaseClient.getJoggingSession(local.id)
             val normalizedLocal = normalizeForMissingLiveRunReference(local, remote)
             if (normalizedLocal.startedAt > remote.startedAt) {
+                println("[SyncJoggingUseCase] Conflict for session id=${local.id}: local is newer, patching remote")
                 supabaseClient.updateJoggingSession(
                     id = normalizedLocal.id,
                     request = UpdateJoggingSessionRequest(
@@ -204,11 +229,13 @@ class SyncJoggingUseCase(
             uploadPlaybackEntries(normalizedLocal.id)
 
             if (sessionsEffectivelyEqual(normalizedLocal, remote)) {
+                println("[SyncJoggingUseCase] Conflict for session id=${local.id}: local and remote effectively equal")
                 sessionRepository.markAsSynced(normalizedLocal.id)
                 UploadOutcome.SYNCED
             } else {
                 // Session header on server has stale metrics (e.g. uploaded before
                 // updateSegmentMetrics ran). Patch it with the correct local values.
+                println("[SyncJoggingUseCase] Conflict for session id=${local.id}: patching stale remote metrics")
                 supabaseClient.updateJoggingSession(
                     id = normalizedLocal.id,
                     request = UpdateJoggingSessionRequest(
@@ -231,6 +258,7 @@ class SyncJoggingUseCase(
             }
         } catch (e: ApiException) {
             if (e.isTransient) throw e
+            println("[SyncJoggingUseCase] Conflict resolution failed for session id=${local.id}: ${e.message}")
             markFailed(local.id)
             UploadOutcome.FAILED
         }
@@ -253,6 +281,7 @@ class SyncJoggingUseCase(
     private suspend fun persistWithoutLiveRunReference(session: JoggingSession): JoggingSession {
         val normalized = session.copy(liveRunSessionId = null, syncStatus = SyncStatus.PENDING)
         sessionRepository.save(normalized)
+        println("[SyncJoggingUseCase] Cleared stale liveRunSessionId locally for session id=${session.id}")
         return normalized
     }
 
