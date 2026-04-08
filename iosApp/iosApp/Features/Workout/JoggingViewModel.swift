@@ -718,7 +718,7 @@ final class SpotifyService: NSObject {
         if let destination = directTrackDestination(track: track, isSpotifyInstalled: isSpotifyInstalled) {
             return destination
         }
-        searchDestination(query: "\(track.title) \(track.artist)", isSpotifyInstalled: isSpotifyInstalled)
+        return searchDestination(query: "\(track.title) \(track.artist)", isSpotifyInstalled: isSpotifyInstalled)
     }
 
     private static func directTrackDestination(track: RunTrack, isSpotifyInstalled: Bool) -> SpotifyDestination? {
