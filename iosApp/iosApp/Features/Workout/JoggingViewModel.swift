@@ -246,6 +246,10 @@ final class SpotifyService: NSObject {
         open(Self.trackDestination(track: track, isSpotifyInstalled: isSpotifyAppInstalled()))
     }
 
+    func shareURL(for track: RunTrack) -> URL? {
+        Self.webURL(for: track)
+    }
+
     func playTrack(matching track: RunTrack) async throws {
         let query = "track:\"\(track.title)\" artist:\"\(track.artist)\""
         let results = try await searchTracks(query: query, limit: 5, offset: 0)
@@ -711,7 +715,52 @@ final class SpotifyService: NSObject {
     }
 
     static func trackDestination(track: RunTrack, isSpotifyInstalled: Bool) -> SpotifyDestination {
+        if let destination = directTrackDestination(track: track, isSpotifyInstalled: isSpotifyInstalled) {
+            return destination
+        }
         searchDestination(query: "\(track.title) \(track.artist)", isSpotifyInstalled: isSpotifyInstalled)
+    }
+
+    private static func directTrackDestination(track: RunTrack, isSpotifyInstalled: Bool) -> SpotifyDestination? {
+        guard let trackID = spotifyTrackID(from: track.spotifyURI) else { return nil }
+        if isSpotifyInstalled, let appURL = URL(string: "spotify:track:\(trackID)") {
+            return .app(appURL)
+        }
+        if let webURL = URL(string: "https://open.spotify.com/track/\(trackID)") {
+            return .web(webURL)
+        }
+        return nil
+    }
+
+    private static func webURL(for track: RunTrack) -> URL? {
+        if let trackID = spotifyTrackID(from: track.spotifyURI) {
+            return URL(string: "https://open.spotify.com/track/\(trackID)")
+        }
+        let query = "\(track.title) \(track.artist)"
+        let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return URL(string: "https://open.spotify.com/search/\(encodedQuery)")
+    }
+
+    private static func spotifyTrackID(from uri: String?) -> String? {
+        guard let trimmed = uri?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+
+        if trimmed.hasPrefix("spotify:track:") {
+            let trackID = String(trimmed.dropFirst("spotify:track:".count))
+            return trackID.isEmpty ? nil : trackID
+        }
+
+        if let components = URLComponents(string: trimmed),
+           components.host == "open.spotify.com" {
+            let parts = components.path.split(separator: "/")
+            if parts.count >= 2, parts[0] == "track" {
+                let trackID = String(parts[1])
+                return trackID.isEmpty ? nil : trackID
+            }
+        }
+
+        return nil
     }
 
     private static func searchDestination(query: String, isSpotifyInstalled: Bool) -> SpotifyDestination {

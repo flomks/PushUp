@@ -500,72 +500,139 @@ struct DashboardView: View {
     // MARK: - Last Session Section
 
     private var upcomingRunsWidget: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        let visibleRuns = Array(viewModel.upcomingRuns.prefix(3))
+
+        return VStack(alignment: .leading, spacing: AppSpacing.md) {
             HStack {
-                Label("Upcoming Runs", systemImage: "calendar.badge.clock")
-                    .font(AppTypography.headline)
-                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                HStack(spacing: 10) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+
+                    Text("Upcoming")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
 
                 Spacer()
 
-                Button("Open Workout") {
-                    selectedTab = .workout
+                HStack(spacing: 12) {
+                    Text("\(viewModel.upcomingRuns.count)")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.42))
+
+                    Button {
+                        selectedTab = .workout
+                    } label: {
+                        Text("Open Workout")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(AppColors.secondary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .font(AppTypography.captionSemibold)
-                .foregroundStyle(AppColors.primary)
-                .buttonStyle(.plain)
             }
 
             if viewModel.upcomingRuns.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text("No planned runs yet.")
                         .font(AppTypography.bodySemibold)
-                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                        .foregroundStyle(.white)
                     Text("Schedule a solo or crew run from the workout screen.")
                         .font(AppTypography.caption1)
-                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                        .foregroundStyle(Color.white.opacity(0.46))
                 }
             } else {
                 VStack(spacing: AppSpacing.sm) {
-                    ForEach(Array(viewModel.upcomingRuns.prefix(3))) { run in
-                        upcomingRunRow(run)
+                    ForEach(Array(visibleRuns.enumerated()), id: \.element.id) { index, run in
+                        upcomingRunRow(
+                            run,
+                            showsConnector: index != visibleRuns.count - 1
+                        )
                     }
                 }
             }
         }
-        .padding(DashboardWidgetChrome.padding)
-        .dashboardWidgetChrome()
+        .padding(20)
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
-    private func upcomingRunRow(_ run: DashboardUpcomingRun) -> some View {
-        HStack(alignment: .center, spacing: AppSpacing.md) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(run.title)
-                    .font(AppTypography.bodySemibold)
-                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-                    .lineLimit(1)
+    private func upcomingRunRow(_ run: DashboardUpcomingRun, showsConnector: Bool) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Circle()
+                    .fill(Color.white.opacity(0.20))
+                    .frame(width: 16, height: 16)
+                    .overlay(Circle().stroke(Color.white.opacity(0.40), lineWidth: 2))
+
+                if showsConnector {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 1, height: 64)
+                        .padding(.top, 4)
+                }
+            }
+            .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    Text(run.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: participantIconName(for: run.participantCount))
+                            .font(.system(size: 12, weight: .medium))
+                        Text("\(run.participantCount)")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.white.opacity(0.40))
+                }
 
                 Text(Self.dashboardUpcomingRunDateFormatter.string(from: run.plannedStartAt))
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.40))
 
-                Text(upcomingRunStatusLabel(run))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
-            }
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.40))
+                        Text(upcomingRunStatusLabel(run))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.60))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.05), in: Capsule())
 
-            Spacer(minLength: 0)
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("\(run.participantCount)")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-                Text(run.participantCount == 1 ? "runner" : "runners")
-                    .font(AppTypography.caption2)
-                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    HStack(spacing: 6) {
+                        Image(systemName: participantIconName(for: run.participantCount))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.40))
+                        Text(run.participantCount == 1 ? "1 runner" : "\(run.participantCount) runners")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.60))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.05), in: Capsule())
+                }
             }
         }
-        .padding(.vertical, 2)
+    }
+
+    private func participantIconName(for count: Int) -> String {
+        count <= 1 ? "person" : "person.2"
     }
 
     private func upcomingRunStatusLabel(_ run: DashboardUpcomingRun) -> String {

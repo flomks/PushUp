@@ -115,15 +115,27 @@ class SyncJoggingUseCase(
 
     private suspend fun doUpload(session: JoggingSession): UploadOutcome {
         return try {
-            supabaseClient.createJoggingSession(session.toCreateRequest())
+            val normalizedSession = createSessionWithFallback(session)
             // Upload route points for this session
-            uploadRoutePoints(session.id)
-            uploadSegments(session.id)
-            uploadPlaybackEntries(session.id)
-            sessionRepository.markAsSynced(session.id)
+            uploadRoutePoints(normalizedSession.id)
+            uploadSegments(normalizedSession.id)
+            uploadPlaybackEntries(normalizedSession.id)
+            sessionRepository.markAsSynced(normalizedSession.id)
             UploadOutcome.SYNCED
         } catch (e: ApiException.Conflict) {
             resolveConflict(session)
+        }
+    }
+
+    private suspend fun createSessionWithFallback(session: JoggingSession): JoggingSession {
+        return try {
+            supabaseClient.createJoggingSession(session.toCreateRequest())
+            session
+        } catch (e: ApiException) {
+            if (!e.isMissingLiveRunReference() || session.liveRunSessionId == null) throw e
+            val normalized = persistWithoutLiveRunReference(session)
+            supabaseClient.createJoggingSession(normalized.toCreateRequest())
+            normalized
         }
     }
 
@@ -158,62 +170,63 @@ class SyncJoggingUseCase(
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
         return try {
             val remote = supabaseClient.getJoggingSession(local.id)
-            if (local.startedAt > remote.startedAt) {
+            val normalizedLocal = normalizeForMissingLiveRunReference(local, remote)
+            if (normalizedLocal.startedAt > remote.startedAt) {
                 supabaseClient.updateJoggingSession(
-                    id = local.id,
+                    id = normalizedLocal.id,
                     request = UpdateJoggingSessionRequest(
-                        liveRunSessionId = local.liveRunSessionId,
-                        endedAt = local.endedAt?.toString(),
-                        distanceMeters = local.distanceMeters.toFloat(),
-                        durationSeconds = local.durationSeconds.toInt(),
-                        avgPaceSecondsPerKm = local.avgPaceSecondsPerKm,
-                        caloriesBurned = local.caloriesBurned,
-                        earnedTimeCredits = local.earnedTimeCreditSeconds.toInt(),
-                        activeDurationSeconds = local.activeDurationSeconds.toInt(),
-                        pauseDurationSeconds = local.pauseDurationSeconds.toInt(),
-                        activeDistanceMeters = local.activeDistanceMeters.toFloat(),
-                        pauseDistanceMeters = local.pauseDistanceMeters.toFloat(),
-                        pauseCount = local.pauseCount,
+                        liveRunSessionId = normalizedLocal.liveRunSessionId,
+                        endedAt = normalizedLocal.endedAt?.toString(),
+                        distanceMeters = normalizedLocal.distanceMeters.toFloat(),
+                        durationSeconds = normalizedLocal.durationSeconds.toInt(),
+                        avgPaceSecondsPerKm = normalizedLocal.avgPaceSecondsPerKm,
+                        caloriesBurned = normalizedLocal.caloriesBurned,
+                        earnedTimeCredits = normalizedLocal.earnedTimeCreditSeconds.toInt(),
+                        activeDurationSeconds = normalizedLocal.activeDurationSeconds.toInt(),
+                        pauseDurationSeconds = normalizedLocal.pauseDurationSeconds.toInt(),
+                        activeDistanceMeters = normalizedLocal.activeDistanceMeters.toFloat(),
+                        pauseDistanceMeters = normalizedLocal.pauseDistanceMeters.toFloat(),
+                        pauseCount = normalizedLocal.pauseCount,
                     ),
                 )
-                uploadRoutePoints(local.id)
-                uploadSegments(local.id)
-                uploadPlaybackEntries(local.id)
-                sessionRepository.markAsSynced(local.id)
+                uploadRoutePoints(normalizedLocal.id)
+                uploadSegments(normalizedLocal.id)
+                uploadPlaybackEntries(normalizedLocal.id)
+                sessionRepository.markAsSynced(normalizedLocal.id)
                 return UploadOutcome.SYNCED
             }
 
             // Session header already exists on server. Always upload route points
             // and segments -- the session may have been created by a background
             // upload that only sent the header without GPS data.
-            uploadRoutePoints(local.id)
-            uploadSegments(local.id)
-            uploadPlaybackEntries(local.id)
+            uploadRoutePoints(normalizedLocal.id)
+            uploadSegments(normalizedLocal.id)
+            uploadPlaybackEntries(normalizedLocal.id)
 
-            if (sessionsEffectivelyEqual(local, remote)) {
-                sessionRepository.markAsSynced(local.id)
+            if (sessionsEffectivelyEqual(normalizedLocal, remote)) {
+                sessionRepository.markAsSynced(normalizedLocal.id)
                 UploadOutcome.SYNCED
             } else {
                 // Session header on server has stale metrics (e.g. uploaded before
                 // updateSegmentMetrics ran). Patch it with the correct local values.
                 supabaseClient.updateJoggingSession(
-                    id = local.id,
+                    id = normalizedLocal.id,
                     request = UpdateJoggingSessionRequest(
-                        liveRunSessionId = local.liveRunSessionId,
-                        endedAt = local.endedAt?.toString(),
-                        distanceMeters = local.distanceMeters.toFloat(),
-                        durationSeconds = local.durationSeconds.toInt(),
-                        avgPaceSecondsPerKm = local.avgPaceSecondsPerKm,
-                        caloriesBurned = local.caloriesBurned,
-                        earnedTimeCredits = local.earnedTimeCreditSeconds.toInt(),
-                        activeDurationSeconds = local.activeDurationSeconds.toInt(),
-                        pauseDurationSeconds = local.pauseDurationSeconds.toInt(),
-                        activeDistanceMeters = local.activeDistanceMeters.toFloat(),
-                        pauseDistanceMeters = local.pauseDistanceMeters.toFloat(),
-                        pauseCount = local.pauseCount,
+                        liveRunSessionId = normalizedLocal.liveRunSessionId,
+                        endedAt = normalizedLocal.endedAt?.toString(),
+                        distanceMeters = normalizedLocal.distanceMeters.toFloat(),
+                        durationSeconds = normalizedLocal.durationSeconds.toInt(),
+                        avgPaceSecondsPerKm = normalizedLocal.avgPaceSecondsPerKm,
+                        caloriesBurned = normalizedLocal.caloriesBurned,
+                        earnedTimeCredits = normalizedLocal.earnedTimeCreditSeconds.toInt(),
+                        activeDurationSeconds = normalizedLocal.activeDurationSeconds.toInt(),
+                        pauseDurationSeconds = normalizedLocal.pauseDurationSeconds.toInt(),
+                        activeDistanceMeters = normalizedLocal.activeDistanceMeters.toFloat(),
+                        pauseDistanceMeters = normalizedLocal.pauseDistanceMeters.toFloat(),
+                        pauseCount = normalizedLocal.pauseCount,
                     ),
                 )
-                sessionRepository.markAsSynced(local.id)
+                sessionRepository.markAsSynced(normalizedLocal.id)
                 UploadOutcome.SYNCED
             }
         } catch (e: ApiException) {
@@ -221,6 +234,26 @@ class SyncJoggingUseCase(
             markFailed(local.id)
             UploadOutcome.FAILED
         }
+    }
+
+    private suspend fun normalizeForMissingLiveRunReference(
+        local: JoggingSession,
+        remote: JoggingSession,
+    ): JoggingSession {
+        if (local.liveRunSessionId == null || local.liveRunSessionId == remote.liveRunSessionId) {
+            return local
+        }
+        return if (remote.liveRunSessionId == null) {
+            persistWithoutLiveRunReference(local)
+        } else {
+            local
+        }
+    }
+
+    private suspend fun persistWithoutLiveRunReference(session: JoggingSession): JoggingSession {
+        val normalized = session.copy(liveRunSessionId = null, syncStatus = SyncStatus.PENDING)
+        sessionRepository.save(normalized)
+        return normalized
     }
 
     private suspend fun markFailed(sessionId: String) {
@@ -251,6 +284,13 @@ class SyncJoggingUseCase(
     private fun nearlyEqual(a: Double, b: Double, tolerance: Double): Boolean = kotlin.math.abs(a - b) <= tolerance
 
     private fun nearlyEqual(a: Long, b: Long, tolerance: Long): Boolean = kotlin.math.abs(a - b) <= tolerance
+
+    private fun ApiException.isMissingLiveRunReference(): Boolean {
+        val message = (this.message ?: "").lowercase()
+        return "live_run_session_id" in message ||
+            "jogging_sessions_live_run_session_id_fkey" in message ||
+            ("foreign key" in message && "live_run" in message)
+    }
 
     private enum class UploadOutcome { SYNCED, SKIPPED, FAILED }
 }

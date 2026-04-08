@@ -284,11 +284,38 @@ private fun renderRunSharePreviewPage(shareId: String): String {
           <section class="hero hero-run">
             <div class="hero-copy">
               <div class="eyebrow">Run Share</div>
-              <h1>Runs koennen als eigenstaendige Web-Seiten geteilt werden.</h1>
+              <div class="run-header-meta">
+                <span class="run-status-pill">Public recap</span>
+                <span class="run-status-copy">Sauber, mobil und sharebar.</span>
+              </div>
+              <h1>Aus einem geteilten Run wird ein klarer, moderner Recap.</h1>
               <p class="hero-text">
-                Diese Route ist die Basis fuer spaetere oeffentliche Run-Recaps mit echten Session-Daten,
-                Karten, Splits, Crew-Kontext und einer deutlich staerkeren Share-Experience.
+                Statt eines Platzhalters wirkt die Seite jetzt wie ein echtes Lauf-Highlight:
+                starke Stat-Hierarchie, ruhige Karte, Splits, Crew-Kontext und eine sauberere
+                Visual-Sprache fuer oeffentliche Session-Links.
               </p>
+              <div class="run-kpis">
+                <div class="run-kpi-card">
+                  <span>Distance</span>
+                  <strong>12.4 km</strong>
+                </div>
+                <div class="run-kpi-card">
+                  <span>Moving Time</span>
+                  <strong>59:31</strong>
+                </div>
+                <div class="run-kpi-card">
+                  <span>Best Split</span>
+                  <strong>4:32 /km</strong>
+                </div>
+              </div>
+              <div class="panel run-story-card">
+                <div class="panel-label">Session Snapshot</div>
+                <h3>Night Crew Berlin</h3>
+                <p>
+                  Urban loop entlang Spree und Oberbaumbruecke, ruhiger Einstieg, schneller Mittelteil,
+                  starker Finish-Abschnitt mit vier Leuten im gleichen Flow.
+                </p>
+              </div>
               <div class="cta-row">
                 <a class="btn btn-primary" href="/">Zur Startseite</a>
                 <a class="btn btn-secondary" href="/friend/AB3X7K2M">Friend Flow ansehen</a>
@@ -296,17 +323,71 @@ private fun renderRunSharePreviewPage(shareId: String): String {
             </div>
 
             <div class="panel share-board">
-              <div class="share-chip">shareId: $safeId</div>
-              <div class="share-stats">
+              <div class="share-board-top">
+                <div class="share-chip">shareId: $safeId</div>
+                <div class="share-availability">Live Recap</div>
+              </div>
+              <div class="share-stats share-stat-grid">
                 <div><span>Distance</span><strong>12.4 km</strong></div>
                 <div><span>Avg Pace</span><strong>4:48 /km</strong></div>
                 <div><span>Elevation</span><strong>162 m</strong></div>
                 <div><span>Crew</span><strong>4 runners</strong></div>
               </div>
               <div class="route-placeholder">
+                <div class="map-pin map-pin-start">Start</div>
+                <div class="map-pin map-pin-peak">Fast</div>
+                <div class="map-pin map-pin-finish">Finish</div>
                 <div class="route-line route-line-a"></div>
                 <div class="route-line route-line-b"></div>
                 <div class="route-line route-line-c"></div>
+              </div>
+              <div class="run-detail-grid">
+                <div class="run-detail-card">
+                  <div class="panel-label">Splits</div>
+                  <div class="split-list">
+                    <div class="split-row">
+                      <span>KM 01</span>
+                      <div class="split-bar"><i style="width: 72%"></i></div>
+                      <strong>5:04</strong>
+                    </div>
+                    <div class="split-row">
+                      <span>KM 05</span>
+                      <div class="split-bar"><i style="width: 84%"></i></div>
+                      <strong>4:42</strong>
+                    </div>
+                    <div class="split-row">
+                      <span>KM 09</span>
+                      <div class="split-bar"><i style="width: 91%"></i></div>
+                      <strong>4:36</strong>
+                    </div>
+                  </div>
+                </div>
+                <div class="run-detail-card">
+                  <div class="panel-label">Crew</div>
+                  <div class="runner-stack">
+                    <div class="runner-row">
+                      <span class="runner-badge">LK</span>
+                      <div>
+                        <strong>Lena</strong>
+                        <span>Lead pace</span>
+                      </div>
+                    </div>
+                    <div class="runner-row">
+                      <span class="runner-badge">MS</span>
+                      <div>
+                        <strong>Mika</strong>
+                        <span>Negativ split</span>
+                      </div>
+                    </div>
+                    <div class="runner-row">
+                      <span class="runner-badge">+2</span>
+                      <div>
+                        <strong>Weitere Runner</strong>
+                        <span>Konstant bis ins Ziel</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -779,8 +860,90 @@ private fun renderDocument(
           background: rgba(255,255,255,0.04);
         }
 
+        .run-header-meta,
+        .share-board-top,
+        .runner-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .run-status-pill,
+        .share-availability {
+          display: inline-flex;
+          align-items: center;
+          min-height: 34px;
+          padding: 0 12px;
+          border-radius: 999px;
+          border: 1px solid rgba(215,255,100,0.22);
+          background: rgba(215,255,100,0.10);
+          color: var(--accent-strong);
+          font-size: 0.82rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .run-status-copy {
+          color: var(--muted-soft);
+          font-size: 0.94rem;
+        }
+
+        .run-kpis,
+        .run-detail-grid,
+        .split-list,
+        .runner-stack {
+          display: grid;
+          gap: 12px;
+        }
+
+        .run-kpis {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .run-kpi-card,
+        .run-detail-card {
+          padding: 18px;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: var(--radius-md);
+          background: rgba(255,255,255,0.025);
+        }
+
+        .run-kpi-card span,
+        .runner-row span,
+        .split-row span {
+          display: block;
+          color: var(--muted-soft);
+          font-size: 0.82rem;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .run-kpi-card strong {
+          display: block;
+          margin-top: 10px;
+          font-size: 1.7rem;
+          letter-spacing: -0.05em;
+        }
+
+        .run-story-card {
+          display: grid;
+          gap: 10px;
+          padding: 22px;
+        }
+
+        .share-board-top {
+          margin-bottom: 16px;
+        }
+
+        .share-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+
         .share-stats > div {
-          flex: 1 1 160px;
           padding: 18px;
           border-radius: var(--radius-md);
           background: rgba(255,255,255,0.025);
@@ -802,8 +965,20 @@ private fun renderDocument(
           border-radius: var(--radius-lg);
           border: 1px solid rgba(255,255,255,0.08);
           background:
+            linear-gradient(135deg, rgba(7, 9, 18, 0.96), rgba(12, 15, 22, 0.82)),
             radial-gradient(circle at 30% 25%, rgba(215,255,100,0.10), transparent 28%),
             linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+        }
+
+        .route-placeholder::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+            linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+          background-size: 56px 56px;
+          opacity: 0.26;
         }
 
         .route-line {
@@ -838,6 +1013,95 @@ private fun renderDocument(
           border-color: rgba(215,255,100,0.42);
         }
 
+        .map-pin {
+          position: absolute;
+          z-index: 1;
+          padding: 0.4rem 0.7rem;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(8,10,16,0.88);
+          color: var(--text);
+          font-size: 0.76rem;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          box-shadow: 0 12px 30px rgba(0,0,0,0.22);
+        }
+
+        .map-pin-start {
+          top: 26px;
+          left: 22px;
+        }
+
+        .map-pin-peak {
+          top: 112px;
+          right: 42px;
+        }
+
+        .map-pin-finish {
+          bottom: 20px;
+          left: 148px;
+        }
+
+        .run-detail-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          margin-top: 18px;
+        }
+
+        .split-row {
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .split-row strong,
+        .runner-row strong {
+          font-size: 1rem;
+          letter-spacing: -0.02em;
+        }
+
+        .split-bar {
+          height: 10px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          overflow: hidden;
+        }
+
+        .split-bar i {
+          display: block;
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, rgba(215,255,100,0.42), rgba(215,255,100,0.92));
+          box-shadow: 0 0 18px rgba(215,255,100,0.18);
+        }
+
+        .runner-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(255,255,255,0.05);
+          color: var(--text);
+          font-size: 0.9rem;
+          font-weight: 700;
+          letter-spacing: -0.03em;
+          text-transform: none;
+        }
+
+        .runner-row {
+          justify-content: flex-start;
+          padding: 10px 0;
+        }
+
+        .runner-row div span {
+          margin-top: 4px;
+          letter-spacing: normal;
+          text-transform: none;
+        }
+
         @media (max-width: 980px) {
           .hero-home,
           .hero-run,
@@ -858,6 +1122,12 @@ private fun renderDocument(
           h1 {
             max-width: none;
             font-size: clamp(2.6rem, 12vw, 4.5rem);
+          }
+
+          .run-kpis,
+          .share-stat-grid,
+          .run-detail-grid {
+            grid-template-columns: 1fr;
           }
         }
 
@@ -891,6 +1161,23 @@ private fun renderDocument(
           .btn,
           .store-card {
             width: 100%;
+          }
+
+          .run-header-meta,
+          .share-board-top,
+          .split-row {
+            grid-template-columns: 1fr;
+            display: grid;
+          }
+
+          .run-status-copy {
+            font-size: 0.88rem;
+          }
+
+          .runner-row {
+            grid-template-columns: auto 1fr;
+            display: grid;
+            align-items: center;
           }
         }
       </style>

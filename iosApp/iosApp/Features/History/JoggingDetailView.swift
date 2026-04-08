@@ -1,6 +1,7 @@
 import MapKit
 import Shared
 import SwiftUI
+import UIKit
 
 // MARK: - JoggingDetailView
 
@@ -31,6 +32,7 @@ struct JoggingDetailView: View {
     @State private var shareItems: [Any] = []
     @State private var showShareSheet = false
     @State private var playbackActionMessage: String?
+    @State private var preparingPlaybackShareID: String?
 
     /// Route points loaded from the local DB on appear.
     @State private var routePoints: [RoutePointItem] = []
@@ -556,56 +558,53 @@ struct JoggingDetailView: View {
                         .foregroundStyle(DashboardWidgetChrome.labelPrimary)
                 }
 
-                Text("Tap a song to open or start it in Spotify.")
+                Text("Tap a song for Spotify actions, or use share to send the track link.")
                     .font(AppTypography.caption1)
                     .foregroundStyle(DashboardWidgetChrome.labelSecondary)
 
                 Divider()
 
                 ForEach(Array(playbackEntries.enumerated()), id: \.element.id) { index, entry in
-                    Button {
-                        Task { await handlePlaybackTap(entry) }
-                    } label: {
-                        HStack(spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Menu {
+                            Button("Open in Spotify") {
+                                openPlaybackEntry(entry)
+                            }
+
+                            Button("Play") {
+                                Task { await playPlaybackEntry(entry) }
+                            }
+
+                            Button("Copy details") {
+                                copyPlaybackEntry(entry)
+                            }
+                        } label: {
+                            playbackEntryRow(entry)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            sharePlaybackEntry(entry)
+                        } label: {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                                     .fill(AppColors.secondary.opacity(0.10))
                                     .frame(width: 42, height: 42)
 
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(AppColors.secondary)
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.trackTitle)
-                                    .font(AppTypography.bodySemibold)
-                                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-                                    .multilineTextAlignment(.leading)
-
-                                Text(entry.artistName?.isEmpty == false ? entry.artistName! : "Unknown artist")
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
-
-                                Text(playbackContext(entry))
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(AppColors.secondary.opacity(0.92))
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(formatPlaybackDuration(entry))
-                                    .font(AppTypography.bodySemibold)
-                                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-                                Text(playbackWindow(entry))
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                                if preparingPlaybackShareID == entry.id {
+                                    ProgressView()
+                                        .tint(AppColors.secondary)
+                                } else {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 14, weight: .bold))
+                                        .foregroundStyle(AppColors.secondary)
+                                }
                             }
                         }
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Share song")
                     }
-                    .buttonStyle(.plain)
 
                     if index != playbackEntries.indices.last {
                         Divider()
@@ -706,6 +705,46 @@ struct JoggingDetailView: View {
         return formatDuration(Int(duration))
     }
 
+    private func playbackEntryRow(_ entry: Shared.JoggingPlaybackEntry) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppColors.secondary.opacity(0.10))
+                    .frame(width: 42, height: 42)
+
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppColors.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.trackTitle)
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                    .multilineTextAlignment(.leading)
+
+                Text(entry.artistName?.isEmpty == false ? entry.artistName! : "Unknown artist")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                Text(playbackContext(entry))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppColors.secondary.opacity(0.92))
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(formatPlaybackDuration(entry))
+                    .font(AppTypography.bodySemibold)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                Text(playbackWindow(entry))
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+            }
+        }
+    }
+
     private func runTrack(from entry: Shared.JoggingPlaybackEntry) -> RunTrack {
         RunTrack(
             title: entry.trackTitle,
@@ -715,32 +754,55 @@ struct JoggingDetailView: View {
         )
     }
 
-    private func handlePlaybackTap(_ entry: Shared.JoggingPlaybackEntry) async {
+    private func playPlaybackEntry(_ entry: Shared.JoggingPlaybackEntry) async {
         let track = runTrack(from: entry)
         playbackActionMessage = nil
 
-        if spotifyService.hasValidSession() {
-            do {
-                if let spotifyURI = track.spotifyURI, !spotifyURI.isEmpty {
-                    try await spotifyService.playTrack(uri: spotifyURI)
-                } else {
-                    try await spotifyService.playTrack(matching: track)
-                }
-                playbackActionMessage = "Playing \(track.title) in Spotify."
-                return
-            } catch {
-                let opened = spotifyService.openTrack(track)
-                playbackActionMessage = opened
-                    ? "Opened \(track.title) in Spotify."
-                    : "Could not open Spotify for \(track.title)."
-                return
-            }
+        guard spotifyService.hasValidSession() else {
+            playbackActionMessage = "Connect Spotify to play \(track.title) directly."
+            return
         }
 
+        do {
+            if let spotifyURI = track.spotifyURI, !spotifyURI.isEmpty {
+                try await spotifyService.playTrack(uri: spotifyURI)
+            } else {
+                try await spotifyService.playTrack(matching: track)
+            }
+            playbackActionMessage = "Playing \(track.title) in Spotify."
+        } catch {
+            playbackActionMessage = "Could not play \(track.title) directly. Open Spotify on an active device and try again."
+        }
+    }
+
+    private func openPlaybackEntry(_ entry: Shared.JoggingPlaybackEntry) {
+        let track = runTrack(from: entry)
+        playbackActionMessage = nil
         let opened = spotifyService.openTrack(track)
         playbackActionMessage = opened
             ? "Opened \(track.title) in Spotify."
             : "Spotify is not available for \(track.title)."
+    }
+
+    private func copyPlaybackEntry(_ entry: Shared.JoggingPlaybackEntry) {
+        let track = runTrack(from: entry)
+        UIPasteboard.general.string = "\(track.title) - \(track.artist)"
+        playbackActionMessage = "Copied \(track.title) and \(track.artist)."
+    }
+
+    private func sharePlaybackEntry(_ entry: Shared.JoggingPlaybackEntry) {
+        let track = runTrack(from: entry)
+        preparingPlaybackShareID = entry.id
+        defer { preparingPlaybackShareID = nil }
+
+        guard let url = spotifyService.shareURL(for: track) else {
+            playbackActionMessage = "No Spotify link available for \(track.title)."
+            return
+        }
+
+        shareItems = [url]
+        showShareSheet = true
+        playbackActionMessage = "Ready to share \(track.title)."
     }
 
     private func prepareShare() async {

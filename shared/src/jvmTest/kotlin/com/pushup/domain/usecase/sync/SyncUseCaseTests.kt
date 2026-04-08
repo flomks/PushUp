@@ -18,10 +18,15 @@ import com.pushup.data.api.dto.UpsertUserLevelRequest
 import com.pushup.data.api.dto.UsernameCheckResponse
 import com.pushup.data.api.dto.UserProfileDTO
 import com.pushup.data.repository.LevelRepositoryImpl
+import com.pushup.data.repository.JoggingSegmentRepositoryImpl
+import com.pushup.data.repository.JoggingSessionRepositoryImpl
+import com.pushup.data.repository.RoutePointRepositoryImpl
 import com.pushup.data.repository.TimeCreditRepositoryImpl
 import com.pushup.data.repository.UserRepositoryImpl
 import com.pushup.data.repository.WorkoutSessionRepositoryImpl
 import com.pushup.db.PushUpDatabase
+import com.pushup.domain.model.JoggingSegment
+import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.JoggingPlaybackEntry
 import com.pushup.domain.model.LevelCalculator
@@ -79,6 +84,9 @@ class SyncUseCaseTests {
     private lateinit var database: PushUpDatabase
     private lateinit var userRepo: UserRepository
     private lateinit var sessionRepo: WorkoutSessionRepository
+    private lateinit var joggingSessionRepo: JoggingSessionRepositoryImpl
+    private lateinit var joggingSegmentRepo: JoggingSegmentRepositoryImpl
+    private lateinit var routePointRepo: RoutePointRepositoryImpl
     private lateinit var timeCreditRepo: TimeCreditRepository
     private lateinit var levelRepo: LevelRepository
     private lateinit var fakeSupabase: FakeCloudSyncApi
@@ -95,6 +103,9 @@ class SyncUseCaseTests {
 
         userRepo = UserRepositoryImpl(database, testDispatcher)
         sessionRepo = WorkoutSessionRepositoryImpl(database, testDispatcher, fixedClock)
+        joggingSessionRepo = JoggingSessionRepositoryImpl(database, testDispatcher, fixedClock)
+        joggingSegmentRepo = JoggingSegmentRepositoryImpl(database, testDispatcher)
+        routePointRepo = RoutePointRepositoryImpl(database, testDispatcher)
         timeCreditRepo = TimeCreditRepositoryImpl(database, testDispatcher, fixedClock)
         levelRepo = LevelRepositoryImpl(database, testDispatcher, fixedClock)
         fakeSupabase = FakeCloudSyncApi()
@@ -237,6 +248,91 @@ class SyncUseCaseTests {
         syncFromCloudUseCase = makeSyncFromCloudUseCase(networkMonitor),
         authRepository = fakeAuthRepo,
     )
+
+    private fun makeSyncJoggingUseCase(
+        networkMonitor: NetworkMonitor = AlwaysConnectedNetworkMonitor,
+    ) = SyncJoggingUseCase(
+        sessionRepository = joggingSessionRepo,
+        segmentRepository = joggingSegmentRepo,
+        routePointRepository = routePointRepo,
+        playbackRepository = null,
+        supabaseClient = fakeSupabase,
+        networkMonitor = networkMonitor,
+        maxRetries = 2,
+        baseDelayMs = 0L,
+    )
+
+    private suspend fun insertPendingJoggingSession(
+        id: String = "jog-1",
+        userId: String = "user-1",
+        liveRunSessionId: String? = null,
+    ): JoggingSession {
+        if (liveRunSessionId != null) {
+            database.databaseQueries.insertLiveRunSession(
+                id = liveRunSessionId,
+                sourceType = "spontaneous",
+                linkedEventId = null,
+                leaderUserId = userId,
+                visibility = "friends",
+                mode = "base",
+                state = "live",
+                startedAt = baseInstant.toEpochMilliseconds(),
+                cooldownStartedAt = null,
+                endedAt = null,
+                lastActivityAt = baseInstant.toEpochMilliseconds(),
+                maxEndsAt = baseInstant.plus(kotlin.time.Duration.parse("PT2H")).toEpochMilliseconds(),
+                createdAt = baseInstant.toEpochMilliseconds(),
+                updatedAt = baseInstant.toEpochMilliseconds(),
+            )
+        }
+        val session = JoggingSession(
+            id = id,
+            userId = userId,
+            liveRunSessionId = liveRunSessionId,
+            startedAt = baseInstant,
+            endedAt = baseInstant.plus(kotlin.time.Duration.parse("PT30M")),
+            distanceMeters = 4200.0,
+            durationSeconds = 1500L,
+            avgPaceSecondsPerKm = 357,
+            caloriesBurned = 252,
+            earnedTimeCreditSeconds = 2520L,
+            activeDurationSeconds = 1400L,
+            pauseDurationSeconds = 100L,
+            activeDistanceMeters = 4000.0,
+            pauseDistanceMeters = 200.0,
+            pauseCount = 2,
+            syncStatus = SyncStatus.PENDING,
+        )
+        joggingSessionRepo.save(session)
+        routePointRepo.save(
+            RoutePoint(
+                id = "$id-point-1",
+                sessionId = id,
+                timestamp = baseInstant.plus(kotlin.time.Duration.parse("PT5M")),
+                latitude = 52.52,
+                longitude = 13.405,
+                altitude = 34.0,
+                speed = 2.8,
+                horizontalAccuracy = 5.0,
+                distanceFromStart = 850.0,
+            ),
+        )
+        joggingSegmentRepo.replaceSegmentsForSession(
+            id,
+            listOf(
+                JoggingSegment(
+                    id = "$id-segment-1",
+                    sessionId = id,
+                    type = JoggingSegmentType.RUN,
+                    startedAt = baseInstant,
+                    endedAt = baseInstant.plus(kotlin.time.Duration.parse("PT20M")),
+                    distanceMeters = 3500.0,
+                    durationSeconds = 1200L,
+                ),
+            ),
+        )
+        return session
+    }
 
     // =========================================================================
     // NetworkMonitor
@@ -447,6 +543,56 @@ class SyncUseCaseTests {
         assertEquals(1, result.skipped) // in-progress session counted as skipped
         assertEquals(0, result.failed)
         assertEquals(1, fakeSupabase.createSessionCallCount)
+    }
+
+    @Test
+    fun syncJogging_fallsBackWhenLiveRunReferenceIsMissing() = runTest {
+        insertUser()
+        insertPendingJoggingSession(liveRunSessionId = "live-123")
+        fakeSupabase.createJoggingSessionError = ApiException.Conflict(
+            """{"message":"insert or update on table \"jogging_sessions\" violates foreign key constraint \"jogging_sessions_live_run_session_id_fkey\"","details":"Key (live_run_session_id)=(live-123) is not present in table \"live_run_sessions\"."}""",
+        )
+
+        val result = makeSyncJoggingUseCase()("user-1")
+
+        assertEquals(1, result.synced)
+        assertEquals(0, result.failed)
+        assertEquals(2, fakeSupabase.createJoggingSessionCallCount)
+        assertNull(fakeSupabase.lastCreatedJoggingSessionRequest?.liveRunSessionId)
+        val local = joggingSessionRepo.getById("jog-1")
+        assertNotNull(local)
+        assertNull(local.liveRunSessionId)
+        assertEquals(SyncStatus.SYNCED, local.syncStatus)
+    }
+
+    @Test
+    fun syncJogging_conflictResolutionClearsStaleLiveRunReferenceWhenRemoteHasNoLink() = runTest {
+        insertUser()
+        insertPendingJoggingSession(id = "jog-2", liveRunSessionId = "live-stale")
+        fakeSupabase.createJoggingSessionError = ApiException.Conflict("Conflict")
+        fakeSupabase.getJoggingSessionResult = JoggingSession(
+            id = "jog-2",
+            userId = "user-1",
+            liveRunSessionId = null,
+            startedAt = baseInstant.minus(kotlin.time.Duration.parse("PT5M")),
+            endedAt = baseInstant.plus(kotlin.time.Duration.parse("PT25M")),
+            distanceMeters = 3000.0,
+            durationSeconds = 1200L,
+            avgPaceSecondsPerKm = 400,
+            caloriesBurned = 180,
+            earnedTimeCreditSeconds = 1800L,
+            syncStatus = SyncStatus.SYNCED,
+        )
+
+        val result = makeSyncJoggingUseCase()("user-1")
+
+        assertEquals(1, result.synced)
+        assertTrue(fakeSupabase.updateJoggingSessionCalled)
+        assertNull(fakeSupabase.lastUpdateJoggingSessionRequest?.liveRunSessionId)
+        val local = joggingSessionRepo.getById("jog-2")
+        assertNotNull(local)
+        assertNull(local.liveRunSessionId)
+        assertEquals(SyncStatus.SYNCED, local.syncStatus)
     }
 
     // =========================================================================
@@ -1006,6 +1152,15 @@ class FakeCloudSyncApi : CloudSyncApi {
     var createSessionCallCount: Int = 0
     var updateSessionCalled: Boolean = false
 
+    // JoggingSession
+    var getJoggingSessionsResult: List<JoggingSession> = emptyList()
+    var getJoggingSessionResult: JoggingSession? = null
+    var createJoggingSessionError: Exception? = null
+    var createJoggingSessionCallCount: Int = 0
+    var updateJoggingSessionCalled: Boolean = false
+    var lastCreatedJoggingSessionRequest: CreateJoggingSessionRequest? = null
+    var lastUpdateJoggingSessionRequest: UpdateJoggingSessionRequest? = null
+
     // TimeCredit
     var getTimeCreditResult: TimeCredit? = null
     var getTimeCreditError: Exception? = null
@@ -1127,14 +1282,71 @@ class FakeCloudSyncApi : CloudSyncApi {
 
     override suspend fun setUsername(request: SetUsernameRequest): String = request.username
 
-    // Jogging session stubs (not exercised by sync-use-case tests)
-    override suspend fun getJoggingSessions(): List<JoggingSession> = emptyList()
+    override suspend fun getJoggingSessions(): List<JoggingSession> = getJoggingSessionsResult
     override suspend fun getJoggingSession(id: String): JoggingSession =
-        throw ApiException.NotFound("Not found", "JoggingSession", id)
-    override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession =
-        throw UnsupportedOperationException()
-    override suspend fun updateJoggingSession(id: String, request: UpdateJoggingSessionRequest): JoggingSession =
-        throw UnsupportedOperationException()
+        getJoggingSessionResult ?: throw ApiException.NotFound("Not found", "JoggingSession", id)
+    override suspend fun createJoggingSession(request: CreateJoggingSessionRequest): JoggingSession {
+        createJoggingSessionCallCount++
+        lastCreatedJoggingSessionRequest = request
+        createJoggingSessionError?.let { error ->
+            createJoggingSessionError = null
+            throw error
+        }
+        return JoggingSession(
+            id = request.id,
+            userId = request.userId,
+            liveRunSessionId = request.liveRunSessionId,
+            startedAt = kotlinx.datetime.Instant.parse(request.startedAt),
+            endedAt = request.endedAt?.let { kotlinx.datetime.Instant.parse(it) },
+            distanceMeters = request.distanceMeters.toDouble(),
+            durationSeconds = request.durationSeconds.toLong(),
+            avgPaceSecondsPerKm = request.avgPaceSecondsPerKm,
+            caloriesBurned = request.caloriesBurned,
+            earnedTimeCreditSeconds = request.earnedTimeCredits.toLong(),
+            activeDurationSeconds = request.activeDurationSeconds.toLong(),
+            pauseDurationSeconds = request.pauseDurationSeconds.toLong(),
+            activeDistanceMeters = request.activeDistanceMeters.toDouble(),
+            pauseDistanceMeters = request.pauseDistanceMeters.toDouble(),
+            pauseCount = request.pauseCount,
+            syncStatus = SyncStatus.SYNCED,
+        )
+    }
+    override suspend fun updateJoggingSession(id: String, request: UpdateJoggingSessionRequest): JoggingSession {
+        updateJoggingSessionCalled = true
+        lastUpdateJoggingSessionRequest = request
+        return getJoggingSessionResult?.copy(
+            liveRunSessionId = request.liveRunSessionId ?: getJoggingSessionResult?.liveRunSessionId,
+            endedAt = request.endedAt?.let { kotlinx.datetime.Instant.parse(it) } ?: getJoggingSessionResult?.endedAt,
+            distanceMeters = request.distanceMeters?.toDouble() ?: getJoggingSessionResult?.distanceMeters ?: 0.0,
+            durationSeconds = request.durationSeconds?.toLong() ?: getJoggingSessionResult?.durationSeconds ?: 0L,
+            avgPaceSecondsPerKm = request.avgPaceSecondsPerKm ?: getJoggingSessionResult?.avgPaceSecondsPerKm,
+            caloriesBurned = request.caloriesBurned ?: getJoggingSessionResult?.caloriesBurned ?: 0,
+            earnedTimeCreditSeconds = request.earnedTimeCredits?.toLong() ?: getJoggingSessionResult?.earnedTimeCreditSeconds ?: 0L,
+            activeDurationSeconds = request.activeDurationSeconds?.toLong() ?: getJoggingSessionResult?.activeDurationSeconds ?: 0L,
+            pauseDurationSeconds = request.pauseDurationSeconds?.toLong() ?: getJoggingSessionResult?.pauseDurationSeconds ?: 0L,
+            activeDistanceMeters = request.activeDistanceMeters?.toDouble() ?: getJoggingSessionResult?.activeDistanceMeters ?: 0.0,
+            pauseDistanceMeters = request.pauseDistanceMeters?.toDouble() ?: getJoggingSessionResult?.pauseDistanceMeters ?: 0.0,
+            pauseCount = request.pauseCount ?: getJoggingSessionResult?.pauseCount ?: 0,
+            syncStatus = SyncStatus.SYNCED,
+        ) ?: JoggingSession(
+            id = id,
+            userId = "user-1",
+            liveRunSessionId = request.liveRunSessionId,
+            startedAt = kotlinx.datetime.Instant.fromEpochMilliseconds(1_700_000_000_000L),
+            endedAt = request.endedAt?.let { kotlinx.datetime.Instant.parse(it) },
+            distanceMeters = request.distanceMeters?.toDouble() ?: 0.0,
+            durationSeconds = request.durationSeconds?.toLong() ?: 0L,
+            avgPaceSecondsPerKm = request.avgPaceSecondsPerKm,
+            caloriesBurned = request.caloriesBurned ?: 0,
+            earnedTimeCreditSeconds = request.earnedTimeCredits?.toLong() ?: 0L,
+            activeDurationSeconds = request.activeDurationSeconds?.toLong() ?: 0L,
+            pauseDurationSeconds = request.pauseDurationSeconds?.toLong() ?: 0L,
+            activeDistanceMeters = request.activeDistanceMeters?.toDouble() ?: 0.0,
+            pauseDistanceMeters = request.pauseDistanceMeters?.toDouble() ?: 0.0,
+            pauseCount = request.pauseCount ?: 0,
+            syncStatus = SyncStatus.SYNCED,
+        )
+    }
     override suspend fun getRoutePoints(sessionId: String): List<RoutePoint> = emptyList()
     override suspend fun createRoutePoints(requests: List<CreateRoutePointRequest>): List<RoutePoint> = emptyList()
     override suspend fun getJoggingPlaybackEntries(sessionId: String): List<JoggingPlaybackEntry> = emptyList()
