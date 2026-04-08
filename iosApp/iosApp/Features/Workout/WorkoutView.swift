@@ -188,17 +188,54 @@ struct WorkoutView: View {
         Button {
             viewModel.startWorkout()
         } label: {
-            HStack(spacing: AppSpacing.xs) {
-                Image(icon: .playFill)
-                    .font(.system(size: AppSpacing.iconSizeStandard, weight: .bold))
-                Text("Start")
-                    .font(AppTypography.buttonPrimary)
+            HStack(spacing: AppSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: WorkoutType.pushUps.gradientColors,
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 44, height: 44)
+
+                    Image(icon: .playFill)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start Workout")
+                        .font(AppTypography.buttonPrimary)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+
+                    Text("Camera-tracked push-up session")
+                        .font(AppTypography.caption1)
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                }
+
+                Spacer()
+
+                Image(icon: .chevronRight)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
             }
-            .foregroundStyle(.black)
+            .padding(.horizontal, DashboardWidgetChrome.padding)
             .frame(maxWidth: .infinity)
-            .frame(height: AppSpacing.buttonHeightPrimary + 8)
-            .background(.white)
-            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton))
+            .frame(height: 76)
+            .dashboardWidgetChrome(cornerRadius: AppSpacing.cornerRadiusLarge)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusLarge, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [WorkoutType.pushUps.accentColor.opacity(0.4), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
         }
         .buttonStyle(ScaleButtonStyle())
         .padding(.horizontal, AppSpacing.xl)
