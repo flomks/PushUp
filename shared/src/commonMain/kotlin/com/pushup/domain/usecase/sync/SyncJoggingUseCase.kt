@@ -109,12 +109,12 @@ class SyncJoggingUseCase(
                 throw e
             } catch (e: ApiException) {
                 if (!e.isTransient) {
-                    println("[SyncJoggingUseCase] Non-transient API error for session id=${session.id}: ${e.message}")
+                    println("[SyncJoggingUseCase] Non-transient API error for session id=${session.id}: ${e.toLogMessage()}")
                     markFailed(session.id)
                     return UploadOutcome.FAILED
                 }
                 lastException = e
-                println("[SyncJoggingUseCase] Transient API error for session id=${session.id}, retry=${attempt + 1}/${maxRetries}: ${e.message}")
+                println("[SyncJoggingUseCase] Transient API error for session id=${session.id}, retry=${attempt + 1}/${maxRetries}: ${e.toLogMessage()}")
                 delay(baseDelayMs * (1L shl attempt))
             } catch (e: Exception) {
                 lastException = e
@@ -179,16 +179,26 @@ class SyncJoggingUseCase(
     private suspend fun uploadSegments(sessionId: String) {
         val segments = segmentRepository.getBySessionId(sessionId)
         val requests = segments.map { it.toCreateRequest() }
-        supabaseClient.replaceJoggingSegments(sessionId, requests)
-        println("[SyncJoggingUseCase] Uploaded ${requests.size} segment(s) for session id=$sessionId")
+        try {
+            supabaseClient.replaceJoggingSegments(sessionId, requests)
+            println("[SyncJoggingUseCase] Uploaded ${requests.size} segment(s) for session id=$sessionId")
+        } catch (e: ApiException) {
+            if (!e.isOptionalJoggingDataUnsupported()) throw e
+            println("[SyncJoggingUseCase] Skipping segment upload for legacy cloud schema session id=$sessionId: ${e.toLogMessage()}")
+        }
     }
 
     private suspend fun uploadPlaybackEntries(sessionId: String) {
         val repository = playbackRepository ?: return
         val entries = repository.getBySessionId(sessionId)
         val requests = entries.map { it.toCreateRequest() }
-        supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
-        println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
+        try {
+            supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
+            println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
+        } catch (e: ApiException) {
+            if (!e.isOptionalJoggingDataUnsupported()) throw e
+            println("[SyncJoggingUseCase] Skipping playback upload for legacy cloud schema session id=$sessionId: ${e.toLogMessage()}")
+        }
     }
 
     private suspend fun resolveConflict(local: JoggingSession): UploadOutcome {
@@ -258,7 +268,7 @@ class SyncJoggingUseCase(
             }
         } catch (e: ApiException) {
             if (e.isTransient) throw e
-            println("[SyncJoggingUseCase] Conflict resolution failed for session id=${local.id}: ${e.message}")
+            println("[SyncJoggingUseCase] Conflict resolution failed for session id=${local.id}: ${e.toLogMessage()}")
             markFailed(local.id)
             UploadOutcome.FAILED
         }
@@ -320,6 +330,21 @@ class SyncJoggingUseCase(
             "jogging_sessions_live_run_session_id_fkey" in message ||
             ("foreign key" in message && "live_run" in message)
     }
+
+    private fun ApiException.isOptionalJoggingDataUnsupported(): Boolean {
+        val message = toLogMessage().lowercase()
+        return "jogging_segments" in message ||
+            "jogging_playback_entries" in message ||
+            "could not find the table" in message ||
+            "schema cache" in message
+    }
+
+    private fun ApiException.toLogMessage(): String =
+        when (this) {
+            is ApiException.BadRequest -> serverMessage ?: message ?: "Bad request"
+            is ApiException.ServerError -> serverMessage ?: message ?: "Server error"
+            else -> message ?: this::class.simpleName ?: "ApiException"
+        }
 
     private enum class UploadOutcome { SYNCED, SKIPPED, FAILED }
 }
