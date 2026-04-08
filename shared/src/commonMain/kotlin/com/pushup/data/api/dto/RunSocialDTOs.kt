@@ -51,6 +51,7 @@ data class CreateRunEventRequest(
 
 @Serializable
 data class UpdateRunEventRequest(
+    @SerialName("created_by") val createdBy: String? = null,
     @SerialName("title") val title: String? = null,
     @SerialName("description") val description: String? = null,
     @SerialName("mode") val mode: String? = null,

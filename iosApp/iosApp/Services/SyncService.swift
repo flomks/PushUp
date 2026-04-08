@@ -194,23 +194,30 @@ final class SyncService: ObservableObject {
                 onSuccess: { [weak self] errorSummary in
                     guard let self else { continuation.resume(); return }
                     Task { @MainActor in
-                        self.unsyncedCount = 0
-                        self.persistUnsyncedCount()
-                        self.lastSyncDate = Date()
-                        UserDefaults.standard.set(self.lastSyncDate, forKey: Self.lastSyncDateKey)
-
                         if errorSummary.isEmpty {
+                            self.unsyncedCount = 0
+                            self.persistUnsyncedCount()
+                            self.lastSyncDate = Date()
+                            UserDefaults.standard.set(self.lastSyncDate, forKey: Self.lastSyncDateKey)
                             self.syncState = .success
                             self.logger.info("Sync completed successfully.")
                         } else {
                             // Partial success — some use-cases failed (e.g. offline for one)
-                            self.syncState = .success
+                            self.syncState = .error("Sync completed with errors. Please try again.")
                             self.logger.warning("Sync completed with partial errors: \(errorSummary, privacy: .private)")
                         }
 
                         Task {
-                            try? await Task.sleep(nanoseconds: Self.successDisplayDuration)
-                            if self.syncState == .success { self.syncState = .idle }
+                            let delay = errorSummary.isEmpty
+                                ? Self.successDisplayDuration
+                                : Self.errorDisplayDuration
+                            try? await Task.sleep(nanoseconds: delay)
+                            switch self.syncState {
+                            case .success, .error:
+                                self.syncState = .idle
+                            default:
+                                break
+                            }
                         }
                         continuation.resume()
                     }

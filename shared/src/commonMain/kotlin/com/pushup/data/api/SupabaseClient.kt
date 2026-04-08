@@ -802,6 +802,14 @@ class SupabaseClient(
             .firstOrNull()
     }
 
+    override suspend fun deleteRunEvent(id: String): Unit = withRetry {
+        val token = tokenProvider()
+        httpClient.delete("$restBase/run_events") {
+            supabaseHeaders(token)
+            url.parameters.append("id", "eq.$id")
+        }.also { it.expectSuccess() }
+    }
+
     override suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> = withRetry {
         val token = tokenProvider()
         httpClient.get("$restBase/run_event_participants") {
@@ -842,6 +850,18 @@ class SupabaseClient(
         }.also { it.expectSuccess() }
             .body<List<RunEventParticipantDTO>>()
             .firstOrNull()
+    }
+
+    override suspend fun deleteRunEventParticipant(
+        eventId: String,
+        userId: String,
+    ): Unit = withRetry {
+        val token = tokenProvider()
+        httpClient.delete("$restBase/run_event_participants") {
+            supabaseHeaders(token)
+            url.parameters.append("event_id", "eq.$eventId")
+            url.parameters.append("user_id", "eq.$userId")
+        }.also { it.expectSuccess() }
     }
 
     override suspend fun getLiveRunSessions(): List<LiveRunSessionDTO> = withRetry {

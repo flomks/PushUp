@@ -245,6 +245,21 @@ final class SpotifyService: NSObject {
         open(Self.trackDestination(track: track, isSpotifyInstalled: isSpotifyAppInstalled()))
     }
 
+    func playTrack(matching track: RunTrack) async throws {
+        let query = "track:\"\(track.title)\" artist:\"\(track.artist)\""
+        let results = try await searchTracks(query: query, limit: 5, offset: 0)
+        guard let firstPlayable = results.first(where: { ($0.uri?.isEmpty == false) && $0.isPlayable != false }),
+              let uri = firstPlayable.uri
+        else {
+            throw NSError(
+                domain: "SpotifyService",
+                code: 30,
+                userInfo: [NSLocalizedDescriptionKey: "No playable Spotify result found for \(track.title)."]
+            )
+        }
+        try await playTrack(uri: uri)
+    }
+
     func disconnect() {
         userDefaults.removeObject(forKey: Keys.session)
     }
@@ -992,9 +1007,11 @@ struct ActiveRunOption: Identifiable, Equatable {
 
 struct UpcomingRunOption: Identifiable, Equatable {
     let id: String
+    let createdBy: String
     let title: String
     let subtitle: String
     let participantCount: Int
+    let committedParticipantCount: Int
     let status: String?
     let visibility: String
     let plannedStartAt: Date
@@ -1697,6 +1714,39 @@ final class JoggingViewModel: ObservableObject {
         }
     }
 
+    func isCurrentUserOrganizer(for run: UpcomingRunOption) -> Bool {
+        run.createdBy == currentUserId
+    }
+
+    func canLeaveUpcomingRun(_ run: UpcomingRunOption) -> Bool {
+        if isCurrentUserOrganizer(for: run) {
+            return run.committedParticipantCount > 1
+        }
+        switch run.status?.uppercased() {
+        case "ACCEPTED", "CHECKED_IN":
+            return true
+        default:
+            return false
+        }
+    }
+
+    func canDeleteUpcomingRun(_ run: UpcomingRunOption) -> Bool {
+        guard isCurrentUserOrganizer(for: run) else { return false }
+        return run.visibility.uppercased() == "PRIVATE" || run.committedParticipantCount <= 1
+    }
+
+    func shouldOfferDeleteAndLeave(for run: UpcomingRunOption) -> Bool {
+        isCurrentUserOrganizer(for: run) && run.committedParticipantCount > 1
+    }
+
+    func leaveUpcomingRun(_ eventId: String) {
+        Task { await leaveUpcomingRunFlow(eventId: eventId) }
+    }
+
+    func deleteUpcomingRun(_ eventId: String) {
+        Task { await deleteUpcomingRunFlow(eventId: eventId) }
+    }
+
     private func startWorkoutFlow() async {
         guard hasLocationPermission else {
             requestLocationPermission()
@@ -1857,16 +1907,22 @@ final class JoggingViewModel: ObservableObject {
                 self?.upcomingRuns = events.map {
                     UpcomingRunOption(
                         id: $0.id,
+                        createdBy: $0.createdBy,
                         title: $0.title,
                         subtitle: Self.formatUpcomingSubtitle(
                             plannedStartAt: $0.plannedStartAt,
                             participantCount: Int($0.participantCount)
                         ),
                         participantCount: Int($0.participantCount),
+                        committedParticipantCount: Int($0.committedParticipantCount),
                         status: $0.currentUserStatus,
                         visibility: $0.visibility,
                         plannedStartAt: ISO8601DateFormatter().date(from: $0.plannedStartAt) ?? Date()
                     )
+                }
+                if let selectedId = self?.selectedUpcomingEventId,
+                   self?.upcomingRuns.contains(where: { $0.id == selectedId }) == false {
+                    self?.selectedUpcomingEventId = nil
                 }
                 continuation.resume()
             }
@@ -1960,6 +2016,48 @@ final class JoggingViewModel: ObservableObject {
                 }
                 self.isUpdatingUpcomingRun = false
                 self.plannedRunStatusMessage = success.boolValue ? "Checked in for planned run." : "Failed to check in."
+                Task { await self.refreshRunOptions() }
+                continuation.resume()
+            }
+        }
+    }
+
+    private func leaveUpcomingRunFlow(eventId: String) async {
+        guard let userId = currentUserId, !isUpdatingUpcomingRun else { return }
+        isUpdatingUpcomingRun = true
+        plannedRunStatusMessage = nil
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DataBridge.shared.leaveRunEvent(eventId: eventId, userId: userId) { [weak self] success in
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                self.isUpdatingUpcomingRun = false
+                self.plannedRunStatusMessage = success.boolValue
+                    ? "Left planned run."
+                    : "Failed to leave planned run."
+                Task { await self.refreshRunOptions() }
+                continuation.resume()
+            }
+        }
+    }
+
+    private func deleteUpcomingRunFlow(eventId: String) async {
+        guard let userId = currentUserId, !isUpdatingUpcomingRun else { return }
+        isUpdatingUpcomingRun = true
+        plannedRunStatusMessage = nil
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DataBridge.shared.deleteRunEvent(eventId: eventId, userId: userId) { [weak self] success in
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                self.isUpdatingUpcomingRun = false
+                self.plannedRunStatusMessage = success.boolValue
+                    ? "Deleted planned run."
+                    : "Failed to delete planned run."
                 Task { await self.refreshRunOptions() }
                 continuation.resume()
             }

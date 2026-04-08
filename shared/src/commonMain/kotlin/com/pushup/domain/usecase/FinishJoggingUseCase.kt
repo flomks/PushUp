@@ -19,7 +19,7 @@ import kotlinx.datetime.Clock
  * When invoked, this use-case:
  * 1. Verifies the session exists and is still active.
  * 2. Calculates earned credits based on distance and duration.
- *    Formula: 1 minute of screen time per 1 km jogged (minimum 1 minute for any distance > 100m).
+ *    Formula: 10 minutes of screen time per 1 km jogged (minimum 1 minute for any distance > 100m).
  * 3. Persists the finished session and adds the earned seconds to TimeCreditRepository.
  * 4. Awards XP based on distance.
  * 5. Returns a [JoggingSummary] containing the finished session, route points, and credits.
@@ -86,10 +86,10 @@ class FinishJoggingUseCase(
 
         val caloriesBurned = (distanceMeters / 1000.0 * 60.0).toInt()
 
-        // Credit formula: 1 minute (60 seconds) per 1 km jogged
+        // Credit formula: 10 minutes (600 seconds) per 1 km jogged
         // Minimum 1 minute for any distance > 100m
         val earnedCredits: Long = if (distanceMeters >= 100.0) {
-            val kmCredits = (distanceMeters / 1000.0 * 60.0).toLong()
+            val kmCredits = (distanceMeters / 1000.0 * 600.0).toLong()
             kmCredits.coerceAtLeast(60L) // minimum 1 minute
         } else {
             0L

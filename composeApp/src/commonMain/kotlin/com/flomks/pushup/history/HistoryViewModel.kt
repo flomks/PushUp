@@ -2,9 +2,11 @@ package com.flomks.pushup.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.RoutePoint
 import com.pushup.domain.model.WorkoutSession
+import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -86,6 +88,7 @@ sealed interface JoggingDetailState {
     data class Success(
         val session: JoggingSession,
         val routePoints: List<RoutePoint>,
+        val segments: List<JoggingSegment>,
     ) : JoggingDetailState
     data class Error(val message: String) : JoggingDetailState
 }
@@ -109,6 +112,7 @@ class HistoryViewModel(
     private val getUserUseCase: GetOrCreateLocalUserUseCase,
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val joggingSessionRepository: JoggingSessionRepository,
+    private val joggingSegmentRepository: JoggingSegmentRepository,
     private val routePointRepository: RoutePointRepository,
 ) : ViewModel() {
 
@@ -140,11 +144,13 @@ class HistoryViewModel(
                 val session = joggingSessionRepository.getById(sessionId)
                     ?: throw IllegalStateException("Jogging session not found: $sessionId")
                 val routePoints = routePointRepository.getBySessionId(sessionId)
+                val segments = joggingSegmentRepository.getBySessionId(sessionId)
                 _detailState.update {
                     it.copy(
                         detailState = JoggingDetailState.Success(
                             session = session,
                             routePoints = routePoints,
+                            segments = segments,
                         ),
                     )
                 }

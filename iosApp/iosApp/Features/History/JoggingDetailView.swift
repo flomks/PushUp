@@ -26,6 +26,11 @@ struct JoggingDetailView: View {
     let session: JoggingSessionItem
 
     @Environment(\.dismiss) private var dismiss
+    @State private var playbackEntries: [Shared.JoggingPlaybackEntry] = []
+    @State private var isPreparingShare = false
+    @State private var shareItems: [Any] = []
+    @State private var showShareSheet = false
+    @State private var playbackActionMessage: String?
 
     /// Route points loaded from the local DB on appear.
     @State private var routePoints: [RoutePointItem] = []
@@ -39,6 +44,8 @@ struct JoggingDetailView: View {
 
     /// Map camera position.
     @State private var mapPosition: MapCameraPosition = .automatic
+
+    private let spotifyService = SpotifyService.shared
 
     private var smoothedRouteCoordinates: [CLLocationCoordinate2D] {
         RouteSmoothing.smoothCoordinates(routePoints.map(\.coordinate))
@@ -58,8 +65,14 @@ struct JoggingDetailView: View {
                             routeDetailsCard
                         }
                         pauseInsightsCard
+                        if !playbackEntries.isEmpty {
+                            playbackTimelineCard
+                        }
                         if !segments.isEmpty {
                             segmentsTimelineCard
+                        }
+                        if let playbackActionMessage {
+                            playbackActionCard(playbackActionMessage)
                         }
                         if let selected = selectedPoint {
                             selectedPointCard(selected)
@@ -73,7 +86,26 @@ struct JoggingDetailView: View {
             .preferredColorScheme(.dark)
             .navigationTitle("\(session.shortDateString) - \(session.timeString)")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        Task { await prepareShare() }
+                    } label: {
+                        if isPreparingShare {
+                            ProgressView()
+                                .tint(AppColors.primary)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                                .foregroundStyle(AppColors.textPrimary)
+                        }
+                    }
+                    .disabled(isPreparingShare)
+                    .accessibilityLabel("Share run")
+                    .accessibilityIdentifier("jogging_detail_share_button")
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         dismiss()
@@ -90,7 +122,11 @@ struct JoggingDetailView: View {
             .task {
                 loadRoutePoints()
                 loadSegments()
+                loadPlaybackEntries()
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems)
         }
         .accessibilityIdentifier("jogging_detail_screen")
     }
@@ -145,6 +181,12 @@ struct JoggingDetailView: View {
                     durationSeconds: Int(segment.durationSeconds)
                 )
             }
+        }
+    }
+
+    private func loadPlaybackEntries() {
+        DataBridge.shared.fetchJoggingPlaybackEntriesForSession(sessionId: session.kmpSessionId) { entries in
+            self.playbackEntries = entries
         }
     }
 
@@ -501,6 +543,79 @@ struct JoggingDetailView: View {
         }
     }
 
+    private var playbackTimelineCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                HStack(spacing: AppSpacing.xs) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                        .foregroundStyle(AppColors.secondary)
+
+                    Text("Soundtrack")
+                        .font(AppTypography.headline)
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                }
+
+                Text("Tap a song to open or start it in Spotify.")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                Divider()
+
+                ForEach(Array(playbackEntries.enumerated()), id: \.element.id) { index, entry in
+                    Button {
+                        Task { await handlePlaybackTap(entry) }
+                    } label: {
+                        HStack(spacing: AppSpacing.sm) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(AppColors.secondary.opacity(0.10))
+                                    .frame(width: 42, height: 42)
+
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(AppColors.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.trackTitle)
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                                    .multilineTextAlignment(.leading)
+
+                                Text(entry.artistName?.isEmpty == false ? entry.artistName! : "Unknown artist")
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+
+                                Text(playbackContext(entry))
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(AppColors.secondary.opacity(0.92))
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text(formatPlaybackDuration(entry))
+                                    .font(AppTypography.bodySemibold)
+                                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+                                Text(playbackWindow(entry))
+                                    .font(AppTypography.caption1)
+                                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if index != playbackEntries.indices.last {
+                        Divider()
+                    }
+                }
+            }
+        }
+        .accessibilityIdentifier("jogging_detail_playback_timeline")
+    }
+
     private var segmentsTimelineCard: some View {
         Card {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -541,6 +656,22 @@ struct JoggingDetailView: View {
         }
     }
 
+    private func playbackActionCard(_ message: String) -> some View {
+        Card {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "music.note")
+                    .font(.system(size: AppSpacing.iconSizeStandard, weight: .semibold))
+                    .foregroundStyle(AppColors.secondary)
+
+                Text(message)
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+
+                Spacer()
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     @ViewBuilder
@@ -559,6 +690,75 @@ struct JoggingDetailView: View {
         let speeds = routePoints.compactMap { $0.speed }
         guard !speeds.isEmpty else { return nil }
         return speeds.reduce(0, +) / Double(speeds.count)
+    }
+
+    private func playbackContext(_ entry: Shared.JoggingPlaybackEntry) -> String {
+        let covered = max(entry.endDistanceMeters - entry.startDistanceMeters, 0)
+        return "\(formatDistance(entry.startDistanceMeters)) -> \(formatDistance(entry.endDistanceMeters)) | +\(formatDistance(covered))"
+    }
+
+    private func playbackWindow(_ entry: Shared.JoggingPlaybackEntry) -> String {
+        "\(Self.timeFormatter.string(from: Self.dateFromInstant(entry.startedAt))) - \(Self.timeFormatter.string(from: Self.dateFromInstant(entry.endedAt)))"
+    }
+
+    private func formatPlaybackDuration(_ entry: Shared.JoggingPlaybackEntry) -> String {
+        let duration = max(entry.endedAt.epochSeconds - entry.startedAt.epochSeconds, 0)
+        return formatDuration(Int(duration))
+    }
+
+    private func runTrack(from entry: Shared.JoggingPlaybackEntry) -> RunTrack {
+        RunTrack(
+            title: entry.trackTitle,
+            artist: entry.artistName?.isEmpty == false ? entry.artistName! : "Unknown artist",
+            vibe: "History soundtrack"
+        )
+    }
+
+    private func handlePlaybackTap(_ entry: Shared.JoggingPlaybackEntry) async {
+        let track = runTrack(from: entry)
+        playbackActionMessage = nil
+
+        if spotifyService.hasValidSession() {
+            do {
+                try await spotifyService.playTrack(matching: track)
+                playbackActionMessage = "Playing \(track.title) in Spotify."
+                return
+            } catch {
+                let opened = spotifyService.openTrack(track)
+                playbackActionMessage = opened
+                    ? "Opened \(track.title) in Spotify."
+                    : "Could not open Spotify for \(track.title)."
+                return
+            }
+        }
+
+        let opened = spotifyService.openTrack(track)
+        playbackActionMessage = opened
+            ? "Opened \(track.title) in Spotify."
+            : "Spotify is not available for \(track.title)."
+    }
+
+    private func prepareShare() async {
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+
+        let snapshot = await JoggingMapSnapshotGenerator.generateSnapshot(
+            coordinates: smoothedRouteCoordinates.isEmpty ? routePoints.map(\.coordinate) : smoothedRouteCoordinates
+        )
+
+        let image = JoggingShareRenderer.renderShareImage(
+            mapSnapshot: snapshot,
+            distance: session.distanceString,
+            duration: session.durationString,
+            pace: session.formattedPace,
+            calories: "\(session.caloriesBurned) kcal",
+            earnedMinutes: session.earnedMinutes,
+            date: session.startDate
+        )
+
+        let text = "Run recap: \(session.distanceString) in \(session.durationString) at \(session.formattedPace)/km. Earned +\(session.earnedMinutes) min in PushUp."
+        shareItems = image.map { [text, $0] } ?? [text]
+        showShareSheet = true
     }
 
     private var elevationGain: Double {
@@ -583,6 +783,11 @@ struct JoggingDetailView: View {
             return String(format: "%.2f km", meters / 1000.0)
         }
         return "\(Int(meters)) m"
+    }
+
+    private static func dateFromInstant(_ instant: Kotlinx_datetimeInstant) -> Date {
+        let millis = instant.epochSeconds * 1_000 + Int64(instant.nanosecondsOfSecond) / 1_000_000
+        return Date(timeIntervalSince1970: Double(millis) / 1_000.0)
     }
 
     /// Computes a map region that fits all the given coordinates with padding.

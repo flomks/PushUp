@@ -52,6 +52,7 @@ import com.pushup.domain.usecase.AwardWorkoutXpUseCase
 import com.pushup.domain.usecase.GetActivityStreakUseCase
 import com.pushup.domain.usecase.GetMonthlyActivityUseCase
 import com.pushup.domain.usecase.DefaultIdGenerator
+import com.pushup.domain.usecase.DeleteRunEventUseCase
 import com.pushup.domain.usecase.FinishWorkoutUseCase
 import com.pushup.domain.usecase.FinishLiveRunSessionUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
@@ -71,6 +72,7 @@ import com.pushup.domain.usecase.IdGenerator
 import com.pushup.domain.usecase.FinishJoggingUseCase
 import com.pushup.domain.usecase.JoinLiveRunSessionUseCase
 import com.pushup.domain.usecase.LiveJoggingSessionManager
+import com.pushup.domain.usecase.LeaveRunEventUseCase
 import com.pushup.domain.usecase.LeaveLiveRunSessionUseCase
 import com.pushup.domain.usecase.ObserveFriendsActiveRunsUseCase
 import com.pushup.domain.usecase.ObserveLiveRunSessionUseCase
@@ -403,6 +405,8 @@ val useCaseModule: Module = module {
     factory { CreateRunEventUseCase(repository = get(), clock = get(), idGenerator = get()) }
     factory { GetUpcomingRunEventsUseCase(repository = get()) }
     factory { RespondToRunEventUseCase(repository = get()) }
+    factory { LeaveRunEventUseCase(repository = get()) }
+    factory { DeleteRunEventUseCase(repository = get()) }
     factory { StartLiveRunSessionUseCase(repository = get(), clock = get(), idGenerator = get()) }
     factory { JoinLiveRunSessionUseCase(repository = get(), clock = get(), idGenerator = get()) }
     factory { LeaveLiveRunSessionUseCase(repository = get(), clock = get()) }

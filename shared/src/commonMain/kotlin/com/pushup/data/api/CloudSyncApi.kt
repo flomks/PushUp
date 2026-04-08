@@ -290,6 +290,7 @@ interface CloudSyncApi {
     suspend fun getRunEvent(id: String): RunEventDTO? = null
     suspend fun createRunEvent(request: CreateRunEventRequest): RunEventDTO? = null
     suspend fun updateRunEvent(id: String, request: UpdateRunEventRequest): RunEventDTO? = null
+    suspend fun deleteRunEvent(id: String) {}
     suspend fun getRunEventParticipants(eventId: String): List<RunEventParticipantDTO> = emptyList()
     suspend fun createRunEventParticipants(requests: List<CreateRunEventParticipantRequest>): List<RunEventParticipantDTO> = emptyList()
     suspend fun updateRunEventParticipant(
@@ -297,6 +298,10 @@ interface CloudSyncApi {
         userId: String,
         request: UpdateRunEventParticipantRequest,
     ): RunEventParticipantDTO? = null
+    suspend fun deleteRunEventParticipant(
+        eventId: String,
+        userId: String,
+    ) {}
 
     suspend fun getLiveRunSessions(): List<LiveRunSessionDTO> = emptyList()
     suspend fun getLiveRunSession(id: String): LiveRunSessionDTO? = null

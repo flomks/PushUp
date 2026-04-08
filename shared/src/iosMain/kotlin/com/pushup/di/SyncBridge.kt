@@ -29,6 +29,16 @@ object SyncBridge : KoinComponent {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private fun collectErrors(result: SyncResult.Completed): String =
+        listOfNotNull(
+            result.workoutsError?.message,
+            result.joggingError?.message,
+            result.timeCreditError?.message,
+            result.levelError?.message,
+            result.exerciseLevelsError?.message,
+            result.fromCloudError?.message,
+        ).joinToString("; ")
+
     // =========================================================================
     // Full sync (upload pending + pull from cloud)
     // =========================================================================
@@ -50,17 +60,9 @@ object SyncBridge : KoinComponent {
             try {
                 val result = get<SyncManager>().syncAll()
                 when (result) {
-                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onSuccess("") }
+                    is SyncResult.Skipped -> withContext(Dispatchers.Main) { onError(result.reason) }
                     is SyncResult.Completed -> {
-                        val errors = listOfNotNull(
-                            result.workoutsError?.message,
-                            result.joggingError?.message,
-                            result.timeCreditError?.message,
-                            result.levelError?.message,
-                            result.exerciseLevelsError?.message,
-                            result.fromCloudError?.message,
-                        )
-                        withContext(Dispatchers.Main) { onSuccess(errors.joinToString("; ")) }
+                        withContext(Dispatchers.Main) { onSuccess(collectErrors(result)) }
                     }
                 }
             } catch (e: Exception) {
@@ -117,8 +119,19 @@ object SyncBridge : KoinComponent {
     ) {
         scope.launch {
             try {
-                get<SyncManager>().syncAfterWorkout()
-                withContext(Dispatchers.Main) { onSuccess() }
+                when (val result = get<SyncManager>().syncAfterWorkout()) {
+                    is SyncResult.Skipped -> {
+                        withContext(Dispatchers.Main) { onError(result.reason) }
+                    }
+                    is SyncResult.Completed -> {
+                        val errors = collectErrors(result)
+                        if (errors.isBlank()) {
+                            withContext(Dispatchers.Main) { onSuccess() }
+                        } else {
+                            withContext(Dispatchers.Main) { onError(errors) }
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 val msg = e.message ?: "Post-workout sync failed"
                 withContext(Dispatchers.Main) { onError(msg) }

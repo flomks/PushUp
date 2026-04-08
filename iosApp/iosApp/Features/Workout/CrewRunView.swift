@@ -7,11 +7,26 @@ enum CrewRunScreen {
 
 struct CrewRunView: View {
 
+    private enum UpcomingRunManagementAction: Identifiable {
+        case leave(UpcomingRunOption)
+        case delete(UpcomingRunOption)
+
+        var id: String {
+            switch self {
+            case .leave(let run):
+                return "leave_\(run.id)"
+            case .delete(let run):
+                return "delete_\(run.id)"
+            }
+        }
+    }
+
     @ObservedObject var viewModel: JoggingViewModel
     let screen: CrewRunScreen
     @Environment(\.dismiss) private var dismiss
     @State private var displayedMonth: Date = Calendar.current.startOfDay(for: Date())
     @State private var selectedDay: Date?
+    @State private var pendingUpcomingAction: UpcomingRunManagementAction?
 
     var body: some View {
         NavigationStack {
@@ -65,6 +80,30 @@ struct CrewRunView: View {
             }
             .onChange(of: viewModel.upcomingRuns) { _, _ in
                 syncCalendarSelection()
+            }
+            .alert(item: $pendingUpcomingAction) { action in
+                switch action {
+                case .leave(let run):
+                    Alert(
+                        title: Text("Leave event?"),
+                        message: Text(viewModel.isCurrentUserOrganizer(for: run)
+                            ? "This event stays active and a joined runner becomes the new leader."
+                            : "You will be removed from this planned event."),
+                        primaryButton: .destructive(Text("Leave")) {
+                            viewModel.leaveUpcomingRun(run.id)
+                        },
+                        secondaryButton: .cancel()
+                    )
+                case .delete(let run):
+                    Alert(
+                        title: Text("Delete event?"),
+                        message: Text("This planned event will be deleted for everyone."),
+                        primaryButton: .destructive(Text("Delete")) {
+                            viewModel.deleteUpcomingRun(run.id)
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
             }
         }
     }
@@ -325,6 +364,40 @@ struct CrewRunView: View {
                             viewModel.startUpcomingRun(run)
                             dismiss()
                         }
+                    }
+
+                    if viewModel.shouldOfferDeleteAndLeave(for: run) {
+                        HStack(spacing: AppSpacing.sm) {
+                            Button("Leave Event") {
+                                pendingUpcomingAction = .leave(run)
+                            }
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.error)
+                            .buttonStyle(.plain)
+
+                            Spacer()
+
+                            Button("Delete Event") {
+                                pendingUpcomingAction = .delete(run)
+                            }
+                            .font(AppTypography.captionSemibold)
+                            .foregroundStyle(AppColors.error)
+                            .buttonStyle(.plain)
+                        }
+                    } else if viewModel.canLeaveUpcomingRun(run) {
+                        Button("Leave Event") {
+                            pendingUpcomingAction = .leave(run)
+                        }
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.error)
+                        .buttonStyle(.plain)
+                    } else if viewModel.canDeleteUpcomingRun(run) {
+                        Button("Delete Event") {
+                            pendingUpcomingAction = .delete(run)
+                        }
+                        .font(AppTypography.captionSemibold)
+                        .foregroundStyle(AppColors.error)
+                        .buttonStyle(.plain)
                     }
 
                     if run.status?.uppercased() == "INVITED" {

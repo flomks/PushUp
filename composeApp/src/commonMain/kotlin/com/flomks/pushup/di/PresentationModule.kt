@@ -7,6 +7,7 @@ import com.flomks.pushup.friends.UserSearchViewModel
 import com.flomks.pushup.history.HistoryViewModel
 import com.flomks.pushup.profile.ProfileViewModel
 import com.pushup.domain.repository.FriendshipRepository
+import com.pushup.domain.repository.JoggingSegmentRepository
 import com.pushup.domain.repository.JoggingSessionRepository
 import com.pushup.domain.repository.RoutePointRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
@@ -66,6 +67,7 @@ val presentationModule = module {
             getUserUseCase = get<GetOrCreateLocalUserUseCase>(),
             workoutSessionRepository = get<WorkoutSessionRepository>(),
             joggingSessionRepository = get<JoggingSessionRepository>(),
+            joggingSegmentRepository = get<JoggingSegmentRepository>(),
             routePointRepository = get<RoutePointRepository>(),
         )
     }

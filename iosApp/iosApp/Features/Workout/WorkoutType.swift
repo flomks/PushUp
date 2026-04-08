@@ -61,7 +61,7 @@ enum WorkoutType: String, CaseIterable, Identifiable, Hashable {
         case .jumpingJacks: return "1 min per 20 reps"
         case .squats:       return "1 min per 15 reps"
         case .crunches:     return "1 min per 15 reps"
-        case .jogging:      return "1 min per 1 km"
+        case .jogging:      return "10 min per 1 km"
         }
     }
 

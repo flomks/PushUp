@@ -24,6 +24,7 @@ import com.pushup.domain.repository.UserSettingsRepository
 import com.pushup.domain.repository.WorkoutSessionRepository
 import com.pushup.db.PushUpDatabase
 import com.pushup.domain.usecase.CreateRunEventUseCase
+import com.pushup.domain.usecase.DeleteRunEventUseCase
 import com.pushup.domain.usecase.GetCreditBreakdownUseCase
 import com.pushup.domain.usecase.GetDailyStatsUseCase
 import com.pushup.domain.usecase.GetJoggingPlaybackEntriesUseCase
@@ -35,6 +36,7 @@ import com.pushup.domain.usecase.GetWeeklyStatsUseCase
 import com.pushup.domain.usecase.GetUserSettingsUseCase
 import com.pushup.domain.usecase.FinishLiveRunSessionUseCase
 import com.pushup.domain.usecase.JoinLiveRunSessionUseCase
+import com.pushup.domain.usecase.LeaveRunEventUseCase
 import com.pushup.domain.usecase.LeaveLiveRunSessionUseCase
 import com.pushup.domain.usecase.ObserveFriendsActiveRunsUseCase
 import com.pushup.domain.usecase.ObserveLiveRunSessionUseCase
@@ -105,9 +107,11 @@ object DataBridge : KoinComponent {
     private fun toRunEventResult(
         event: com.pushup.domain.model.RunEvent,
         participantCount: Int = 0,
+        committedParticipantCount: Int = 0,
         currentUserStatus: String? = null,
     ): RunEventResult = RunEventResult(
         id = event.id,
+        createdBy = event.createdBy,
         title = event.title,
         mode = event.mode.name,
         visibility = event.visibility.name,
@@ -116,6 +120,7 @@ object DataBridge : KoinComponent {
         plannedEndAt = event.plannedEndAt?.toString(),
         locationName = event.locationName,
         participantCount = participantCount,
+        committedParticipantCount = committedParticipantCount,
         currentUserStatus = currentUserStatus,
     )
 
@@ -221,6 +226,10 @@ object DataBridge : KoinComponent {
                     toRunEventResult(
                         event = event,
                         participantCount = participants.size,
+                        committedParticipantCount = participants.count {
+                            it.status == com.pushup.domain.model.RunParticipantStatus.ACCEPTED ||
+                                it.status == com.pushup.domain.model.RunParticipantStatus.CHECKED_IN
+                        },
                         currentUserStatus = participants.firstOrNull { it.userId == userId }?.status?.name,
                     )
                 }
@@ -456,7 +465,15 @@ object DataBridge : KoinComponent {
                     locationName = locationName,
                 )
                 val participantCount = get<RunEventRepository>().getParticipants(event.id).size
-                withContext(Dispatchers.Main) { onResult(toRunEventResult(event, participantCount)) }
+                withContext(Dispatchers.Main) {
+                    onResult(
+                        toRunEventResult(
+                            event = event,
+                            participantCount = participantCount,
+                            committedParticipantCount = 1,
+                        )
+                    )
+                }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) { onResult(null) }
             }
@@ -494,6 +511,32 @@ object DataBridge : KoinComponent {
                     userId = userId,
                     status = com.pushup.domain.model.RunParticipantStatus.CHECKED_IN,
                 )
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
+        }
+    }
+
+    fun leaveRunEvent(
+        eventId: String,
+        userId: String,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<LeaveRunEventUseCase>().invoke(eventId, userId)
+            }.isSuccess
+            withContext(Dispatchers.Main) { onDone(ok) }
+        }
+    }
+
+    fun deleteRunEvent(
+        eventId: String,
+        userId: String,
+        onDone: (Boolean) -> Unit,
+    ) {
+        scope.launch {
+            val ok = runCatching {
+                get<DeleteRunEventUseCase>().invoke(eventId, userId)
             }.isSuccess
             withContext(Dispatchers.Main) { onDone(ok) }
         }
@@ -996,6 +1039,7 @@ data class TotalStatsResult(
 
 data class RunEventResult(
     val id: String,
+    val createdBy: String,
     val title: String,
     val mode: String,
     val visibility: String,
@@ -1004,6 +1048,7 @@ data class RunEventResult(
     val plannedEndAt: String?,
     val locationName: String?,
     val participantCount: Int,
+    val committedParticipantCount: Int,
     val currentUserStatus: String?,
 )
 

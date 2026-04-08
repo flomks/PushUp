@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.pushup.domain.model.JoggingSegment
 import com.pushup.domain.model.JoggingSession
 import com.pushup.domain.model.RoutePoint
 import kotlinx.datetime.TimeZone
@@ -153,6 +154,7 @@ internal fun JoggingDetailContent(
                 JoggingDetailSuccessContent(
                     session = state.session,
                     routePoints = state.routePoints,
+                    segments = state.segments,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding),
@@ -170,6 +172,7 @@ internal fun JoggingDetailContent(
 private fun JoggingDetailSuccessContent(
     session: JoggingSession,
     routePoints: List<RoutePoint>,
+    segments: List<JoggingSegment>,
     modifier: Modifier = Modifier,
 ) {
     val tz = TimeZone.currentSystemDefault()
@@ -242,6 +245,7 @@ private fun JoggingDetailSuccessContent(
 
         RouteMapView(
             routePoints = routePoints,
+            segments = segments,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(350.dp),

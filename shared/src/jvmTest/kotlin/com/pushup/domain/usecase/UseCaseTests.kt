@@ -288,11 +288,26 @@ class UseCaseTests {
 
             override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = emptyList()
 
+            override suspend fun updateEventOrganizer(eventId: String, organizerUserId: String): RunEvent =
+                error("Not needed in this test")
+
+            override suspend fun updateParticipantRole(
+                eventId: String,
+                userId: String,
+                role: RunParticipantRole,
+            ): RunEventParticipant = error("Not needed in this test")
+
             override suspend fun updateParticipantStatus(
                 eventId: String,
                 userId: String,
                 status: RunParticipantStatus,
             ): RunEventParticipant = error("Not needed in this test")
+
+            override suspend fun removeParticipant(eventId: String, userId: String) =
+                error("Not needed in this test")
+
+            override suspend fun deleteEvent(eventId: String) =
+                error("Not needed in this test")
 
             override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
         }
@@ -330,11 +345,26 @@ class UseCaseTests {
 
             override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = emptyList()
 
+            override suspend fun updateEventOrganizer(eventId: String, organizerUserId: String): RunEvent =
+                error("Not needed in this test")
+
+            override suspend fun updateParticipantRole(
+                eventId: String,
+                userId: String,
+                role: RunParticipantRole,
+            ): RunEventParticipant = error("Not needed in this test")
+
             override suspend fun updateParticipantStatus(
                 eventId: String,
                 userId: String,
                 status: RunParticipantStatus,
             ): RunEventParticipant = error("Not needed in this test")
+
+            override suspend fun removeParticipant(eventId: String, userId: String) =
+                error("Not needed in this test")
+
+            override suspend fun deleteEvent(eventId: String) =
+                error("Not needed in this test")
 
             override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
         }
@@ -353,6 +383,140 @@ class UseCaseTests {
         assertEquals(null, organizerParticipant?.invitedBy)
         assertEquals(organizerParticipant?.createdAt, organizerParticipant?.invitedAt)
         assertEquals(organizerParticipant?.createdAt, organizerParticipant?.respondedAt)
+    }
+
+    @Test
+    fun leaveRunEvent_transfersOrganizerToAcceptedParticipant() = runTest {
+        val now = fixedClock.now()
+        val event = RunEvent(
+            id = "event-1",
+            createdBy = "user-1",
+            title = "Crew Run",
+            description = null,
+            mode = RunMode.BASE,
+            visibility = RunVisibility.FRIENDS,
+            plannedStartAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() + 3_600_000),
+            plannedEndAt = null,
+            checkInOpensAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() + 1_800_000),
+            locationName = null,
+            status = com.pushup.domain.model.RunEventStatus.PLANNED,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val organizer = RunEventParticipant(
+            id = "p-1",
+            eventId = "event-1",
+            userId = "user-1",
+            role = RunParticipantRole.ORGANIZER,
+            status = RunParticipantStatus.ACCEPTED,
+            invitedBy = null,
+            invitedAt = now,
+            respondedAt = now,
+            checkedInAt = null,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val member = RunEventParticipant(
+            id = "p-2",
+            eventId = "event-1",
+            userId = "user-2",
+            role = RunParticipantRole.MEMBER,
+            status = RunParticipantStatus.ACCEPTED,
+            invitedBy = "user-1",
+            invitedAt = now,
+            respondedAt = now,
+            checkedInAt = null,
+            createdAt = now,
+            updatedAt = now,
+        )
+
+        val repository = object : RunEventRepository {
+            var currentEvent = event
+            val participants = mutableListOf(organizer, member)
+
+            override suspend fun create(event: RunEvent, participants: List<RunEventParticipant>): RunEvent = event
+            override suspend fun getById(eventId: String): RunEvent? = currentEvent.takeIf { it.id == eventId }
+            override suspend fun getUpcomingForUser(userId: String): List<RunEvent> = emptyList()
+            override suspend fun getParticipants(eventId: String): List<RunEventParticipant> =
+                participants.filter { it.eventId == eventId }
+            override suspend fun updateEventOrganizer(eventId: String, organizerUserId: String): RunEvent {
+                currentEvent = currentEvent.copy(createdBy = organizerUserId, updatedAt = fixedClock.now())
+                return currentEvent
+            }
+            override suspend fun updateParticipantRole(
+                eventId: String,
+                userId: String,
+                role: RunParticipantRole,
+            ): RunEventParticipant {
+                val index = participants.indexOfFirst { it.eventId == eventId && it.userId == userId }
+                val updated = participants[index].copy(role = role, updatedAt = fixedClock.now())
+                participants[index] = updated
+                return updated
+            }
+            override suspend fun updateParticipantStatus(
+                eventId: String,
+                userId: String,
+                status: RunParticipantStatus,
+            ): RunEventParticipant = error("Not needed in this test")
+            override suspend fun removeParticipant(eventId: String, userId: String) {
+                participants.removeAll { it.eventId == eventId && it.userId == userId }
+            }
+            override suspend fun deleteEvent(eventId: String) = error("Not needed in this test")
+            override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
+        }
+
+        val result = LeaveRunEventUseCase(repository).invoke("event-1", "user-1")
+
+        assertEquals("user-2", result.newOrganizerUserId)
+        assertEquals("user-2", repository.currentEvent.createdBy)
+        assertEquals(1, repository.participants.size)
+        assertEquals(RunParticipantRole.ORGANIZER, repository.participants.single().role)
+    }
+
+    @Test
+    fun deleteRunEvent_requiresOrganizer() = runTest {
+        val now = fixedClock.now()
+        val repository = object : RunEventRepository {
+            override suspend fun create(event: RunEvent, participants: List<RunEventParticipant>): RunEvent = event
+            override suspend fun getById(eventId: String): RunEvent? = RunEvent(
+                id = eventId,
+                createdBy = "organizer",
+                title = "Run",
+                description = null,
+                mode = RunMode.BASE,
+                visibility = RunVisibility.FRIENDS,
+                plannedStartAt = now,
+                plannedEndAt = null,
+                checkInOpensAt = now,
+                locationName = null,
+                status = com.pushup.domain.model.RunEventStatus.PLANNED,
+                createdAt = now,
+                updatedAt = now,
+            )
+            override suspend fun getUpcomingForUser(userId: String): List<RunEvent> = emptyList()
+            override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = emptyList()
+            override suspend fun updateEventOrganizer(eventId: String, organizerUserId: String): RunEvent =
+                error("Not needed in this test")
+            override suspend fun updateParticipantRole(
+                eventId: String,
+                userId: String,
+                role: RunParticipantRole,
+            ): RunEventParticipant = error("Not needed in this test")
+            override suspend fun updateParticipantStatus(
+                eventId: String,
+                userId: String,
+                status: RunParticipantStatus,
+            ): RunEventParticipant = error("Not needed in this test")
+            override suspend fun removeParticipant(eventId: String, userId: String) =
+                error("Not needed in this test")
+            override suspend fun deleteEvent(eventId: String) =
+                error("Should not be called")
+            override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> = emptyFlow()
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            DeleteRunEventUseCase(repository).invoke("event-1", "not-organizer")
+        }
     }
 
     // =========================================================================

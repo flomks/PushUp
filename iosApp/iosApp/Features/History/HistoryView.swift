@@ -85,10 +85,12 @@ struct HistoryView: View {
                 WorkoutDetailView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+                    .presentationBackground(DashboardWidgetChrome.pageBackground)
             case .jogging(let session):
                 JoggingDetailView(session: session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+                    .presentationBackground(DashboardWidgetChrome.pageBackground)
             }
         }
         .accessibilityIdentifier("history_screen")

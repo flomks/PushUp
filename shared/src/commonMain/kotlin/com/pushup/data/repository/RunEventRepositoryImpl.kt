@@ -7,6 +7,7 @@ import com.pushup.data.api.dto.CreateRunEventParticipantRequest
 import com.pushup.data.api.dto.CreateRunEventRequest
 import com.pushup.data.api.dto.RunEventDTO
 import com.pushup.data.api.dto.RunEventParticipantDTO
+import com.pushup.data.api.dto.UpdateRunEventRequest
 import com.pushup.data.api.dto.UpdateRunEventParticipantRequest
 import com.pushup.data.api.dto.toDomain
 import com.pushup.db.PushUpDatabase
@@ -92,6 +93,82 @@ class RunEventRepositoryImpl(
         queries.selectRunEventParticipantsByEventId(eventId).executeAsList().map { it.toDomain() }
     }
 
+    override suspend fun updateEventOrganizer(
+        eventId: String,
+        organizerUserId: String,
+    ): RunEvent = safeDbCall(
+        dispatcher,
+        "Failed to update organizer for run event '$eventId'",
+    ) {
+        val event = queries.selectRunEventById(eventId).executeAsOneOrNull()
+            ?: error("Run event not found: $eventId")
+        val now = clock.now().toEpochMilliseconds()
+
+        queries.updateRunEvent(
+            createdBy = organizerUserId,
+            title = event.title,
+            description = event.description,
+            mode = event.mode,
+            visibility = event.visibility,
+            plannedStartAt = event.plannedStartAt,
+            plannedEndAt = event.plannedEndAt,
+            checkInOpensAt = event.checkInOpensAt,
+            status = event.status,
+            locationName = event.locationName,
+            updatedAt = now,
+            id = event.id,
+        )
+
+        if (networkMonitor?.isConnected() == true) {
+            cloudSyncApi?.updateRunEvent(
+                id = eventId,
+                request = UpdateRunEventRequest(
+                    createdBy = organizerUserId,
+                ),
+            )
+        }
+
+        queries.selectRunEventById(eventId).executeAsOne().toDomain()
+    }
+
+    override suspend fun updateParticipantRole(
+        eventId: String,
+        userId: String,
+        role: RunParticipantRole,
+    ): RunEventParticipant = safeDbCall(
+        dispatcher,
+        "Failed to update run event participant role for event '$eventId' and user '$userId'",
+    ) {
+        val existing = queries.selectRunEventParticipantByEventIdAndUserId(eventId, userId).executeAsOneOrNull()
+            ?: error("Run event participant not found for event '$eventId' and user '$userId'")
+        val now = clock.now().toEpochMilliseconds()
+
+        queries.updateRunEventParticipant(
+            eventId = existing.eventId,
+            userId = existing.userId,
+            role = role.toDbValue(),
+            status = existing.status,
+            invitedBy = existing.invitedBy,
+            invitedAt = existing.invitedAt,
+            respondedAt = existing.respondedAt,
+            checkedInAt = existing.checkedInAt,
+            updatedAt = now,
+            id = existing.id,
+        )
+
+        if (networkMonitor?.isConnected() == true) {
+            cloudSyncApi?.updateRunEventParticipant(
+                eventId = eventId,
+                userId = userId,
+                request = UpdateRunEventParticipantRequest(
+                    role = role.toDbValue(),
+                ),
+            )
+        }
+
+        queries.selectRunEventParticipantByEventIdAndUserId(eventId, userId).executeAsOne().toDomain()
+    }
+
     override suspend fun updateParticipantStatus(
         eventId: String,
         userId: String,
@@ -133,6 +210,26 @@ class RunEventRepositoryImpl(
             )
         }
         queries.selectRunEventParticipantByEventIdAndUserId(eventId, userId).executeAsOne().toDomain()
+    }
+
+    override suspend fun removeParticipant(eventId: String, userId: String): Unit = safeDbCall(
+        dispatcher,
+        "Failed to remove run event participant for event '$eventId' and user '$userId'",
+    ) {
+        queries.deleteRunEventParticipant(eventId, userId)
+        if (networkMonitor?.isConnected() == true) {
+            cloudSyncApi?.deleteRunEventParticipant(eventId, userId)
+        }
+    }
+
+    override suspend fun deleteEvent(eventId: String): Unit = safeDbCall(
+        dispatcher,
+        "Failed to delete run event '$eventId'",
+    ) {
+        queries.deleteRunEvent(eventId)
+        if (networkMonitor?.isConnected() == true) {
+            cloudSyncApi?.deleteRunEvent(eventId)
+        }
     }
 
     override fun observeUpcomingForUser(userId: String): Flow<List<RunEvent>> =

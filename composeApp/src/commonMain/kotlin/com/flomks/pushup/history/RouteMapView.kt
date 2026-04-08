@@ -20,8 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -39,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -47,18 +44,19 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pushup.domain.model.JoggingSegment
+import com.pushup.domain.model.JoggingSegmentType
 import com.pushup.domain.model.RoutePoint
+import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -75,7 +73,7 @@ import kotlin.math.sqrt
  *
  * Supports:
  * - Pan (drag) and zoom (pinch / buttons)
- * - Route line with gradient coloring based on speed
+ * - Route line with separate coloring for running and paused segments
  * - Start/end markers
  * - Timestamp tooltips when tapping near a route point
  * - Zoom controls and fit-to-route button
@@ -86,6 +84,7 @@ import kotlin.math.sqrt
 @Composable
 fun RouteMapView(
     routePoints: List<RoutePoint>,
+    segments: List<JoggingSegment> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     if (routePoints.isEmpty()) {
@@ -95,6 +94,9 @@ fun RouteMapView(
 
     // Compute bounding box
     val bounds = remember(routePoints) { computeBounds(routePoints) }
+    val routeSegments = remember(routePoints, segments) {
+        buildDisplaySegments(routePoints, segments)
+    }
 
     // Transform state
     var scale by remember { mutableFloatStateOf(1f) }
@@ -108,7 +110,7 @@ fun RouteMapView(
 
     // Colors
     val routeColor = MaterialTheme.colorScheme.primary
-    val routeColorEnd = MaterialTheme.colorScheme.tertiary
+    val pauseColor = MaterialTheme.colorScheme.tertiary
     val startColor = Color(0xFF4CAF50) // green
     val endColor = Color(0xFFF44336) // red
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant
@@ -205,18 +207,18 @@ fun RouteMapView(
                 return Offset(drawOffsetX + x, drawOffsetY + y)
             }
 
-            // Draw route line with gradient
-            if (routePoints.size >= 2) {
-                val totalPoints = routePoints.size
-                for (i in 0 until totalPoints - 1) {
-                    val from = mapPoint(routePoints[i])
-                    val to = mapPoint(routePoints[i + 1])
-                    val fraction = i.toFloat() / (totalPoints - 1).toFloat()
-
-                    val segmentColor = lerpColor(routeColor, routeColorEnd, fraction)
+            // Draw route line, coloring paused movement separately from active running.
+            if (routeSegments.isNotEmpty()) {
+                for (segment in routeSegments) {
+                    val from = mapPoint(segment.from)
+                    val to = mapPoint(segment.to)
 
                     drawLine(
-                        color = segmentColor,
+                        color = if (segment.type == JoggingSegmentType.PAUSE) {
+                            pauseColor
+                        } else {
+                            routeColor
+                        },
                         start = from,
                         end = to,
                         strokeWidth = 4f * scale.coerceIn(0.5f, 3f),
@@ -406,6 +408,28 @@ fun RouteMapView(
             Surface(
                 modifier = Modifier.size(8.dp),
                 shape = CircleShape,
+                color = routeColor,
+            ) {}
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Run",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
+                color = pauseColor,
+            ) {}
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Pause",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
                 color = endColor,
             ) {}
             Spacer(modifier = Modifier.width(4.dp))
@@ -561,16 +585,6 @@ private fun DrawScope.drawGrid(color: Color, padding: Float) {
     }
 }
 
-private fun lerpColor(start: Color, end: Color, fraction: Float): Color {
-    val f = fraction.coerceIn(0f, 1f)
-    return Color(
-        red = start.red + (end.red - start.red) * f,
-        green = start.green + (end.green - start.green) * f,
-        blue = start.blue + (end.blue - start.blue) * f,
-        alpha = start.alpha + (end.alpha - start.alpha) * f,
-    )
-}
-
 /**
  * KMP-compatible decimal formatting.
  * Formats a [Double] to the specified number of [decimals].
@@ -592,4 +606,54 @@ private fun pow10(n: Int): Long {
     var result = 1L
     repeat(n) { result *= 10L }
     return result
+}
+
+private data class DisplayRouteSegment(
+    val from: RoutePoint,
+    val to: RoutePoint,
+    val type: JoggingSegmentType,
+)
+
+private fun buildDisplaySegments(
+    routePoints: List<RoutePoint>,
+    segments: List<JoggingSegment>,
+): List<DisplayRouteSegment> {
+    if (routePoints.size < 2) return emptyList()
+
+    val sortedSegments = segments
+        .sortedBy { it.startedAt }
+        .filter { it.endedAt != null }
+
+    return buildList {
+        for (index in 0 until routePoints.lastIndex) {
+            val from = routePoints[index]
+            val to = routePoints[index + 1]
+            add(
+                DisplayRouteSegment(
+                    from = from,
+                    to = to,
+                    type = resolveSegmentType(
+                        midpoint = midpoint(from.timestamp, to.timestamp),
+                        segments = sortedSegments,
+                    ),
+                ),
+            )
+        }
+    }
+}
+
+private fun resolveSegmentType(
+    midpoint: Instant,
+    segments: List<JoggingSegment>,
+): JoggingSegmentType {
+    val matched = segments.firstOrNull { segment ->
+        val end = segment.endedAt ?: return@firstOrNull false
+        midpoint >= segment.startedAt && midpoint <= end
+    }
+    return matched?.type ?: JoggingSegmentType.RUN
+}
+
+private fun midpoint(start: Instant, end: Instant): Instant {
+    val midpointMillis = (start.toEpochMilliseconds() + end.toEpochMilliseconds()) / 2L
+    return Instant.fromEpochMilliseconds(midpointMillis)
 }

@@ -3,6 +3,7 @@ package com.pushup.domain.usecase
 import com.pushup.domain.model.LiveRunParticipant
 import com.pushup.domain.model.LiveRunSession
 import com.pushup.domain.model.LiveRunSessionState
+import com.pushup.domain.model.RunEventParticipant
 import com.pushup.domain.model.RunParticipantStatus
 import com.pushup.domain.model.RunXpBonusType
 import kotlinx.datetime.Clock
@@ -78,6 +79,17 @@ object LeaderSelectionPolicy {
 
         return active.minByOrNull { it.joinedAt.epochSeconds }
     }
+}
+
+object EventOrganizerSelectionPolicy {
+    fun selectNextOrganizer(
+        participants: List<RunEventParticipant>,
+    ): RunEventParticipant? =
+        participants.minByOrNull { participant ->
+            participant.respondedAt?.epochSeconds
+                ?: participant.checkedInAt?.epochSeconds
+                ?: participant.invitedAt.epochSeconds
+        }
 }
 
 object LiveRunLifecyclePolicy {
