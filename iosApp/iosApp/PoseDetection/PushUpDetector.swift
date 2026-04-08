@@ -89,6 +89,20 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 /// ```
 final class PushUpDetector {
 
+    struct MovementValidationConfiguration: Sendable {
+        let maxBodyLineDeviation: Double
+        let minimumTorsoDrop: CGFloat
+        let topPositionAngleThreshold: Double
+        let maxInvalidDownFrames: Int
+
+        static let `default` = MovementValidationConfiguration(
+            maxBodyLineDeviation: 28.0,
+            minimumTorsoDrop: 0.035,
+            topPositionAngleThreshold: 150.0,
+            maxInvalidDownFrames: 6
+        )
+    }
+
     // MARK: - Delegate (thread-safe)
 
     /// Protected by `delegateLock` so it can be set from the main queue and
@@ -138,9 +152,15 @@ final class PushUpDetector {
     private let formScorer: FormScorer
     private let positionClassifier = PositionClassifier()
     private let smoother = SkeletonSmoother()
+    private let stateMachineConfiguration: PushUpStateMachine.Configuration
+    private let movementValidationConfiguration: MovementValidationConfiguration
 
     /// The most recently smoothed pose (for rendering only).
     private(set) var smoothedPose: BodyPose?
+    private var topTorsoCenterY: CGFloat?
+    private var minTorsoCenterYInRep: CGFloat?
+    private var hasReachedRequiredTorsoDepth = false
+    private var invalidDownFrameCount = 0
 
     // MARK: - Init
 
@@ -153,10 +173,13 @@ final class PushUpDetector {
     ///     Defaults to `FormScorer.Configuration.default`.
     init(
         configuration: PushUpStateMachine.Configuration = .default,
-        formScorerConfiguration: FormScorer.Configuration = .default
+        formScorerConfiguration: FormScorer.Configuration = .default,
+        movementValidationConfiguration: MovementValidationConfiguration = .default
     ) {
+        self.stateMachineConfiguration = configuration
         self.stateMachine = PushUpStateMachine(configuration: configuration)
         self.formScorer   = FormScorer(configuration: formScorerConfiguration)
+        self.movementValidationConfiguration = movementValidationConfiguration
     }
 
     // MARK: - Public API

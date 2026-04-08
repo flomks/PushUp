@@ -67,6 +67,10 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Wrapper around the Supabase PostgREST REST API for CRUD operations on
@@ -437,6 +441,7 @@ class SupabaseClient(
         val list = httpClient.post("$restBase/user_levels") {
             supabaseHeaders(token)
             header("Prefer", "return=representation,resolution=merge-duplicates")
+            url.parameters.append("on_conflict", "user_id")
             contentType(ContentType.Application.Json)
             setBody(request)
         }.also { it.expectSuccess() }
@@ -472,6 +477,7 @@ class SupabaseClient(
         httpClient.post("$restBase/exercise_levels") {
             supabaseHeaders(token)
             header("Prefer", "return=representation,resolution=merge-duplicates")
+            url.parameters.append("on_conflict", "user_id,exercise_type")
             contentType(ContentType.Application.Json)
             setBody(request)
         }.also { it.expectSuccess() }
@@ -642,7 +648,7 @@ class SupabaseClient(
             supabaseHeaders(token)
             header("Prefer", "return=representation,resolution=ignore-duplicates")
             contentType(ContentType.Application.Json)
-            setBody(requests.map { it.toPayloadMap() })
+            setBody(JsonArray(requests.map { it.toPayloadJson() }))
         }.also { it.expectSuccess() }
             .body<List<RoutePointDTO>>()
             .map { it.toDomain() }
@@ -677,7 +683,7 @@ class SupabaseClient(
                     supabaseHeaders(token)
                     header("Prefer", "return=minimal,resolution=ignore-duplicates")
                     contentType(ContentType.Application.Json)
-                    setBody(requests.map { it.toPayloadMap() })
+                    setBody(JsonArray(requests.map { it.toPayloadJson() }))
                 }.also { it.expectSuccess() }
             }
         }
@@ -710,7 +716,7 @@ class SupabaseClient(
                     supabaseHeaders(token)
                     header("Prefer", "return=minimal,resolution=ignore-duplicates")
                     contentType(ContentType.Application.Json)
-                    setBody(requests.map { it.toPayloadMap() })
+                    setBody(JsonArray(requests.map { it.toPayloadJson() }))
                 }.also { it.expectSuccess() }
             }
         }
@@ -991,45 +997,54 @@ class SupabaseClient(
     }
 }
 
-private fun CreateRoutePointRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
-    "id" to id,
-    "session_id" to sessionId,
-    "timestamp" to timestamp,
-    "created_at" to (createdAt ?: timestamp),
-    "latitude" to latitude,
-    "longitude" to longitude,
-    "altitude" to altitude,
-    "speed" to speed,
-    "horizontal_accuracy" to horizontalAccuracy,
-    "distance_from_start" to distanceFromStart,
+private fun CreateRoutePointRequest.toPayloadJson(): JsonObject = buildJsonObject(
+    "id" to json(id),
+    "session_id" to json(sessionId),
+    "timestamp" to json(timestamp),
+    "created_at" to json(createdAt ?: timestamp),
+    "latitude" to json(latitude),
+    "longitude" to json(longitude),
+    "altitude" to json(altitude),
+    "speed" to json(speed),
+    "horizontal_accuracy" to json(horizontalAccuracy),
+    "distance_from_start" to json(distanceFromStart),
 )
 
-private fun CreateJoggingSegmentRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
-    "id" to id,
-    "session_id" to sessionId,
-    "segment_type" to segmentType,
-    "started_at" to startedAt,
-    "ended_at" to endedAt,
-    "created_at" to (createdAt ?: startedAt),
-    "distance_meters" to distanceMeters,
-    "duration_seconds" to durationSeconds,
+private fun CreateJoggingSegmentRequest.toPayloadJson(): JsonObject = buildJsonObject(
+    "id" to json(id),
+    "session_id" to json(sessionId),
+    "segment_type" to json(segmentType),
+    "started_at" to json(startedAt),
+    "ended_at" to json(endedAt),
+    "created_at" to json(createdAt ?: startedAt),
+    "distance_meters" to json(distanceMeters),
+    "duration_seconds" to json(durationSeconds),
 )
 
-private fun CreateJoggingPlaybackEntryRequest.toPayloadMap(): Map<String, Any?> = linkedMapOf(
-    "id" to id,
-    "session_id" to sessionId,
-    "source" to source,
-    "track_title" to trackTitle,
-    "artist_name" to artistName,
-    "spotify_track_uri" to spotifyTrackUri,
-    "started_at" to startedAt,
-    "ended_at" to endedAt,
-    "created_at" to (createdAt ?: startedAt),
-    "start_distance_meters" to startDistanceMeters,
-    "end_distance_meters" to endDistanceMeters,
-    "start_active_duration_seconds" to startActiveDurationSeconds,
-    "end_active_duration_seconds" to endActiveDurationSeconds,
+private fun CreateJoggingPlaybackEntryRequest.toPayloadJson(): JsonObject = buildJsonObject(
+    "id" to json(id),
+    "session_id" to json(sessionId),
+    "source" to json(source),
+    "track_title" to json(trackTitle),
+    "artist_name" to json(artistName),
+    "spotify_track_uri" to json(spotifyTrackUri),
+    "started_at" to json(startedAt),
+    "ended_at" to json(endedAt),
+    "created_at" to json(createdAt ?: startedAt),
+    "start_distance_meters" to json(startDistanceMeters),
+    "end_distance_meters" to json(endDistanceMeters),
+    "start_active_duration_seconds" to json(startActiveDurationSeconds),
+    "end_active_duration_seconds" to json(endActiveDurationSeconds),
 )
+
+private fun buildJsonObject(vararg pairs: Pair<String, kotlinx.serialization.json.JsonElement>): JsonObject =
+    JsonObject(linkedMapOf(*pairs))
+
+private fun json(value: String?): kotlinx.serialization.json.JsonElement = value?.let(::JsonPrimitive) ?: JsonNull
+private fun json(value: Double): kotlinx.serialization.json.JsonElement = JsonPrimitive(value)
+private fun json(value: Float): kotlinx.serialization.json.JsonElement = JsonPrimitive(value)
+private fun json(value: Float?): kotlinx.serialization.json.JsonElement = value?.let(::JsonPrimitive) ?: JsonNull
+private fun json(value: Int): kotlinx.serialization.json.JsonElement = JsonPrimitive(value)
 
 // =============================================================================
 // TimeCreditDTO -> domain mapper (file-private, not part of the public dto API)

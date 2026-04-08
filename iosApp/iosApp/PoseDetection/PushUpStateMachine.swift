@@ -241,6 +241,16 @@ final class PushUpStateMachine {
         missingInDownCount = 0
     }
 
+    /// Cancels an in-progress rep and records it as a half-rep.
+    ///
+    /// Used when higher-level validation determines that the current movement
+    /// should not be counted as a real push-up (for example: insufficient body
+    /// depth or invalid posture while in the DOWN phase).
+    func cancelCurrentRep() {
+        guard phase == .down else { return }
+        abortAsHalfRep()
+    }
+
     // MARK: - Phase Handlers
 
     private func handleIdle(angle: Double?) -> Bool {
