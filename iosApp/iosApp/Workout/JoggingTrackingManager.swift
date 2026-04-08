@@ -338,6 +338,7 @@ final class JoggingTrackingManager: ObservableObject {
         source: String = "spotify",
         trackTitle: String?,
         artistName: String?,
+        spotifyTrackUri: String? = nil,
         isPlaying: Bool
     ) {
         guard isTracking else { return }
@@ -364,6 +365,7 @@ final class JoggingTrackingManager: ObservableObject {
             source: source,
             trackTitle: normalizedTitle,
             artistName: normalizedArtist?.isEmpty == false ? normalizedArtist : nil,
+            spotifyTrackUri: spotifyTrackUri?.trimmingCharacters(in: .whitespacesAndNewlines),
             startedAt: now,
             startDistanceMeters: activeDistanceMeters,
             startActiveDurationSeconds: Int64(activeDuration)
@@ -819,6 +821,7 @@ final class JoggingTrackingManager: ObservableObject {
                 source: activePlaybackEntry.source,
                 trackTitle: activePlaybackEntry.trackTitle,
                 artistName: activePlaybackEntry.artistName,
+                spotifyTrackUri: activePlaybackEntry.spotifyTrackUri,
                 startedAt: activePlaybackEntry.startedAt,
                 endedAt: end,
                 startDistanceMeters: activePlaybackEntry.startDistanceMeters,
@@ -840,6 +843,7 @@ final class JoggingTrackingManager: ObservableObject {
                 source: entry.source,
                 trackTitle: entry.trackTitle,
                 artistName: entry.artistName,
+                spotifyTrackUri: entry.spotifyTrackUri,
                 startedAt: Kotlinx_datetimeInstant.companion.fromEpochMilliseconds(
                     epochMilliseconds: Int64(entry.startedAt.timeIntervalSince1970 * 1000.0)
                 ),
@@ -896,6 +900,7 @@ private struct ActiveJoggingPlaybackEntry {
     let source: String
     let trackTitle: String
     let artistName: String?
+    let spotifyTrackUri: String?
     let startedAt: Date
     let startDistanceMeters: Double
     let startActiveDurationSeconds: Int64
@@ -906,6 +911,7 @@ private struct LocalJoggingPlaybackEntry {
     let source: String
     let trackTitle: String
     let artistName: String?
+    let spotifyTrackUri: String?
     let startedAt: Date
     let endedAt: Date
     let startDistanceMeters: Double

@@ -75,6 +75,7 @@ struct JoggingView: View {
         }
         .sheet(item: $selectedRecentRun) { run in
             RecentRunDetailSheet(run: run)
+                .presentationBackground(DashboardWidgetChrome.pageBackground)
         }
     }
 
@@ -2447,6 +2448,12 @@ private struct RecentRunDetailSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RecentRunDetailViewModel
+    @State private var isPreparingShare = false
+    @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
+    @State private var playbackActionMessage: String?
+
+    private let spotifyService = SpotifyService.shared
 
     init(run: RunningDashboardData.RecentRun) {
         self.run = run
@@ -2461,6 +2468,9 @@ private struct RecentRunDetailSheet: View {
                     routeCard
                     segmentCard
                     playbackCard
+                    if let playbackActionMessage {
+                        playbackActionCard(playbackActionMessage)
+                    }
                     checkpointCard
                     crewCard
                 }
@@ -2471,17 +2481,34 @@ private struct RecentRunDetailSheet: View {
             .background(
                 LinearGradient(
                     colors: [
-                        Color(red: 0.96, green: 0.97, blue: 0.99),
-                        AppColors.backgroundPrimary
+                        DashboardWidgetChrome.pageBackground,
+                        Color(red: 0.04, green: 0.05, blue: 0.08)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
             )
+            .preferredColorScheme(.dark)
             .navigationTitle("Run Details")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { await prepareShare() }
+                    } label: {
+                        if isPreparingShare {
+                            ProgressView()
+                                .tint(AppColors.primary)
+                        } else {
+                            Image(icon: .squareAndArrowUp)
+                                .foregroundStyle(AppColors.textPrimary)
+                        }
+                    }
+                    .disabled(isPreparingShare)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -2489,6 +2516,9 @@ private struct RecentRunDetailSheet: View {
             .task {
                 await viewModel.loadIfNeeded()
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems)
         }
     }
 
@@ -2703,43 +2733,50 @@ private struct RecentRunDetailSheet: View {
                     }
 
                     ForEach(Array(viewModel.playbackRows.enumerated()), id: \.element.id) { index, row in
-                        HStack(alignment: .top, spacing: AppSpacing.sm) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(AppColors.secondary.opacity(0.10))
-                                    .frame(width: 44, height: 44)
+                        Button {
+                            Task { await playTrack(from: row) }
+                        } label: {
+                            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(AppColors.secondary.opacity(0.10))
+                                        .frame(width: 44, height: 44)
 
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 17, weight: .bold))
-                                    .foregroundStyle(AppColors.secondary)
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 17, weight: .bold))
+                                        .foregroundStyle(AppColors.secondary)
+                                }
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(row.title)
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                        .multilineTextAlignment(.leading)
+                                    Text(row.subtitle)
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                    Text(row.context)
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(AppColors.secondary.opacity(0.92))
+                                }
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    Text(row.durationLabel)
+                                        .font(AppTypography.bodySemibold)
+                                        .foregroundStyle(AppColors.textPrimary)
+                                    Text(row.timeWindowLabel)
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                    Text("Active \(row.activeWindowLabel)")
+                                        .font(AppTypography.caption1)
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
                             }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(row.title)
-                                    .font(AppTypography.bodySemibold)
-                                    .foregroundStyle(AppColors.textPrimary)
-                                Text(row.subtitle)
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(AppColors.textSecondary)
-                                Text(row.context)
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(AppColors.secondary.opacity(0.92))
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(row.durationLabel)
-                                    .font(AppTypography.bodySemibold)
-                                    .foregroundStyle(AppColors.textPrimary)
-                                Text(row.timeWindowLabel)
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(AppColors.textSecondary)
-                                Text("Active \(row.activeWindowLabel)")
-                                    .font(AppTypography.caption1)
-                                    .foregroundStyle(AppColors.textSecondary)
-                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
 
                         if index != viewModel.playbackRows.indices.last {
                             Divider()
@@ -2923,6 +2960,69 @@ private struct RecentRunDetailSheet: View {
         .background(AppColors.backgroundPrimary, in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusCard))
     }
 
+    private func playbackActionCard(_ message: String) -> some View {
+        Card {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppColors.secondary)
+                Text(message)
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(AppColors.textPrimary)
+                Spacer()
+            }
+        }
+    }
+
+    private func prepareShare() async {
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+
+        let snapshot = await JoggingMapSnapshotGenerator.generateSnapshot(
+            coordinates: viewModel.routeCoordinates
+        )
+        let image = JoggingShareRenderer.renderShareImage(
+            mapSnapshot: snapshot,
+            distance: Self.formatDistance(run.distanceMeters),
+            duration: Self.formatDuration(run.durationSeconds),
+            pace: Self.formatPace(run.avgPaceSecondsPerKm).replacingOccurrences(of: " /km", with: ""),
+            calories: "\(viewModel.caloriesBurned) kcal",
+            earnedMinutes: run.earnedMinutes,
+            date: run.date
+        )
+        let text = "Run recap: \(Self.formatDistance(run.distanceMeters)) in \(Self.formatDuration(run.durationSeconds)) at \(Self.formatPace(run.avgPaceSecondsPerKm)). Earned +\(run.earnedMinutes)m in PushUp."
+        shareItems = image.map { [text, $0] } ?? [text]
+        showShareSheet = true
+    }
+
+    private func playTrack(from row: RunPlaybackRow) async {
+        playbackActionMessage = nil
+        let track = RunTrack(title: row.title, artist: row.subtitle, vibe: "Run soundtrack", spotifyURI: row.spotifyURI)
+
+        if spotifyService.hasValidSession() {
+            do {
+                if let spotifyURI = row.spotifyURI, !spotifyURI.isEmpty {
+                    try await spotifyService.playTrack(uri: spotifyURI)
+                } else {
+                    try await spotifyService.playTrack(matching: track)
+                }
+                playbackActionMessage = "Playing \(row.title) in Spotify."
+                return
+            } catch {
+                let opened = spotifyService.openTrack(track)
+                playbackActionMessage = opened
+                    ? "Opened \(row.title) in Spotify."
+                    : "Could not open Spotify for \(row.title)."
+                return
+            }
+        }
+
+        let opened = spotifyService.openTrack(track)
+        playbackActionMessage = opened
+            ? "Opened \(row.title) in Spotify."
+            : "Spotify is not available for \(row.title)."
+    }
+
     private static let headerDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMM d"
@@ -3022,6 +3122,12 @@ private final class RecentRunDetailViewModel: ObservableObject {
         }
     }
 
+    var routeCoordinates: [CLLocationCoordinate2D] {
+        RouteSmoothing.smoothCoordinates(
+            routePoints.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
+        )
+    }
+
     var syncLabel: String {
         guard let session else { return "Local" }
         return String(describing: session.syncStatus)
@@ -3071,7 +3177,8 @@ private final class RecentRunDetailViewModel: ObservableObject {
                 context: "\(Self.formatDistance(entry.startDistanceMeters)) → \(Self.formatDistance(entry.endDistanceMeters))  •  +\(Self.formatDistance(distanceDelta))",
                 durationLabel: RecentRunDetailSheet.formatDuration(duration),
                 timeWindowLabel: "\(Self.timeLabel(epochSeconds: entry.startedAt.epochSeconds)) – \(Self.timeLabel(epochSeconds: entry.endedAt.epochSeconds))",
-                activeWindowLabel: RecentRunDetailSheet.formatDuration(activeDelta)
+                activeWindowLabel: RecentRunDetailSheet.formatDuration(activeDelta),
+                spotifyURI: entry.spotifyTrackUri
             )
         }
     }
@@ -3428,6 +3535,7 @@ private struct RunPlaybackRow: Identifiable {
     let durationLabel: String
     let timeWindowLabel: String
     let activeWindowLabel: String
+    let spotifyURI: String?
 }
 
 private struct RunCrewSnapshot {

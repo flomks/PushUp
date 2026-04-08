@@ -56,6 +56,7 @@ struct SpotifyProfile: Equatable {
 struct SpotifyPlaybackSnapshot: Equatable {
     let trackTitle: String
     let artistName: String
+    let trackURI: String?
     let isPlaying: Bool
     let deviceName: String?
 }
@@ -298,6 +299,7 @@ final class SpotifyService: NSObject {
         return SpotifyPlaybackSnapshot(
             trackTitle: item.name,
             artistName: item.artists.map(\.name).joined(separator: ", "),
+            trackURI: item.uri,
             isPlaying: payload.isPlaying,
             deviceName: payload.device?.name
         )
@@ -1045,6 +1047,7 @@ struct RunTrack: Equatable {
     let title: String
     let artist: String
     let vibe: String
+    let spotifyURI: String? = nil
 }
 
 struct RunCompletionSnapshot: Equatable {
@@ -1510,6 +1513,7 @@ final class JoggingViewModel: ObservableObject {
                     trackingManager.updatePlaybackState(
                         trackTitle: spotifyNowPlayingTitle,
                         artistName: spotifyNowPlayingArtist,
+                        spotifyTrackUri: currentTrack.spotifyURI,
                         isPlaying: false
                     )
                 } else {
@@ -1518,6 +1522,7 @@ final class JoggingViewModel: ObservableObject {
                     trackingManager.updatePlaybackState(
                         trackTitle: spotifyNowPlayingTitle,
                         artistName: spotifyNowPlayingArtist,
+                        spotifyTrackUri: currentTrack.spotifyURI,
                         isPlaying: true
                     )
                 }
@@ -1677,7 +1682,7 @@ final class JoggingViewModel: ObservableObject {
             spotifyNowPlayingTitle = nil
             spotifyNowPlayingArtist = nil
             spotifyIsPlaying = false
-            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
+            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, spotifyTrackUri: nil, isPlaying: false)
             stopSpotifyRefreshLoop()
             plannedRunStatusMessage = "Spotify disconnected."
         } else {
@@ -1840,7 +1845,7 @@ final class JoggingViewModel: ObservableObject {
                 spotifyNowPlayingTitle = nil
                 spotifyNowPlayingArtist = nil
                 spotifyIsPlaying = false
-                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
+                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, spotifyTrackUri: nil, isPlaying: false)
             }
             return
         }
@@ -1869,7 +1874,7 @@ final class JoggingViewModel: ObservableObject {
                 spotifyIsPlaying = false
                 spotifyPlaybackLabel = "No active playback"
                 spotifyStatusDetail = spotifyService.sessionStatusDescription
-                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
+                trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, spotifyTrackUri: nil, isPlaying: false)
             }
         } catch {
             spotifyNowPlayingTitle = nil
@@ -1877,7 +1882,7 @@ final class JoggingViewModel: ObservableObject {
             spotifyIsPlaying = false
             spotifyStatusDetail = "Spotify connected, but details could not be loaded"
             spotifyPlaybackLabel = "Playback unavailable"
-            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, isPlaying: false)
+            trackingManager.updatePlaybackState(trackTitle: nil, artistName: nil, spotifyTrackUri: nil, isPlaying: false)
         }
     }
 
@@ -2304,7 +2309,7 @@ final class JoggingViewModel: ObservableObject {
         spotifyNowPlayingArtist = track.artist
         spotifyIsPlaying = true
         spotifyPlaybackLabel = "\(track.title) - \(track.artist)"
-        trackingManager.updatePlaybackState(trackTitle: track.title, artistName: track.artist, isPlaying: true)
+        trackingManager.updatePlaybackState(trackTitle: track.title, artistName: track.artist, spotifyTrackUri: track.spotifyURI, isPlaying: true)
     }
 
     private func refreshPlaybackAfterTransportChange(
@@ -2351,6 +2356,7 @@ final class JoggingViewModel: ObservableObject {
         trackingManager.updatePlaybackState(
             trackTitle: playback.trackTitle,
             artistName: playback.artistName,
+            spotifyTrackUri: playback.trackURI,
             isPlaying: playback.isPlaying
         )
     }
@@ -2388,7 +2394,7 @@ final class JoggingViewModel: ObservableObject {
             // Update the currentTrack display from the first recommendation
             if let first = tracks.first {
                 let bpmLabel = "\(Int(params.targetTempo)) BPM • \(selectedAudioMode.rawValue)"
-                currentTrack = RunTrack(title: first.title, artist: first.artist, vibe: bpmLabel)
+                currentTrack = RunTrack(title: first.title, artist: first.artist, vibe: bpmLabel, spotifyURI: first.uri)
 
                 if andPlay {
                     await playModeQueueTrack(at: 0)
@@ -2410,7 +2416,7 @@ final class JoggingViewModel: ObservableObject {
         let track = modeQueue[index]
         let params = RunModeAudioParams.params(for: selectedAudioMode)
         let bpmLabel = "\(Int(params.targetTempo)) BPM • \(selectedAudioMode.rawValue)"
-        currentTrack = RunTrack(title: track.title, artist: track.artist, vibe: bpmLabel)
+        currentTrack = RunTrack(title: track.title, artist: track.artist, vibe: bpmLabel, spotifyURI: track.uri)
         applyOptimisticNowPlaying(from: currentTrack, version: version)
 
         do {

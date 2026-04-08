@@ -710,7 +710,8 @@ struct JoggingDetailView: View {
         RunTrack(
             title: entry.trackTitle,
             artist: entry.artistName?.isEmpty == false ? entry.artistName! : "Unknown artist",
-            vibe: "History soundtrack"
+            vibe: "History soundtrack",
+            spotifyURI: entry.spotifyTrackUri
         )
     }
 
@@ -720,7 +721,11 @@ struct JoggingDetailView: View {
 
         if spotifyService.hasValidSession() {
             do {
-                try await spotifyService.playTrack(matching: track)
+                if let spotifyURI = track.spotifyURI, !spotifyURI.isEmpty {
+                    try await spotifyService.playTrack(uri: spotifyURI)
+                } else {
+                    try await spotifyService.playTrack(matching: track)
+                }
                 playbackActionMessage = "Playing \(track.title) in Spotify."
                 return
             } catch {

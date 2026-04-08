@@ -1,0 +1,4 @@
+-- v14: Persist Spotify track URI for jogging playback timeline entries.
+
+ALTER TABLE JoggingPlaybackEntry
+ADD COLUMN spotifyTrackUri TEXT;

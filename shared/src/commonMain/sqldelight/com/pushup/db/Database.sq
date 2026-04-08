@@ -600,6 +600,7 @@ CREATE TABLE JoggingPlaybackEntry (
     source                     TEXT    NOT NULL,
     trackTitle                 TEXT    NOT NULL,
     artistName                 TEXT,
+    spotifyTrackUri            TEXT,
     startedAt                  INTEGER NOT NULL,
     endedAt                    INTEGER NOT NULL,
     startDistanceMeters        REAL    NOT NULL DEFAULT 0.0,
@@ -762,6 +763,7 @@ INSERT INTO JoggingPlaybackEntry (
     source,
     trackTitle,
     artistName,
+    spotifyTrackUri,
     startedAt,
     endedAt,
     startDistanceMeters,
@@ -769,7 +771,7 @@ INSERT INTO JoggingPlaybackEntry (
     startActiveDurationSeconds,
     endActiveDurationSeconds
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteJoggingPlaybackEntriesBySessionId:
 DELETE FROM JoggingPlaybackEntry

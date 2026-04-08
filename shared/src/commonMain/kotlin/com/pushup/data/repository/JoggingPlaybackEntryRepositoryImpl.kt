@@ -26,6 +26,7 @@ class JoggingPlaybackEntryRepositoryImpl(
                     source = entry.source,
                     trackTitle = entry.trackTitle,
                     artistName = entry.artistName,
+                    spotifyTrackUri = entry.spotifyTrackUri,
                     startedAt = entry.startedAt.toEpochMilliseconds(),
                     endedAt = entry.endedAt.toEpochMilliseconds(),
                     startDistanceMeters = entry.startDistanceMeters,

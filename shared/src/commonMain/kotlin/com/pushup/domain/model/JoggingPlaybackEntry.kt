@@ -10,6 +10,7 @@ data class JoggingPlaybackEntry(
     val source: String,
     val trackTitle: String,
     val artistName: String? = null,
+    val spotifyTrackUri: String? = null,
     val startedAt: Instant,
     val endedAt: Instant,
     val startDistanceMeters: Double = 0.0,

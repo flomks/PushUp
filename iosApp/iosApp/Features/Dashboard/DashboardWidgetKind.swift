@@ -14,6 +14,7 @@ enum DashboardWidgetKind: String, CaseIterable, Hashable {
     case weeklyChart
     case activitySummary
     case workoutQuickAction
+    case upcomingRuns
 
     // MARK: Push-ups & strength
 
@@ -71,6 +72,7 @@ enum DashboardWidgetKind: String, CaseIterable, Hashable {
         case .weeklyChart: return "Weekly Chart"
         case .activitySummary: return "Last Activity"
         case .workoutQuickAction: return "Choose Workout"
+        case .upcomingRuns: return "Upcoming Runs"
 
         case .pushUpsThisWeek: return "Push-ups (this week)"
         case .pushUpsThisMonth: return "Push-ups (this month)"
@@ -107,7 +109,7 @@ enum DashboardWidgetKind: String, CaseIterable, Hashable {
     var isGridEligible: Bool {
         switch self {
         case .timeCredit, .screenTime, .dailyStats, .weeklyChart,
-             .activitySummary, .workoutQuickAction:
+             .activitySummary, .workoutQuickAction, .upcomingRuns:
             return false
         default:
             return true
@@ -122,6 +124,7 @@ enum DashboardWidgetKind: String, CaseIterable, Hashable {
         case .weeklyChart: return "chart.bar.xaxis"
         case .activitySummary: return "clock.arrow.circlepath"
         case .workoutQuickAction: return "figure.strengthtraining.traditional"
+        case .upcomingRuns: return "calendar.badge.clock"
 
         case .pushUpsThisWeek, .pushUpsThisMonth, .pushUpsAllTime, .bestPushUpSession:
             return "figure.strengthtraining.traditional"

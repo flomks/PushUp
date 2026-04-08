@@ -36,6 +36,15 @@ struct DashboardLastSession {
     let relativeDate: String  // e.g. "Today", "Yesterday", "3 days ago"
 }
 
+struct DashboardUpcomingRun: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let plannedStartAt: Date
+    let participantCount: Int
+    let currentUserStatus: String?
+    let visibility: String
+}
+
 // MARK: - WeekdayHelper
 
 /// Shared helper for Monday-based weekday index calculation.
@@ -80,6 +89,7 @@ final class DashboardViewModel: ObservableObject {
     @Published private(set) var lastSession: DashboardLastSession? = nil
     @Published private(set) var hasEverWorkedOut: Bool = false
     @Published private(set) var widgetMetrics: DashboardWidgetMetrics = .empty
+    @Published private(set) var upcomingRuns: [DashboardUpcomingRun] = []
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String? = nil
     @Published private(set) var isRefreshing: Bool = false
@@ -269,6 +279,8 @@ final class DashboardViewModel: ObservableObject {
             self.joggingSessions = sessions
             self.rebuildDashboard()
         }
+
+        loadUpcomingRuns(userId: userId)
     }
 
     /// Pull-to-refresh — data is already live via Flows, just show the indicator briefly.
@@ -276,6 +288,9 @@ final class DashboardViewModel: ObservableObject {
         guard !isRefreshing, !isLoading else { return }
         isRefreshing = true
         await SyncService.shared.syncNow()
+        if !currentUserId.isEmpty {
+            loadUpcomingRuns(userId: currentUserId)
+        }
         isRefreshing = false
     }
 
@@ -446,6 +461,7 @@ final class DashboardViewModel: ObservableObject {
         hasEverWorkedOut = false
         weekSessionTrendPercent = nil
         widgetMetrics = .empty
+        upcomingRuns = []
 
         let todayIndex = WeekdayHelper.todayIndex()
         weekDays = WeekdayHelper.dayLabels.enumerated().map { idx, label in
@@ -662,6 +678,31 @@ final class DashboardViewModel: ObservableObject {
         }
 
         return (currentStreak, longestStreak)
+    }
+
+    private func loadUpcomingRuns(userId: String) {
+        DataBridge.shared.fetchUpcomingRunEvents(userId: userId) { [weak self] events in
+            guard let self else { return }
+            let isoFormatter = ISO8601DateFormatter()
+            let runs = events.compactMap { event -> DashboardUpcomingRun? in
+                guard let plannedStartAt = isoFormatter.date(from: event.plannedStartAt) else {
+                    return nil
+                }
+                return DashboardUpcomingRun(
+                    id: event.id,
+                    title: event.title,
+                    plannedStartAt: plannedStartAt,
+                    participantCount: Int(event.participantCount),
+                    currentUserStatus: event.currentUserStatus,
+                    visibility: event.visibility
+                )
+            }
+            .sorted { $0.plannedStartAt < $1.plannedStartAt }
+
+            if self.upcomingRuns != runs {
+                self.upcomingRuns = runs
+            }
+        }
     }
 }
 

@@ -85,6 +85,7 @@ fun DbJoggingPlaybackEntry.toDomain(): JoggingPlaybackEntry = JoggingPlaybackEnt
     source = source,
     trackTitle = trackTitle,
     artistName = artistName,
+    spotifyTrackUri = spotifyTrackUri,
     startedAt = Instant.fromEpochMilliseconds(startedAt),
     endedAt = Instant.fromEpochMilliseconds(requireNotNull(endedAt)),
     startDistanceMeters = startDistanceMeters,
