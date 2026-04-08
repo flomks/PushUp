@@ -282,7 +282,9 @@ final class JoggingTrackingManager: ObservableObject {
         locationCancellable = nil
 
         let endTime = Date()
+        refreshSessionDurations(at: endTime)
         endCurrentSegment(at: endTime)
+        endActivePlaybackEntry(at: endTime)
 
         isTracking = false
         isPaused = false
@@ -413,9 +415,7 @@ final class JoggingTrackingManager: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self, let start = self.sessionStartDate else { return }
                 let now = Date()
-                self.sessionDuration = now.timeIntervalSince(start)
-                self.pauseDuration = self.currentPauseDuration(at: now)
-                self.activeDuration = max(0, self.sessionDuration - self.pauseDuration)
+                self.refreshSessionDurations(at: now)
 
                 // Keep speed responsive even when GPS updates pause or drift values linger.
                 self.currentSpeed = self.displaySpeedMetersPerSecond(latest: self.routeLocations.last, now: now)
@@ -440,6 +440,18 @@ final class JoggingTrackingManager: ObservableObject {
         sessionDuration = 0
         activeDuration = 0
         pauseDuration = 0
+    }
+
+    private func refreshSessionDurations(at now: Date) {
+        guard let start = sessionStartDate else {
+            sessionDuration = 0
+            activeDuration = 0
+            pauseDuration = 0
+            return
+        }
+        sessionDuration = now.timeIntervalSince(start)
+        pauseDuration = currentPauseDuration(at: now)
+        activeDuration = max(0, sessionDuration - pauseDuration)
     }
 
     // MARK: - Private: KMP Calls
@@ -810,11 +822,14 @@ final class JoggingTrackingManager: ObservableObject {
 
     private func endActivePlaybackEntry(at end: Date) {
         guard let activePlaybackEntry else { return }
-        let duration = max(0, end.timeIntervalSince(activePlaybackEntry.startedAt))
+        let normalizedEnd = max(end, activePlaybackEntry.startedAt)
+        let duration = max(0, normalizedEnd.timeIntervalSince(activePlaybackEntry.startedAt))
         guard duration >= minimumPlaybackEntryDurationSeconds else {
             self.activePlaybackEntry = nil
             return
         }
+        let endDistanceMeters = max(activePlaybackEntry.startDistanceMeters, activeDistanceMeters)
+        let endActiveDurationSeconds = max(activePlaybackEntry.startActiveDurationSeconds, Int64(activeDuration))
         playbackEntries.append(
             LocalJoggingPlaybackEntry(
                 id: activePlaybackEntry.id,
@@ -823,11 +838,11 @@ final class JoggingTrackingManager: ObservableObject {
                 artistName: activePlaybackEntry.artistName,
                 spotifyTrackUri: activePlaybackEntry.spotifyTrackUri,
                 startedAt: activePlaybackEntry.startedAt,
-                endedAt: end,
+                endedAt: normalizedEnd,
                 startDistanceMeters: activePlaybackEntry.startDistanceMeters,
-                endDistanceMeters: activeDistanceMeters,
+                endDistanceMeters: endDistanceMeters,
                 startActiveDurationSeconds: activePlaybackEntry.startActiveDurationSeconds,
-                endActiveDurationSeconds: Int64(activeDuration)
+                endActiveDurationSeconds: endActiveDurationSeconds
             )
         )
         self.activePlaybackEntry = nil

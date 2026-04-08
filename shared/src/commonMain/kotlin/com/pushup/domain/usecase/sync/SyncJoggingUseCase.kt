@@ -186,7 +186,16 @@ class SyncJoggingUseCase(
     private suspend fun uploadPlaybackEntries(sessionId: String) {
         val repository = playbackRepository ?: return
         val entries = repository.getBySessionId(sessionId)
-        val requests = entries.map { it.toCreateRequest() }
+        val normalizedEntries = entries.map { it.normalizedForSync() }
+        val normalizedCount = entries.indices.count { entries[it] != normalizedEntries[it] }
+        if (normalizedCount > 0) {
+            repository.replaceEntriesForSession(sessionId, normalizedEntries)
+            println(
+                "[SyncJoggingUseCase] Normalized $normalizedCount playback entrie(s) " +
+                    "before upload for session id=$sessionId",
+            )
+        }
+        val requests = normalizedEntries.map { it.toCreateRequest() }
         supabaseClient.replaceJoggingPlaybackEntries(sessionId, requests)
         println("[SyncJoggingUseCase] Uploaded ${requests.size} playback entrie(s) for session id=$sessionId")
     }
@@ -344,4 +353,16 @@ data class SyncJoggingResult(
     val failed: Int,
 ) {
     val isFullSuccess: Boolean get() = failed == 0
+}
+
+private fun com.pushup.domain.model.JoggingPlaybackEntry.normalizedForSync():
+    com.pushup.domain.model.JoggingPlaybackEntry {
+    val normalizedEndedAt = if (endedAt >= startedAt) endedAt else startedAt
+    val normalizedEndDistance = maxOf(endDistanceMeters, startDistanceMeters)
+    val normalizedEndActiveDuration = maxOf(endActiveDurationSeconds, startActiveDurationSeconds)
+    return copy(
+        endedAt = normalizedEndedAt,
+        endDistanceMeters = normalizedEndDistance,
+        endActiveDurationSeconds = normalizedEndActiveDuration,
+    )
 }
