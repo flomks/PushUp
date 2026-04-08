@@ -101,3 +101,13 @@ class SessionNotFoundException(message: String) : IllegalArgumentException(messa
  * @param message A human-readable description of the conflict.
  */
 class SessionAlreadyEndedException(message: String) : IllegalStateException(message)
+
+/**
+ * Thrown when a workout session is discarded because it contained zero push-ups.
+ *
+ * The session and its records are deleted from the local database and
+ * will not be synced, counted as a training, or earn any credits/XP.
+ *
+ * @param message A human-readable description of the discarded session.
+ */
+class EmptyWorkoutDiscardedException(message: String) : IllegalStateException(message)

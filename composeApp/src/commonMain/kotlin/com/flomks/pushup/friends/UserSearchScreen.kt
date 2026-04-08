@@ -1,5 +1,6 @@
 package com.flomks.pushup.friends
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,19 +12,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,15 +47,6 @@ import androidx.compose.ui.unit.sp
 import com.pushup.domain.model.FriendshipStatus
 import com.pushup.domain.model.UserSearchResult
 
-// ---------------------------------------------------------------------------
-// Screen entry point
-// ---------------------------------------------------------------------------
-
-/**
- * Full user-search screen.
- *
- * Observes [viewModel] state and delegates all events back to it.
- */
 @Composable
 fun UserSearchScreen(
     viewModel: UserSearchViewModel,
@@ -70,10 +63,6 @@ fun UserSearchScreen(
     )
 }
 
-// ---------------------------------------------------------------------------
-// Stateless content (testable / previewable)
-// ---------------------------------------------------------------------------
-
 @Composable
 internal fun UserSearchContent(
     uiState: UserSearchUiState,
@@ -85,17 +74,12 @@ internal fun UserSearchContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "Find Friends",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        SearchHeaderCard()
 
         UserSearchField(
             query = uiState.query,
@@ -103,13 +87,11 @@ internal fun UserSearchContent(
             onClearQuery = onClearQuery,
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         when (val state = uiState.searchState) {
-            is SearchState.Idle    -> SearchIdleState()
+            is SearchState.Idle -> SearchIdleState()
             is SearchState.Loading -> SearchLoadingState()
-            is SearchState.Empty   -> SearchEmptyState(query = uiState.query)
-            is SearchState.Error   -> SearchErrorState(message = state.message)
+            is SearchState.Empty -> SearchEmptyState(query = uiState.query)
+            is SearchState.Error -> SearchErrorState(message = state.message)
             is SearchState.Success -> SearchResultsList(
                 results = state.results,
                 sendRequestIds = uiState.sendRequestIds,
@@ -119,9 +101,32 @@ internal fun UserSearchContent(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Search field
-// ---------------------------------------------------------------------------
+@Composable
+private fun SearchHeaderCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            Text(
+                text = "Find Friends",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Search by username or display name. Results now have clearer status and roomier actions.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.9f),
+            )
+        }
+    }
+}
 
 @Composable
 private fun UserSearchField(
@@ -146,10 +151,12 @@ private fun UserSearchField(
         },
         trailingIcon = {
             if (query.isNotEmpty()) {
-                IconButton(onClick = {
-                    onClearQuery()
-                    keyboardController?.hide()
-                }) {
+                IconButton(
+                    onClick = {
+                        onClearQuery()
+                        keyboardController?.hide()
+                    },
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Clear search",
@@ -159,42 +166,42 @@ private fun UserSearchField(
             }
         },
         singleLine = true,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(18.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(
-            onSearch = { keyboardController?.hide() },
-        ),
+        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
     )
 }
 
-// ---------------------------------------------------------------------------
-// Empty / loading / error states
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun SearchIdleState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Person,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(60.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Search for users",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Type at least 2 characters to start",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                text = "Type at least 2 characters to start. Handles work best if you know the exact username.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -203,7 +210,9 @@ private fun SearchIdleState() {
 @Composable
 private fun SearchLoadingState() {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
@@ -212,28 +221,34 @@ private fun SearchLoadingState() {
 
 @Composable
 private fun SearchEmptyState(query: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(60.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "No users found",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "No results for \"$query\"",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                text = "No results for \"$query\". Try a shorter handle or a display name.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -241,16 +256,22 @@ private fun SearchEmptyState(query: String) {
 
 @Composable
 private fun SearchErrorState(message: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                modifier = Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -262,10 +283,6 @@ private fun SearchErrorState(message: String) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Results list
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun SearchResultsList(
     results: List<UserSearchResult>,
@@ -273,26 +290,19 @@ private fun SearchResultsList(
     onSendFriendRequest: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier) {
-        items(
-            items = results,
-            key = { it.id },
-        ) { result ->
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        results.forEach { result ->
             UserSearchResultItem(
                 result = result,
                 isSendingRequest = sendRequestIds.contains(result.id),
                 onSendFriendRequest = { onSendFriendRequest(result.id) },
             )
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            )
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Single result row
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun UserSearchResultItem(
@@ -301,57 +311,75 @@ private fun UserSearchResultItem(
     onSendFriendRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        ),
     ) {
-        // Avatar
-        UserAvatar(
-            displayName = result.displayName ?: result.username ?: "?",
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Name + username
-        Column(modifier = Modifier.weight(1f)) {
-            val primaryName = result.displayName ?: result.username ?: "Unknown"
-            Text(
-                text = primaryName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            UserAvatar(
+                displayName = result.displayName ?: result.username ?: "?",
             )
-            if (result.username != null && result.displayName != null) {
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                val primaryName = result.displayName ?: result.username ?: "Unknown"
                 Text(
-                    text = "@${result.username}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = primaryName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (result.username != null && result.displayName != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "@${result.username}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                when (result.friendshipStatus) {
+                    FriendshipStatus.FRIEND -> FriendBadge()
+                    FriendshipStatus.PENDING -> PendingBadge()
+                    FriendshipStatus.NONE -> Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                    ) {
+                        Text(
+                            text = "Ready to connect",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
 
-        // Action area: badge or button
-        when (result.friendshipStatus) {
-            FriendshipStatus.FRIEND  -> FriendBadge()
-            FriendshipStatus.PENDING -> PendingBadge()
-            FriendshipStatus.NONE    -> SendRequestButton(
-                isLoading = isSendingRequest,
-                onClick = onSendFriendRequest,
-            )
+            when (result.friendshipStatus) {
+                FriendshipStatus.FRIEND -> FriendBadge()
+                FriendshipStatus.PENDING -> PendingBadge()
+                FriendshipStatus.NONE -> SendRequestButton(
+                    isLoading = isSendingRequest,
+                    onClick = onSendFriendRequest,
+                )
+            }
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Status badges
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun FriendBadge() {
@@ -385,10 +413,6 @@ private fun PendingBadge() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Send request button
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun SendRequestButton(
     isLoading: Boolean,
@@ -398,8 +422,8 @@ private fun SendRequestButton(
     Button(
         onClick = onClick,
         enabled = !isLoading,
-        modifier = modifier.height(36.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        modifier = modifier.height(40.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
         shape = RoundedCornerShape(20.dp),
     ) {
         if (isLoading) {
@@ -417,10 +441,6 @@ private fun SendRequestButton(
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
 
 @Preview
 @Composable

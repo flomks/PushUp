@@ -96,6 +96,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         print("[PushNotifications] APNs registration failed: \(error.localizedDescription)")
     }
 
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        Task {
+            await PushNotificationService.shared.retryPendingTokenIfNeededOnAppActive()
+        }
+    }
+
     /// Called when the user taps a push notification while the app is in the
     /// background or terminated. Forwards to NotificationManager for routing.
     func application(

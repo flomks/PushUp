@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -22,11 +22,13 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,15 +42,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.pushup.domain.model.FriendRequest
 
-// ---------------------------------------------------------------------------
-// Screen entry point
-// ---------------------------------------------------------------------------
-
-/**
- * Full friend-requests inbox screen.
- *
- * Observes [viewModel] state and delegates all events back to it.
- */
 @Composable
 fun FriendRequestsInboxScreen(
     viewModel: FriendRequestsViewModel,
@@ -66,10 +59,6 @@ fun FriendRequestsInboxScreen(
     )
 }
 
-// ---------------------------------------------------------------------------
-// Stateless content (testable / previewable)
-// ---------------------------------------------------------------------------
-
 @Composable
 internal fun FriendRequestsInboxContent(
     uiState: FriendRequestsUiState,
@@ -79,91 +68,122 @@ internal fun FriendRequestsInboxContent(
     onDismissActionError: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val pendingCount = (uiState.inboxState as? InboxState.Success)?.requests?.size ?: 0
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        RequestsHeaderCard(pendingCount = pendingCount)
 
-        Text(
-            text = "Friend Requests",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-
-        // Transient error banner for failed accept/decline actions.
         if (uiState.actionError != null) {
-            Spacer(modifier = Modifier.height(8.dp))
             ActionErrorBanner(
                 message = uiState.actionError,
                 onDismiss = onDismissActionError,
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         when (val state = uiState.inboxState) {
             is InboxState.Loading -> InboxLoadingState()
-            is InboxState.Empty   -> InboxEmptyState()
-            is InboxState.Error   -> InboxErrorState(message = state.message, onRetry = onRefresh)
+            is InboxState.Empty -> InboxEmptyState()
+            is InboxState.Error -> InboxErrorState(message = state.message, onRetry = onRefresh)
             is InboxState.Success -> FriendRequestsList(
-                requests          = state.requests,
+                requests = state.requests,
                 actionInFlightIds = uiState.actionInFlightIds,
-                onAccept          = onAccept,
-                onDecline         = onDecline,
+                onAccept = onAccept,
+                onDecline = onDecline,
             )
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Action error banner
-// ---------------------------------------------------------------------------
+@Composable
+private fun RequestsHeaderCard(
+    pendingCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            Text(
+                text = "Friend Requests",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Handle incoming requests here without squeezing decisions into tiny rows.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.9f),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+            ) {
+                Text(
+                    text = if (pendingCount == 1) "1 request waiting" else "$pendingCount requests waiting",
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
 
-/**
- * Dismissible error banner shown when an accept/decline action fails.
- *
- * Displayed between the title and the list so it does not obscure content.
- */
 @Composable
 private fun ActionErrorBanner(
     message: String,
     onDismiss: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
     ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.error,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = message,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        TextButton(onClick = onDismiss) {
-            Text(text = "Dismiss", style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            TextButton(onClick = onDismiss) {
+                Text(text = "Dismiss", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Empty / loading / error states
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun InboxLoadingState() {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
@@ -172,28 +192,34 @@ private fun InboxLoadingState() {
 
 @Composable
 private fun InboxEmptyState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Person,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(60.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "No pending requests",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "You have no incoming friend requests",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                text = "Incoming requests will show up here with roomier actions so accepting or declining stays frictionless.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -204,16 +230,23 @@ private fun InboxErrorState(
     message: String,
     onRetry: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                modifier = Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -221,17 +254,13 @@ private fun InboxErrorState(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.error,
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             TextButton(onClick = onRetry) {
                 Text(text = "Retry")
             }
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Requests list
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun FriendRequestsList(
@@ -241,27 +270,20 @@ private fun FriendRequestsList(
     onDecline: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier) {
-        items(
-            items = requests,
-            key = { it.friendshipId },
-        ) { request ->
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        requests.forEach { request ->
             FriendRequestItem(
                 request = request,
                 isActionInFlight = actionInFlightIds.contains(request.friendshipId),
                 onAccept = { onAccept(request.friendshipId) },
                 onDecline = { onDecline(request.friendshipId) },
             )
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            )
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Single request row
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun FriendRequestItem(
@@ -271,98 +293,113 @@ private fun FriendRequestItem(
     onDecline: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        ),
     ) {
-        // Avatar (shared composable)
-        UserAvatar(
-            displayName = request.displayName ?: request.username ?: "?",
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Name + username
-        Column(modifier = Modifier.weight(1f)) {
-            val primaryName = request.displayName ?: request.username ?: "Unknown"
-            Text(
-                text = primaryName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (request.username != null && request.displayName != null) {
-                Text(
-                    text = "@${request.username}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                UserAvatar(
+                    displayName = request.displayName ?: request.username ?: "?",
                 )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Accept / Decline buttons (or spinner while in flight)
-        if (isActionInFlight) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp,
-            )
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Decline button
-                OutlinedButton(
-                    onClick = onDecline,
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Decline",
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    val primaryName = request.displayName ?: request.username ?: "Unknown"
                     Text(
-                        text = "Decline",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = primaryName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (request.username != null && request.displayName != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "@${request.username}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                    ) {
+                        Text(
+                            text = "Waiting for your response",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                }
+            }
+
+            if (isActionInFlight) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
                     )
                 }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = onDecline,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Decline",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Decline", style = MaterialTheme.typography.labelMedium)
+                    }
 
-                // Accept button
-                Button(
-                    onClick = onAccept,
-                    modifier = Modifier.height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                    shape = RoundedCornerShape(20.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Accept",
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Accept",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
+                    Button(
+                        onClick = onAccept,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Accept",
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "Accept", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
 
 @Preview
 @Composable
@@ -374,33 +411,25 @@ private fun FriendRequestsInboxScreenPreview() {
                     requests = listOf(
                         FriendRequest(
                             friendshipId = "f1",
-                            requesterId  = "u1",
-                            username     = "alice",
-                            displayName  = "Alice Smith",
-                            avatarUrl    = null,
-                            createdAt    = "2024-01-01T12:00:00Z",
+                            requesterId = "u1",
+                            username = "alice",
+                            displayName = "Alice Smith",
+                            avatarUrl = null,
+                            createdAt = "2024-01-01T12:00:00Z",
                         ),
                         FriendRequest(
                             friendshipId = "f2",
-                            requesterId  = "u2",
-                            username     = "bob_jones",
-                            displayName  = "Bob Jones",
-                            avatarUrl    = null,
-                            createdAt    = "2024-01-02T08:30:00Z",
-                        ),
-                        FriendRequest(
-                            friendshipId = "f3",
-                            requesterId  = "u3",
-                            username     = "charlie",
-                            displayName  = null,
-                            avatarUrl    = null,
-                            createdAt    = "2024-01-03T15:45:00Z",
+                            requesterId = "u2",
+                            username = "bob_jones",
+                            displayName = "Bob Jones",
+                            avatarUrl = null,
+                            createdAt = "2024-01-02T08:30:00Z",
                         ),
                     ),
                 ),
                 actionInFlightIds = setOf("f2"),
             ),
-            onAccept  = {},
+            onAccept = {},
             onDecline = {},
             onRefresh = {},
         )
@@ -412,8 +441,8 @@ private fun FriendRequestsInboxScreenPreview() {
 private fun FriendRequestsInboxEmptyPreview() {
     MaterialTheme {
         FriendRequestsInboxContent(
-            uiState   = FriendRequestsUiState(inboxState = InboxState.Empty),
-            onAccept  = {},
+            uiState = FriendRequestsUiState(inboxState = InboxState.Empty),
+            onAccept = {},
             onDecline = {},
             onRefresh = {},
         )

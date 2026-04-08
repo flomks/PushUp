@@ -699,14 +699,17 @@ class UseCaseTests {
     }
 
     @Test
-    fun finishWorkout_zeroPushUpsEarnsZeroCredits() = runTest {
+    fun finishWorkout_zeroPushUpsDiscardsSession() = runTest {
         insertUser()
         insertSession(id = "session-1", userId = "user-1", pushUpCount = 0)
         settingsRepo.update(UserSettings.default("user-1"))
 
-        val summary = makeFinishUseCase().invoke("session-1")
+        assertFailsWith<EmptyWorkoutDiscardedException> {
+            makeFinishUseCase().invoke("session-1")
+        }
 
-        assertEquals(0L, summary.earnedCredits)
+        // Session must be deleted from the database.
+        assertNull(sessionRepo.getById("session-1"))
     }
 
     @Test

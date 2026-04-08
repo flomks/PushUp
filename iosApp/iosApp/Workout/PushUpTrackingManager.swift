@@ -114,6 +114,9 @@ final class PushUpTrackingManager: ObservableObject {
     /// Empty when conditions are good. Updated on the main queue.
     @Published private(set) var activeWarnings: [EdgeCaseWarning] = []
 
+    /// The currently detected tracking perspective.
+    @Published private(set) var trackingView: PushUpTrackingView = .unknown
+
     // MARK: - Private: Camera & Detection Pipeline
 
     private let cameraManager: CameraManager
@@ -417,6 +420,7 @@ final class PushUpTrackingManager: ObservableObject {
         sessionDuration = 0
         lastPushUpTimestamp = nil
         activeWarnings = []
+        trackingView = .unknown
     }
 
     // MARK: - Private: Camera Resources
@@ -466,6 +470,10 @@ final class PushUpTrackingManager: ObservableObject {
     /// Main-actor isolated.
     fileprivate func handleWarnings(_ warnings: [EdgeCaseWarning]) {
         activeWarnings = warnings
+    }
+
+    fileprivate func handleTrackingView(_ trackingView: PushUpTrackingView) {
+        self.trackingView = trackingView
     }
 
     // MARK: - Private: KMP Use Case Calls
@@ -562,6 +570,7 @@ final class PushUpTrackingManager: ObservableObject {
         // Update published state immediately for a responsive UI.
         currentCount = event.count
         currentFormScore = event.formScore?.combinedScore
+        trackingView = event.trackingView
 
         // Clamp scores to [0, 1] before passing to KMP to satisfy the
         // `require(depthScore in 0f..1f)` precondition in RecordPushUpUseCase.
@@ -808,6 +817,7 @@ private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendabl
     /// main-actor `Task` on every frame when warnings have not changed.
     /// Only accessed from the video output queue (single-writer).
     private var _lastWarnings: [EdgeCaseWarning] = []
+    private var _lastTrackingView: PushUpTrackingView = .unknown
 
     init(pushUpDetector: PushUpDetector, manager: PushUpTrackingManager) {
         self.pushUpDetector = pushUpDetector
@@ -820,6 +830,14 @@ private final class PoseDetectorBridge: PoseDetectorDelegate, @unchecked Sendabl
         warnings: [EdgeCaseWarning]
     ) {
         pushUpDetector.process(pose)
+
+        let trackingView = pushUpDetector.currentTrackingView
+        if trackingView != _lastTrackingView {
+            _lastTrackingView = trackingView
+            Task { @MainActor [weak manager] in
+                manager?.handleTrackingView(trackingView)
+            }
+        }
 
         // Only dispatch to the main actor when warnings actually changed.
         // At 30 FPS this avoids ~30 unnecessary Task allocations per second

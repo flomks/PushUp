@@ -81,12 +81,13 @@ class ActivityStatsService {
         userId: UUID,
         today: LocalDate = LocalDate.now(ZoneOffset.UTC),
     ): ActivityStreakDTO = newSuspendedTransaction {
-        // Distinct dates from workout sessions
+        // Distinct dates from workout sessions (only sessions with actual activity)
         val workoutDays: List<LocalDate> = WorkoutSessions
             .select(WorkoutSessions.startedAtDay)
             .where {
                 (WorkoutSessions.userId eq userId) and
-                    WorkoutSessions.endedAt.isNotNull()
+                    WorkoutSessions.endedAt.isNotNull() and
+                    (WorkoutSessions.pushUpCount greater 0)
             }
             .withDistinct()
             .orderBy(WorkoutSessions.startedAtDay to SortOrder.ASC)

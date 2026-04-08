@@ -1,12 +1,33 @@
 import CoreGraphics
 import Foundation
 
+// MARK: - PushUpTrackingView
+
+enum PushUpTrackingView: String, Sendable, Equatable {
+    case unknown
+    case side
+    case front
+
+    var displayName: String {
+        switch self {
+        case .unknown: return "Detecting"
+        case .side: return "Side View"
+        case .front: return "Front View"
+        }
+    }
+
+    var supportsFormScoring: Bool {
+        self == .side
+    }
+}
+
 // MARK: - PushUpEvent
 
 struct PushUpEvent: Sendable {
     let count: Int
     let elbowAngleAtCompletion: Double
     let timestamp: Double
+    let trackingView: PushUpTrackingView
     let formScore: FormScore?
 }
 
@@ -21,27 +42,30 @@ protocol PushUpDetectorDelegate: AnyObject, Sendable {
 final class PushUpDetector {
 
     struct MovementValidationConfiguration: Sendable {
-        /// Maximum allowed shoulder-hip-ankle deviation while a rep is tracked.
-        let maxBodyLineDeviation: Double
-
-        /// Minimum torso drop required between top and bottom of a rep.
-        let minimumTorsoDrop: CGFloat
-
-        /// Minimum elbow extension that qualifies as a valid top position.
+        let maxSideBodyLineDeviation: Double
+        let minimumSideTorsoDrop: CGFloat
+        let minimumFrontShoulderDrop: CGFloat
         let topPositionAngleThreshold: Double
-
-        /// Consecutive invalid frames tolerated while already in DOWN.
         let maxInvalidDownFrames: Int
+        let viewConfirmationFrames: Int
+        let maxFrontAlignmentOffset: CGFloat
+        let maxFrontAngleAsymmetry: Double
+        let minFrontShoulderWidth: CGFloat
+        let minFrontHipWidth: CGFloat
 
         static let `default` = MovementValidationConfiguration(
-            maxBodyLineDeviation: 28.0,
-            minimumTorsoDrop: 0.035,
+            maxSideBodyLineDeviation: 28.0,
+            minimumSideTorsoDrop: 0.035,
+            minimumFrontShoulderDrop: 0.022,
             topPositionAngleThreshold: 150.0,
-            maxInvalidDownFrames: 6
+            maxInvalidDownFrames: 6,
+            viewConfirmationFrames: 4,
+            maxFrontAlignmentOffset: 0.10,
+            maxFrontAngleAsymmetry: 28.0,
+            minFrontShoulderWidth: 0.18,
+            minFrontHipWidth: 0.12
         )
     }
-
-    // MARK: - Delegate
 
     private let delegateLock = NSLock()
     private weak var _delegate: PushUpDetectorDelegate?
@@ -59,16 +83,13 @@ final class PushUpDetector {
         }
     }
 
-    // MARK: - Public State
-
     var pushUpCount: Int { stateMachine.pushUpCount }
     var halfRepCount: Int { stateMachine.halfRepCount }
     var currentPhase: PushUpPhase { stateMachine.phase }
     private(set) var currentElbowAngle: Double?
     private(set) var bodyLineDeviation: Double?
     private(set) var positionState = PositionState()
-
-    // MARK: - Private
+    private(set) var currentTrackingView: PushUpTrackingView = .unknown
 
     private let stateMachine: PushUpStateMachine
     private let formScorer: FormScorer
@@ -79,12 +100,13 @@ final class PushUpDetector {
 
     private(set) var smoothedPose: BodyPose?
 
-    private var topTorsoCenterY: CGFloat?
-    private var minTorsoCenterYInRep: CGFloat?
-    private var hasReachedRequiredTorsoDepth = false
+    private var topReferenceY: CGFloat?
+    private var minReferenceYInRep: CGFloat?
+    private var hasReachedRequiredDepth = false
     private var invalidDownFrameCount = 0
-
-    // MARK: - Init
+    private var motionTrackingView: PushUpTrackingView = .unknown
+    private var sideViewFrameCount = 0
+    private var frontViewFrameCount = 0
 
     init(
         configuration: PushUpStateMachine.Configuration = .default,
@@ -96,8 +118,6 @@ final class PushUpDetector {
         self.formScorer = FormScorer(configuration: formScorerConfiguration)
         self.movementValidationConfiguration = movementValidationConfiguration
     }
-
-    // MARK: - Public API
 
     func process(_ pose: BodyPose?) {
         let leftAngle = Self.elbowAngle(
@@ -117,21 +137,31 @@ final class PushUpDetector {
         positionState = positionClassifier.update(pose: pose)
         smoothedPose = smoother.smooth(pose)
 
-        let torsoCenterY = Self.computeTorsoCenterY(pose: pose)
-        let hasStableBodyLine =
-            bodyLineDeviation.map { $0 <= movementValidationConfiguration.maxBodyLineDeviation }
-            ?? false
-        let isPoseEligibleForRepTracking =
-            pose != nil &&
-            angle != nil &&
-            Self.hasRequiredArmJoints(pose: pose) &&
-            Self.hasRequiredTorsoJoints(pose: pose) &&
-            positionState.isHorizontal &&
-            hasStableBodyLine
+        let previousTrackingView = currentTrackingView
+        updateTrackingView(pose: pose, leftElbowAngle: leftAngle, rightElbowAngle: rightAngle)
+        if previousTrackingView != currentTrackingView, stateMachine.phase == .down {
+            invalidateCurrentRep()
+        }
 
-        updateTorsoMotionTracking(
-            torsoCenterY: torsoCenterY,
+        let isPoseEligibleForRepTracking: Bool
+        switch currentTrackingView {
+        case .side:
+            isPoseEligibleForRepTracking = isEligibleSidePose(pose: pose, angle: angle)
+        case .front:
+            isPoseEligibleForRepTracking = isEligibleFrontPose(
+                pose: pose,
+                angle: angle,
+                leftElbowAngle: leftAngle,
+                rightElbowAngle: rightAngle
+            )
+        case .unknown:
+            isPoseEligibleForRepTracking = false
+        }
+
+        updateMotionTracking(
+            referenceY: motionReferenceY(for: pose, trackingView: currentTrackingView),
             angle: angle,
+            trackingView: currentTrackingView,
             isPoseEligibleForRepTracking: isPoseEligibleForRepTracking
         )
 
@@ -146,7 +176,7 @@ final class PushUpDetector {
 
                 if let angle,
                    angle > stateMachineConfiguration.upAngleThreshold,
-                   !hasReachedRequiredTorsoDepth {
+                   !hasReachedRequiredDepth {
                     invalidateCurrentRep()
                 }
             }
@@ -157,12 +187,16 @@ final class PushUpDetector {
         let isInDownPhase = stateMachine.phase == .down
         let counted = stateMachine.update(angle: isPoseEligibleForRepTracking ? angle : nil)
 
-        formScorer.recordFrame(
-            pose: pose,
-            leftElbowAngle: leftAngle,
-            rightElbowAngle: rightAngle,
-            isInDownPhase: isInDownPhase
-        )
+        if currentTrackingView.supportsFormScoring {
+            formScorer.recordFrame(
+                pose: pose,
+                leftElbowAngle: leftAngle,
+                rightElbowAngle: rightAngle,
+                isInDownPhase: isInDownPhase
+            )
+        } else if !isInDownPhase {
+            formScorer.reset()
+        }
 
         if counted {
             guard let completionAngle = angle, let pose else {
@@ -171,11 +205,12 @@ final class PushUpDetector {
                 return
             }
 
-            let score = formScorer.finalisePushUp()
+            let score = currentTrackingView.supportsFormScoring ? formScorer.finalisePushUp() : nil
             let event = PushUpEvent(
                 count: stateMachine.pushUpCount,
                 elbowAngleAtCompletion: completionAngle,
                 timestamp: pose.timestamp,
+                trackingView: currentTrackingView,
                 formScore: score
             )
             resetRepMotionTracking()
@@ -192,11 +227,12 @@ final class PushUpDetector {
         currentElbowAngle = nil
         bodyLineDeviation = nil
         positionState = PositionState()
+        currentTrackingView = .unknown
         smoothedPose = nil
+        sideViewFrameCount = 0
+        frontViewFrameCount = 0
         resetRepMotionTracking()
     }
-
-    // MARK: - Angle Computation
 
     static func computeElbowAngle(from pose: BodyPose?) -> Double? {
         guard let pose else { return nil }
@@ -222,8 +258,6 @@ final class PushUpDetector {
             b: wrist.position
         )
     }
-
-    // MARK: - Body Geometry
 
     static func computeBodyLineDeviation(pose: BodyPose?) -> Double? {
         guard let pose else { return nil }
@@ -253,6 +287,10 @@ final class PushUpDetector {
         return (shoulderMidpoint.y + hipMidpoint.y) / 2
     }
 
+    static func computeShoulderCenterY(pose: BodyPose?) -> CGFloat? {
+        midpoint(pose?.leftShoulder, pose?.rightShoulder)?.y
+    }
+
     private static func angleBetween(a: CGPoint?, vertex: CGPoint?, b: CGPoint?) -> Double? {
         guard let a, let vertex, let b else { return nil }
         return angleBetween(a: a, vertex: vertex, b: b)
@@ -274,14 +312,172 @@ final class PushUpDetector {
         return acos(cosAngle) * (180.0 / .pi)
     }
 
-    // MARK: - Validation Helpers
+    private func updateTrackingView(
+        pose: BodyPose?,
+        leftElbowAngle: Double?,
+        rightElbowAngle: Double?
+    ) {
+        let sideCandidate = isLikelySideView(pose: pose)
+        let frontCandidate = isLikelyFrontView(
+            pose: pose,
+            leftElbowAngle: leftElbowAngle,
+            rightElbowAngle: rightElbowAngle
+        )
 
-    private func updateTorsoMotionTracking(
-        torsoCenterY: CGFloat?,
+        switch (sideCandidate, frontCandidate) {
+        case (true, false):
+            sideViewFrameCount = min(
+                sideViewFrameCount + 1,
+                movementValidationConfiguration.viewConfirmationFrames
+            )
+            frontViewFrameCount = max(frontViewFrameCount - 1, 0)
+
+        case (false, true):
+            frontViewFrameCount = min(
+                frontViewFrameCount + 1,
+                movementValidationConfiguration.viewConfirmationFrames
+            )
+            sideViewFrameCount = max(sideViewFrameCount - 1, 0)
+
+        case (true, true):
+            if currentTrackingView == .front {
+                frontViewFrameCount = min(
+                    frontViewFrameCount + 1,
+                    movementValidationConfiguration.viewConfirmationFrames
+                )
+                sideViewFrameCount = max(sideViewFrameCount - 1, 0)
+            } else {
+                sideViewFrameCount = min(
+                    sideViewFrameCount + 1,
+                    movementValidationConfiguration.viewConfirmationFrames
+                )
+                frontViewFrameCount = max(frontViewFrameCount - 1, 0)
+            }
+
+        case (false, false):
+            sideViewFrameCount = max(sideViewFrameCount - 1, 0)
+            frontViewFrameCount = max(frontViewFrameCount - 1, 0)
+        }
+
+        if sideViewFrameCount >= movementValidationConfiguration.viewConfirmationFrames {
+            currentTrackingView = .side
+        } else if frontViewFrameCount >= movementValidationConfiguration.viewConfirmationFrames {
+            currentTrackingView = .front
+        } else if sideViewFrameCount == 0 && frontViewFrameCount == 0 {
+            currentTrackingView = .unknown
+        }
+    }
+
+    private func isLikelySideView(pose: BodyPose?) -> Bool {
+        guard
+            let pose,
+            Self.hasRequiredTorsoJoints(pose: pose),
+            let shoulderMidpoint = Self.midpoint(pose.leftShoulder, pose.rightShoulder),
+            let hipMidpoint = Self.midpoint(pose.leftHip, pose.rightHip),
+            let bodyLineDeviation
+        else { return false }
+
+        return
+            abs(shoulderMidpoint.y - hipMidpoint.y) <= 0.15 &&
+            bodyLineDeviation <= movementValidationConfiguration.maxSideBodyLineDeviation
+    }
+
+    private func isLikelyFrontView(
+        pose: BodyPose?,
+        leftElbowAngle: Double?,
+        rightElbowAngle: Double?
+    ) -> Bool {
+        guard let pose else { return false }
+        guard
+            let leftShoulder = pose.leftShoulder, leftShoulder.isDetected,
+            let rightShoulder = pose.rightShoulder, rightShoulder.isDetected,
+            let leftHip = pose.leftHip, leftHip.isDetected,
+            let rightHip = pose.rightHip, rightHip.isDetected,
+            let leftWrist = pose.leftWrist, leftWrist.isDetected,
+            let rightWrist = pose.rightWrist, rightWrist.isDetected,
+            let shoulderMidpoint = Self.midpoint(pose.leftShoulder, pose.rightShoulder),
+            let hipMidpoint = Self.midpoint(pose.leftHip, pose.rightHip)
+        else { return false }
+
+        let shoulderWidth = abs(leftShoulder.position.x - rightShoulder.position.x)
+        let hipWidth = abs(leftHip.position.x - rightHip.position.x)
+        let torsoHeight = abs(shoulderMidpoint.y - hipMidpoint.y)
+        let wristsBelowShoulders =
+            leftWrist.position.y < leftShoulder.position.y - 0.02 &&
+            rightWrist.position.y < rightShoulder.position.y - 0.02
+        let isAligned =
+            abs(shoulderMidpoint.x - hipMidpoint.x) <= movementValidationConfiguration.maxFrontAlignmentOffset
+        let isSymmetric: Bool
+        if let leftElbowAngle, let rightElbowAngle {
+            isSymmetric = abs(leftElbowAngle - rightElbowAngle) <= movementValidationConfiguration.maxFrontAngleAsymmetry
+        } else {
+            isSymmetric = false
+        }
+
+        return
+            !positionState.isHorizontal &&
+            shoulderMidpoint.y > hipMidpoint.y + 0.02 &&
+            shoulderWidth >= movementValidationConfiguration.minFrontShoulderWidth &&
+            hipWidth >= movementValidationConfiguration.minFrontHipWidth &&
+            torsoHeight >= 0.08 &&
+            wristsBelowShoulders &&
+            isAligned &&
+            isSymmetric
+    }
+
+    private func isEligibleSidePose(pose: BodyPose?, angle: Double?) -> Bool {
+        guard pose != nil, angle != nil else { return false }
+        guard Self.hasRequiredArmJoints(pose: pose) else { return false }
+        guard Self.hasRequiredTorsoJoints(pose: pose) else { return false }
+        return isLikelySideView(pose: pose)
+    }
+
+    private func isEligibleFrontPose(
+        pose: BodyPose?,
         angle: Double?,
+        leftElbowAngle: Double?,
+        rightElbowAngle: Double?
+    ) -> Bool {
+        guard pose != nil, angle != nil else { return false }
+        return isLikelyFrontView(
+            pose: pose,
+            leftElbowAngle: leftElbowAngle,
+            rightElbowAngle: rightElbowAngle
+        )
+    }
+
+    private func motionReferenceY(
+        for pose: BodyPose?,
+        trackingView: PushUpTrackingView
+    ) -> CGFloat? {
+        switch trackingView {
+        case .side:
+            return Self.computeTorsoCenterY(pose: pose)
+        case .front:
+            return Self.computeShoulderCenterY(pose: pose)
+        case .unknown:
+            return nil
+        }
+    }
+
+    private func requiredDepth(for trackingView: PushUpTrackingView) -> CGFloat {
+        switch trackingView {
+        case .side:
+            return movementValidationConfiguration.minimumSideTorsoDrop
+        case .front:
+            return movementValidationConfiguration.minimumFrontShoulderDrop
+        case .unknown:
+            return .greatestFiniteMagnitude
+        }
+    }
+
+    private func updateMotionTracking(
+        referenceY: CGFloat?,
+        angle: Double?,
+        trackingView: PushUpTrackingView,
         isPoseEligibleForRepTracking: Bool
     ) {
-        guard isPoseEligibleForRepTracking, let torsoCenterY else {
+        guard isPoseEligibleForRepTracking, let referenceY, trackingView != .unknown else {
             if stateMachine.phase != .down {
                 resetRepMotionTracking()
             }
@@ -291,22 +487,28 @@ final class PushUpDetector {
         switch stateMachine.phase {
         case .idle:
             if let angle, angle >= movementValidationConfiguration.topPositionAngleThreshold {
-                topTorsoCenterY = max(topTorsoCenterY ?? torsoCenterY, torsoCenterY)
-                minTorsoCenterYInRep = nil
-                hasReachedRequiredTorsoDepth = false
+                topReferenceY = max(topReferenceY ?? referenceY, referenceY)
+                minReferenceYInRep = nil
+                hasReachedRequiredDepth = false
+                motionTrackingView = trackingView
             }
 
         case .down:
-            minTorsoCenterYInRep = min(minTorsoCenterYInRep ?? torsoCenterY, torsoCenterY)
+            if motionTrackingView != trackingView {
+                invalidateCurrentRep()
+                return
+            }
 
-            if let topTorsoCenterY, let minTorsoCenterYInRep {
-                hasReachedRequiredTorsoDepth =
-                    (topTorsoCenterY - minTorsoCenterYInRep) >= movementValidationConfiguration.minimumTorsoDrop
+            minReferenceYInRep = min(minReferenceYInRep ?? referenceY, referenceY)
+
+            if let topReferenceY, let minReferenceYInRep {
+                hasReachedRequiredDepth =
+                    (topReferenceY - minReferenceYInRep) >= requiredDepth(for: trackingView)
             }
 
         case .cooldown:
-            minTorsoCenterYInRep = nil
-            hasReachedRequiredTorsoDepth = false
+            minReferenceYInRep = nil
+            hasReachedRequiredDepth = false
         }
     }
 
@@ -317,10 +519,11 @@ final class PushUpDetector {
     }
 
     private func resetRepMotionTracking() {
-        topTorsoCenterY = nil
-        minTorsoCenterYInRep = nil
-        hasReachedRequiredTorsoDepth = false
+        topReferenceY = nil
+        minReferenceYInRep = nil
+        hasReachedRequiredDepth = false
         invalidDownFrameCount = 0
+        motionTrackingView = .unknown
     }
 
     private static func hasRequiredArmJoints(pose: BodyPose?) -> Bool {

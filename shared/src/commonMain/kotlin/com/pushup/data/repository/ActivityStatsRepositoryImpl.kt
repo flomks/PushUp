@@ -133,7 +133,7 @@ class ActivityStatsRepositoryImpl(
             val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
                 .executeAsList()
             val workoutDates = workoutRows
-                .filter { it.endedAt != null }
+                .filter { it.endedAt != null && it.pushUpCount > 0 }
                 .map { Instant.fromEpochMilliseconds(it.startedAt).toLocalDateTime(timeZone).date }
                 .distinct()
 

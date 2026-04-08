@@ -68,6 +68,7 @@ class FinishWorkoutUseCase(
      * @throws IllegalArgumentException if [sessionId] is blank.
      * @throws SessionNotFoundException if no session with [sessionId] exists.
      * @throws SessionAlreadyEndedException if the session has already been finished.
+     * @throws EmptyWorkoutDiscardedException if the session has 0 push-ups (session is deleted).
      */
     suspend operator fun invoke(sessionId: String): WorkoutSummary {
         require(sessionId.isNotBlank()) { "sessionId must not be blank" }
@@ -78,6 +79,15 @@ class FinishWorkoutUseCase(
         if (!session.isActive) {
             throw SessionAlreadyEndedException(
                 "Session '$sessionId' has already ended at ${session.endedAt}",
+            )
+        }
+
+        // Discard sessions with zero push-ups: delete from DB and do not
+        // count as a completed training (no credits, no XP, no sync).
+        if (session.pushUpCount == 0) {
+            sessionRepository.delete(sessionId)
+            throw EmptyWorkoutDiscardedException(
+                "Session '$sessionId' had 0 push-ups and was discarded",
             )
         }
 

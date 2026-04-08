@@ -177,7 +177,8 @@ open class FriendActivityStatsService {
             .select(WorkoutSessions.startedAtDay)
             .where {
                 (WorkoutSessions.userId eq friendId) and
-                WorkoutSessions.endedAt.isNotNull()
+                WorkoutSessions.endedAt.isNotNull() and
+                (WorkoutSessions.pushUpCount greater 0)
             }
             .map { it[WorkoutSessions.startedAtDay].atZone(ZoneOffset.UTC).toLocalDate() }
 

@@ -273,7 +273,7 @@ class StatsRepositoryImpl(
         val workoutRows: List<DbWorkoutSession> = queries.selectWorkoutSessionsByUserId(userId)
             .executeAsList()
         val workoutSessions = workoutRows
-            .filter { row -> row.endedAt != null }
+            .filter { row -> row.endedAt != null && row.pushUpCount > 0 }
             .map { row -> row.toDomain().toActivityStats() }
 
         val joggingRows: List<DbJoggingSession> = queries.selectJoggingSessionsByUserId(userId)

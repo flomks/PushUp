@@ -1,6 +1,7 @@
 package com.flomks.pushup.friends
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,18 +12,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,17 +44,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.pushup.domain.model.Friend
 
-// ---------------------------------------------------------------------------
-// Screen entry point
-// ---------------------------------------------------------------------------
-
-/**
- * Full friends list screen.
- *
- * Observes [viewModel] state and delegates all events back to it.
- * Tapping a friend row calls [onFriendClick] with the friend's user ID so the
- * caller can navigate to the stats view.
- */
 @Composable
 fun FriendsListScreen(
     viewModel: FriendsListViewModel,
@@ -68,10 +62,6 @@ fun FriendsListScreen(
     )
 }
 
-// ---------------------------------------------------------------------------
-// Stateless content (testable / previewable)
-// ---------------------------------------------------------------------------
-
 @Composable
 internal fun FriendsListContent(
     uiState: FriendsListUiState,
@@ -81,89 +71,143 @@ internal fun FriendsListContent(
     onDismissRemoveError: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val friendCount = (uiState.listState as? FriendsListState.Success)?.friends?.size ?: 0
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(4.dp))
+        FriendsHeaderCard(friendCount = friendCount)
 
-        Text(
-            text = "Friends",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-
-        // Transient error banner for failed remove actions.
         if (uiState.removeError != null) {
-            Spacer(modifier = Modifier.height(8.dp))
             RemoveErrorBanner(
                 message = uiState.removeError,
                 onDismiss = onDismissRemoveError,
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         when (val state = uiState.listState) {
             is FriendsListState.Loading -> FriendsLoadingState()
-            is FriendsListState.Empty   -> FriendsEmptyState()
-            is FriendsListState.Error   -> FriendsErrorState(message = state.message, onRetry = onRefresh)
+            is FriendsListState.Empty -> FriendsEmptyState()
+            is FriendsListState.Error -> FriendsErrorState(
+                message = state.message,
+                onRetry = onRefresh,
+            )
             is FriendsListState.Success -> FriendsList(
-                friends           = state.friends,
+                friends = state.friends,
                 removeInFlightIds = uiState.removeInFlightIds,
-                onFriendClick     = onFriendClick,
-                onRemoveFriend    = onRemoveFriend,
+                onFriendClick = onFriendClick,
+                onRemoveFriend = onRemoveFriend,
             )
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Error banner
-// ---------------------------------------------------------------------------
+@Composable
+private fun FriendsHeaderCard(
+    friendCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+        ) {
+            Text(
+                text = "Friends",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Open profiles, compare progress and keep your social area tighter and easier to scan.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.92f),
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Insights,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = friendCount.toString(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = if (friendCount == 1) "active friend" else "active friends",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
-/**
- * Dismissible error banner shown when a remove action fails.
- */
 @Composable
 private fun RemoveErrorBanner(
     message: String,
     onDismiss: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
     ) {
-        Icon(
-            imageVector = Icons.Default.Warning,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.error,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = message,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        TextButton(onClick = onDismiss) {
-            Text(text = "Dismiss", style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.error,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            TextButton(onClick = onDismiss) {
+                Text(text = "Dismiss", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Empty / loading / error states
-// ---------------------------------------------------------------------------
-
 @Composable
 private fun FriendsLoadingState() {
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 40.dp),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator()
@@ -172,28 +216,34 @@ private fun FriendsLoadingState() {
 
 @Composable
 private fun FriendsEmptyState() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
             Icon(
                 imageVector = Icons.Default.Group,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(60.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "No friends yet",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Search for users and send friend requests",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                text = "Search for people you know and start building a circle that actually makes the leaderboard feel alive.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -204,16 +254,23 @@ private fun FriendsErrorState(
     message: String,
     onRetry: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+        ),
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Icon(
                 imageVector = Icons.Default.Warning,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                modifier = Modifier.size(56.dp),
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -221,17 +278,13 @@ private fun FriendsErrorState(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.error,
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             TextButton(onClick = onRetry) {
                 Text(text = "Retry")
             }
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Friends list
-// ---------------------------------------------------------------------------
 
 @Composable
 private fun FriendsList(
@@ -241,34 +294,27 @@ private fun FriendsList(
     onRemoveFriend: (friendId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier) {
-        items(
-            items = friends,
-            key = { it.id },
-        ) { friend ->
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = if (friends.size == 1) "1 connection" else "${friends.size} connections",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        friends.forEach { friend ->
             FriendItem(
                 friend = friend,
                 isRemoveInFlight = removeInFlightIds.contains(friend.id),
                 onClick = { onFriendClick(friend.id) },
                 onRemove = { onRemoveFriend(friend.id) },
             )
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            )
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Single friend row
-// ---------------------------------------------------------------------------
-
-/**
- * A single row in the friends list.
- *
- * Tapping the row navigates to the friend's stats view.
- * The remove icon button shows a confirmation dialog before removing.
- */
 @Composable
 private fun FriendItem(
     friend: Friend,
@@ -290,70 +336,80 @@ private fun FriendItem(
         )
     }
 
-    Row(
+    Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        ),
     ) {
-        // Avatar
-        UserAvatar(
-            displayName = friend.displayName ?: friend.username ?: "?",
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Name + username
-        Column(modifier = Modifier.weight(1f)) {
-            val primaryName = friend.displayName ?: friend.username ?: "Unknown"
-            Text(
-                text = primaryName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            UserAvatar(
+                displayName = friend.displayName ?: friend.username ?: "?",
             )
-            if (friend.username != null && friend.displayName != null) {
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                val primaryName = friend.displayName ?: friend.username ?: "Unknown"
                 Text(
-                    text = "@${friend.username}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = primaryName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (friend.username != null && friend.displayName != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "@${friend.username}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f),
+                ) {
+                    Text(
+                        text = "Open activity profile",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-        // Remove button or spinner
-        if (isRemoveInFlight) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp,
-            )
-        } else {
-            IconButton(onClick = { showConfirmDialog = true }) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Remove friend",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+            if (isRemoveInFlight) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
                 )
+            } else {
+                IconButton(onClick = { showConfirmDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Remove friend",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
+                    )
+                }
             }
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// Confirmation dialog
-// ---------------------------------------------------------------------------
-
-/**
- * Confirmation dialog shown before removing a friend.
- *
- * Prevents accidental removal by requiring an explicit confirmation tap.
- */
 @Composable
 private fun RemoveFriendConfirmDialog(
     friendName: String,
@@ -362,12 +418,8 @@ private fun RemoveFriendConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(text = "Remove Friend")
-        },
-        text = {
-            Text(text = "Remove $friendName from your friends list?")
-        },
+        title = { Text(text = "Remove Friend") },
+        text = { Text(text = "Remove $friendName from your friends list?") },
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(
@@ -384,10 +436,6 @@ private fun RemoveFriendConfirmDialog(
     )
 }
 
-// ---------------------------------------------------------------------------
-// Preview
-// ---------------------------------------------------------------------------
-
 @Preview
 @Composable
 private fun FriendsListScreenPreview() {
@@ -397,22 +445,22 @@ private fun FriendsListScreenPreview() {
                 listState = FriendsListState.Success(
                     friends = listOf(
                         Friend(
-                            id          = "u1",
-                            username    = "alice",
+                            id = "u1",
+                            username = "alice",
                             displayName = "Alice Smith",
-                            avatarUrl   = null,
+                            avatarUrl = null,
                         ),
                         Friend(
-                            id          = "u2",
-                            username    = "bob_jones",
+                            id = "u2",
+                            username = "bob_jones",
                             displayName = "Bob Jones",
-                            avatarUrl   = null,
+                            avatarUrl = null,
                         ),
                         Friend(
-                            id          = "u3",
-                            username    = "charlie",
+                            id = "u3",
+                            username = "charlie",
                             displayName = null,
-                            avatarUrl   = null,
+                            avatarUrl = null,
                         ),
                     ),
                 ),

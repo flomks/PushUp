@@ -108,6 +108,113 @@ private func feedValidRep(
     feed(detector, angle: 170, frames: 3, torsoDrop: 0, startTimestamp: startTimestamp + 6)
 }
 
+private func makeFrontPose(
+    leftAngle: Double,
+    rightAngle: Double,
+    shoulderDrop: CGFloat = 0,
+    confidence: Float = 0.9,
+    timestamp: Double = 0
+) -> BodyPose {
+    func armJoints(
+        angleDeg: Double,
+        shoulderX: CGFloat,
+        elbowX: CGFloat,
+        wristX: CGFloat,
+        shoulderY: CGFloat,
+        elbowY: CGFloat,
+        shoulderName: JointName,
+        elbowName: JointName,
+        wristName: JointName
+    ) -> (shoulder: Joint, elbow: Joint, wrist: Joint) {
+        let rad = angleDeg * .pi / 180.0
+        let shoulder = CGPoint(x: shoulderX, y: shoulderY)
+        let elbow = CGPoint(
+            x: elbowX,
+            y: elbowY
+        )
+        let wrist = CGPoint(
+            x: wristX + cos(rad) * 0.02,
+            y: elbowY - sin(rad) * 0.08
+        )
+        return (
+            Joint(name: shoulderName, position: shoulder, confidence: confidence),
+            Joint(name: elbowName, position: elbow, confidence: confidence),
+            Joint(name: wristName, position: wrist, confidence: confidence)
+        )
+    }
+
+    let shoulderY = 0.70 - shoulderDrop
+    let hipY = 0.48 - shoulderDrop * 0.45
+    let elbowY = 0.60 - shoulderDrop * 0.85
+
+    let left = armJoints(
+        angleDeg: leftAngle,
+        shoulderX: 0.36,
+        elbowX: 0.28,
+        wristX: 0.24,
+        shoulderY: shoulderY,
+        elbowY: elbowY,
+        shoulderName: .leftShoulder,
+        elbowName: .leftElbow,
+        wristName: .leftWrist
+    )
+    let right = armJoints(
+        angleDeg: rightAngle,
+        shoulderX: 0.64,
+        elbowX: 0.72,
+        wristX: 0.76,
+        shoulderY: shoulderY,
+        elbowY: elbowY,
+        shoulderName: .rightShoulder,
+        elbowName: .rightElbow,
+        wristName: .rightWrist
+    )
+
+    var dict: [JointName: Joint] = Dictionary(
+        uniqueKeysWithValues: JointName.allCases.map { name in
+            (name, Joint(name: name, position: .zero, confidence: 0))
+        }
+    )
+    dict[.leftShoulder] = left.shoulder
+    dict[.leftElbow] = left.elbow
+    dict[.leftWrist] = left.wrist
+    dict[.rightShoulder] = right.shoulder
+    dict[.rightElbow] = right.elbow
+    dict[.rightWrist] = right.wrist
+    dict[.leftHip] = Joint(name: .leftHip, position: CGPoint(x: 0.42, y: hipY), confidence: confidence)
+    dict[.rightHip] = Joint(name: .rightHip, position: CGPoint(x: 0.58, y: hipY), confidence: confidence)
+
+    return BodyPose(joints: dict, timestamp: timestamp)
+}
+
+private func feedFront(
+    _ detector: PushUpDetector,
+    angle: Double,
+    frames: Int,
+    shoulderDrop: CGFloat = 0,
+    startTimestamp: Double = 0
+) {
+    for i in 0..<frames {
+        detector.process(
+            makeFrontPose(
+                leftAngle: angle,
+                rightAngle: angle,
+                shoulderDrop: shoulderDrop,
+                timestamp: startTimestamp + Double(i)
+            )
+        )
+    }
+}
+
+private func feedValidFrontRep(
+    _ detector: PushUpDetector,
+    startTimestamp: Double = 0
+) {
+    feedFront(detector, angle: 170, frames: 4, shoulderDrop: 0, startTimestamp: startTimestamp)
+    feedFront(detector, angle: 80, frames: 3, shoulderDrop: 0.05, startTimestamp: startTimestamp + 4)
+    feedFront(detector, angle: 170, frames: 3, shoulderDrop: 0, startTimestamp: startTimestamp + 7)
+}
+
 /// Feeds `frames` nil frames (no pose detected) into `detector`.
 private func feedNil(_ detector: PushUpDetector, frames: Int) {
     for _ in 0..<frames { detector.process(nil) }
@@ -365,6 +472,14 @@ struct PushUpDetectorTests {
             #expect(detector.halfRepCount == 1)
         }
 
+        @Test("Front-view push-up is counted")
+        func frontViewPushUpCounts() {
+            let detector = PushUpDetector(configuration: testConfig)
+            feedValidFrontRep(detector)
+            #expect(detector.pushUpCount == 1)
+            #expect(detector.currentTrackingView == .front)
+        }
+
         @Test("Noisy angle oscillation around DOWN threshold does not cause false count")
         func noisyAngleOscillation() {
             let detector = PushUpDetector(configuration: testConfig)
@@ -475,6 +590,19 @@ struct PushUpDetectorTests {
             detector.delegate = delegate
             feed(detector, angle: 170, frames: 30)
             #expect(delegate.events.isEmpty)
+        }
+
+        @Test("Front-view event does not expose side-form score")
+        func frontViewEventHasNoFormScore() throws {
+            let detector = PushUpDetector(configuration: testConfig)
+            let delegate = RecordingDelegate()
+            detector.delegate = delegate
+
+            feedValidFrontRep(detector)
+
+            let event = try #require(delegate.events.first)
+            #expect(event.trackingView == .front)
+            #expect(event.formScore == nil)
         }
     }
 

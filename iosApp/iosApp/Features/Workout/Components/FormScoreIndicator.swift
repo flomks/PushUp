@@ -22,6 +22,7 @@ struct FormScoreIndicator: View {
 
     /// The combined form score in [0.0, 1.0], or `nil` when unavailable.
     let score: Double?
+    let supportsFormScoring: Bool
 
     // MARK: - Body
 
@@ -57,16 +58,19 @@ struct FormScoreIndicator: View {
     // MARK: - Private Helpers
 
     private var indicatorColor: Color {
+        guard supportsFormScoring else { return AppColors.info }
         guard let score else { return AppColors.textSecondary }
         return AppColors.formScoreColor(score)
     }
 
     private var scoreText: String {
+        guard supportsFormScoring else { return "SIDE ONLY" }
         guard let score else { return "---" }
         return "\(Int(score * 100))%"
     }
 
     private var accessibilityDescription: String {
+        guard supportsFormScoring else { return "Form score available only in side view" }
         guard let score else { return "Form score not available" }
         let percentage = Int(score * 100)
         let quality: String
@@ -85,28 +89,35 @@ struct FormScoreIndicator: View {
 #Preview("Form Score - Good") {
     ZStack {
         Color.black.ignoresSafeArea()
-        FormScoreIndicator(score: 0.88)
+        FormScoreIndicator(score: 0.88, supportsFormScoring: true)
     }
 }
 
 #Preview("Form Score - Warning") {
     ZStack {
         Color.black.ignoresSafeArea()
-        FormScoreIndicator(score: 0.62)
+        FormScoreIndicator(score: 0.62, supportsFormScoring: true)
     }
 }
 
 #Preview("Form Score - Poor") {
     ZStack {
         Color.black.ignoresSafeArea()
-        FormScoreIndicator(score: 0.35)
+        FormScoreIndicator(score: 0.35, supportsFormScoring: true)
     }
 }
 
 #Preview("Form Score - Nil") {
     ZStack {
         Color.black.ignoresSafeArea()
-        FormScoreIndicator(score: nil)
+        FormScoreIndicator(score: nil, supportsFormScoring: true)
+    }
+}
+
+#Preview("Form Score - Front Only") {
+    ZStack {
+        Color.black.ignoresSafeArea()
+        FormScoreIndicator(score: nil, supportsFormScoring: false)
     }
 }
 #endif

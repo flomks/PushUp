@@ -72,7 +72,7 @@ final class WorkoutViewModel: ObservableObject {
     @Published private(set) var lastError: TrackingError? = nil
 
     /// Whether the pose skeleton overlay is visible.
-    @Published var showPoseOverlay: Bool = false
+    @Published var showPoseOverlay: Bool = true
 
     /// Whether sound effects are enabled.
     @Published var soundEnabled: Bool = true
@@ -86,6 +86,9 @@ final class WorkoutViewModel: ObservableObject {
     /// The most recently detected pose for the overlay. Updated on the
     /// main queue by `VisionPoseDetector`. `nil` when no person is detected.
     @Published private(set) var currentPose: BodyPose? = nil
+
+    /// The currently detected tracking perspective.
+    @Published private(set) var trackingView: PushUpTrackingView = .unknown
 
     // MARK: - Summary State (Task 3.7)
 
@@ -165,6 +168,7 @@ final class WorkoutViewModel: ObservableObject {
         activeWarnings = []
         lastError = nil
         currentPose = nil
+        trackingView = .unknown
         isNewRecord = false
         comparisonPercent = nil
         // Restart the camera preview for the idle state.
@@ -212,6 +216,14 @@ final class WorkoutViewModel: ObservableObject {
         let finalDuration = trackingManager.sessionDuration
         trackingManager.stopTracking()
         UIApplication.shared.isIdleTimerDisabled = false
+
+        // Sessions with zero push-ups are discarded — not saved, not counted.
+        // The KMP FinishWorkoutUseCase will delete the session from the DB.
+        if pushUpCount == 0 {
+            resetForNewWorkout()
+            return
+        }
+
         // Restore the captured duration so the finished overlay shows it.
         sessionDuration = finalDuration
 
@@ -221,14 +233,11 @@ final class WorkoutViewModel: ObservableObject {
         phase = .finished
 
         // Fire the post-workout local notification (Task 3.12).
-        // Only send when at least one push-up was counted.
-        if pushUpCount > 0 {
-            let minutes = earnedMinutes
-            Task {
-                await NotificationManager.shared.scheduleWorkoutCompleteNotification(
-                    earnedMinutes: minutes
-                )
-            }
+        let minutes = earnedMinutes
+        Task {
+            await NotificationManager.shared.scheduleWorkoutCompleteNotification(
+                earnedMinutes: minutes
+            )
         }
     }
 
@@ -322,6 +331,10 @@ final class WorkoutViewModel: ObservableObject {
         // every processed frame, not just on push-up events.
         manager.currentPosePublisher
             .sink { [weak self] in self?.currentPose = $0 }
+            .store(in: &cancellables)
+
+        manager.$trackingView
+            .sink { [weak self] in self?.trackingView = $0 }
             .store(in: &cancellables)
     }
 

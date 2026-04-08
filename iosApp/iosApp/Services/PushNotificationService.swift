@@ -32,6 +32,7 @@ final class PushNotificationService {
     /// Token received from APNs but not yet sent to the backend
     /// (e.g. arrived before the user logged in).
     private var pendingToken: String?
+    private let authRetryDelaysNanoseconds: [UInt64] = [300_000_000, 1_000_000_000, 2_000_000_000]
 
     // MARK: - Public API
 
@@ -41,8 +42,8 @@ final class PushNotificationService {
     /// authenticated, the token is cached and sent after the next login.
     func registerToken(_ token: String) async {
         logger.debug("APNs token received: \(token.prefix(8))...")
-        let sent = await sendTokenToBackend(token)
-        if !sent {
+        let outcome = await sendTokenToBackend(token)
+        if outcome != .success {
             // Cache for retry after login.
             pendingToken = token
             logger.debug("Token cached for post-login registration.")
@@ -55,34 +56,51 @@ final class PushNotificationService {
     /// to `.authenticated`.
     func registerPendingTokenIfNeeded() async {
         guard let token = pendingToken else { return }
-        let sent = await sendTokenToBackend(token)
-        if sent {
-            pendingToken = nil
-            logger.info("Pending APNs token registered after login.")
+        for (attempt, delay) in authRetryDelaysNanoseconds.enumerated() {
+            let outcome = await sendTokenToBackend(token)
+            if outcome == .success {
+                pendingToken = nil
+                logger.info("Pending APNs token registered after login.")
+                return
+            }
+            guard outcome == .deferredAuth else { break }
+            logger.debug("APNs token registration deferred after login. Retrying attempt \(attempt + 2).")
+            try? await Task.sleep(nanoseconds: delay)
         }
+        logger.warning("Pending APNs token could not be registered after login. Will retry later.")
+    }
+
+    /// Retries a previously cached token when the app becomes active again.
+    ///
+    /// This covers the common case where APNs registration completed before
+    /// auth/session restoration was fully ready, causing an early 401.
+    func retryPendingTokenIfNeededOnAppActive() async {
+        guard pendingToken != nil else { return }
+        logger.debug("Retrying pending APNs token registration after app became active.")
+        await registerPendingTokenIfNeeded()
     }
 
     // MARK: - Private
 
     /// POSTs the device token to `POST /api/device-token`.
     ///
-    /// Returns `true` on success (HTTP 200), `false` on any failure
-    /// (not authenticated, network error, server error).
-    private func sendTokenToBackend(_ token: String) async -> Bool {
+    /// Returns a detailed outcome so auth timing problems can be retried
+    /// after login instead of being treated as hard backend failures.
+    private func sendTokenToBackend(_ token: String) async -> RegistrationOutcome {
         guard let backendURL = backendBaseURL() else {
             logger.warning("BackendBaseURL not configured -- token registration skipped.")
-            return false
+            return .failed
         }
 
         // Get the current JWT. If the user is not logged in, this will be nil.
         guard let jwt = await currentJWT() else {
             logger.debug("No JWT available -- token registration deferred.")
-            return false
+            return .deferredAuth
         }
 
         guard let url = URL(string: "\(backendURL)/api/device-token") else {
             logger.error("Invalid backend URL: \(backendURL)/api/device-token")
-            return false
+            return .failed
         }
 
         var request = URLRequest(url: url)
@@ -93,7 +111,7 @@ final class PushNotificationService {
 
         let body = ["token": token, "platform": "apns"]
         guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
-            return false
+            return .failed
         }
         request.httpBody = bodyData
 
@@ -102,14 +120,17 @@ final class PushNotificationService {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             if statusCode == 200 {
                 logger.info("APNs token registered with backend.")
-                return true
+                return .success
+            } else if statusCode == 401 || statusCode == 403 {
+                logger.warning("Backend returned \(statusCode) for device-token registration. Deferring retry until auth is stable.")
+                return .deferredAuth
             } else {
                 logger.warning("Backend returned \(statusCode) for device-token registration.")
-                return false
+                return .failed
             }
         } catch {
             logger.error("Device token registration request failed: \(error.localizedDescription)")
-            return false
+            return .failed
         }
     }
 
@@ -128,4 +149,10 @@ final class PushNotificationService {
             DIHelper.shared.getAccessToken()
         }.value
     }
+}
+
+private enum RegistrationOutcome {
+    case success
+    case deferredAuth
+    case failed
 }

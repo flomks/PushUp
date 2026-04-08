@@ -835,10 +835,11 @@ WHERE userId = :userId AND startedAt >= :fromMs AND startedAt < :toMs AND endedA
 ORDER BY startedAt DESC;
 
 -- Distinct workout dates (for unified streak calculation).
+-- Only sessions with at least one push-up count as activity for streaks.
 selectDistinctWorkoutDates:
 SELECT DISTINCT date(startedAt / 1000, 'unixepoch', 'localtime') AS sessionDate
 FROM WorkoutSession
-WHERE userId = ? AND endedAt IS NOT NULL
+WHERE userId = ? AND endedAt IS NOT NULL AND pushUpCount > 0
 ORDER BY sessionDate ASC;
 
 -- Distinct jogging dates (for unified streak calculation).

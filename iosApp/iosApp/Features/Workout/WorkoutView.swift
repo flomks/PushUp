@@ -140,7 +140,7 @@ struct WorkoutView: View {
                             .font(AppTypography.roundedTitle)
                             .foregroundStyle(.white)
 
-                        Text("Position yourself sideways to the camera")
+                        Text("Position yourself from the side or front")
                             .font(AppTypography.subheadline)
                             .foregroundStyle(.white.opacity(0.75))
                             .multilineTextAlignment(.center)
@@ -210,7 +210,7 @@ struct WorkoutView: View {
                         .font(AppTypography.buttonPrimary)
                         .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
-                    Text("Camera-tracked push-up session")
+                    Text("Auto-detects side and front view")
                         .font(AppTypography.caption1)
                         .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
@@ -258,7 +258,11 @@ struct WorkoutView: View {
 
                 VStack(spacing: AppSpacing.sm) {
                     LiveCounterView(count: viewModel.pushUpCount)
-                    FormScoreIndicator(score: viewModel.formScore)
+                    trackingViewIndicator
+                    FormScoreIndicator(
+                        score: viewModel.formScore,
+                        supportsFormScoring: viewModel.trackingView != .front
+                    )
                 }
                 .padding(.bottom, AppSpacing.lg)
 
@@ -288,6 +292,27 @@ struct WorkoutView: View {
                 SoundToggleButton(isEnabled: $viewModel.soundEnabled)
             }
         }
+    }
+
+    private var trackingViewIndicator: some View {
+        HStack(spacing: AppSpacing.xs) {
+            Circle()
+                .fill(viewModel.trackingView == .front ? AppColors.info : AppColors.success)
+                .frame(width: 8, height: 8)
+
+            Text(viewModel.trackingView.displayName)
+                .font(AppTypography.captionSemibold)
+                .foregroundStyle(.white)
+
+            if viewModel.trackingView == .front {
+                Text("Count only")
+                    .font(AppTypography.caption1)
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+        }
+        .padding(.horizontal, AppSpacing.sm)
+        .padding(.vertical, AppSpacing.xs)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
     // MARK: - Finished Overlay (Task 3.7)
