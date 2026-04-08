@@ -68,13 +68,24 @@ object SyncBridge : KoinComponent {
             )
             append(" level=")
             append(
-                result.level?.let { "localXp=${it.local.totalXp},remoteXp=${it.remote.totalXp},winner=${it.winner}" }
-                    ?: "not-run",
+                when (val level = result.level) {
+                    null -> "not-run"
+                    is com.pushup.domain.usecase.sync.SyncLevelResult.Synced -> "synced"
+                    is com.pushup.domain.usecase.sync.SyncLevelResult.AlreadySynced -> "already-synced"
+                    is com.pushup.domain.usecase.sync.SyncLevelResult.NoLocalData -> "no-local-data"
+                    is com.pushup.domain.usecase.sync.SyncLevelResult.PulledFromRemote -> "pulled-from-remote:${level.remote.totalXp}"
+                    is com.pushup.domain.usecase.sync.SyncLevelResult.Failed -> "failed"
+                },
             )
             append(" exerciseLevels=")
             append(
-                result.exerciseLevels?.let { "synced=${it.synced},failed=${it.failed}" }
-                    ?: "not-run",
+                when (val exerciseLevels = result.exerciseLevels) {
+                    null -> "not-run"
+                    is com.pushup.domain.usecase.sync.SyncExerciseLevelsResult.Synced ->
+                        "synced:pushed=${exerciseLevels.pushed},pulled=${exerciseLevels.pulled}"
+                    is com.pushup.domain.usecase.sync.SyncExerciseLevelsResult.AlreadySynced -> "already-synced"
+                    is com.pushup.domain.usecase.sync.SyncExerciseLevelsResult.Failed -> "failed"
+                },
             )
             append(" fromCloud=")
             append(result.fromCloud?.let { "downloaded=${it.sessionsDownloaded},updated=${it.sessionsInsertedOrUpdated}" } ?: "not-run")
