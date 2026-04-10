@@ -420,8 +420,6 @@ private struct CustomTabBar: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: AppSpacing.lg) {
-                    moreHeroCard
-
                     VStack(spacing: AppSpacing.sm) {
                         ForEach(Tab.moreTabs) { tab in
                             moreMenuRow(for: tab)
@@ -429,7 +427,7 @@ private struct CustomTabBar: View {
                     }
                 }
                 .padding(.horizontal, AppSpacing.screenHorizontal)
-                .padding(.top, AppSpacing.sm)
+                .padding(.top, AppSpacing.md)
                 .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
             .background(DashboardWidgetChrome.pageBackground)
@@ -448,44 +446,6 @@ private struct CustomTabBar: View {
         .presentationDetents([.medium])
     }
 
-    private var moreHeroCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            ZStack {
-                Circle()
-                    .fill(AppColors.primary.opacity(0.18))
-                    .frame(width: 56, height: 56)
-
-                Image(systemName: "ellipsis.circle.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(AppColors.primary)
-            }
-
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text("More")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-
-                Text("Profile und Einstellungen im selben visuellen Stil wie dein Dashboard.")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(DashboardWidgetChrome.padding)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppColors.primary.opacity(0.18),
-                    Color.white.opacity(0.04),
-                    Color.clear
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .dashboardWidgetChrome()
-    }
-
     private func moreMenuRow(for tab: Tab) -> some View {
         Button {
             showMoreSheet = false
@@ -493,22 +453,22 @@ private struct CustomTabBar: View {
         } label: {
             HStack(spacing: AppSpacing.md) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
-                        .fill(AppColors.primary.opacity(0.18))
-                        .frame(width: 52, height: 52)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(width: 40, height: 40)
 
                     Image(icon: tab.icon)
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(AppColors.primary)
                 }
 
-                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(tab.label)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(DashboardWidgetChrome.labelPrimary)
 
                     Text(moreMenuSubtitle(for: tab))
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .multilineTextAlignment(.leading)
                 }
@@ -516,10 +476,11 @@ private struct CustomTabBar: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(DashboardWidgetChrome.labelMuted)
             }
-            .padding(DashboardWidgetChrome.padding)
+            .padding(.horizontal, DashboardWidgetChrome.padding)
+            .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
