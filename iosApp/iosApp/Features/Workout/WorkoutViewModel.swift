@@ -96,6 +96,12 @@ final class WorkoutViewModel: ObservableObject {
     /// The currently detected tracking perspective.
     @Published private(set) var trackingView: PushUpTrackingView = .unknown
 
+    // MARK: - Empty Session Dismiss
+
+    /// Set to `true` when a session with 0 push-ups is discarded.
+    /// The view observes this to dismiss back to the dashboard.
+    @Published private(set) var emptySessionDiscarded: Bool = false
+
     // MARK: - Summary State (Task 3.7)
 
     /// Whether the completed session is a new personal record.
@@ -225,11 +231,14 @@ final class WorkoutViewModel: ObservableObject {
         )
 
         // Sessions with zero push-ups are discarded — not saved, not counted.
-        // The KMP FinishWorkoutUseCase will delete the session from the DB.
+        // Stop tracking and signal the view to dismiss back to the dashboard.
+        // We intentionally do NOT call resetForNewWorkout() here because it
+        // tries to restart the camera preview immediately after stopping it,
+        // which causes the screen to freeze (AVCaptureSession stop/start race).
         if snapshot.pushUpCount == 0 {
             trackingManager.stopTracking()
             UIApplication.shared.isIdleTimerDisabled = false
-            resetForNewWorkout()
+            emptySessionDiscarded = true
             return
         }
 

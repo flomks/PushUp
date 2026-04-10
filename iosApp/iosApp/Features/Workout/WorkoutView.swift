@@ -90,6 +90,12 @@ struct WorkoutView: View {
                 viewModel.stopPreview()
             }
         }
+        // Dismiss when an empty session (0 push-ups) is discarded.
+        .onChange(of: viewModel.emptySessionDiscarded) {
+            if viewModel.emptySessionDiscarded {
+                dismiss()
+            }
+        }
         // Stop-confirmation alert
         .alert("End Workout?", isPresented: isConfirmingStop) {
             Button("End", role: .destructive) {
