@@ -11,17 +11,17 @@ import UserNotifications
 /// cancel a specific notification by its identifier without scattering raw
 /// strings across the codebase.
 enum NotificationIdentifier {
-    /// Daily "Zeit fuer Push-Ups!" reminder at the user-configured time.
-    static let dailyReminder = "com.pushup.notification.dailyReminder"
+    /// Daily "Zeit fuer dein Workout!" reminder at the user-configured time.
+    static let dailyReminder = "com.sinura.notification.dailyReminder"
 
     /// Evening streak-danger warning: "Du hast heute noch kein Workout".
-    static let streakWarning = "com.pushup.notification.streakWarning"
+    static let streakWarning = "com.sinura.notification.streakWarning"
 
     /// Low time-credit alert: "Dein Zeitguthaben ist aufgebraucht".
-    static let creditWarning = "com.pushup.notification.creditWarning"
+    static let creditWarning = "com.sinura.notification.creditWarning"
 
     /// Post-workout confirmation: "Workout abgeschlossen! +X Minuten verdient".
-    static let workoutComplete = "com.pushup.notification.workoutComplete"
+    static let workoutComplete = "com.sinura.notification.workoutComplete"
 
     /// All identifiers for recurring (scheduled) notifications.
     /// Used by `disableAllScheduledNotifications()` to cancel only the
@@ -31,7 +31,7 @@ enum NotificationIdentifier {
 
 // MARK: - NotificationManager
 
-/// Central service for all local push-notification scheduling in the PushUp app.
+/// Central service for all local push-notification scheduling in the Sinura app.
 ///
 /// **Responsibilities**
 /// - Request `UNUserNotificationCenter` authorisation on first launch.
@@ -81,7 +81,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - Private
 
     private let center = UNUserNotificationCenter.current()
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.pushup", category: "Notifications")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.sinura", category: "Notifications")
 
     /// `UserDefaults` key that stores the date string (yyyy-MM-dd) of the
     /// last day a workout was completed.
@@ -246,7 +246,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         let clampedMinute = max(0, min(59, minute))
 
         let content = UNMutableNotificationContent()
-        content.title = "Zeit fuer Push-Ups!"
+        content.title = "Zeit fuer dein Workout!"
         content.body = "Deine taegliche Erinnerung: Mach jetzt dein Workout und verdiene Zeitguthaben."
         content.sound = .default
 
@@ -297,7 +297,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         let content = UNMutableNotificationContent()
         content.title = "Streak in Gefahr!"
-        content.body = "Du hast heute noch kein Workout gemacht. Mach jetzt Push-Ups, um deinen Streak zu retten!"
+        content.body = "Du hast heute noch kein Workout gemacht. Werde jetzt aktiv, um deinen Streak zu retten!"
         content.sound = .default
 
         var components = DateComponents()
@@ -407,7 +407,7 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         let content = UNMutableNotificationContent()
         content.title = "Zeitguthaben aufgebraucht"
-        content.body = "Dein Zeitguthaben ist aufgebraucht. Mach Push-Ups, um neues Guthaben zu verdienen!"
+        content.body = "Dein Zeitguthaben ist aufgebraucht. Werde jetzt aktiv, um neues Guthaben zu verdienen!"
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(

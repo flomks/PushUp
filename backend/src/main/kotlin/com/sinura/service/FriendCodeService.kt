@@ -72,14 +72,14 @@ sealed class UseFriendCodeResult {
  * access and can be reset (new random value) or deactivated via the privacy
  * setting.
  *
- * Deep-link format: `https://sinura.weareo.fun/friend/<CODE>`
+ * Deep-link format: `https://sinura.fun/friend/<CODE>`
  */
 open class FriendCodeService(
     private val deviceTokenService: DeviceTokenService = DeviceTokenService(),
 ) {
 
     companion object {
-        private const val DEEP_LINK_BASE = "https://sinura.weareo.fun/friend"
+        private const val DEEP_LINK_BASE = "https://sinura.fun/friend"
         private val CHARSET = ('A'..'Z') + ('0'..'9')
 
         /** Generates a random 8-character uppercase alphanumeric code. */

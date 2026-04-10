@@ -1,7 +1,7 @@
-# PushUp Backend -- Deployment-Anleitung (Root-Server)
+# Sinura Backend -- Deployment-Anleitung (Root-Server)
 
 Das Ktor-Backend laeuft auf einem eigenen Root-Server hinter Nginx.
-Die Domain ist `pushup.weareo.fun`.
+Die Domain ist `sinura.fun`.
 
 Der Deploy-Prozess ist vollautomatisch:
 **Push auf `main`** --> GitHub Actions baut Docker-Image --> pusht zu GHCR --> SSH auf Server --> neuer Container laeuft.
@@ -16,9 +16,9 @@ Internet
    | HTTPS (443)
    v
 Nginx (Reverse Proxy)
-   |  pushup.weareo.fun --> localhost:8080
+   |  sinura.fun --> localhost:8080
    v
-Docker Container: pushup-backend
+Docker Container: sinura-backend
    |
    v
 Supabase PostgreSQL (Cloud)
@@ -33,18 +33,18 @@ Diese Schritte fuehrst du **einmalig** auf dem Root-Server aus.
 ### Schritt 1 -- Verzeichnis anlegen und .env erstellen
 
 ```bash
-sudo mkdir -p /opt/pushup
-sudo chown $USER:$USER /opt/pushup
+sudo mkdir -p /opt/sinura
+sudo chown $USER:$USER /opt/sinura
 
 # docker-compose.yml vom Repo auf den Server kopieren
-cp docker-compose.yml /opt/pushup/docker-compose.yml
+cp docker-compose.yml /opt/sinura/docker-compose.yml
 
 # .env Datei erstellen (NIEMALS ins Repo committen)
-cat > /opt/pushup/.env << 'EOF'
+cat > /opt/sinura/.env << 'EOF'
 KTOR_ENV=production
 PORT=8080
 HOST=0.0.0.0
-PUBLIC_BASE_URL=https://pushup.weareo.fun
+PUBLIC_BASE_URL=https://sinura.fun
 
 # Supabase Projekt-URL (fuer JWKS/RS256 -- neue Projekte 2025+)
 # Supabase Dashboard > Project Settings > API > Project URL
@@ -62,7 +62,7 @@ JWT_ISSUER=https://dein-ref.supabase.co/auth/v1
 DATABASE_URL=jdbc:postgresql://db.dein-ref.supabase.co:5432/postgres?user=postgres&password=dein-passwort&sslmode=require
 
 # Nur HTTPS erlauben in Production
-CORS_ALLOWED_HOSTS=pushup.weareo.fun
+CORS_ALLOWED_HOSTS=sinura.fun
 EOF
 ```
 
@@ -81,10 +81,10 @@ echo "DEIN_GITHUB_TOKEN" | docker login ghcr.io -u flomks --password-stdin
 
 ```bash
 # Config-Datei kopieren
-sudo cp nginx/pushup.weareo.fun.conf /etc/nginx/sites-available/pushup.weareo.fun
+sudo cp nginx/sinura.fun.conf /etc/nginx/sites-available/sinura.fun
 
 # Aktivieren
-sudo ln -s /etc/nginx/sites-available/pushup.weareo.fun /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/sinura.fun /etc/nginx/sites-enabled/
 
 # Syntax pruefen
 sudo nginx -t
@@ -99,8 +99,8 @@ sudo systemctl reload nginx
 # Certbot installieren (falls noch nicht vorhanden)
 sudo apt install certbot python3-certbot-nginx -y
 
-# Zertifikat fuer pushup.weareo.fun holen
-sudo certbot --nginx -d pushup.weareo.fun
+# Zertifikat fuer sinura.fun holen
+sudo certbot --nginx -d sinura.fun
 
 # Certbot traegt SSL automatisch in die Nginx-Config ein
 # Automatische Erneuerung pruefen:
@@ -109,22 +109,22 @@ sudo certbot renew --dry-run
 
 ### Schritt 5 -- DNS-Eintrag setzen
 
-Bei deinem Domain-Anbieter (wo weareo.fun verwaltet wird):
+Bei deinem Domain-Anbieter (wo sinura.fun verwaltet wird):
 
 ```
 Typ:   A
-Name:  pushup
+Name:  @
 Wert:  <IP-Adresse deines Root-Servers>
 TTL:   300
 ```
 
 Warten bis der DNS propagiert ist (meist 1-5 Minuten, max. 24h).
-Pruefen mit: `dig pushup.weareo.fun`
+Pruefen mit: `dig sinura.fun`
 
 ### Schritt 6 -- Ersten Container manuell starten
 
 ```bash
-cd /opt/pushup
+cd /opt/sinura
 
 # Image ziehen und Container starten
 docker compose up -d
@@ -196,28 +196,28 @@ Einfach auf `main` pushen -- der Workflow laeuft automatisch wenn Dateien in `ba
 
 ```bash
 # Live-Logs
-docker compose -f /opt/pushup/docker-compose.yml logs -f
+docker compose -f /opt/sinura/docker-compose.yml logs -f
 
 # Letzte 100 Zeilen
-docker compose -f /opt/pushup/docker-compose.yml logs --tail=100
+docker compose -f /opt/sinura/docker-compose.yml logs --tail=100
 ```
 
 ### Container-Status pruefen
 
 ```bash
-docker compose -f /opt/pushup/docker-compose.yml ps
+docker compose -f /opt/sinura/docker-compose.yml ps
 ```
 
 ### Manuell neu starten
 
 ```bash
-cd /opt/pushup && docker compose restart pushup-backend
+cd /opt/sinura && docker compose restart sinura-backend
 ```
 
 ### Manuell auf neue Version updaten
 
 ```bash
-cd /opt/pushup
+cd /opt/sinura
 docker compose pull
 docker compose up -d
 ```
@@ -228,7 +228,7 @@ docker compose up -d
 
 ```bash
 # Von aussen (nach DNS + SSL Setup)
-curl https://pushup.weareo.fun/health
+curl https://sinura.fun/health
 # Erwartete Antwort: {"status":"ok"}
 
 # Direkt auf dem Server
@@ -240,7 +240,7 @@ curl http://localhost:8080/health
 
 ## Umgebungsvariablen
 
-Alle Variablen stehen in `/opt/pushup/.env` auf dem Server.
+Alle Variablen stehen in `/opt/sinura/.env` auf dem Server.
 **Diese Datei niemals ins Git-Repository committen.**
 
 | Variable | Beschreibung | Wo finden |
@@ -251,7 +251,7 @@ Alle Variablen stehen in `/opt/pushup/.env` auf dem Server.
 | `SUPABASE_JWT_SECRET` | JWT Secret (nur Legacy-Projekte mit HS256) | Supabase > Settings > API > JWT Settings |
 | `JWT_ISSUER` | `https://<ref>.supabase.co/auth/v1` | Supabase Projekt-URL |
 | `DATABASE_URL` | JDBC Connection String | Supabase > Settings > Database > JDBC |
-| `CORS_ALLOWED_HOSTS` | `pushup.weareo.fun` | Deine Domain |
+| `CORS_ALLOWED_HOSTS` | `sinura.fun` | Deine Domain |
 
 **JWT-Verifikation -- welche Variable setzen?**
 
@@ -261,7 +261,7 @@ Alle Variablen stehen in `/opt/pushup/.env` auf dem Server.
 
 Nach Aenderung der `.env` Datei Container neu starten:
 ```bash
-cd /opt/pushup && docker compose up -d
+cd /opt/sinura && docker compose up -d
 ```
 
 ---
@@ -271,7 +271,7 @@ cd /opt/pushup && docker compose up -d
 ### Container startet nicht
 
 ```bash
-docker compose -f /opt/pushup/docker-compose.yml logs pushup-backend
+docker compose -f /opt/sinura/docker-compose.yml logs sinura-backend
 ```
 
 Haeufige Ursachen:
@@ -282,7 +282,7 @@ Haeufige Ursachen:
 
 Der Container laeuft nicht oder ist noch nicht bereit:
 ```bash
-docker compose -f /opt/pushup/docker-compose.yml ps
+docker compose -f /opt/sinura/docker-compose.yml ps
 curl http://localhost:8080/health
 ```
 

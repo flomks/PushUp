@@ -89,7 +89,7 @@ final class SyncService: ObservableObject {
     // MARK: - Private
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.pushup",
+        subsystem: Bundle.main.bundleIdentifier ?? "com.sinura",
         category: "SyncService"
     )
 

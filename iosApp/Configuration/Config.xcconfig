@@ -31,4 +31,4 @@ GOOGLE_IOS_CLIENT_ID=932071108818-rooftfsunvngflbn61geqkdtpf0vk3gv.apps.googleus
 // Custom Ktor backend base URL
 // Required for friends, notifications, and other backend-powered features.
 // ---------------------------------------------------------------------------
-BACKEND_BASE_URL=https://pushup.weareo.fun
+BACKEND_BASE_URL=https://sinura.fun

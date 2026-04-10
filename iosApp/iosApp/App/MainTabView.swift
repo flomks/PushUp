@@ -301,7 +301,7 @@ struct MainTabView: View {
         let extracted: String?
 
         if url.scheme == "https",
-           url.host == "sinura.weareo.fun",
+           url.host == "sinura.fun",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "friend" {
             extracted = url.pathComponents[2].uppercased()

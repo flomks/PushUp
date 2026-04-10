@@ -215,8 +215,8 @@ Trage die Werte in `/opt/pushup/.env` ein (die Datei wird von `docker-compose.ym
 
 ```bash
 # Ersetze <JWT> mit einem gueltigen Access Token (aus dem Supabase Dashboard)
-# Ersetze <BACKEND_URL> mit deiner Backend-URL (z.B. https://pushup.weareo.fun)
-curl -X POST https://pushup.weareo.fun/api/device-token \
+# Ersetze <BACKEND_URL> mit deiner Backend-URL (z.B. https://sinura.fun)
+curl -X POST https://sinura.fun/api/device-token \
   -H "Authorization: Bearer <JWT>" \
   -H "Content-Type: application/json" \
   -d '{"token": "test-token-123", "platform": "apns"}'

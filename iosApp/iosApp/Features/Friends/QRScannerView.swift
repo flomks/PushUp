@@ -227,9 +227,9 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let url = URL(string: trimmed) {
-            // Universal Link: https://sinura.weareo.fun/friend/<CODE>
+            // Universal Link: https://sinura.fun/friend/<CODE>
             if url.scheme == "https",
-               url.host == "sinura.weareo.fun",
+               url.host == "sinura.fun",
                url.pathComponents.count >= 3,
                url.pathComponents[1] == "friend" {
                 return url.pathComponents[2].uppercased()

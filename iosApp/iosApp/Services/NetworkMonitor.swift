@@ -71,7 +71,7 @@ final class NetworkMonitor: ObservableObject {
         qos: .utility
     )
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.pushup",
+        subsystem: Bundle.main.bundleIdentifier ?? "com.sinura",
         category: "NetworkMonitor"
     )
 

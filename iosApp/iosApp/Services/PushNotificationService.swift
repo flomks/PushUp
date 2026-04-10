@@ -25,7 +25,7 @@ final class PushNotificationService {
     private init() {}
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "com.pushup",
+        subsystem: Bundle.main.bundleIdentifier ?? "com.sinura",
         category: "PushNotifications"
     )
 

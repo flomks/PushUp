@@ -90,7 +90,7 @@ fun androidModule(
 
     // Custom Ktor backend base URL -- hardcoded so it persists across builds
     // without requiring manual configuration or GitHub secrets.
-    single<String>(named(BACKEND_BASE_URL)) { "https://sinura.weareo.fun" }
+    single<String>(named(BACKEND_BASE_URL)) { "https://sinura.fun" }
 
     // HTTP debug logging flag.
     single<Boolean>(named(IS_DEBUG)) { isDebug }

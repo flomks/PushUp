@@ -159,7 +159,7 @@ jobs:
             done
 
             if [ "${HEALTHY}" = "true" ]; then
-              echo "Deploy erfolgreich -- pushup.weareo.fun ist aktuell"
+              echo "Deploy erfolgreich -- sinura.fun ist aktuell"
               print_runtime_diagnostics
               # Erst NACH erfolgreichem Deploy alte Images aufraeumen
               # (nicht :rollback -- das wird beim naechsten Deploy ueberschrieben)

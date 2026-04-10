@@ -40,12 +40,12 @@
 	</array>
 
 	<!-- Associated Domains -- enables Universal Links.
-	     https://sinura.weareo.fun/friend/<CODE> opens the app directly.
+	     https://sinura.fun/friend/<CODE> opens the app directly.
 	     The server must serve /.well-known/apple-app-site-association.
 	     Must be enabled in the Apple Developer Portal under App ID capabilities. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:sinura.weareo.fun</string>
+		<string>applinks:sinura.fun</string>
 	</array>
 </dict>
 </plist>
