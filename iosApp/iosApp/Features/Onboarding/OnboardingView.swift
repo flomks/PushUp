@@ -15,7 +15,7 @@ struct OnboardingSlide {
 /// Full-screen onboarding flow shown only on the first app launch.
 ///
 /// Displays 3 slides:
-///   1. Welcome to PushUp
+///   1. Welcome to Sinura
 ///   2. Camera explanation
 ///   3. Time credit explanation
 ///
@@ -38,20 +38,20 @@ struct OnboardingView: View {
         OnboardingSlide(
             icon: .figureStrengthTraining,
             imageColor: AppColors.primary,
-            title: "Welcome to PushUp",
-            description: "Earn screen time through real movement. Do push-ups and receive time credit for your favourite apps."
+            title: "Welcome to Sinura",
+            description: "Earn screen time through real activity. Work out, go for a run, and receive time credit for your favourite apps."
         ),
         OnboardingSlide(
             icon: .cameraViewfinder,
             imageColor: AppColors.secondary,
             title: "Camera detects you",
-            description: "Hold your iPhone so the camera can see your whole body. AI automatically detects every push-up and rates your form."
+            description: "Hold your iPhone so the camera can see your whole body. AI automatically detects your exercises and rates your form."
         ),
         OnboardingSlide(
             icon: .clockBadgeCheckmark,
             imageColor: AppColors.success,
             title: "Earn time credit",
-            description: "Every push-up earns you seconds of screen time. The better your form, the more time you earn. Start now!"
+            description: "Every workout earns you screen time. The more active you are, the more time you earn. Start now!"
         )
     ]
 

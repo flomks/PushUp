@@ -2990,7 +2990,7 @@ private struct RecentRunDetailSheet: View {
             earnedMinutes: run.earnedMinutes,
             date: run.date
         )
-        let text = "Run recap: \(Self.formatDistance(run.distanceMeters)) in \(Self.formatDuration(run.durationSeconds)) at \(Self.formatPace(run.avgPaceSecondsPerKm)). Earned +\(run.earnedMinutes)m in PushUp."
+        let text = "Run recap: \(Self.formatDistance(run.distanceMeters)) in \(Self.formatDuration(run.durationSeconds)) at \(Self.formatPace(run.avgPaceSecondsPerKm)). Earned +\(run.earnedMinutes)m in Sinura."
         shareItems = image.map { [text, $0] } ?? [text]
         showShareSheet = true
     }

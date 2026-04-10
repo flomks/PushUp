@@ -18,6 +18,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Force the root window background to match the launch screen so no
+        // blue frame flashes before the storyboard is rendered.
+        let launchBg = UIColor(red: 0.051, green: 0.051, blue: 0.051, alpha: 1)
+        UIWindow.appearance().backgroundColor = launchBg
+
         // Initialise the Koin DI graph. This must run before any
         // KMP-managed dependency (use cases, repositories, etc.) is accessed.
         KoinIOSKt.doInitKoin()

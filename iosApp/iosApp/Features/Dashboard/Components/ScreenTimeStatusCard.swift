@@ -108,7 +108,7 @@ struct ScreenTimeStatusCard: View {
         case .unavailable:
             return "Screen Time controls are not available on this device or iOS version."
         case .notDetermined, .authorized:
-            return "Grant access so PushUp can show today’s usage here and pause selected apps when you’ve used your screen-time credit."
+            return "Grant access so Sinura can show today’s usage here and pause selected apps when you’ve used your screen-time credit."
         }
     }
 

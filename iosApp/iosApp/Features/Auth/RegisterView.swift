@@ -94,7 +94,7 @@ struct RegisterView: View {
                     .font(AppTypography.title2)
                     .foregroundStyle(AppColors.textPrimary)
 
-                Text("Create your PushUp account and get started")
+                Text("Create your Sinura account and get started")
                     .font(AppTypography.subheadline)
                     .foregroundStyle(AppColors.textSecondary)
                     .multilineTextAlignment(.center)

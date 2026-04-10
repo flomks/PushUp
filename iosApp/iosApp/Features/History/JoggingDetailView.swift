@@ -823,7 +823,7 @@ struct JoggingDetailView: View {
             date: session.startDate
         )
 
-        let text = "Run recap: \(session.distanceString) in \(session.durationString) at \(session.formattedPace)/km. Earned +\(session.earnedMinutes) min in PushUp."
+        let text = "Run recap: \(session.distanceString) in \(session.durationString) at \(session.formattedPace)/km. Earned +\(session.earnedMinutes) min in Sinura."
         shareItems = image.map { [text, $0] } ?? [text]
         showShareSheet = true
     }
