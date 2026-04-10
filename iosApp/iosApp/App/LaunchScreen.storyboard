@@ -22,7 +22,7 @@
                                 <rect key="frame" x="96.5" y="326" width="200" height="200"/>
                             </imageView>
                             <!-- App name label -->
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="PushUp" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Sinura" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
                                 <rect key="frame" x="96.5" y="546" width="200" height="44"/>
                                 <fontDescription key="fontDescription" type="boldSystem" pointSize="32"/>
                                 <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
@@ -65,7 +65,7 @@
     <resources>
         <image name="LaunchLogo" width="512" height="512"/>
         <namedColor name="LaunchBackground">
-            <color red="0.0" green="0.478" blue="1.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+            <color red="0.051" green="0.051" blue="0.051" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
         </namedColor>
     </resources>
 </document>

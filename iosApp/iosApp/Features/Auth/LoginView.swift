@@ -61,24 +61,11 @@ struct LoginView: View {
 
     private var heroSection: some View {
         VStack(spacing: AppSpacing.lg) {
-            // App icon
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [AppColors.primary, AppColors.primary.opacity(0.75)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                    .shadow(color: AppColors.primary.opacity(0.35), radius: 20, x: 0, y: 10)
-
-                Image(icon: .figureStrengthTraining)
-                    .font(.system(size: 48, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .symbolRenderingMode(.hierarchical)
-            }
+            // App logo
+            Image("LaunchLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 120, height: 120)
 
             VStack(spacing: AppSpacing.xs) {
                 Text("Sinura")
