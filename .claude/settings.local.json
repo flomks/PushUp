@@ -12,7 +12,9 @@
       "Bash(./gradlew :shared:compileKotlinJvm --info)",
       "Bash(./gradlew :shared:jvmTest)",
       "Bash(git stash:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npx create-next-app@latest pushup-web --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --turbopack)",
+      "Bash(npm run:*)"
     ]
   }
 }

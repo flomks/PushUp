@@ -75,7 +75,7 @@ class RunEventRepositoryImpl(
         queries.selectRunEventParticipantsByUserId(userId)
             .executeAsList()
             .mapNotNull { participant -> queries.selectRunEventById(participant.eventId).executeAsOneOrNull()?.toDomain() }
-            .sortedBy { it.plannedStartAt.epochSeconds }
+            .filterUpcomingEvents()
     }
 
     override suspend fun getParticipants(eventId: String): List<RunEventParticipant> = safeDbCall(
@@ -239,11 +239,17 @@ class RunEventRepositoryImpl(
             .map { participants ->
                 participants.mapNotNull { participant ->
                     queries.selectRunEventById(participant.eventId).executeAsOneOrNull()?.toDomain()
-                }.sortedBy { it.plannedStartAt.epochSeconds }
+                }.filterUpcomingEvents()
             }
             .catch { e ->
                 throw RepositoryException("Failed to observe upcoming run events for user '$userId'", e)
             }
+
+    private fun List<RunEvent>.filterUpcomingEvents(): List<RunEvent> {
+        val now = clock.now()
+        return filter { event -> event.plannedStartAt >= now }
+            .sortedBy { it.plannedStartAt.epochSeconds }
+    }
 
     private suspend fun fetchAndPersistRemoteEvent(eventId: String): RunEvent? {
         if (networkMonitor?.isConnected() != true) return null

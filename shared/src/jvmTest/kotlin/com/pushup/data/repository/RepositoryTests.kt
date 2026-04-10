@@ -1356,6 +1356,122 @@ class RepositoryTests {
         assertTrue(records.isEmpty())
     }
 
+    private fun setupUserForRunEvents(
+        userId: String = "user-1",
+        now: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
+    ) {
+        database.databaseQueries.insertUser(
+            id = userId,
+            email = "runner@example.com",
+            username = null,
+            displayName = "Runner",
+            avatarUrl = null,
+            avatarVisibility = "everyone",
+            createdAt = now.toEpochMilliseconds(),
+            syncedAt = now.toEpochMilliseconds(),
+        )
+    }
+
+    private suspend fun RunEventRepositoryImpl.createRunEventForTest(
+        eventId: String,
+        userId: String,
+        plannedStartAt: Instant,
+        now: Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L),
+    ) {
+        create(
+            event = RunEvent(
+                id = eventId,
+                createdBy = userId,
+                title = "Event $eventId",
+                description = null,
+                mode = RunMode.BASE,
+                visibility = RunVisibility.FRIENDS,
+                plannedStartAt = plannedStartAt,
+                plannedEndAt = null,
+                checkInOpensAt = plannedStartAt,
+                locationName = null,
+                status = RunEventStatus.PLANNED,
+                createdAt = now,
+                updatedAt = now,
+            ),
+            participants = listOf(
+                RunEventParticipant(
+                    id = "participant-$eventId",
+                    eventId = eventId,
+                    userId = userId,
+                    role = RunParticipantRole.ORGANIZER,
+                    status = RunParticipantStatus.ACCEPTED,
+                    invitedBy = null,
+                    invitedAt = now,
+                    respondedAt = now,
+                    checkedInAt = null,
+                    createdAt = now,
+                    updatedAt = now,
+                )
+            ),
+        )
+    }
+
+    @Test
+    fun runEventRepo_getUpcomingForUser_excludesPastEventsThatNeverStarted() = runTest {
+        val now = Instant.fromEpochMilliseconds(1_700_000_000_000L)
+        val userId = "user-1"
+        setupUserForRunEvents(userId, now)
+
+        val repo = RunEventRepositoryImpl(
+            database = database,
+            dispatcher = testDispatcher,
+            clock = fixedClock,
+        )
+
+        repo.createRunEventForTest(
+            eventId = "past-event",
+            userId = userId,
+            plannedStartAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() - 60_000),
+            now = now,
+        )
+        repo.createRunEventForTest(
+            eventId = "future-event",
+            userId = userId,
+            plannedStartAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() + 60_000),
+            now = now,
+        )
+
+        val upcoming = repo.getUpcomingForUser(userId)
+
+        assertEquals(listOf("future-event"), upcoming.map { it.id })
+    }
+
+    @Test
+    fun runEventRepo_observeUpcomingForUser_excludesPastEventsThatNeverStarted() = runTest {
+        val now = Instant.fromEpochMilliseconds(1_700_000_000_000L)
+        val userId = "user-1"
+        setupUserForRunEvents(userId, now)
+
+        val repo = RunEventRepositoryImpl(
+            database = database,
+            dispatcher = testDispatcher,
+            clock = fixedClock,
+        )
+
+        repo.createRunEventForTest(
+            eventId = "past-event",
+            userId = userId,
+            plannedStartAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() - 60_000),
+            now = now,
+        )
+        repo.createRunEventForTest(
+            eventId = "future-event",
+            userId = userId,
+            plannedStartAt = Instant.fromEpochMilliseconds(now.toEpochMilliseconds() + 60_000),
+            now = now,
+        )
+
+        val observed = repo.observeUpcomingForUser(userId).first()
+
+        assertEquals(listOf("future-event"), observed.map { it.id })
+    }
+
     @Test
     fun runEventRepo_getParticipants_resyncsExistingEventWithoutDuplicateInsert() = runTest {
         val now = Instant.fromEpochMilliseconds(1_700_000_000_000L)

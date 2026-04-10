@@ -49,6 +49,12 @@ enum WorkoutPhase: Equatable, Sendable {
 @MainActor
 final class WorkoutViewModel: ObservableObject {
 
+    private struct WorkoutCompletionSnapshot {
+        let pushUpCount: Int
+        let formScore: Double?
+        let sessionDuration: TimeInterval
+    }
+
     // MARK: - Published State
 
     /// Current phase of the workout screen.
@@ -212,25 +218,35 @@ final class WorkoutViewModel: ObservableObject {
     // MARK: - Private: Session Lifecycle
 
     private func endSession() {
-        // Capture the final duration BEFORE stopTracking() resets it to 0.
-        let finalDuration = trackingManager.sessionDuration
-        trackingManager.stopTracking()
-        UIApplication.shared.isIdleTimerDisabled = false
+        let snapshot = WorkoutCompletionSnapshot(
+            pushUpCount: pushUpCount,
+            formScore: formScore,
+            sessionDuration: trackingManager.sessionDuration
+        )
 
         // Sessions with zero push-ups are discarded — not saved, not counted.
         // The KMP FinishWorkoutUseCase will delete the session from the DB.
-        if pushUpCount == 0 {
+        if snapshot.pushUpCount == 0 {
+            trackingManager.stopTracking()
+            UIApplication.shared.isIdleTimerDisabled = false
             resetForNewWorkout()
             return
         }
 
-        // Restore the captured duration so the finished overlay shows it.
-        sessionDuration = finalDuration
+        pushUpCount = snapshot.pushUpCount
+        formScore = snapshot.formScore
+        sessionDuration = snapshot.sessionDuration
 
         // Compute summary statistics for the completion screen (Task 3.7).
         computeSummaryStats()
 
         phase = .finished
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.trackingManager.stopTracking()
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
 
         // Fire the post-workout local notification (Task 3.12).
         let minutes = earnedMinutes
@@ -288,6 +304,7 @@ final class WorkoutViewModel: ObservableObject {
         manager.$currentCount
             .sink { [weak self] count in
                 guard let self else { return }
+                guard self.phase != .finished else { return }
                 let previous = self.pushUpCount
                 self.pushUpCount = count
                 if count > previous {
@@ -297,7 +314,11 @@ final class WorkoutViewModel: ObservableObject {
             .store(in: &cancellables)
 
         manager.$currentFormScore
-            .sink { [weak self] in self?.formScore = $0 }
+            .sink { [weak self] score in
+                guard let self else { return }
+                guard self.phase != .finished else { return }
+                self.formScore = score
+            }
             .store(in: &cancellables)
 
         manager.$sessionDuration

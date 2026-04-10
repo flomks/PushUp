@@ -92,16 +92,16 @@ struct SyncIndicator: View {
                     .foregroundStyle(
                         LinearGradient(
                             colors: [
-                                AppColors.primary.opacity(0.28),
-                                AppColors.primaryVariant.opacity(0.22)
+                                AppColors.info.opacity(0.72),
+                                AppColors.primaryVariant.opacity(0.54)
                             ],
-                            startPoint: .top,
-                            endPoint: .bottom
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
                     )
 
                 MotionLoadingIndicator(
-                    tint: AppColors.primary,
+                    tint: AppColors.info,
                     lineCount: 3,
                     lineWidth: 2.2,
                     height: 10,
