@@ -418,31 +418,124 @@ private struct CustomTabBar: View {
 
     private var moreSheet: some View {
         NavigationStack {
-            List {
-                ForEach(Tab.moreTabs) { tab in
-                    Button {
-                        showMoreSheet = false
-                        selectedTab = tab
-                    } label: {
-                        Label {
-                            Text(tab.label)
-                                .foregroundStyle(AppColors.textPrimary)
-                        } icon: {
-                            Image(icon: tab.icon)
-                                .foregroundStyle(AppColors.primary)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                    moreHeroCard
+
+                    VStack(spacing: AppSpacing.sm) {
+                        ForEach(Tab.moreTabs) { tab in
+                            moreMenuRow(for: tab)
                         }
                     }
                 }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.top, AppSpacing.sm)
+                .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
+            .background(DashboardWidgetChrome.pageBackground)
             .navigationTitle("More")
             .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(DashboardWidgetChrome.pageBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { showMoreSheet = false }
                 }
             }
         }
+        .preferredColorScheme(.dark)
+        .presentationBackground(DashboardWidgetChrome.pageBackground)
         .presentationDetents([.medium])
+    }
+
+    private var moreHeroCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.primary.opacity(0.18))
+                    .frame(width: 56, height: 56)
+
+                Image(systemName: "ellipsis.circle.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(AppColors.primary)
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text("More")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+
+                Text("Profile und Einstellungen im selben visuellen Stil wie dein Dashboard.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(DashboardWidgetChrome.padding)
+        .background(
+            LinearGradient(
+                colors: [
+                    AppColors.primary.opacity(0.18),
+                    Color.white.opacity(0.04),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .dashboardWidgetChrome()
+    }
+
+    private func moreMenuRow(for tab: Tab) -> some View {
+        Button {
+            showMoreSheet = false
+            selectedTab = tab
+        } label: {
+            HStack(spacing: AppSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
+                        .fill(AppColors.primary.opacity(0.18))
+                        .frame(width: 52, height: 52)
+
+                    Image(icon: tab.icon)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppColors.primary)
+                }
+
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    Text(tab.label)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(DashboardWidgetChrome.labelPrimary)
+
+                    Text(moreMenuSubtitle(for: tab))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DashboardWidgetChrome.labelMuted)
+            }
+            .padding(DashboardWidgetChrome.padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .dashboardWidgetChrome()
+    }
+
+    private func moreMenuSubtitle(for tab: Tab) -> String {
+        switch tab {
+        case .profile:
+            return "Account, Profilbild und persönliche Infos verwalten."
+        case .settings:
+            return "App-Verhalten, Screen-Time und Präferenzen anpassen."
+        default:
+            return tab.placeholderDescription
+        }
     }
 }
 
