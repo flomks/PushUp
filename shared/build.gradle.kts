@@ -79,7 +79,7 @@ kotlin {
 }
 
 android {
-    namespace = "com.flomks.pushup.shared"
+    namespace = "com.flomks.sinura.shared"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -98,11 +98,11 @@ android {
 
 sqldelight {
     databases {
-        create("PushUpDatabase") {
-            packageName.set("com.pushup.db")
+        create("SinuraDatabase") {
+            packageName.set("com.sinura.db")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/migrations"))
             // Enable once migrations exist and a schema .db file has been generated
-            // via `./gradlew :shared:generateCommonMainPushUpDatabaseSchema`
+            // via `./gradlew :shared:generateCommonMainSinuraDatabaseSchema`
             verifyMigrations.set(false)
         }
     }

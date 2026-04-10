@@ -298,7 +298,7 @@ struct WorkoutSummaryView: View {
             lines.append(qualityText)
         }
         lines.append("+\(earnedMinutes) minutes of time credit earned")
-        lines.append("#PushUp #Fitness #Workout")
+        lines.append("#Sinura #Fitness #Workout")
 
         let text = lines.joined(separator: "\n")
         shareItems = [text]

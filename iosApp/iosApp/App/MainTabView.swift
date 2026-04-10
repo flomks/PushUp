@@ -284,7 +284,7 @@ struct MainTabView: View {
     // MARK: - Deep links
 
     private func handleShieldWorkoutFlag() {
-        let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+        let defaults = UserDefaults(suiteName: "group.com.flomks.sinura")
         guard defaults?.bool(forKey: "shield.shouldOpenWorkout") == true else { return }
         defaults?.removeObject(forKey: "shield.shouldOpenWorkout")
         defaults?.synchronize()
@@ -292,7 +292,7 @@ struct MainTabView: View {
     }
 
     private func handleDeepLink(_ url: URL) {
-        // pushup://workout — navigate to the Workout tab
+        // sinura://workout — navigate to the Workout tab
         if url.scheme == "pushup", url.host == "workout" {
             selectedTab = .workout
             return
@@ -301,7 +301,7 @@ struct MainTabView: View {
         let extracted: String?
 
         if url.scheme == "https",
-           url.host == "pushup.weareo.fun",
+           url.host == "sinura.weareo.fun",
            url.pathComponents.count >= 3,
            url.pathComponents[1] == "friend" {
             extracted = url.pathComponents[2].uppercased()

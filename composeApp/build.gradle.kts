@@ -64,11 +64,11 @@ val supabaseUrl: String = localProps.getProperty("SUPABASE_URL", "")
 val supabasePublishableKey: String = localProps.getProperty("SUPABASE_PUBLISHABLE_KEY", "")
 
 android {
-    namespace = "com.flomks.pushup"
+    namespace = "com.flomks.sinura"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.flomks.pushup"
+        applicationId = "com.flomks.sinura"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
@@ -104,11 +104,11 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "com.flomks.pushup.MainKt"
+        mainClass = "com.flomks.sinura.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.flomks.pushup"
+            packageName = "com.flomks.sinura"
             packageVersion = "1.0.0"
         }
     }

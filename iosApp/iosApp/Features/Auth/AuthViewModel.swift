@@ -363,7 +363,7 @@ final class AuthViewModel: NSObject, ObservableObject {
         authState = .loading
         do {
             let supabaseURL = "https://ptllenkizeipinpuqapl.supabase.co"
-            let bundleID = Bundle.main.bundleIdentifier ?? "com.flomks.pushup"
+            let bundleID = Bundle.main.bundleIdentifier ?? "com.flomks.sinura"
             let redirectURL = "\(bundleID)://auth/callback"
             guard
                 let encodedRedirect = redirectURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),

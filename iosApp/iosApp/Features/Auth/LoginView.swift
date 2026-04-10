@@ -81,7 +81,7 @@ struct LoginView: View {
             }
 
             VStack(spacing: AppSpacing.xs) {
-                Text("PushUp")
+                Text("Sinura")
                     .font(AppTypography.title1)
                     .foregroundStyle(AppColors.textPrimary)
 

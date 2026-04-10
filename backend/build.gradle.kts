@@ -5,11 +5,11 @@ plugins {
     application
 }
 
-group = "com.pushup"
+group = "com.sinura"
 version = "0.1.0"
 
 application {
-    mainClass.set("com.pushup.ApplicationKt")
+    mainClass.set("com.sinura.ApplicationKt")
 
     val isDevelopment: Boolean = project.ext.has("development")
     applicationDefaultJvmArgs = listOf("-Dio.ktor.development=$isDevelopment")

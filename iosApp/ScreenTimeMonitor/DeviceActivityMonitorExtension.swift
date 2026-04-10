@@ -11,11 +11,11 @@ import UserNotifications
 /// This extension runs in a **separate process** from the main app.
 /// It receives callbacks from the system when DeviceActivity thresholds
 /// are reached. All communication with the main app happens via the
-/// shared App Group UserDefaults container: `group.com.flomks.pushup`
+/// shared App Group UserDefaults container: `group.com.flomks.sinura`
 ///
 /// **Registered events:**
-/// - `com.flomks.pushup.warning`      -- 80% of credit consumed
-/// - `com.flomks.pushup.limitReached` -- 100% of credit consumed (block)
+/// - `com.flomks.sinura.warning`      -- 80% of credit consumed
+/// - `com.flomks.sinura.limitReached` -- 100% of credit consumed (block)
 ///
 /// **Reinstall-proof design:**
 /// On every threshold event, this extension writes the cumulative usage
@@ -24,11 +24,11 @@ import UserNotifications
 /// reinstalling the app does not reset the "already used today" counter.
 /// The OS tracks cumulative usage independently of our UserDefaults.
 ///
-/// **Bundle ID:** `com.flomks.pushup.ScreenTimeMonitor`
+/// **Bundle ID:** `com.flomks.sinura.ScreenTimeMonitor`
 class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     private let store = ManagedSettingsStore()
-    private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+    private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.sinura")
 
     private func isBlockingAllowedForSignedInUser() -> Bool {
         if let v = sharedDefaults?.object(forKey: "screentime.appUserSignedIn") as? Bool {
@@ -90,9 +90,9 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         }
 
         switch event.rawValue {
-        case "com.flomks.pushup.warning":
+        case "com.flomks.sinura.warning":
             handleWarning()
-        case "com.flomks.pushup.limitReached":
+        case "com.flomks.sinura.limitReached":
             handleLimitReached()
         default:
             break

@@ -525,11 +525,11 @@ enum AppInfo {
     }
 
     /// Privacy policy URL.
-    static let privacyPolicyURL = URL(string: "https://pushup.app/privacy")!
+    static let privacyPolicyURL = URL(string: "https://sinura.app/privacy")!
 
     /// Terms of service URL.
-    static let termsOfServiceURL = URL(string: "https://pushup.app/terms")!
+    static let termsOfServiceURL = URL(string: "https://sinura.app/terms")!
 
     /// Support / contact URL.
-    static let supportURL = URL(string: "https://pushup.app/support")!
+    static let supportURL = URL(string: "https://sinura.app/support")!
 }

@@ -262,7 +262,7 @@ struct ScreenTimeAppDetailView: View {
                 Divider()
 
                 DeviceActivityReport(
-                    .init("com.flomks.pushup.usageReport"),
+                    .init("com.flomks.sinura.usageReport"),
                     filter: DeviceActivityFilter(
                         segment: .daily(
                             during: Calendar.current.dateInterval(of: .day, for: Date())

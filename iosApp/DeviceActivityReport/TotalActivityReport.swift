@@ -7,8 +7,8 @@ import SwiftUI
 
 extension DeviceActivityReport.Context {
     /// The context name used by the main app when embedding the report:
-    ///   `DeviceActivityReport(.init("com.flomks.pushup.usageReport"), filter: ...)`
-    static let pushUpUsageReport = Self("com.flomks.pushup.usageReport")
+    ///   `DeviceActivityReport(.init("com.flomks.sinura.usageReport"), filter: ...)`
+    static let sinuraUsageReport = Self("com.flomks.sinura.usageReport")
 }
 
 // MARK: - AppUsageConfiguration
@@ -56,7 +56,7 @@ struct AppUsageEntry: Identifiable, Sendable {
 /// access to real app names, icons, and durations.
 struct AppUsageReport: DeviceActivityReportScene {
 
-    let context: DeviceActivityReport.Context = .pushUpUsageReport
+    let context: DeviceActivityReport.Context = .sinuraUsageReport
     let content: (AppUsageConfiguration) -> AppUsageReportView
 
     func makeConfiguration(
@@ -119,7 +119,7 @@ struct AppUsageReport: DeviceActivityReportScene {
     // MARK: - App Group Persistence
 
     private func persistToAppGroup(perAppJSON: [[String: Any]], totalSeconds: Int) {
-        guard let defaults = UserDefaults(suiteName: "group.com.flomks.pushup") else { return }
+        guard let defaults = UserDefaults(suiteName: "group.com.flomks.sinura") else { return }
 
         if let data = try? JSONSerialization.data(withJSONObject: perAppJSON) {
             defaults.set(data, forKey: "screentime.perAppUsageData")

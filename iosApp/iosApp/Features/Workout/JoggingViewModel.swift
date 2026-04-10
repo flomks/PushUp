@@ -520,7 +520,7 @@ final class SpotifyService: NSObject {
     }
 
     private var redirectURI: String? {
-        "pushup-spotify://callback"
+        "sinura-spotify://callback"
     }
 
     private func loadSession() -> SpotifySession? {
@@ -534,7 +534,7 @@ final class SpotifyService: NSObject {
     }
 
     private func callbackScheme() -> String {
-        URL(string: redirectURI ?? "")?.scheme ?? "pushup-spotify"
+        URL(string: redirectURI ?? "")?.scheme ?? "sinura-spotify"
     }
 
     private func authorizedRequest(path: String) async throws -> URLRequest {
@@ -1205,7 +1205,7 @@ final class JoggingViewModel: ObservableObject {
     @Published private(set) var isCurrentUserInJam: Bool = false
     @Published private(set) var currentTrack: RunTrack = RunTrack(
         title: "Night Drive Tempo",
-        artist: "PushUp Run Club",
+        artist: "Sinura Run Club",
         vibe: "160 BPM • Focus"
     )
     @Published private(set) var modeQueue: [SpotifyRecommendedRunTrack] = []
@@ -2360,24 +2360,24 @@ final class JoggingViewModel: ObservableObject {
     private func presetTracksForSelectedAudioMode() -> [RunTrack] {
         let options: [RunAudioMode: [RunTrack]] = [
             .recovery: [
-                RunTrack(title: "Soft Horizon", artist: "PushUp Run Club", vibe: "118 BPM • Recovery"),
-                RunTrack(title: "Cool Down Signal", artist: "PushUp Run Club", vibe: "112 BPM • Easy")
+                RunTrack(title: "Soft Horizon", artist: "Sinura Run Club", vibe: "118 BPM • Recovery"),
+                RunTrack(title: "Cool Down Signal", artist: "Sinura Run Club", vibe: "112 BPM • Easy")
             ],
             .base: [
-                RunTrack(title: "Night Drive Tempo", artist: "PushUp Run Club", vibe: "160 BPM • Focus"),
-                RunTrack(title: "City Grid Stride", artist: "PushUp Run Club", vibe: "158 BPM • Base")
+                RunTrack(title: "Night Drive Tempo", artist: "Sinura Run Club", vibe: "160 BPM • Focus"),
+                RunTrack(title: "City Grid Stride", artist: "Sinura Run Club", vibe: "158 BPM • Base")
             ],
             .tempo: [
-                RunTrack(title: "Redline District", artist: "PushUp Run Club", vibe: "174 BPM • Tempo"),
-                RunTrack(title: "Split Hunter", artist: "PushUp Run Club", vibe: "176 BPM • Fast")
+                RunTrack(title: "Redline District", artist: "Sinura Run Club", vibe: "174 BPM • Tempo"),
+                RunTrack(title: "Split Hunter", artist: "Sinura Run Club", vibe: "176 BPM • Fast")
             ],
             .longRun: [
-                RunTrack(title: "Endless Blocks", artist: "PushUp Run Club", vibe: "148 BPM • Durable"),
-                RunTrack(title: "Sunday Engine", artist: "PushUp Run Club", vibe: "150 BPM • Cruise")
+                RunTrack(title: "Endless Blocks", artist: "Sinura Run Club", vibe: "148 BPM • Durable"),
+                RunTrack(title: "Sunday Engine", artist: "Sinura Run Club", vibe: "150 BPM • Cruise")
             ],
             .race: [
-                RunTrack(title: "Start Gun", artist: "PushUp Run Club", vibe: "182 BPM • Race"),
-                RunTrack(title: "Final Kick", artist: "PushUp Run Club", vibe: "186 BPM • Push")
+                RunTrack(title: "Start Gun", artist: "Sinura Run Club", vibe: "182 BPM • Race"),
+                RunTrack(title: "Final Kick", artist: "Sinura Run Club", vibe: "186 BPM • Push")
             ]
         ]
         return options[selectedAudioMode] ?? []

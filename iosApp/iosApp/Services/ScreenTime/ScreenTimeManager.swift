@@ -40,7 +40,7 @@ enum ScreenTimeAuthorizationStatus: Equatable {
 /// screen can observe authorization state and blocking state without prop-drilling.
 ///
 /// **App Group:** All data shared with the DeviceActivity Extension is stored
-/// in the shared App Group container: `group.com.flomks.pushup`
+/// in the shared App Group container: `group.com.flomks.sinura`
 @MainActor
 final class ScreenTimeManager: ObservableObject {
 
@@ -476,18 +476,18 @@ final class ScreenTimeManager: ObservableObject {
 enum ScreenTimeConstants {
 
     /// The App Group identifier. Must match the entitlement in all targets.
-    static let appGroupID = "group.com.flomks.pushup"
+    static let appGroupID = "group.com.flomks.sinura"
 
     /// The DeviceActivity name used to identify our monitoring session.
-    static let activityName = DeviceActivityName("com.flomks.pushup.daily")
+    static let activityName = DeviceActivityName("com.flomks.sinura.daily")
 
     // MARK: - Event Names
 
     enum Events {
         /// Fired when 80% of the credit has been consumed (warning).
-        static let warning = DeviceActivityEvent.Name("com.flomks.pushup.warning")
+        static let warning = DeviceActivityEvent.Name("com.flomks.sinura.warning")
         /// Fired when 100% of the credit has been consumed (block).
-        static let limitReached = DeviceActivityEvent.Name("com.flomks.pushup.limitReached")
+        static let limitReached = DeviceActivityEvent.Name("com.flomks.sinura.limitReached")
     }
 
     // MARK: - UserDefaults Keys (shared via App Group)

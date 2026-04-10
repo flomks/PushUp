@@ -9,7 +9,7 @@ import UIKit
 /// Shown when a blocked app is opened. Displays the PushUp branding
 /// with a motivational message and a button to open the workout screen.
 ///
-/// **Bundle ID:** `com.flomks.pushup.ShieldConfiguration`
+/// **Bundle ID:** `com.flomks.sinura.ShieldConfiguration`
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     override func configuration(shielding application: Application) -> ShieldConfiguration {

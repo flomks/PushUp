@@ -145,7 +145,7 @@ private struct SplashOverlayView: View {
                     .frame(width: 200, height: 200)
 
                 // Must match the storyboard's 32pt boldSystem font label.
-                Text("PushUp")
+                Text("Sinura")
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
 

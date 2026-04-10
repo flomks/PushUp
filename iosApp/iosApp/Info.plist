@@ -8,25 +8,25 @@
 
 	<!-- Camera permission description shown in the system prompt -->
 	<key>NSCameraUsageDescription</key>
-	<string>PushUp uses the camera to detect and count your push-ups in real time using pose estimation.</string>
+	<string>Sinura uses the camera to detect and count your push-ups in real time using pose estimation.</string>
 
 	<!-- Motion & Fitness permission for vehicle detection during jogging (anti-cheat) -->
 	<key>NSMotionUsageDescription</key>
-	<string>PushUp uses motion activity to detect if you are in a vehicle during a run, ensuring distance is tracked fairly.</string>
+	<string>Sinura uses motion activity to detect if you are in a vehicle during a run, ensuring distance is tracked fairly.</string>
 
 	<!-- Location permission descriptions for jogging GPS tracking -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>PushUp uses your location to track your jogging route, distance, and pace during workouts.</string>
+	<string>Sinura uses your location to track your jogging route, distance, and pace during workouts.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>PushUp uses your location in the background to continue tracking your jogging route while the app is minimized.</string>
+	<string>Sinura uses your location in the background to continue tracking your jogging route while the app is minimized.</string>
 
 	<!-- Photo library permission (for avatar upload in Profile) -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>PushUp uses your photo library so you can set a profile picture.</string>
+	<string>Sinura uses your photo library so you can set a profile picture.</string>
 
 	<!-- App display name shown on the Home Screen and in Settings -->
 	<key>CFBundleDisplayName</key>
-	<string>PushUp</string>
+	<string>Sinura</string>
 
 	<!-- Supabase configuration — hardcoded here because xcconfig variable
 	     injection into Info.plist is unreliable when GENERATE_INFOPLIST_FILE=YES.
@@ -40,7 +40,7 @@
 	<string>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0bGxlbmtpemVpcGlucHVxYXBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNzAzNTksImV4cCI6MjA4ODY0NjM1OX0.yK-LoeQeEqkk1YTyy0T0JC85l1XiR65av9kdAnjp3s0</string>
 
 	<key>BackendBaseURL</key>
-	<string>https://pushup.weareo.fun</string>
+	<string>https://sinura.weareo.fun</string>
 
 	<!-- Google Sign-In iOS Client ID -->
 	<key>GIDClientID</key>
@@ -72,21 +72,21 @@
 		     open the app directly. -->
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.flomks.pushup.deeplink</string>
+			<string>com.flomks.sinura.deeplink</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>pushup</string>
+				<string>sinura</string>
 			</array>
 		</dict>
 		<!-- Dedicated Spotify OAuth callback scheme.
-		     Register the exact redirect URI `pushup-spotify://callback`
+		     Register the exact redirect URI `sinura-spotify://callback`
 		     in the Spotify Developer Dashboard. -->
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.flomks.pushup.spotify</string>
+			<string>com.flomks.sinura.spotify</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>pushup-spotify</string>
+				<string>sinura-spotify</string>
 			</array>
 		</dict>
 	</array>

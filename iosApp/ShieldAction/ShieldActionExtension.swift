@@ -17,10 +17,10 @@ import UserNotifications
 ///
 /// Secondary button ("Not Now") -- defers, shield stays visible.
 ///
-/// **Bundle ID:** `com.flomks.pushup.ShieldAction`
+/// **Bundle ID:** `com.flomks.sinura.ShieldAction`
 class ShieldActionExtension: ShieldActionDelegate {
 
-    private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+    private let sharedDefaults = UserDefaults(suiteName: "group.com.flomks.sinura")
 
     override func handle(
         action: ShieldAction,

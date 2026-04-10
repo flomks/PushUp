@@ -127,14 +127,14 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
         // Shield "Train now" notification or "Start Workout" action from limit-reached notification.
         if let action = userInfo["action"] as? String, action == "openWorkout" {
-            let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+            let defaults = UserDefaults(suiteName: "group.com.flomks.sinura")
             defaults?.set(true, forKey: "shield.shouldOpenWorkout")
             defaults?.synchronize()
             completionHandler()
             return
         }
         if response.actionIdentifier == "START_WORKOUT" {
-            let defaults = UserDefaults(suiteName: "group.com.flomks.pushup")
+            let defaults = UserDefaults(suiteName: "group.com.flomks.sinura")
             defaults?.set(true, forKey: "shield.shouldOpenWorkout")
             defaults?.synchronize()
             completionHandler()

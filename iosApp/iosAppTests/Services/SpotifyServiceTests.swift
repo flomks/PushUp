@@ -20,8 +20,8 @@ struct SpotifyServiceTests {
 
     @Test("Dedicated Spotify callback URI stays stable")
     func spotifyCallbackUriIsStable() {
-        let redirect = "pushup-spotify://callback"
-        #expect(redirect == "pushup-spotify://callback")
+        let redirect = "sinura-spotify://callback"
+        #expect(redirect == "sinura-spotify://callback")
     }
 
     @Test("Mode destination includes playlist query")
@@ -40,14 +40,14 @@ struct SpotifyServiceTests {
     func trackDestinationIncludesMetadata() {
         let track = RunTrack(
             title: "Night Drive Tempo",
-            artist: "PushUp Run Club",
+            artist: "Sinura Run Club",
             vibe: "160 BPM"
         )
         let destination = SpotifyService.trackDestination(track: track, isSpotifyInstalled: true)
         switch destination {
         case .app(let url):
             #expect(url.absoluteString.contains("Night%20Drive%20Tempo"))
-            #expect(url.absoluteString.contains("PushUp%20Run%20Club"))
+            #expect(url.absoluteString.contains("Sinura%20Run%20Club"))
         case .web:
             Issue.record("Expected app URL")
         }

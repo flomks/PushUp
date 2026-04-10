@@ -167,7 +167,7 @@ struct JoggingShareCard: View {
                     Image(systemName: "figure.run.circle.fill")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(accent)
-                    Text("PushUp")
+                    Text("Sinura")
                         .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.86))
                 }

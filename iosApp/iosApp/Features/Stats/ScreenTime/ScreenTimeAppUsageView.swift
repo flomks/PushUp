@@ -88,7 +88,7 @@ struct ScreenTimeAppUsageView: View {
     private var systemReportContent: some View {
         VStack(spacing: 0) {
             DeviceActivityReport(
-                .init("com.flomks.pushup.usageReport"),
+                .init("com.flomks.sinura.usageReport"),
                 filter: DeviceActivityFilter(
                     segment: .daily(
                         during: Calendar.current.dateInterval(of: .day, for: Date())

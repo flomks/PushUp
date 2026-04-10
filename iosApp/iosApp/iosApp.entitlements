@@ -36,16 +36,16 @@
 	     Must be created in the Apple Developer Portal under App Groups. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.flomks.pushup</string>
+		<string>group.com.flomks.sinura</string>
 	</array>
 
 	<!-- Associated Domains -- enables Universal Links.
-	     https://pushup.weareo.fun/friend/<CODE> opens the app directly.
+	     https://sinura.weareo.fun/friend/<CODE> opens the app directly.
 	     The server must serve /.well-known/apple-app-site-association.
 	     Must be enabled in the Apple Developer Portal under App ID capabilities. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>applinks:pushup.weareo.fun</string>
+		<string>applinks:sinura.weareo.fun</string>
 	</array>
 </dict>
 </plist>

@@ -159,7 +159,7 @@ struct ScreenTimeSettingsView: View {
             SettingsSectionHeader("Permission")
         } footer: {
             if manager.authorizationStatus == .notDetermined {
-                Text("PushUp needs Screen Time permission to block selected apps when your time credit runs out.")
+                Text("Sinura needs Screen Time permission to block selected apps when your time credit runs out.")
             }
         }
     }

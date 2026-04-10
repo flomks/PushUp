@@ -14,7 +14,11 @@
       "Bash(git stash:*)",
       "Bash(grep:*)",
       "Bash(npx create-next-app@latest pushup-web --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --turbopack)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(xargs sed:*)",
+      "Bash(sed:*)",
+      "Bash(sed -i 's/title = \"PushUp\"/title = \"Sinura\"/g' composeApp/src/jvmMain/kotlin/com/flomks/pushup/main.kt)",
+      "Bash(sed -i 's/Hello.greet\\(\"PushUp\"\\)/Hello.greet\\(\"Sinura\"\\)/g' shared/src/commonTest/kotlin/com/flomks/sinura/HelloTest.kt)"
     ]
   }
 }
