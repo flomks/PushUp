@@ -40,29 +40,10 @@ private enum StatsSection: String, CaseIterable, Identifiable {
         case .history:    return DashboardWidgetChrome.accentPositive
         }
     }
-
-    var orbitOffset: CGSize {
-        switch self {
-        case .exercises:  return CGSize(width: -112, height: 66)
-        case .screenTime: return CGSize(width: 112, height: 54)
-        case .history:    return CGSize(width: 0, height: -94)
-        }
-    }
 }
 
 /// Dedicated Stats hub with separated areas for exercise analytics,
 /// screen-time analytics, and workout history.
-///
-/// **Layout**
-/// ```
-/// +-------------------------------------------+
-/// |  Stats                          [Export]   |  <- navigation bar
-/// |  [Radial section selector / pills]         |  <- top-level navigation
-/// |                                            |
-/// |  [Section-specific content]                |  <- focused content
-/// |                                            |
-/// +-------------------------------------------+
-/// ```
 ///
 /// **Sections**
 /// - Exercises  : Daily / Weekly / Monthly / Total workout analytics
@@ -133,35 +114,25 @@ struct StatsView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            sectionNavigator
+            sectionHeader
                 .padding(.horizontal, AppSpacing.screenHorizontal)
                 .padding(.top, AppSpacing.sm)
-                .padding(.bottom, AppSpacing.lg)
+                .padding(.bottom, AppSpacing.md)
 
-            if selectedSection == .history {
-                HistoryView()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: AppSpacing.lg) {
-                        sectionContent
-                    }
-                    .padding(.horizontal, AppSpacing.screenHorizontal)
-                    .padding(.bottom, AppSpacing.screenVerticalBottom)
-                }
-            }
+            statsBody
         }
         .refreshable {
             await viewModel.refresh()
         }
     }
 
-    // MARK: - Section Navigator
+    // MARK: - Shell
 
-    private var sectionNavigator: some View {
-        Card(padding: AppSpacing.lg, cornerRadius: AppSpacing.cornerRadiusLarge, hasShadow: false) {
-            VStack(alignment: .leading, spacing: AppSpacing.lg) {
+    private var sectionHeader: some View {
+        Card(hasShadow: false) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text("Choose a lane")
+                    Text("Stats Areas")
                         .font(AppTypography.captionSemibold)
                         .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                         .textCase(.uppercase)
@@ -175,138 +146,122 @@ struct StatsView: View {
                         .foregroundStyle(DashboardWidgetChrome.labelSecondary)
                 }
 
-                radialSelector
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 258)
-
-                sectionPills
+                compactSectionStrip
             }
         }
     }
 
-    private var radialSelector: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                .frame(width: 208, height: 208)
+    @ViewBuilder
+    private var statsBody: some View {
+        if selectedSection == .history {
+            HistoryView()
+        } else {
+            ScrollView {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: AppSpacing.md) {
+                        sideSectionRail
+                            .frame(width: 114)
+                        contentColumn
+                    }
 
-            Circle()
-                .stroke(Color.white.opacity(0.04), style: StrokeStyle(lineWidth: 18, dash: [4, 12]))
-                .frame(width: 154, height: 154)
-
-            Circle()
-                .fill(selectedSection.tint.opacity(0.16))
-                .blur(radius: 26)
-                .frame(width: 156, height: 156)
-
-            centralSelectionCard
-
-            ForEach(StatsSection.allCases) { section in
-                orbitButton(for: section)
-                    .offset(section.orbitOffset)
+                    contentColumn
+                }
+                .padding(.horizontal, AppSpacing.screenHorizontal)
+                .padding(.bottom, AppSpacing.screenVerticalBottom)
             }
         }
     }
 
-    private var centralSelectionCard: some View {
-        VStack(spacing: AppSpacing.sm) {
-            ZStack {
-                Circle()
-                    .fill(selectedSection.tint.opacity(0.18))
-                    .frame(width: 68, height: 68)
-
-                Image(icon: selectedSection.icon)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(selectedSection.tint)
-            }
-
-            VStack(spacing: AppSpacing.xxs) {
-                Text(selectedSection.title)
-                    .font(AppTypography.headline)
-                    .foregroundStyle(DashboardWidgetChrome.labelPrimary)
-
-                Text(selectedSection == .exercises ? viewModel.selectedTab.label : "Focused View")
-                    .font(AppTypography.caption1)
-                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
-            }
+    private var contentColumn: some View {
+        LazyVStack(spacing: AppSpacing.lg) {
+            sectionContent
         }
-        .frame(width: 158, height: 158)
-        .background(
-            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.10),
-                            selectedSection.tint.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity)
     }
 
-    private func orbitButton(for section: StatsSection) -> some View {
+    private var sideSectionRail: some View {
+        Card(hasShadow: false) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                ForEach(StatsSection.allCases) { section in
+                    sideSectionButton(section)
+                }
+            }
+        }
+    }
+
+    private func sideSectionButton(_ section: StatsSection) -> some View {
         let isSelected = selectedSection == section
         return Button {
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+            withAnimation(.easeInOut(duration: 0.18)) {
                 selectedSection = section
             }
         } label: {
-            VStack(spacing: AppSpacing.xxs) {
-                Image(icon: section.icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isSelected ? AppColors.textOnPrimary : section.tint)
-                    .frame(width: 46, height: 46)
-                    .background(isSelected ? AnyShapeStyle(section.tint) : AnyShapeStyle(Color.white.opacity(0.06)), in: Circle())
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white.opacity(isSelected ? 0.0 : 0.10), lineWidth: 1)
-                    )
+            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill((isSelected ? section.tint.opacity(0.22) : Color.white.opacity(0.04)))
+                        .frame(width: 44, height: 44)
+
+                    Image(icon: section.icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(isSelected ? section.tint : DashboardWidgetChrome.labelSecondary)
+                }
 
                 Text(section.title)
-                    .font(AppTypography.caption2)
-                    .foregroundStyle(DashboardWidgetChrome.labelSecondary)
+                    .font(AppTypography.captionSemibold)
+                    .foregroundStyle(isSelected ? DashboardWidgetChrome.labelPrimary : DashboardWidgetChrome.labelSecondary)
+                    .lineLimit(2)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppSpacing.xs)
+            .padding(.vertical, AppSpacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
+                    .stroke(Color.white.opacity(isSelected ? 0.08 : 0.0), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
-        .scaleEffect(isSelected ? 1.06 : 1.0)
     }
 
-    private var sectionPills: some View {
+    private var compactSectionStrip: some View {
         HStack(spacing: AppSpacing.xs) {
             ForEach(StatsSection.allCases) { section in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        selectedSection = section
-                    }
-                } label: {
-                    HStack(spacing: AppSpacing.xs) {
-                        Image(icon: section.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(section.title)
-                            .font(AppTypography.captionSemibold)
-                    }
-                    .foregroundStyle(selectedSection == section ? AppColors.textOnPrimary : section.tint)
-                    .padding(.horizontal, AppSpacing.sm)
-                    .padding(.vertical, AppSpacing.xs)
-                    .background(
-                        selectedSection == section ? section.tint : Color.white.opacity(0.05),
-                        in: Capsule()
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(selectedSection == section ? 0.0 : 0.08), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
+                compactSectionButton(section)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactSectionButton(_ section: StatsSection) -> some View {
+        let isSelected = selectedSection == section
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                selectedSection = section
+            }
+        } label: {
+            HStack(spacing: AppSpacing.xs) {
+                Image(icon: section.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(section.title)
+                    .font(AppTypography.captionSemibold)
+            }
+            .foregroundStyle(isSelected ? AppColors.textOnPrimary : section.tint)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.sm)
+            .background(
+                isSelected ? section.tint : Color.white.opacity(0.05),
+                in: RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.cornerRadiusButton, style: .continuous)
+                    .stroke(Color.white.opacity(isSelected ? 0.0 : 0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Section Content

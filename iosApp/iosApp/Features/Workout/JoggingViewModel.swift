@@ -205,6 +205,23 @@ final class SpotifyService: NSObject {
         return session.expiresAt.timeIntervalSinceNow > 60
     }
 
+    /// Returns `true` when a persisted session exists (even if the access
+    /// token has expired), as long as it contains a refresh token that can
+    /// be used to obtain a new access token silently.
+    func hasStoredSession() -> Bool {
+        guard let session = loadSession() else { return false }
+        return session.refreshToken != nil && !session.refreshToken!.isEmpty
+    }
+
+    /// Attempts to restore a valid session by refreshing the stored token.
+    /// Unlike `connect()`, this never opens a browser or prompts the user.
+    /// Returns `true` when the session was successfully refreshed.
+    func silentReconnect() async -> Bool {
+        if hasValidSession() { return true }
+        guard let refreshed = await refreshIfNeeded() else { return false }
+        return refreshed
+    }
+
     @discardableResult
     func connect() async -> SpotifyConnectResult {
         if hasValidSession() {
@@ -1234,6 +1251,13 @@ final class JoggingViewModel: ObservableObject {
         Task { await startDashboardObserving() }
         Task { await loadRunSocialData() }
         Task { await refreshSpotifyDetailsIfNeeded() }
+
+        // If the access token expired but a refresh token is stored,
+        // silently refresh in the background so the user stays connected
+        // across app restarts without tapping "Connect Spotify" again.
+        if !spotifyConnected && spotifyService.hasStoredSession() {
+            Task { await autoReconnectSpotify() }
+        }
     }
 
     /// Convenience initialiser that creates a default tracking manager.
@@ -1870,6 +1894,17 @@ final class JoggingViewModel: ObservableObject {
             startSpotifyRefreshLoop()
         } else {
             stopSpotifyRefreshLoop()
+        }
+    }
+
+    /// Silently refreshes an expired Spotify session on app startup.
+    /// Never opens a browser or prompts the user — if the refresh fails
+    /// the user simply sees the "Connect Spotify" button as before.
+    private func autoReconnectSpotify() async {
+        let reconnected = await spotifyService.silentReconnect()
+        if reconnected {
+            refreshSpotifyState()
+            await refreshSpotifyDetailsIfNeeded()
         }
     }
 
