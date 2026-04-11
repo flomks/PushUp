@@ -702,7 +702,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
-  /api/me:
+  /v1/me:
     get:
       tags: [User]
       summary: Get authenticated user profile
@@ -720,7 +720,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/user/data:
+  /v1/user/data:
     get:
       tags: [User]
       summary: Get user dashboard data
@@ -735,7 +735,7 @@ paths:
         '401':
           description: Unauthorized.
 
-  /api/users/username/check:
+  /v1/users/username/check:
     get:
       tags: [Username]
       summary: Check username availability
@@ -755,7 +755,7 @@ paths:
         '400':
           description: Invalid username.
 
-  /api/users/username:
+  /v1/users/username:
     patch:
       tags: [Username]
       summary: Set or update username
@@ -777,7 +777,7 @@ paths:
         '409':
           description: Username already taken.
 
-  /api/users/search:
+  /v1/users/search:
     get:
       tags: [User]
       summary: Search users
@@ -799,7 +799,7 @@ paths:
         '400':
           description: Missing or too-short query.
 
-  /api/stats/daily:
+  /v1/stats/daily:
     get:
       tags: [Stats]
       summary: Daily push-up stats
@@ -817,7 +817,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DailyStatsDTO'
 
-  /api/stats/weekly:
+  /v1/stats/weekly:
     get:
       tags: [Stats]
       summary: Weekly push-up stats
@@ -836,7 +836,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/WeeklyStatsDTO'
 
-  /api/stats/monthly:
+  /v1/stats/monthly:
     get:
       tags: [Stats]
       summary: Monthly push-up stats
@@ -862,7 +862,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MonthlyStatsDTO'
 
-  /api/stats/total:
+  /v1/stats/total:
     get:
       tags: [Stats]
       summary: All-time push-up stats
@@ -873,7 +873,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TotalStatsDTO'
 
-  /api/stats/streak:
+  /v1/stats/streak:
     get:
       tags: [Stats]
       summary: Push-up workout streak
@@ -884,7 +884,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/StreakDTO'
 
-  /api/stats/activity/heatmap:
+  /v1/stats/activity/heatmap:
     get:
       tags: [Activity Stats]
       summary: Monthly activity heatmap
@@ -911,7 +911,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ActivityMonthlyDTO'
 
-  /api/stats/activity/streak:
+  /v1/stats/activity/streak:
     get:
       tags: [Activity Stats]
       summary: Unified activity streak
@@ -922,7 +922,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ActivityStreakDTO'
 
-  /api/device-token:
+  /v1/device-token:
     post:
       tags: [Device Token]
       summary: Register device push token
@@ -939,7 +939,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/RegisterDeviceTokenResponse'
 
-  /api/friends:
+  /v1/friends:
     get:
       tags: [Friends]
       summary: List friends
@@ -957,7 +957,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FriendsListResponse'
 
-  /api/friends/requests/incoming:
+  /v1/friends/requests/incoming:
     get:
       tags: [Friends]
       summary: List incoming friend requests
@@ -968,7 +968,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/IncomingFriendRequestsResponse'
 
-  /api/friends/request:
+  /v1/friends/request:
     post:
       tags: [Friends]
       summary: Send friend request
@@ -990,7 +990,7 @@ paths:
         '422':
           description: Cannot send request to self.
 
-  /api/friends/request/{id}:
+  /v1/friends/request/{id}:
     patch:
       tags: [Friends]
       summary: Accept or decline friend request
@@ -1016,7 +1016,7 @@ paths:
         '409':
           description: Request already accepted/declined.
 
-  /api/friends/{id}:
+  /v1/friends/{id}:
     delete:
       tags: [Friends]
       summary: Remove friend
@@ -1034,7 +1034,7 @@ paths:
         '404':
           description: No accepted friendship exists.
 
-  /api/friend-code:
+  /v1/friend-code:
     get:
       tags: [Friend Code]
       summary: Get own friend code
@@ -1046,7 +1046,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FriendCodeResponse'
 
-  /api/friend-code/privacy:
+  /v1/friend-code/privacy:
     patch:
       tags: [Friend Code]
       summary: Update friend code privacy
@@ -1063,7 +1063,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FriendCodeResponse'
 
-  /api/friend-code/reset:
+  /v1/friend-code/reset:
     post:
       tags: [Friend Code]
       summary: Reset friend code
@@ -1075,7 +1075,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FriendCodeResponse'
 
-  /api/friend-code/use:
+  /v1/friend-code/use:
     post:
       tags: [Friend Code]
       summary: Use a friend code
@@ -1100,7 +1100,7 @@ paths:
         '422':
           description: Cannot use own code.
 
-  /api/friends/{id}/stats:
+  /v1/friends/{id}/stats:
     get:
       tags: [Friend Stats]
       summary: Get friend activity stats
@@ -1126,7 +1126,7 @@ paths:
         '403':
           description: Not friends with target user.
 
-  /api/friends/{id}/heatmap:
+  /v1/friends/{id}/heatmap:
     get:
       tags: [Friend Stats]
       summary: Get friend monthly heatmap
@@ -1160,7 +1160,7 @@ paths:
         '403':
           description: Not friends with target user.
 
-  /api/friends/{id}/levels:
+  /v1/friends/{id}/levels:
     get:
       tags: [Friend Stats]
       summary: Get friend level details
@@ -1180,7 +1180,7 @@ paths:
         '403':
           description: Not friends with target user.
 
-  /api/jogging/stats/total:
+  /v1/jogging/stats/total:
     get:
       tags: [Jogging]
       summary: Total jogging stats
@@ -1191,7 +1191,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/JoggingTotalStatsDTO'
 
-  /api/jogging/sessions:
+  /v1/jogging/sessions:
     get:
       tags: [Jogging]
       summary: Jogging session history
@@ -1204,7 +1204,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/JoggingSessionHistoryDTO'
 
-  /api/jogging/sessions/{id}/route:
+  /v1/jogging/sessions/{id}/route:
     get:
       tags: [Jogging]
       summary: Route points for a jogging session
