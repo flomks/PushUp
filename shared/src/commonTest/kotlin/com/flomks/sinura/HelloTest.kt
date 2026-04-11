@@ -17,7 +17,7 @@ class HelloTest {
     @Test
     fun greetWithNameReturnsPersonalizedGreeting() {
         val result = Hello.greet("Sinura")
-        assertContains(result, "Hello, PushUp!")
+        assertContains(result, "Hello, Sinura!")
     }
 
     @Test
