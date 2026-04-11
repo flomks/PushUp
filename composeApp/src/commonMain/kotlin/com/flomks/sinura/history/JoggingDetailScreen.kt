@@ -41,9 +41,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.pushup.domain.model.JoggingSegment
-import com.pushup.domain.model.JoggingSession
-import com.pushup.domain.model.RoutePoint
+import com.sinura.domain.model.JoggingSegment
+import com.sinura.domain.model.JoggingSession
+import com.sinura.domain.model.RoutePoint
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 

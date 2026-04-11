@@ -33,10 +33,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pushup.domain.model.ActivityDayStats
-import com.pushup.domain.model.HeatmapCalculator
-import com.pushup.domain.model.HeatmapIntensity
-import com.pushup.domain.model.MonthlyActivitySummary
+import com.sinura.domain.model.ActivityDayStats
+import com.sinura.domain.model.HeatmapCalculator
+import com.sinura.domain.model.HeatmapIntensity
+import com.sinura.domain.model.MonthlyActivitySummary
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.Month

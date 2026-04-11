@@ -42,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.pushup.domain.model.Friend
+import com.sinura.domain.model.Friend
 
 @Composable
 fun FriendsListScreen(

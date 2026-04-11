@@ -43,8 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.pushup.domain.model.JoggingSession
-import com.pushup.domain.model.WorkoutSession
+import com.sinura.domain.model.JoggingSession
+import com.sinura.domain.model.WorkoutSession
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 

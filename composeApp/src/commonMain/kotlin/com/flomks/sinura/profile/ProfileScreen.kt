@@ -43,12 +43,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.flomks.sinura.components.ActivityHeatmapGrid
-import com.pushup.domain.model.ActivityDayStats
-import com.pushup.domain.model.LevelCalculator
-import com.pushup.domain.model.MonthlyActivitySummary
-import com.pushup.domain.model.TotalStats
-import com.pushup.domain.model.User
-import com.pushup.domain.model.UserLevel
+import com.sinura.domain.model.ActivityDayStats
+import com.sinura.domain.model.LevelCalculator
+import com.sinura.domain.model.MonthlyActivitySummary
+import com.sinura.domain.model.TotalStats
+import com.sinura.domain.model.User
+import com.sinura.domain.model.UserLevel
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 

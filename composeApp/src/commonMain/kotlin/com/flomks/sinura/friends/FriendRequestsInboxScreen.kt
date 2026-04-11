@@ -40,7 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.pushup.domain.model.FriendRequest
+import com.sinura.domain.model.FriendRequest
 
 @Composable
 fun FriendRequestsInboxScreen(

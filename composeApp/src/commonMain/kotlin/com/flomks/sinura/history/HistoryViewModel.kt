@@ -2,15 +2,15 @@ package com.flomks.sinura.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pushup.domain.model.JoggingSegment
-import com.pushup.domain.model.JoggingSession
-import com.pushup.domain.model.RoutePoint
-import com.pushup.domain.model.WorkoutSession
-import com.pushup.domain.repository.JoggingSegmentRepository
-import com.pushup.domain.repository.JoggingSessionRepository
-import com.pushup.domain.repository.RoutePointRepository
-import com.pushup.domain.repository.WorkoutSessionRepository
-import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
+import com.sinura.domain.model.JoggingSegment
+import com.sinura.domain.model.JoggingSession
+import com.sinura.domain.model.RoutePoint
+import com.sinura.domain.model.WorkoutSession
+import com.sinura.domain.repository.JoggingSegmentRepository
+import com.sinura.domain.repository.JoggingSessionRepository
+import com.sinura.domain.repository.RoutePointRepository
+import com.sinura.domain.repository.WorkoutSessionRepository
+import com.sinura.domain.usecase.GetOrCreateLocalUserUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

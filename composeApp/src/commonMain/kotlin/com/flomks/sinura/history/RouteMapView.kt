@@ -50,9 +50,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pushup.domain.model.JoggingSegment
-import com.pushup.domain.model.JoggingSegmentType
-import com.pushup.domain.model.RoutePoint
+import com.sinura.domain.model.JoggingSegment
+import com.sinura.domain.model.JoggingSegmentType
+import com.sinura.domain.model.RoutePoint
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

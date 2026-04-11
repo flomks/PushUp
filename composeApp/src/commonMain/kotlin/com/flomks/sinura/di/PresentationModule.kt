@@ -6,16 +6,16 @@ import com.flomks.sinura.friends.FriendStatsViewModel
 import com.flomks.sinura.friends.UserSearchViewModel
 import com.flomks.sinura.history.HistoryViewModel
 import com.flomks.sinura.profile.ProfileViewModel
-import com.pushup.domain.repository.FriendshipRepository
-import com.pushup.domain.repository.JoggingSegmentRepository
-import com.pushup.domain.repository.JoggingSessionRepository
-import com.pushup.domain.repository.RoutePointRepository
-import com.pushup.domain.repository.WorkoutSessionRepository
-import com.pushup.domain.usecase.GetActivityStreakUseCase
-import com.pushup.domain.usecase.GetMonthlyActivityUseCase
-import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
-import com.pushup.domain.usecase.GetTotalStatsUseCase
-import com.pushup.domain.usecase.GetUserLevelUseCase
+import com.sinura.domain.repository.FriendshipRepository
+import com.sinura.domain.repository.JoggingSegmentRepository
+import com.sinura.domain.repository.JoggingSessionRepository
+import com.sinura.domain.repository.RoutePointRepository
+import com.sinura.domain.repository.WorkoutSessionRepository
+import com.sinura.domain.usecase.GetActivityStreakUseCase
+import com.sinura.domain.usecase.GetMonthlyActivityUseCase
+import com.sinura.domain.usecase.GetOrCreateLocalUserUseCase
+import com.sinura.domain.usecase.GetTotalStatsUseCase
+import com.sinura.domain.usecase.GetUserLevelUseCase
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 

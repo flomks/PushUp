@@ -21,10 +21,12 @@ import com.sinura.service.JoggingStatsService
 import com.sinura.service.StatsService
 import com.sinura.service.UserDataService
 import com.sinura.service.UserSearchService
-import com.sinura.web.publicWebRoutes
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.head
 import io.ktor.server.routing.routing
@@ -41,8 +43,29 @@ fun Application.configureRouting(
     joggingStatsService: JoggingStatsService = JoggingStatsService(),
     databaseReady: Boolean = true,
 ) {
+    val aasa = """
+        {
+          "applinks": {
+            "apps": [],
+            "details": [
+              {
+                "appID": "2986PL676H.com.flomks.sinura",
+                "paths": [ "/friend/*" ]
+              }
+            ]
+          }
+        }
+    """.trimIndent()
+
     routing {
-        publicWebRoutes()
+        swaggerUI(path = "swagger", swaggerFile = "openapi.yaml")
+
+        get("/.well-known/apple-app-site-association") {
+            call.respondText(aasa, ContentType.Application.Json)
+        }
+        get("/apple-app-site-association") {
+            call.respondText(aasa, ContentType.Application.Json)
+        }
 
         get("/health") {
             call.respond(HttpStatusCode.OK, HealthResponse(status = "ok"))

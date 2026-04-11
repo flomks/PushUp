@@ -2,9 +2,9 @@ package com.flomks.sinura.friends
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pushup.data.api.ApiException
-import com.pushup.domain.model.Friend
-import com.pushup.domain.repository.FriendshipRepository
+import com.sinura.data.api.ApiException
+import com.sinura.domain.model.Friend
+import com.sinura.domain.repository.FriendshipRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

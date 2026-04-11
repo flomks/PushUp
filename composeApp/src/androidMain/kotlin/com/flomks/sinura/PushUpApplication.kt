@@ -2,7 +2,7 @@ package com.flomks.sinura
 
 import android.app.Application
 import com.flomks.sinura.di.presentationModule
-import com.pushup.di.initKoin
+import com.sinura.di.initKoin
 
 /**
  * Application entry point for the PushUp Android app.

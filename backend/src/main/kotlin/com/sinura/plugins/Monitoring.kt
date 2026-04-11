@@ -40,9 +40,8 @@ fun Application.configureMonitoring() {
         header("X-Content-Type-Options", "nosniff")
         header("X-Frame-Options", "DENY")
         header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        // Allow inline styles for the /friend/<code> landing page HTML.
-        // All other responses are JSON so this has no security impact on them.
-        header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:")
+        // Swagger UI needs scripts and styles to render.
+        header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
         header("Referrer-Policy", "no-referrer")
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     }

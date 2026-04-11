@@ -2,15 +2,15 @@ package com.flomks.sinura.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.pushup.domain.model.MonthlyActivitySummary
-import com.pushup.domain.model.TotalStats
-import com.pushup.domain.model.User
-import com.pushup.domain.model.UserLevel
-import com.pushup.domain.usecase.GetActivityStreakUseCase
-import com.pushup.domain.usecase.GetMonthlyActivityUseCase
-import com.pushup.domain.usecase.GetOrCreateLocalUserUseCase
-import com.pushup.domain.usecase.GetTotalStatsUseCase
-import com.pushup.domain.usecase.GetUserLevelUseCase
+import com.sinura.domain.model.MonthlyActivitySummary
+import com.sinura.domain.model.TotalStats
+import com.sinura.domain.model.User
+import com.sinura.domain.model.UserLevel
+import com.sinura.domain.usecase.GetActivityStreakUseCase
+import com.sinura.domain.usecase.GetMonthlyActivityUseCase
+import com.sinura.domain.usecase.GetOrCreateLocalUserUseCase
+import com.sinura.domain.usecase.GetTotalStatsUseCase
+import com.sinura.domain.usecase.GetUserLevelUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -44,8 +44,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pushup.domain.model.FriendshipStatus
-import com.pushup.domain.model.UserSearchResult
+import com.sinura.domain.model.FriendshipStatus
+import com.sinura.domain.model.UserSearchResult
 
 @Composable
 fun UserSearchScreen(

@@ -37,7 +37,7 @@
                             </label>
                         </subviews>
                         <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
-                        <color key="backgroundColor" name="LaunchBackground"/>
+                        <color key="backgroundColor" red="0.051" green="0.051" blue="0.051" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <!-- Logo: centred horizontally, centred vertically with offset -->
                             <constraint firstItem="Kh3-mu-Lhz" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="moa-c2-u7t"/>
@@ -64,8 +64,5 @@
     </scenes>
     <resources>
         <image name="LaunchLogo" width="512" height="512"/>
-        <namedColor name="LaunchBackground">
-            <color red="0.051" green="0.051" blue="0.051" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-        </namedColor>
     </resources>
 </document>

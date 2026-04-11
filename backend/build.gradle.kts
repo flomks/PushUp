@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.ktor.server.statusPages)
     implementation(libs.ktor.server.callLogging)
     implementation(libs.ktor.server.defaultHeaders)
+    implementation(libs.ktor.server.swagger)
 
     // Exposed ORM (DSL mode -- no DAO module needed)
     implementation(libs.exposed.core)
