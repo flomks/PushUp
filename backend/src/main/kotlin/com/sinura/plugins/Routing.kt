@@ -26,6 +26,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.head
@@ -58,7 +59,11 @@ fun Application.configureRouting(
     """.trimIndent()
 
     routing {
-        swaggerUI(path = "/", swaggerFile = "openapi.yaml")
+        swaggerUI(path = "docs", swaggerFile = "openapi.yaml")
+
+        get("/") {
+            call.respondRedirect("/docs")
+        }
 
         get("/.well-known/apple-app-site-association") {
             call.respondText(aasa, ContentType.Application.Json)
