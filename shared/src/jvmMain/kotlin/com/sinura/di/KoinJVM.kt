@@ -26,7 +26,7 @@ val jvmModule = module {
 
     // Custom Ktor backend base URL -- hardcoded so it persists across builds
     // without requiring manual configuration or GitHub secrets.
-    single<String>(named(BACKEND_BASE_URL)) { "https://sinura.fun" }
+    single<String>(named(BACKEND_BASE_URL)) { "https://api.sinura.fun" }
 }
 
 /**
