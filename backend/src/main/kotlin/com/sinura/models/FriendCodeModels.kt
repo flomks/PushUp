@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 // ---------------------------------------------------------------------------
 
 /**
- * Request body for PATCH /api/friend-code/privacy.
+ * Request body for PATCH /v1/friend-code/privacy.
  *
  * @property privacy One of "auto_accept", "require_approval", or "inactive".
  */
@@ -21,7 +21,7 @@ data class UpdateFriendCodePrivacyRequest(
 // ---------------------------------------------------------------------------
 
 /**
- * Response body returned by GET /api/friend-code and POST /api/friend-code/reset.
+ * Response body returned by GET /v1/friend-code and POST /v1/friend-code/reset.
  *
  * @property code      The short alphanumeric friend code (e.g. "AB3X7K2M").
  * @property privacy   Current privacy setting: "auto_accept", "require_approval", or "inactive".
@@ -39,7 +39,7 @@ data class FriendCodeResponse(
 )
 
 /**
- * Request body for POST /api/friend-code/use.
+ * Request body for POST /v1/friend-code/use.
  *
  * @property code The friend code to use.
  */
@@ -49,7 +49,7 @@ data class UseFriendCodeRequest(
 )
 
 /**
- * Response body returned by POST /api/friend-code/use.
+ * Response body returned by POST /v1/friend-code/use.
  *
  * @property result       One of "added" (auto-accepted) or "pending" (request sent).
  * @property ownerProfile Basic profile of the code owner.

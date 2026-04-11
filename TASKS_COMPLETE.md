@@ -596,7 +596,7 @@ Verbinde das Ktor-Backend mit Supabase. Ktor nutzt die Supabase PostgreSQL-Daten
 - DB Connection Pool zu Supabase PostgreSQL (Connection String aus .env)
 - JWT Auth Plugin: Validiert Supabase Access Tokens (HS256, Secret aus Supabase Settings)
 - Middleware: Extrahiert User-ID aus JWT und stellt sie fuer Routes bereit
-- Test-Route: `GET /api/me` -> Gibt aktuellen User zurueck (aus DB via Exposed)
+- Test-Route: `GET /v1/me` -> Gibt aktuellen User zurueck (aus DB via Exposed)
 - Umgebungsvariablen: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`
 - `.env.example` Datei im Repo
 
@@ -618,11 +618,11 @@ Verbinde das Ktor-Backend mit Supabase. Ktor nutzt die Supabase PostgreSQL-Daten
 Implementiere Custom-Endpoints fuer aggregierte Statistiken die komplexe SQL-Queries benoetigen (Supabase Auto-API ist hier zu limitiert).
 
 **Akzeptanzkriterien:**
-- `GET /api/stats/daily?date=2026-03-02` -> DailyStats (JSON)
-- `GET /api/stats/weekly?week_start=2026-02-24` -> WeeklyStats mit 7 DailyStats
-- `GET /api/stats/monthly?month=3&year=2026` -> MonthlyStats mit WeeklyStats
-- `GET /api/stats/total` -> Gesamt-Statistiken seit App-Installation
-- `GET /api/stats/streak` -> Aktueller Streak (aufeinanderfolgende Tage mit Workouts)
+- `GET /v1/stats/daily?date=2026-03-02` -> DailyStats (JSON)
+- `GET /v1/stats/weekly?week_start=2026-02-24` -> WeeklyStats mit 7 DailyStats
+- `GET /v1/stats/monthly?month=3&year=2026` -> MonthlyStats mit WeeklyStats
+- `GET /v1/stats/total` -> Gesamt-Statistiken seit App-Installation
+- `GET /v1/stats/streak` -> Aktueller Streak (aufeinanderfolgende Tage mit Workouts)
 - Alle Endpoints authentifiziert (JWT-Token required)
 - Endpoints nutzen Exposed fuer DB-Queries (COUNT, SUM, AVG Aggregationen)
 - Response-DTOs (Data Transfer Objects) mit @Serializable
@@ -669,7 +669,7 @@ Erstelle einen API-Client im KMP shared-Modul der mit Supabase und dem Ktor-Back
 
 **Akzeptanzkriterien:**
 - Ktor Client Dependency in shared/build.gradle.kts
-- Package: `shared/src/commonMain/kotlin/com/pushup/data/api/`
+- Package: `shared/src/commonMain/kotlin/com/pushup/data/v1/`
 - **SupabaseClient**: Wrapper fuer Supabase REST-API (CRUD fuer WorkoutSession, PushUpRecord, TimeCredit)
 - **KtorApiClient**: Client fuer Custom Ktor-Endpoints (Stats, etc.)
 - Auth-Header mit JWT-Token bei jedem Request
@@ -683,11 +683,11 @@ Erstelle einen API-Client im KMP shared-Modul der mit Supabase und dem Ktor-Back
 **Schaetzung:** M (Mittel)
 
 **Dateien:**
-- `data/api/SupabaseClient.kt`
-- `data/api/KtorApiClient.kt`
-- `data/api/dto/WorkoutSessionDTO.kt`
-- `data/api/dto/StatsDTO.kt`
-- `data/api/ApiException.kt`
+- `data/v1/SupabaseClient.kt`
+- `data/v1/KtorApiClient.kt`
+- `data/v1/dto/WorkoutSessionDTO.kt`
+- `data/v1/dto/StatsDTO.kt`
+- `data/v1/ApiException.kt`
 
 ---
 

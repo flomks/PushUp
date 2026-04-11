@@ -68,7 +68,7 @@ sealed class FriendLevelDetailsResult {
 }
 
 /**
- * Business logic for GET /api/friends/{id}/stats.
+ * Business logic for GET /v1/friends/{id}/stats.
  *
  * Responsibilities:
  * 1. Verify that an ACCEPTED friendship exists between [callerId] and [friendId].

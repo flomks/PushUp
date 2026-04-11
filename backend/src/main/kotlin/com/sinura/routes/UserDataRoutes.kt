@@ -13,7 +13,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 
 /**
- * Registers the GET /api/user/data route.
+ * Registers the GET /v1/user/data route.
  *
  * This endpoint returns a combined overview of the authenticated user's data:
  * - User profile (id, email, display name, avatar)
@@ -35,7 +35,7 @@ fun Route.userDataRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/user") {
+        route("/v1/user") {
             get("/data") {
                 val userId = call.authenticatedUserId()
                 if (userId == null) {

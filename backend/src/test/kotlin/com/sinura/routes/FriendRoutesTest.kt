@@ -34,7 +34,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 
 /**
- * Integration-style tests for POST /api/friends/request.
+ * Integration-style tests for POST /v1/friends/request.
  *
  * These tests use Ktor's [testApplication] engine with a stub [FriendshipService]
  * so that no real database connection is required.
@@ -100,7 +100,7 @@ class FriendRoutesTest {
 
     @Test
     fun `returns 401 when no token is provided`() = withApp(FriendshipService()) {
-        val response = post("/api/friends/request") {
+        val response = post("/v1/friends/request") {
             contentType(ContentType.Application.Json)
             setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
         }
@@ -109,7 +109,7 @@ class FriendRoutesTest {
 
     @Test
     fun `returns 503 when database is not ready`() = withApp(FriendshipService(), databaseReady = false) {
-        val response = post("/api/friends/request") {
+        val response = post("/v1/friends/request") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
@@ -119,7 +119,7 @@ class FriendRoutesTest {
 
     @Test
     fun `returns 400 when body is missing`() = withApp(FriendshipService()) {
-        val response = post("/api/friends/request") {
+        val response = post("/v1/friends/request") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("")
@@ -129,7 +129,7 @@ class FriendRoutesTest {
 
     @Test
     fun `returns 400 when receiverId is not a valid UUID`() = withApp(FriendshipService()) {
-        val response = post("/api/friends/request") {
+        val response = post("/v1/friends/request") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("""{"receiverId":"not-a-uuid"}""")
@@ -147,7 +147,7 @@ class FriendRoutesTest {
             ): SendFriendRequestResult = SendFriendRequestResult.SelfRequest
         }
         withApp(stubService) {
-            val response = post("/api/friends/request") {
+            val response = post("/v1/friends/request") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
@@ -166,7 +166,7 @@ class FriendRoutesTest {
             ): SendFriendRequestResult = SendFriendRequestResult.ReceiverNotFound
         }
         withApp(stubService) {
-            val response = post("/api/friends/request") {
+            val response = post("/v1/friends/request") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
@@ -185,7 +185,7 @@ class FriendRoutesTest {
             ): SendFriendRequestResult = SendFriendRequestResult.AlreadyExists("pending")
         }
         withApp(stubService) {
-            val response = post("/api/friends/request") {
+            val response = post("/v1/friends/request") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
@@ -204,7 +204,7 @@ class FriendRoutesTest {
             ): SendFriendRequestResult = SendFriendRequestResult.AlreadyExists("accepted")
         }
         withApp(stubService) {
-            val response = post("/api/friends/request") {
+            val response = post("/v1/friends/request") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"receiverId":"${UUID.randomUUID()}"}""")
@@ -233,7 +233,7 @@ class FriendRoutesTest {
             )
         }
         withApp(stubService) {
-            val response = post("/api/friends/request") {
+            val response = post("/v1/friends/request") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"receiverId":"$receiverId"}""")
@@ -246,12 +246,12 @@ class FriendRoutesTest {
     }
 
     // -----------------------------------------------------------------------
-    // PATCH /api/friends/request/{id} tests
+    // PATCH /v1/friends/request/{id} tests
     // -----------------------------------------------------------------------
 
     @Test
     fun `PATCH returns 401 when no token is provided`() = withApp(FriendshipService()) {
-        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+        val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
             contentType(ContentType.Application.Json)
             setBody("""{"status":"accepted"}""")
         }
@@ -260,7 +260,7 @@ class FriendRoutesTest {
 
     @Test
     fun `PATCH returns 503 when database is not ready`() = withApp(FriendshipService(), databaseReady = false) {
-        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+        val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("""{"status":"accepted"}""")
@@ -270,7 +270,7 @@ class FriendRoutesTest {
 
     @Test
     fun `PATCH returns 400 when id is not a valid UUID`() = withApp(FriendshipService()) {
-        val response = patch("/api/friends/request/not-a-uuid") {
+        val response = patch("/v1/friends/request/not-a-uuid") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("""{"status":"accepted"}""")
@@ -281,7 +281,7 @@ class FriendRoutesTest {
 
     @Test
     fun `PATCH returns 400 when body is missing`() = withApp(FriendshipService()) {
-        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+        val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("")
@@ -291,7 +291,7 @@ class FriendRoutesTest {
 
     @Test
     fun `PATCH returns 400 when status value is invalid`() = withApp(FriendshipService()) {
-        val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+        val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
             bearerAuth(buildToken())
             contentType(ContentType.Application.Json)
             setBody("""{"status":"pending"}""")
@@ -310,7 +310,7 @@ class FriendRoutesTest {
             ): RespondFriendRequestResult = RespondFriendRequestResult.NotFound
         }
         withApp(stubService) {
-            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"status":"accepted"}""")
@@ -330,7 +330,7 @@ class FriendRoutesTest {
             ): RespondFriendRequestResult = RespondFriendRequestResult.Forbidden
         }
         withApp(stubService) {
-            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"status":"accepted"}""")
@@ -350,7 +350,7 @@ class FriendRoutesTest {
             ): RespondFriendRequestResult = RespondFriendRequestResult.AlreadyResponded("accepted")
         }
         withApp(stubService) {
-            val response = patch("/api/friends/request/${UUID.randomUUID()}") {
+            val response = patch("/v1/friends/request/${UUID.randomUUID()}") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"status":"declined"}""")
@@ -380,7 +380,7 @@ class FriendRoutesTest {
             )
         }
         withApp(stubService) {
-            val response = patch("/api/friends/request/$friendshipId") {
+            val response = patch("/v1/friends/request/$friendshipId") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"status":"accepted"}""")
@@ -412,7 +412,7 @@ class FriendRoutesTest {
             )
         }
         withApp(stubService) {
-            val response = patch("/api/friends/request/$friendshipId") {
+            val response = patch("/v1/friends/request/$friendshipId") {
                 bearerAuth(buildToken())
                 contentType(ContentType.Application.Json)
                 setBody("""{"status":"declined"}""")
@@ -425,19 +425,19 @@ class FriendRoutesTest {
     }
 
     // -----------------------------------------------------------------------
-    // GET /api/friends tests
+    // GET /v1/friends tests
     // -----------------------------------------------------------------------
 
     @Test
     fun `GET friends returns 401 when no token is provided`() = withApp(FriendshipService()) {
-        val response = get("/api/friends")
+        val response = get("/v1/friends")
         assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
 
     @Test
     fun `GET friends returns 503 when database is not ready`() =
         withApp(FriendshipService(), databaseReady = false) {
-            val response = get("/api/friends") {
+            val response = get("/v1/friends") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
@@ -445,7 +445,7 @@ class FriendRoutesTest {
 
     @Test
     fun `GET friends returns 400 for unknown status parameter`() = withApp(FriendshipService()) {
-        val response = get("/api/friends?status=unknown") {
+        val response = get("/v1/friends?status=unknown") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -461,7 +461,7 @@ class FriendRoutesTest {
             ): FriendsListResponse = FriendsListResponse(friends = emptyList(), total = 0)
         }
         withApp(stubService) {
-            val response = get("/api/friends") {
+            val response = get("/v1/friends") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -494,7 +494,7 @@ class FriendRoutesTest {
             }
         }
         withApp(stubService) {
-            val response = get("/api/friends") {
+            val response = get("/v1/friends") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -529,7 +529,7 @@ class FriendRoutesTest {
             }
         }
         withApp(stubService) {
-            val response = get("/api/friends?status=accepted") {
+            val response = get("/v1/friends?status=accepted") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -560,7 +560,7 @@ class FriendRoutesTest {
             }
         }
         withApp(stubService) {
-            val response = get("/api/friends?status=incoming") {
+            val response = get("/v1/friends?status=incoming") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -593,7 +593,7 @@ class FriendRoutesTest {
             }
         }
         withApp(stubService) {
-            val response = get("/api/friends?status=outgoing") {
+            val response = get("/v1/friends?status=outgoing") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -623,7 +623,7 @@ class FriendRoutesTest {
             )
         }
         withApp(stubService) {
-            val response = get("/api/friends") {
+            val response = get("/v1/friends") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -660,7 +660,7 @@ class FriendRoutesTest {
             )
         }
         withApp(stubService) {
-            val response = get("/api/friends") {
+            val response = get("/v1/friends") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)

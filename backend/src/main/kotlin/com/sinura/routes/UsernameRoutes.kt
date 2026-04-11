@@ -53,14 +53,14 @@ private object UsernameValidation {
 }
 
 /**
- * Registers username-related routes under /api/users.
+ * Registers username-related routes under /v1/users.
  *
  * Routes:
- *   GET  /api/users/username/check?username={username}
+ *   GET  /v1/users/username/check?username={username}
  *        -- Checks whether a username is available (not taken by another user).
  *           Returns 200 with { username, available: true/false }.
  *
- *   PATCH /api/users/username
+ *   PATCH /v1/users/username
  *        -- Sets the username for the authenticated user.
  *           Request body: { "username": "john_doe" }
  *           Returns 200 with { username } on success.
@@ -69,10 +69,10 @@ private object UsernameValidation {
  */
 fun Route.usernameRoutes(databaseReady: Boolean = true) {
     authenticate(JWT_AUTH) {
-        route("/api/users") {
+        route("/v1/users") {
 
             /**
-             * GET /api/users/username/check?username={username}
+             * GET /v1/users/username/check?username={username}
              *
              * Checks whether the given username is available.
              * The check is case-insensitive (all usernames are stored lowercase).
@@ -161,7 +161,7 @@ fun Route.usernameRoutes(databaseReady: Boolean = true) {
             }
 
             /**
-             * PATCH /api/users/username
+             * PATCH /v1/users/username
              *
              * Sets the username for the authenticated user.
              * The username is stored in lowercase.

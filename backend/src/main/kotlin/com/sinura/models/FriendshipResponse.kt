@@ -3,7 +3,7 @@ package com.sinura.models
 import kotlinx.serialization.Serializable
 
 /**
- * Request body for POST /api/friends/request.
+ * Request body for POST /v1/friends/request.
  *
  * @property receiverId UUID of the user to whom the friend request is sent.
  */
@@ -13,7 +13,7 @@ data class SendFriendRequestBody(
 )
 
 /**
- * Request body for PATCH /api/friends/request/{id}.
+ * Request body for PATCH /v1/friends/request/{id}.
  *
  * @property status The desired new status -- must be either "accepted" or "declined".
  */
@@ -23,8 +23,8 @@ data class RespondFriendRequestBody(
 )
 
 /**
- * Response body returned by POST /api/friends/request on success (201 Created)
- * and by PATCH /api/friends/request/{id} on success (200 OK).
+ * Response body returned by POST /v1/friends/request on success (201 Created)
+ * and by PATCH /v1/friends/request/{id} on success (200 OK).
  *
  * @property id          UUID of the friendship row.
  * @property requesterId UUID of the user who sent the request.
@@ -60,7 +60,7 @@ data class FriendProfile(
 )
 
 /**
- * Response body returned by GET /api/friends.
+ * Response body returned by GET /v1/friends.
  *
  * @property friends List of friend profiles matching the requested status filter.
  * @property total   Total number of entries in this response (convenience field).
@@ -93,7 +93,7 @@ data class IncomingFriendRequest(
 )
 
 /**
- * Response body returned by GET /api/friends/requests/incoming.
+ * Response body returned by GET /v1/friends/requests/incoming.
  *
  * @property requests List of incoming pending friend requests.
  * @property total    Total number of entries in this response (convenience field).

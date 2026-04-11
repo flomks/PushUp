@@ -58,7 +58,7 @@ fun Application.configureRouting(
     """.trimIndent()
 
     routing {
-        swaggerUI(path = "swagger", swaggerFile = "openapi.yaml")
+        swaggerUI(path = "/", swaggerFile = "openapi.yaml")
 
         get("/.well-known/apple-app-site-association") {
             call.respondText(aasa, ContentType.Application.Json)

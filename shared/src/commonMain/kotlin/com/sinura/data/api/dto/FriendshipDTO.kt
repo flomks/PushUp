@@ -18,7 +18,7 @@ import kotlinx.serialization.Serializable
 // ---------------------------------------------------------------------------
 
 /**
- * DTO for a single entry in the GET /api/users/search response.
+ * DTO for a single entry in the GET /v1/users/search response.
  */
 @Serializable
 data class UserSearchResultDTO(
@@ -30,7 +30,7 @@ data class UserSearchResultDTO(
 )
 
 /**
- * DTO for the full GET /api/users/search response body.
+ * DTO for the full GET /v1/users/search response body.
  */
 @Serializable
 data class UserSearchResponseDTO(
@@ -43,7 +43,7 @@ data class UserSearchResponseDTO(
 // ---------------------------------------------------------------------------
 
 /**
- * Request body for POST /api/friends/request.
+ * Request body for POST /v1/friends/request.
  */
 @Serializable
 data class SendFriendRequestDTO(
@@ -51,7 +51,7 @@ data class SendFriendRequestDTO(
 )
 
 /**
- * Request body for PATCH /api/friends/request/{id}.
+ * Request body for PATCH /v1/friends/request/{id}.
  */
 @Serializable
 data class RespondFriendRequestDTO(
@@ -59,8 +59,8 @@ data class RespondFriendRequestDTO(
 )
 
 /**
- * Response body returned by POST /api/friends/request (201 Created)
- * and PATCH /api/friends/request/{id} (200 OK).
+ * Response body returned by POST /v1/friends/request (201 Created)
+ * and PATCH /v1/friends/request/{id} (200 OK).
  */
 @Serializable
 data class FriendshipResponseDTO(
@@ -76,7 +76,7 @@ data class FriendshipResponseDTO(
 // ---------------------------------------------------------------------------
 
 /**
- * DTO for a single entry in the GET /api/friends/requests/incoming response.
+ * DTO for a single entry in the GET /v1/friends/requests/incoming response.
  */
 @Serializable
 data class IncomingFriendRequestDTO(
@@ -89,7 +89,7 @@ data class IncomingFriendRequestDTO(
 )
 
 /**
- * DTO for the full GET /api/friends/requests/incoming response body.
+ * DTO for the full GET /v1/friends/requests/incoming response body.
  */
 @Serializable
 data class IncomingFriendRequestsResponseDTO(
@@ -102,7 +102,7 @@ data class IncomingFriendRequestsResponseDTO(
 // ---------------------------------------------------------------------------
 
 /**
- * DTO for a single entry in the GET /api/friends response.
+ * DTO for a single entry in the GET /v1/friends response.
  */
 @Serializable
 data class FriendProfileDTO(
@@ -113,7 +113,7 @@ data class FriendProfileDTO(
 )
 
 /**
- * DTO for the full GET /api/friends response body.
+ * DTO for the full GET /v1/friends response body.
  */
 @Serializable
 data class FriendsListResponseDTO(
@@ -126,7 +126,7 @@ data class FriendsListResponseDTO(
 // ---------------------------------------------------------------------------
 
 /**
- * DTO for the date range in the GET /api/friends/{id}/stats response.
+ * DTO for the date range in the GET /v1/friends/{id}/stats response.
  */
 @Serializable
 data class FriendStatsDateRangeDTO(
@@ -135,7 +135,7 @@ data class FriendStatsDateRangeDTO(
 )
 
 /**
- * DTO for the GET /api/friends/{id}/stats response body.
+ * DTO for the GET /v1/friends/{id}/stats response body.
  */
 @Serializable
 data class FriendActivityStatsDTO(

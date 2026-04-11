@@ -28,7 +28,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for the GET /api/users/search route handler.
+ * Unit tests for the GET /v1/users/search route handler.
  *
  * These tests exercise the HTTP layer in isolation using Ktor's [testApplication]
  * harness.  The [UserSearchService] is replaced with a test double so no real
@@ -98,7 +98,7 @@ class UserSearchRoutesTest {
 
     @Test
     fun `missing q parameter returns 400`() = buildApp {
-        val response = client.get("/api/users/search") {
+        val response = client.get("/v1/users/search") {
             header(HttpHeaders.Authorization, "Bearer ${testToken()}")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -108,7 +108,7 @@ class UserSearchRoutesTest {
 
     @Test
     fun `blank q parameter returns 400`() = buildApp {
-        val response = client.get("/api/users/search?q=") {
+        val response = client.get("/v1/users/search?q=") {
             header(HttpHeaders.Authorization, "Bearer ${testToken()}")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -118,7 +118,7 @@ class UserSearchRoutesTest {
 
     @Test
     fun `single character q returns 400`() = buildApp {
-        val response = client.get("/api/users/search?q=a") {
+        val response = client.get("/v1/users/search?q=a") {
             header(HttpHeaders.Authorization, "Bearer ${testToken()}")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -136,7 +136,7 @@ class UserSearchRoutesTest {
 
     @Test
     fun `valid query with database not ready returns 503`() = buildApp(dbReady = false) {
-        val response = client.get("/api/users/search?q=john") {
+        val response = client.get("/v1/users/search?q=john") {
             header(HttpHeaders.Authorization, "Bearer ${testToken()}")
         }
         assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
@@ -168,7 +168,7 @@ class UserSearchRoutesTest {
         }
 
         buildApp(service = stubService) {
-            val response = client.get("/api/users/search?q=jane") {
+            val response = client.get("/v1/users/search?q=jane") {
                 header(HttpHeaders.Authorization, "Bearer ${testToken()}")
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -213,7 +213,7 @@ class UserSearchRoutesTest {
         }
 
         buildApp(service = stubService) {
-            val response = client.get("/api/users/search?q=bo") {
+            val response = client.get("/v1/users/search?q=bo") {
                 header(HttpHeaders.Authorization, "Bearer ${testToken()}")
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -241,7 +241,7 @@ class UserSearchRoutesTest {
         }
 
         buildApp(service = stubService) {
-            val response = client.get("/api/users/search?q=zzz") {
+            val response = client.get("/v1/users/search?q=zzz") {
                 header(HttpHeaders.Authorization, "Bearer ${testToken()}")
             }
             assertEquals(HttpStatusCode.OK, response.status)

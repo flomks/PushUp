@@ -34,10 +34,10 @@ import io.ktor.http.contentType
  * ## Endpoints
  * | Method | Path                                  | Description                              |
  * |--------|---------------------------------------|------------------------------------------|
- * | GET    | /api/users/search?q=...               | Search users by username / display name  |
- * | GET    | /api/friends/requests/incoming        | List incoming pending friend requests    |
- * | POST   | /api/friends/request                  | Send a friend request                    |
- * | PATCH  | /api/friends/request/{id}             | Accept or decline a friend request       |
+ * | GET    | /v1/users/search?q=...               | Search users by username / display name  |
+ * | GET    | /v1/friends/requests/incoming        | List incoming pending friend requests    |
+ * | POST   | /v1/friends/request                  | Send a friend request                    |
+ * | PATCH  | /v1/friends/request/{id}             | Accept or decline a friend request       |
  *
  * ## Authentication
  * Every request includes `Authorization: Bearer <jwt>`. The token is fetched
@@ -77,14 +77,14 @@ class FriendshipApiClient(
     /**
      * Searches for users whose username or display name contains [query].
      *
-     * Calls `GET /api/users/search?q=<query>`.
+     * Calls `GET /v1/users/search?q=<query>`.
      *
      * @param query Search term (minimum 2 characters).
      * @return List of matching [UserSearchResult]s.
      */
     suspend fun searchUsers(query: String): List<UserSearchResult> = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/users/search") {
+        httpClient.get("$backendBaseUrl/v1/users/search") {
             bearerAuth(token)
             url.parameters.append("q", query)
         }.also { it.expectSuccess() }
@@ -96,13 +96,13 @@ class FriendshipApiClient(
     /**
      * Returns all incoming pending friend requests for the authenticated user.
      *
-     * Calls `GET /api/friends/requests/incoming`.
+     * Calls `GET /v1/friends/requests/incoming`.
      *
      * @return List of [FriendRequest]s.
      */
     suspend fun getIncomingFriendRequests(): List<FriendRequest> = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/friends/requests/incoming") {
+        httpClient.get("$backendBaseUrl/v1/friends/requests/incoming") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<IncomingFriendRequestsResponseDTO>()
@@ -113,14 +113,14 @@ class FriendshipApiClient(
     /**
      * Sends a friend request from the authenticated user to [receiverId].
      *
-     * Calls `POST /api/friends/request` with `{ "receiverId": "<uuid>" }`.
+     * Calls `POST /v1/friends/request` with `{ "receiverId": "<uuid>" }`.
      *
      * @param receiverId UUID of the target user.
      * @return The created [Friendship] record.
      */
     suspend fun sendFriendRequest(receiverId: String): Friendship = retrying {
         val token = tokenProvider()
-        httpClient.post("$backendBaseUrl/api/friends/request") {
+        httpClient.post("$backendBaseUrl/v1/friends/request") {
             bearerAuth(token)
             contentType(ContentType.Application.Json)
             setBody(SendFriendRequestDTO(receiverId = receiverId))
@@ -132,13 +132,13 @@ class FriendshipApiClient(
     /**
      * Returns all confirmed (accepted) friends of the authenticated user.
      *
-     * Calls `GET /api/friends` (default status=accepted).
+     * Calls `GET /v1/friends` (default status=accepted).
      *
      * @return List of [Friend]s with basic profile data.
      */
     suspend fun getFriends(): List<Friend> = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/friends") {
+        httpClient.get("$backendBaseUrl/v1/friends") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<FriendsListResponseDTO>()
@@ -149,7 +149,7 @@ class FriendshipApiClient(
     /**
      * Returns activity statistics for a specific friend over a given period.
      *
-     * Calls `GET /api/friends/{friendId}/stats?period=<period>`.
+     * Calls `GET /v1/friends/{friendId}/stats?period=<period>`.
      *
      * @param friendId UUID of the friend whose stats are requested.
      * @param period   One of "day", "week", or "month".
@@ -162,7 +162,7 @@ class FriendshipApiClient(
         }
         return retrying {
             val token = tokenProvider()
-            httpClient.get("$backendBaseUrl/api/friends/$friendId/stats") {
+            httpClient.get("$backendBaseUrl/v1/friends/$friendId/stats") {
                 bearerAuth(token)
                 url.parameters.append("period", period)
             }.also { it.expectSuccess() }
@@ -177,7 +177,7 @@ class FriendshipApiClient(
         }
         return retrying {
             val token = tokenProvider()
-            httpClient.get("$backendBaseUrl/api/friends/$friendId/heatmap") {
+            httpClient.get("$backendBaseUrl/v1/friends/$friendId/heatmap") {
                 bearerAuth(token)
                 url.parameters.append("month", month.toString())
                 url.parameters.append("year", year.toString())
@@ -193,7 +193,7 @@ class FriendshipApiClient(
         }
         return retrying {
             val token = tokenProvider()
-            httpClient.get("$backendBaseUrl/api/friends/$friendId/levels") {
+            httpClient.get("$backendBaseUrl/v1/friends/$friendId/levels") {
                 bearerAuth(token)
             }.also { it.expectSuccess() }
                 .body<FriendLevelDetailsDTO>()
@@ -204,7 +204,7 @@ class FriendshipApiClient(
     /**
      * Removes the friendship between the authenticated user and [friendId].
      *
-     * Calls `DELETE /api/friends/{friendId}`.
+     * Calls `DELETE /v1/friends/{friendId}`.
      *
      * @param friendId UUID of the friend's user account to remove.
      * @throws IllegalArgumentException if [friendId] is not a valid UUID.
@@ -215,7 +215,7 @@ class FriendshipApiClient(
         }
         retrying {
             val token = tokenProvider()
-            httpClient.delete("$backendBaseUrl/api/friends/$friendId") {
+            httpClient.delete("$backendBaseUrl/v1/friends/$friendId") {
                 bearerAuth(token)
             }.also { it.expectSuccess() }
         }
@@ -224,7 +224,7 @@ class FriendshipApiClient(
     /**
      * Accepts or declines a pending friend request.
      *
-     * Calls `PATCH /api/friends/request/{friendshipId}` with
+     * Calls `PATCH /v1/friends/request/{friendshipId}` with
      * `{ "status": "accepted" }` or `{ "status": "declined" }`.
      *
      * @param friendshipId UUID of the friendship row to update.
@@ -241,7 +241,7 @@ class FriendshipApiClient(
         return retrying {
             val token = tokenProvider()
             val status = if (accept) "accepted" else "declined"
-            httpClient.patch("$backendBaseUrl/api/friends/request/$friendshipId") {
+            httpClient.patch("$backendBaseUrl/v1/friends/request/$friendshipId") {
                 bearerAuth(token)
                 contentType(ContentType.Application.Json)
                 setBody(RespondFriendRequestDTO(status = status))

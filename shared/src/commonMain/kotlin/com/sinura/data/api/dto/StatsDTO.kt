@@ -13,7 +13,7 @@ import kotlinx.serialization.Serializable
 // =============================================================================
 
 /**
- * Statistics for a single calendar day, as returned by `GET /api/stats/daily`.
+ * Statistics for a single calendar day, as returned by `GET /v1/stats/daily`.
  *
  * @property date               ISO-8601 date string, e.g. "2026-03-02".
  * @property totalPushUps       Total push-ups performed across all sessions on this day.
@@ -32,7 +32,7 @@ data class DailyStatsDTO(
 
 /**
  * Statistics for a calendar week (Monday - Sunday), as returned by
- * `GET /api/stats/weekly`.
+ * `GET /v1/stats/weekly`.
  *
  * @property weekStart          ISO-8601 date of the Monday that starts this week.
  * @property weekEnd            ISO-8601 date of the Sunday that ends this week.
@@ -54,7 +54,7 @@ data class WeeklyStatsDTO(
 )
 
 /**
- * Statistics for a calendar month, as returned by `GET /api/stats/monthly`.
+ * Statistics for a calendar month, as returned by `GET /v1/stats/monthly`.
  *
  * @property month              Month number (1-12).
  * @property year               Four-digit year.
@@ -77,7 +77,7 @@ data class MonthlyStatsDTO(
 
 /**
  * All-time statistics since the user first installed the app, as returned by
- * `GET /api/stats/total`.
+ * `GET /v1/stats/total`.
  *
  * @property totalPushUps               Grand total push-ups ever performed.
  * @property totalSessions              Grand total completed sessions.
@@ -99,7 +99,7 @@ data class TotalStatsDTO(
 )
 
 /**
- * Current workout streak information, as returned by `GET /api/stats/streak`.
+ * Current workout streak information, as returned by `GET /v1/stats/streak`.
  *
  * @property currentStreak   Consecutive days (up to today) with at least one workout.
  * @property longestStreak   All-time longest streak in days.

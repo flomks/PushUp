@@ -14,20 +14,20 @@ import io.ktor.server.routing.route
 import java.util.UUID
 
 /**
- * Registers jogging stats API routes under `/api/jogging/`.
+ * Registers jogging stats API routes under `/v1/jogging/`.
  *
  * All routes require JWT authentication.
  *
  * Routes:
- * - GET /api/jogging/stats/total   -- Total jogging stats for the authenticated user
- * - GET /api/jogging/sessions      -- Session history for the authenticated user
- * - GET /api/jogging/sessions/{id}/route -- Route points for a specific session
+ * - GET /v1/jogging/stats/total   -- Total jogging stats for the authenticated user
+ * - GET /v1/jogging/sessions      -- Session history for the authenticated user
+ * - GET /v1/jogging/sessions/{id}/route -- Route points for a specific session
  */
 fun Route.joggingStatsRoutes(service: JoggingStatsService) {
     authenticate(JWT_AUTH) {
-        route("/api/jogging") {
+        route("/v1/jogging") {
 
-            // GET /api/jogging/stats/total
+            // GET /v1/jogging/stats/total
             get("/stats/total") {
                 val userId = call.principal<JWTPrincipal>()
                     ?.payload?.subject
@@ -41,7 +41,7 @@ fun Route.joggingStatsRoutes(service: JoggingStatsService) {
                 call.respond(HttpStatusCode.OK, stats)
             }
 
-            // GET /api/jogging/sessions
+            // GET /v1/jogging/sessions
             get("/sessions") {
                 val userId = call.principal<JWTPrincipal>()
                     ?.payload?.subject
@@ -55,7 +55,7 @@ fun Route.joggingStatsRoutes(service: JoggingStatsService) {
                 call.respond(HttpStatusCode.OK, sessions)
             }
 
-            // GET /api/jogging/sessions/{id}/route
+            // GET /v1/jogging/sessions/{id}/route
             get("/sessions/{id}/route") {
                 val userId = call.principal<JWTPrincipal>()
                     ?.payload?.subject

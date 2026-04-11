@@ -3,7 +3,7 @@ package com.sinura.models
 import kotlinx.serialization.Serializable
 
 /**
- * Response body returned by GET /api/me.
+ * Response body returned by GET /v1/me.
  */
 @Serializable
 data class UserResponse(
@@ -71,7 +71,7 @@ data class UserSearchResult(
 )
 
 /**
- * Response body returned by GET /api/users/search.
+ * Response body returned by GET /v1/users/search.
  *
  * @property results  Ordered list of matching users (max 20 entries).
  * @property total    Total number of results in this response (convenience field).
@@ -83,7 +83,7 @@ data class UserSearchResponse(
 )
 
 /**
- * Response body returned by GET /api/users/username/check.
+ * Response body returned by GET /v1/users/username/check.
  *
  * @property username   The username that was checked.
  * @property available  Whether the username is available (not taken by another user).
@@ -95,7 +95,7 @@ data class UsernameCheckResponse(
 )
 
 /**
- * Request body for PATCH /api/users/username.
+ * Request body for PATCH /v1/users/username.
  *
  * @property username  The desired username (3-20 characters, lowercase alphanumeric + underscores).
  */
@@ -105,7 +105,7 @@ data class SetUsernameRequest(
 )
 
 /**
- * Response body returned by PATCH /api/users/username.
+ * Response body returned by PATCH /v1/users/username.
  *
  * @property username  The username that was set.
  */

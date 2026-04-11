@@ -21,7 +21,7 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
- * Filter applied to GET /api/friends.
+ * Filter applied to GET /v1/friends.
  *
  *   ACCEPTED -- users who are confirmed friends (status = accepted)
  *   INCOMING -- pending requests where the caller is the receiver

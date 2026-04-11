@@ -17,21 +17,21 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import java.time.format.DateTimeFormatter
 
 /**
- * Registers all user-related API routes under /api.
+ * Registers all user-related API routes under /v1.
  *
  * @param databaseReady Whether the database connection was successfully
  *                      initialised. When false, all DB-dependent endpoints
  *                      return 503 instead of an opaque 500.
  *
  * Routes:
- *   GET /api/me  -- Returns the currently authenticated user's profile.
+ *   GET /v1/me  -- Returns the currently authenticated user's profile.
  *                   Requires a valid Supabase JWT in the Authorization header.
  */
 fun Route.userRoutes(databaseReady: Boolean = true) {
-    route("/api") {
+    route("/v1") {
         authenticate(JWT_AUTH) {
             /**
-             * GET /api/me
+             * GET /v1/me
              *
              * Extracts the user ID from the validated JWT, queries the
              * public.users table via Exposed, and returns the user profile.

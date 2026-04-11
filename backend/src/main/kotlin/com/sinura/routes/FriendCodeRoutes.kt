@@ -22,13 +22,13 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
 /**
- * Registers all /api/friend-code routes.
+ * Registers all /v1/friend-code routes.
  *
  * Routes:
- *   GET    /api/friend-code              -- Returns (or creates) the caller's friend code.
- *   PATCH  /api/friend-code/privacy      -- Updates the privacy setting of the caller's code.
- *   POST   /api/friend-code/reset        -- Generates a new random code for the caller.
- *   POST   /api/friend-code/use          -- Uses a friend code to add or request a friend.
+ *   GET    /v1/friend-code              -- Returns (or creates) the caller's friend code.
+ *   PATCH  /v1/friend-code/privacy      -- Updates the privacy setting of the caller's code.
+ *   POST   /v1/friend-code/reset        -- Generates a new random code for the caller.
+ *   POST   /v1/friend-code/use          -- Uses a friend code to add or request a friend.
  *
  * All routes require a valid JWT (Bearer token).
  *
@@ -40,10 +40,10 @@ fun Route.friendCodeRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/friend-code") {
+        route("/v1/friend-code") {
 
             /**
-             * GET /api/friend-code
+             * GET /v1/friend-code
              *
              * Returns the authenticated user's friend code. If the user does not yet
              * have a code, one is generated automatically with privacy = require_approval.
@@ -102,7 +102,7 @@ fun Route.friendCodeRoutes(
             }
 
             /**
-             * PATCH /api/friend-code/privacy
+             * PATCH /v1/friend-code/privacy
              *
              * Updates the privacy setting of the authenticated user's friend code.
              * Creates the code first if it does not yet exist.
@@ -156,7 +156,7 @@ fun Route.friendCodeRoutes(
                                 HttpStatusCode.NotFound,
                                 ErrorResponse(
                                     error   = "not_found",
-                                    message = "You do not have a friend code yet. Call GET /api/friend-code to create one.",
+                                    message = "You do not have a friend code yet. Call GET /v1/friend-code to create one.",
                                 ),
                             )
 
@@ -179,7 +179,7 @@ fun Route.friendCodeRoutes(
             }
 
             /**
-             * POST /api/friend-code/reset
+             * POST /v1/friend-code/reset
              *
              * Generates a new random code for the authenticated user, invalidating the
              * previous one. Creates the code row if it does not yet exist.
@@ -229,7 +229,7 @@ fun Route.friendCodeRoutes(
             }
 
             /**
-             * POST /api/friend-code/use
+             * POST /v1/friend-code/use
              *
              * Uses a friend code entered or scanned by the authenticated user.
              *

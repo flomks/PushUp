@@ -12,7 +12,7 @@ import Shared
 /// 1. iOS calls `AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken`.
 /// 2. AppDelegate converts the `Data` token to a hex string and calls
 ///    `PushNotificationService.shared.registerToken(_:)`.
-/// 3. This service POSTs the token to `POST /api/device-token` with the
+/// 3. This service POSTs the token to `POST /v1/device-token` with the
 ///    current user's JWT. If the user is not yet logged in, the token is
 ///    cached and sent on the next successful login.
 ///
@@ -82,7 +82,7 @@ final class PushNotificationService {
 
     // MARK: - Private
 
-    /// POSTs the device token to `POST /api/device-token`.
+    /// POSTs the device token to `POST /v1/device-token`.
     ///
     /// Returns a detailed outcome so auth timing problems can be retried
     /// after login instead of being treated as hard backend failures.
@@ -98,8 +98,8 @@ final class PushNotificationService {
             return .deferredAuth
         }
 
-        guard let url = URL(string: "\(backendURL)/api/device-token") else {
-            logger.error("Invalid backend URL: \(backendURL)/api/device-token")
+        guard let url = URL(string: "\(backendURL)/v1/device-token") else {
+            logger.error("Invalid backend URL: \(backendURL)/v1/device-token")
             return .failed
         }
 

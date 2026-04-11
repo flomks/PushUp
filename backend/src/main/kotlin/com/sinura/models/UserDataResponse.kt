@@ -3,7 +3,7 @@ package com.sinura.models
 import kotlinx.serialization.Serializable
 
 /**
- * Combined user data overview returned by GET /api/user/data.
+ * Combined user data overview returned by GET /v1/user/data.
  *
  * Aggregates the user's profile, all-time workout statistics, time-credit
  * balance, and streak information into a single response so that the client

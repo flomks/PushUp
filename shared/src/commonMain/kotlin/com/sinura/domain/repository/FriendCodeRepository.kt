@@ -16,7 +16,7 @@ interface FriendCodeRepository {
      * If the user does not yet have a code, one is generated automatically
      * with privacy = [FriendCodePrivacy.REQUIRE_APPROVAL].
      *
-     * Calls `GET /api/friend-code`.
+     * Calls `GET /v1/friend-code`.
      *
      * @return The user's [FriendCode].
      * @throws com.sinura.data.api.ApiException on network or server errors.
@@ -26,7 +26,7 @@ interface FriendCodeRepository {
     /**
      * Updates the privacy setting of the authenticated user's friend code.
      *
-     * Calls `PATCH /api/friend-code/privacy`.
+     * Calls `PATCH /v1/friend-code/privacy`.
      *
      * @param privacy The desired new privacy setting.
      * @return The updated [FriendCode].
@@ -38,7 +38,7 @@ interface FriendCodeRepository {
      * Generates a new random code for the authenticated user, invalidating the
      * previous one.
      *
-     * Calls `POST /api/friend-code/reset`.
+     * Calls `POST /v1/friend-code/reset`.
      *
      * @return The updated [FriendCode] with the new code value.
      * @throws com.sinura.data.api.ApiException on network or server errors.
@@ -48,7 +48,7 @@ interface FriendCodeRepository {
     /**
      * Uses a friend code entered or scanned by the authenticated user.
      *
-     * Calls `POST /api/friend-code/use`.
+     * Calls `POST /v1/friend-code/use`.
      *
      * @param code The friend code string.
      * @return [UseFriendCodeResult] describing the outcome.

@@ -17,14 +17,14 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
 /**
- * Registers the POST /api/device-token route.
+ * Registers the POST /v1/device-token route.
  *
  * The iOS app calls this endpoint after every successful login and on each
  * app launch (when the token may have been rotated by Apple). The backend
  * stores the token in [DeviceTokens] and uses it to deliver APNs pushes.
  *
  * Route:
- *   POST /api/device-token
+ *   POST /v1/device-token
  *     Body: { "token": "<hex>", "platform": "apns" }
  *     Response 200: { "success": true }
  *
@@ -36,10 +36,10 @@ fun Route.deviceTokenRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/device-token") {
+        route("/v1/device-token") {
 
             /**
-             * POST /api/device-token
+             * POST /v1/device-token
              *
              * Registers or refreshes the caller's APNs device token.
              *

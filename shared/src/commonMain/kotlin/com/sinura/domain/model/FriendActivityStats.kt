@@ -3,7 +3,7 @@ package com.sinura.domain.model
 /**
  * Aggregated activity statistics for a friend over a given time period.
  *
- * Returned by GET /api/friends/{id}/stats?period=day|week|month.
+ * Returned by GET /v1/friends/{id}/stats?period=day|week|month.
  *
  * @property friendId            UUID of the friend whose stats are returned.
  * @property period              The requested period ("day", "week", or "month").

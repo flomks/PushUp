@@ -13,17 +13,17 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 
 /**
- * Registers unified activity stats endpoints under `/api/stats/activity/`.
+ * Registers unified activity stats endpoints under `/v1/stats/activity/`.
  *
  * These endpoints aggregate data from ALL workout types (push-ups + jogging),
- * unlike the existing `/api/stats/` endpoints which are push-up-only.
+ * unlike the existing `/v1/stats/` endpoints which are push-up-only.
  */
 fun Route.activityStatsRoutes(activityStatsService: ActivityStatsService) {
     authenticate(JWT_AUTH) {
-        route("/api/stats/activity") {
+        route("/v1/stats/activity") {
 
             /**
-             * GET /api/stats/activity/heatmap?month=M&year=Y
+             * GET /v1/stats/activity/heatmap?month=M&year=Y
              *
              * Returns per-day activity data for the requested month, suitable
              * for rendering a GitHub-style contribution heatmap.
@@ -69,7 +69,7 @@ fun Route.activityStatsRoutes(activityStatsService: ActivityStatsService) {
             }
 
             /**
-             * GET /api/stats/activity/streak
+             * GET /v1/stats/activity/streak
              *
              * Returns the unified activity streak across all workout types.
              */

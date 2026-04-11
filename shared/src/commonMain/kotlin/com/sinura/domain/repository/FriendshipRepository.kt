@@ -40,7 +40,7 @@ interface FriendshipRepository {
     /**
      * Returns all incoming pending friend requests for the authenticated user.
      *
-     * Calls `GET /api/friends/requests/incoming` and maps each entry to a
+     * Calls `GET /v1/friends/requests/incoming` and maps each entry to a
      * [FriendRequest] that includes the friendship row ID needed to accept
      * or decline the request.
      *
@@ -52,7 +52,7 @@ interface FriendshipRepository {
     /**
      * Accepts or declines a pending friend request.
      *
-     * Calls `PATCH /api/friends/request/{friendshipId}` with the given [accept] flag.
+     * Calls `PATCH /v1/friends/request/{friendshipId}` with the given [accept] flag.
      *
      * @param friendshipId UUID of the friendship row to update.
      * @param accept       `true` to accept, `false` to decline.
@@ -64,7 +64,7 @@ interface FriendshipRepository {
     /**
      * Returns all confirmed (accepted) friends of the authenticated user.
      *
-     * Calls `GET /api/friends` (default status=accepted).
+     * Calls `GET /v1/friends` (default status=accepted).
      *
      * @return List of [Friend]s with basic profile data.
      * @throws com.sinura.data.api.ApiException on network or server errors.
@@ -74,7 +74,7 @@ interface FriendshipRepository {
     /**
      * Removes the friendship between the authenticated user and [friendId].
      *
-     * Calls `DELETE /api/friends/{friendId}`.
+     * Calls `DELETE /v1/friends/{friendId}`.
      *
      * @param friendId UUID of the friend's user account to remove.
      * @throws com.sinura.data.api.ApiException on network or server errors.
@@ -84,7 +84,7 @@ interface FriendshipRepository {
     /**
      * Returns activity statistics for a specific friend over a given period.
      *
-     * Calls `GET /api/friends/{friendId}/stats?period=<period>`.
+     * Calls `GET /v1/friends/{friendId}/stats?period=<period>`.
      *
      * @param friendId UUID of the friend whose stats are requested.
      * @param period   One of "day", "week", or "month".

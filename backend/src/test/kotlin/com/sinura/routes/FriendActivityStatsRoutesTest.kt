@@ -27,7 +27,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 
 /**
- * Integration-style tests for GET /api/friends/{id}/stats.
+ * Integration-style tests for GET /v1/friends/{id}/stats.
  *
  * These tests use Ktor's [testApplication] engine with a stub
  * [FriendActivityStatsService] so that no real database connection is required.
@@ -126,14 +126,14 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 401 when no token is provided`() = withApp(notFriendsService) {
-        val response = get("/api/friends/${UUID.randomUUID()}/stats?period=week")
+        val response = get("/v1/friends/${UUID.randomUUID()}/stats?period=week")
         assertEquals(HttpStatusCode.Unauthorized, response.status)
     }
 
     @Test
     fun `returns 503 when database is not ready`() =
         withApp(notFriendsService, databaseReady = false) {
-            val response = get("/api/friends/${UUID.randomUUID()}/stats?period=week") {
+            val response = get("/v1/friends/${UUID.randomUUID()}/stats?period=week") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.ServiceUnavailable, response.status)
@@ -145,7 +145,7 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 400 when id is not a valid UUID`() = withApp(notFriendsService) {
-        val response = get("/api/friends/not-a-uuid/stats?period=week") {
+        val response = get("/v1/friends/not-a-uuid/stats?period=week") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -154,7 +154,7 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 400 when period parameter is missing`() = withApp(notFriendsService) {
-        val response = get("/api/friends/${UUID.randomUUID()}/stats") {
+        val response = get("/v1/friends/${UUID.randomUUID()}/stats") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -163,7 +163,7 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 400 when period parameter is invalid`() = withApp(notFriendsService) {
-        val response = get("/api/friends/${UUID.randomUUID()}/stats?period=year") {
+        val response = get("/v1/friends/${UUID.randomUUID()}/stats?period=year") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
@@ -176,7 +176,7 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 403 when users are not friends`() = withApp(notFriendsService) {
-        val response = get("/api/friends/${UUID.randomUUID()}/stats?period=week") {
+        val response = get("/v1/friends/${UUID.randomUUID()}/stats?period=week") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.Forbidden, response.status)
@@ -185,7 +185,7 @@ class FriendActivityStatsRoutesTest {
 
     @Test
     fun `returns 403 error body contains descriptive message`() = withApp(notFriendsService) {
-        val response = get("/api/friends/${UUID.randomUUID()}/stats?period=day") {
+        val response = get("/v1/friends/${UUID.randomUUID()}/stats?period=day") {
             bearerAuth(buildToken())
         }
         assertEquals(HttpStatusCode.Forbidden, response.status)
@@ -201,7 +201,7 @@ class FriendActivityStatsRoutesTest {
     fun `returns 200 with stats body for period=day`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId, StatsPeriod.day, pushupCount = 10)) {
-            val response = get("/api/friends/$friendId/stats?period=day") {
+            val response = get("/v1/friends/$friendId/stats?period=day") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -217,7 +217,7 @@ class FriendActivityStatsRoutesTest {
     fun `returns 200 with stats body for period=week`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId, StatsPeriod.week, pushupCount = 42)) {
-            val response = get("/api/friends/$friendId/stats?period=week") {
+            val response = get("/v1/friends/$friendId/stats?period=week") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -234,7 +234,7 @@ class FriendActivityStatsRoutesTest {
     fun `returns 200 with stats body for period=month`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId, StatsPeriod.month, pushupCount = 200)) {
-            val response = get("/api/friends/$friendId/stats?period=month") {
+            val response = get("/v1/friends/$friendId/stats?period=month") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -249,7 +249,7 @@ class FriendActivityStatsRoutesTest {
     fun `response body contains all required fields`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId)) {
-            val response = get("/api/friends/$friendId/stats?period=week") {
+            val response = get("/v1/friends/$friendId/stats?period=week") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -270,7 +270,7 @@ class FriendActivityStatsRoutesTest {
     fun `response body contains the correct friendId`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId)) {
-            val response = get("/api/friends/$friendId/stats?period=week") {
+            val response = get("/v1/friends/$friendId/stats?period=week") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)
@@ -282,7 +282,7 @@ class FriendActivityStatsRoutesTest {
     fun `period parameter is case-insensitive`() {
         val friendId = UUID.randomUUID()
         withApp(successService(friendId, StatsPeriod.week)) {
-            val response = get("/api/friends/$friendId/stats?period=WEEK") {
+            val response = get("/v1/friends/$friendId/stats?period=WEEK") {
                 bearerAuth(buildToken())
             }
             assertEquals(HttpStatusCode.OK, response.status)

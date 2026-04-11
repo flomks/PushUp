@@ -13,7 +13,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.route
 
 /**
- * Registers the GET /api/users/search route.
+ * Registers the GET /v1/users/search route.
  *
  * Searches for users by username or display name.  The authenticated caller
  * is excluded from the results.  Each result is annotated with the friendship
@@ -49,10 +49,10 @@ fun Route.userSearchRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/users") {
+        route("/v1/users") {
 
             /**
-             * GET /api/users/search?q={query}
+             * GET /v1/users/search?q={query}
              *
              * Returns up to 20 users whose username or display name contains
              * the search term (case-insensitive substring match).

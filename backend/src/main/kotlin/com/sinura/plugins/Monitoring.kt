@@ -26,7 +26,7 @@ fun Application.configureMonitoring() {
         }
 
         // Custom log format: shows method, path, status code, and duration.
-        // Example: "200 OK: GET /api/stats/daily (12ms)"
+        // Example: "200 OK: GET /v1/stats/daily (12ms)"
         format { call ->
             val status = call.response.status() ?: HttpStatusCode(0, "Unknown")
             val method = call.request.httpMethod.value
@@ -40,8 +40,7 @@ fun Application.configureMonitoring() {
         header("X-Content-Type-Options", "nosniff")
         header("X-Frame-Options", "DENY")
         header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-        // Swagger UI needs scripts and styles to render.
-        header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
+        header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:")
         header("Referrer-Policy", "no-referrer")
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     }

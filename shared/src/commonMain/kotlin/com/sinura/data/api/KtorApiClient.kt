@@ -34,11 +34,11 @@ import kotlinx.datetime.LocalDate
  * ## Endpoints
  * | Method | Path                    | Description                          |
  * |--------|-------------------------|--------------------------------------|
- * | GET    | /api/stats/daily        | Daily statistics for a given date    |
- * | GET    | /api/stats/weekly       | Weekly statistics for a given week   |
- * | GET    | /api/stats/monthly      | Monthly statistics for a given month |
- * | GET    | /api/stats/total        | All-time statistics                  |
- * | GET    | /api/stats/streak       | Current and longest workout streak   |
+ * | GET    | /v1/stats/daily        | Daily statistics for a given date    |
+ * | GET    | /v1/stats/weekly       | Weekly statistics for a given week   |
+ * | GET    | /v1/stats/monthly      | Monthly statistics for a given month |
+ * | GET    | /v1/stats/total        | All-time statistics                  |
+ * | GET    | /v1/stats/streak       | Current and longest workout streak   |
  *
  * ## Authentication
  * Every request includes `Authorization: Bearer <jwt>`. The token is fetched
@@ -83,11 +83,11 @@ class KtorApiClient(
     /**
      * Returns aggregated statistics for a single calendar [date].
      *
-     * Calls `GET /api/stats/daily?date=<YYYY-MM-DD>`.
+     * Calls `GET /v1/stats/daily?date=<YYYY-MM-DD>`.
      */
     suspend fun getDailyStats(date: LocalDate): DailyStats = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/stats/daily") {
+        httpClient.get("$backendBaseUrl/v1/stats/daily") {
             bearerAuth(token)
             url.parameters.append("date", date.toString())
         }.also { it.expectSuccess() }
@@ -98,13 +98,13 @@ class KtorApiClient(
     /**
      * Returns aggregated statistics for the calendar week starting on [weekStart].
      *
-     * Calls `GET /api/stats/weekly?week_start=<YYYY-MM-DD>`.
+     * Calls `GET /v1/stats/weekly?week_start=<YYYY-MM-DD>`.
      *
      * @param weekStart The Monday that starts the ISO week.
      */
     suspend fun getWeeklyStats(weekStart: LocalDate): WeeklyStats = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/stats/weekly") {
+        httpClient.get("$backendBaseUrl/v1/stats/weekly") {
             bearerAuth(token)
             url.parameters.append("week_start", weekStart.toString())
         }.also { it.expectSuccess() }
@@ -115,11 +115,11 @@ class KtorApiClient(
     /**
      * Returns aggregated statistics for the given calendar [month] and [year].
      *
-     * Calls `GET /api/stats/monthly?month=<1-12>&year=<YYYY>`.
+     * Calls `GET /v1/stats/monthly?month=<1-12>&year=<YYYY>`.
      */
     suspend fun getMonthlyStats(month: Int, year: Int): MonthlyStats = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/stats/monthly") {
+        httpClient.get("$backendBaseUrl/v1/stats/monthly") {
             bearerAuth(token)
             url.parameters.append("month", month.toString())
             url.parameters.append("year", year.toString())
@@ -131,7 +131,7 @@ class KtorApiClient(
     /**
      * Returns all-time statistics for the authenticated user.
      *
-     * Fetches `GET /api/stats/total` and `GET /api/stats/streak` **in parallel**
+     * Fetches `GET /v1/stats/total` and `GET /v1/stats/streak` **in parallel**
      * using [coroutineScope], then merges the results into a single [TotalStats].
      *
      * @param userId The authenticated user's ID (not included in the response body).
@@ -151,7 +151,7 @@ class KtorApiClient(
     /**
      * Returns the current and longest workout streak for the authenticated user.
      *
-     * Calls `GET /api/stats/streak`.
+     * Calls `GET /v1/stats/streak`.
      */
     suspend fun getStreak(): StreakDTO = retrying {
         fetchStreak()
@@ -164,13 +164,13 @@ class KtorApiClient(
     /**
      * Checks whether [username] is available (not taken by another user).
      *
-     * Calls `GET /api/users/username/check?username=<username>`.
+     * Calls `GET /v1/users/username/check?username=<username>`.
      *
      * @return [UsernameCheckResponse] with [available] = true if the username is free.
      */
     suspend fun checkUsernameAvailability(username: String): UsernameCheckResponse = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/users/username/check") {
+        httpClient.get("$backendBaseUrl/v1/users/username/check") {
             bearerAuth(token)
             url.parameters.append("username", username)
         }.also { it.expectSuccess() }
@@ -180,14 +180,14 @@ class KtorApiClient(
     /**
      * Sets the username for the currently authenticated user.
      *
-     * Calls `PATCH /api/users/username`.
+     * Calls `PATCH /v1/users/username`.
      *
      * @return The username that was set.
      * @throws ApiException if the username is taken (409) or invalid (400).
      */
     suspend fun setUsername(request: SetUsernameRequest): String = retrying {
         val token = tokenProvider()
-        httpClient.patch("$backendBaseUrl/api/users/username") {
+        httpClient.patch("$backendBaseUrl/v1/users/username") {
             bearerAuth(token)
             contentType(ContentType.Application.Json)
             setBody(request)
@@ -202,7 +202,7 @@ class KtorApiClient(
 
     private suspend fun fetchTotalStats(): TotalStatsDTO = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/stats/total") {
+        httpClient.get("$backendBaseUrl/v1/stats/total") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<TotalStatsDTO>()
@@ -210,7 +210,7 @@ class KtorApiClient(
 
     private suspend fun fetchStreak(): StreakDTO = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/stats/streak") {
+        httpClient.get("$backendBaseUrl/v1/stats/streak") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<StreakDTO>()

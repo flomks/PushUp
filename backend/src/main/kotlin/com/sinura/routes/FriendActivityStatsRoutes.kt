@@ -18,14 +18,14 @@ import io.ktor.server.routing.route
 import java.util.UUID
 
 /**
- * Registers the GET /api/friends/{id}/stats route.
+ * Registers the GET /v1/friends/{id}/stats route.
  *
  * Returns aggregated push-up activity statistics for a specific friend.
  * Access is restricted to users who share an active (accepted) friendship
  * with the target user -- non-friends receive 403 Forbidden.
  *
  * Route:
- *   GET /api/friends/{id}/stats?period=day|week|month
+ *   GET /v1/friends/{id}/stats?period=day|week|month
  *
  * Path parameters:
  *   id -- UUID of the friend whose stats are requested.
@@ -61,10 +61,10 @@ fun Route.friendActivityStatsRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/friends") {
+        route("/v1/friends") {
 
             /**
-             * GET /api/friends/{id}/stats?period=day|week|month
+             * GET /v1/friends/{id}/stats?period=day|week|month
              */
             get("/{id}/stats") {
 

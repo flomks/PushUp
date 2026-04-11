@@ -25,20 +25,20 @@ import io.ktor.server.routing.route
 import java.util.UUID
 
 /**
- * Registers all /api/friends routes.
+ * Registers all /v1/friends routes.
  *
  * Routes:
- *   GET    /api/friends                       -- Returns the caller's friends list.
+ *   GET    /v1/friends                       -- Returns the caller's friends list.
  *                                                Optional query parameter:
  *                                                  ?status=accepted  (default) -- confirmed friends
  *                                                  ?status=incoming            -- pending requests received
  *                                                  ?status=outgoing            -- pending requests sent
- *   GET    /api/friends/requests/incoming     -- Returns incoming pending requests with friendship IDs.
- *   POST   /api/friends/request               -- Sends a friend request from the authenticated
+ *   GET    /v1/friends/requests/incoming     -- Returns incoming pending requests with friendship IDs.
+ *   POST   /v1/friends/request               -- Sends a friend request from the authenticated
  *                                                user to another user identified by receiver_id.
- *   PATCH  /api/friends/request/{id}          -- Allows the receiver to accept or decline a
+ *   PATCH  /v1/friends/request/{id}          -- Allows the receiver to accept or decline a
  *                                                pending friend request.
- *   DELETE /api/friends/{id}                  -- Removes an accepted friendship between the
+ *   DELETE /v1/friends/{id}                  -- Removes an accepted friendship between the
  *                                                authenticated user and the specified friend.
  *
  * @param friendshipService Service that handles friendship business logic.
@@ -51,10 +51,10 @@ fun Route.friendRoutes(
     databaseReady: Boolean = true,
 ) {
     authenticate(JWT_AUTH) {
-        route("/api/friends") {
+        route("/v1/friends") {
 
             /**
-             * GET /api/friends?status={accepted|incoming|outgoing}
+             * GET /v1/friends?status={accepted|incoming|outgoing}
              *
              * Returns the friends list of the authenticated user.
              *
@@ -152,7 +152,7 @@ fun Route.friendRoutes(
             }
 
             /**
-             * GET /api/friends/requests/incoming
+             * GET /v1/friends/requests/incoming
              *
              * Returns all incoming pending friend requests for the authenticated user.
              * Each entry includes the friendship row ID (needed to accept/decline) and
@@ -222,7 +222,7 @@ fun Route.friendRoutes(
             }
 
             /**
-             * POST /api/friends/request
+             * POST /v1/friends/request
              *
              * Sends a friend request from the authenticated user to the user
              * identified by [SendFriendRequestBody.receiverId].
@@ -360,7 +360,7 @@ fun Route.friendRoutes(
             }
 
             /**
-             * DELETE /api/friends/{id}
+             * DELETE /v1/friends/{id}
              *
              * Removes the accepted friendship between the authenticated user and the
              * user identified by the `{id}` path parameter.
@@ -451,7 +451,7 @@ fun Route.friendRoutes(
             }
 
             /**
-             * PATCH /api/friends/request/{id}
+             * PATCH /v1/friends/request/{id}
              *
              * Allows the receiver of a pending friend request to accept or decline it.
              * Only the receiver of the request is authorised to respond; the requester

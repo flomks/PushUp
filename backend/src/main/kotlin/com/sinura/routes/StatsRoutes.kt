@@ -16,7 +16,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeParseException
 
 /**
- * Registers all /api/stats/[daily|weekly|monthly|total|streak] routes.
+ * Registers all /v1/stats/[daily|weekly|monthly|total|streak] routes.
  * Every endpoint requires a valid Supabase JWT (Bearer token).
  *
  * All database operations are wrapped in try-catch to prevent uncaught
@@ -25,7 +25,7 @@ import java.time.format.DateTimeParseException
  */
 fun Route.statsRoutes(statsService: StatsService) {
     authenticate(JWT_AUTH) {
-        route("/api/stats") {
+        route("/v1/stats") {
 
             get("/daily") {
                 val userId = call.authenticatedUserId() ?: return@get call.respond(

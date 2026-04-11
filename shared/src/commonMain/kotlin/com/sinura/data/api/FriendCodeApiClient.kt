@@ -23,10 +23,10 @@ import io.ktor.http.contentType
  * ## Endpoints
  * | Method | Path                          | Description                                  |
  * |--------|-------------------------------|----------------------------------------------|
- * | GET    | /api/friend-code              | Get (or create) the caller's friend code     |
- * | PATCH  | /api/friend-code/privacy      | Update the privacy setting                   |
- * | POST   | /api/friend-code/reset        | Generate a new random code                   |
- * | POST   | /api/friend-code/use          | Use a friend code to add/request a friend    |
+ * | GET    | /v1/friend-code              | Get (or create) the caller's friend code     |
+ * | PATCH  | /v1/friend-code/privacy      | Update the privacy setting                   |
+ * | POST   | /v1/friend-code/reset        | Generate a new random code                   |
+ * | POST   | /v1/friend-code/use          | Use a friend code to add/request a friend    |
  *
  * @property httpClient      Configured [HttpClient].
  * @property backendBaseUrl  Ktor backend base URL.
@@ -52,11 +52,11 @@ class FriendCodeApiClient(
     /**
      * Returns (or creates) the authenticated user's friend code.
      *
-     * Calls `GET /api/friend-code`.
+     * Calls `GET /v1/friend-code`.
      */
     suspend fun getMyFriendCode(): FriendCode = retrying {
         val token = tokenProvider()
-        httpClient.get("$backendBaseUrl/api/friend-code") {
+        httpClient.get("$backendBaseUrl/v1/friend-code") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<FriendCodeResponseDTO>()
@@ -66,7 +66,7 @@ class FriendCodeApiClient(
     /**
      * Updates the privacy setting of the authenticated user's friend code.
      *
-     * Calls `PATCH /api/friend-code/privacy`.
+     * Calls `PATCH /v1/friend-code/privacy`.
      *
      * @param privacy The desired new privacy setting.
      */
@@ -77,7 +77,7 @@ class FriendCodeApiClient(
             FriendCodePrivacy.REQUIRE_APPROVAL -> "require_approval"
             FriendCodePrivacy.INACTIVE         -> "inactive"
         }
-        httpClient.patch("$backendBaseUrl/api/friend-code/privacy") {
+        httpClient.patch("$backendBaseUrl/v1/friend-code/privacy") {
             bearerAuth(token)
             contentType(ContentType.Application.Json)
             setBody(UpdateFriendCodePrivacyDTO(privacy = privacyValue))
@@ -89,11 +89,11 @@ class FriendCodeApiClient(
     /**
      * Generates a new random code for the authenticated user.
      *
-     * Calls `POST /api/friend-code/reset`.
+     * Calls `POST /v1/friend-code/reset`.
      */
     suspend fun resetCode(): FriendCode = retrying {
         val token = tokenProvider()
-        httpClient.post("$backendBaseUrl/api/friend-code/reset") {
+        httpClient.post("$backendBaseUrl/v1/friend-code/reset") {
             bearerAuth(token)
         }.also { it.expectSuccess() }
             .body<FriendCodeResponseDTO>()
@@ -103,13 +103,13 @@ class FriendCodeApiClient(
     /**
      * Uses a friend code entered or scanned by the authenticated user.
      *
-     * Calls `POST /api/friend-code/use`.
+     * Calls `POST /v1/friend-code/use`.
      *
      * @param code The friend code string.
      */
     suspend fun useFriendCode(code: String): UseFriendCodeResult = retrying {
         val token = tokenProvider()
-        httpClient.post("$backendBaseUrl/api/friend-code/use") {
+        httpClient.post("$backendBaseUrl/v1/friend-code/use") {
             bearerAuth(token)
             contentType(ContentType.Application.Json)
             setBody(UseFriendCodeRequestDTO(code = code))

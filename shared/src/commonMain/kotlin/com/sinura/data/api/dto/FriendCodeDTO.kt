@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
 // ---------------------------------------------------------------------------
 
 /**
- * Request body for PATCH /api/friend-code/privacy.
+ * Request body for PATCH /v1/friend-code/privacy.
  */
 @Serializable
 data class UpdateFriendCodePrivacyDTO(
@@ -19,7 +19,7 @@ data class UpdateFriendCodePrivacyDTO(
 )
 
 /**
- * Request body for POST /api/friend-code/use.
+ * Request body for POST /v1/friend-code/use.
  */
 @Serializable
 data class UseFriendCodeRequestDTO(
@@ -31,7 +31,7 @@ data class UseFriendCodeRequestDTO(
 // ---------------------------------------------------------------------------
 
 /**
- * Response body returned by GET /api/friend-code and POST /api/friend-code/reset.
+ * Response body returned by GET /v1/friend-code and POST /v1/friend-code/reset.
  */
 @Serializable
 data class FriendCodeResponseDTO(
@@ -43,7 +43,7 @@ data class FriendCodeResponseDTO(
 )
 
 /**
- * Response body returned by POST /api/friend-code/use.
+ * Response body returned by POST /v1/friend-code/use.
  */
 @Serializable
 data class UseFriendCodeResponseDTO(

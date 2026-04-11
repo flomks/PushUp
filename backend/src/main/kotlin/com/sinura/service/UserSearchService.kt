@@ -19,7 +19,7 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import java.util.UUID
 
 /**
- * Handles user search queries for the GET /api/users/search endpoint.
+ * Handles user search queries for the GET /v1/users/search endpoint.
  *
  * Search behaviour:
  * - Always matches against [Users.username] and [Users.displayName]

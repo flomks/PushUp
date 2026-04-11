@@ -3,7 +3,7 @@ package com.sinura.domain.model
 /**
  * A confirmed friend of the authenticated user.
  *
- * Returned by GET /api/friends (status=accepted).
+ * Returned by GET /v1/friends (status=accepted).
  *
  * @property id          UUID of the friend's user account.
  * @property username    Unique handle (e.g. "john_doe"), null if not yet set.

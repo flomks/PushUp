@@ -3,7 +3,7 @@ package com.sinura.models
 import kotlinx.serialization.Serializable
 
 /**
- * Request body for POST /api/device-token.
+ * Request body for POST /v1/device-token.
  *
  * @property token    The APNs device token hex string returned by iOS.
  * @property platform "apns" for iOS (default). Reserved for future "fcm" (Android).
@@ -15,7 +15,7 @@ data class RegisterDeviceTokenRequest(
 )
 
 /**
- * Response body for POST /api/device-token.
+ * Response body for POST /v1/device-token.
  */
 @Serializable
 data class RegisterDeviceTokenResponse(
